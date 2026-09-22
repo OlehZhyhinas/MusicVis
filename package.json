@@ -1,0 +1,25 @@
+{
+  "name": "musicvis",
+  "version": "1.0.0",
+  "description": "MilkDrop-style music visualizer with beat, structure, stem and key analysis",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github-personal:OlehZhyhinas/MusicVis.git"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "butterchurn": "^2.6.7",
+    "butterchurn-presets": "^2.4.7"
+  },
+  "private": true,
+  "type": "module"
+}

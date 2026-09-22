@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>MusicVis</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="viz-canvas"></canvas>
+
+      <div id="drop-overlay" aria-hidden="true">
+        <div class="drop-overlay-inner">Drop to add</div>
+      </div>
+
+      <div id="start-screen" class="panel">
+        <h1 id="app-title">MusicVis</h1>
+        <div id="dropzone" tabindex="0" role="button" aria-label="Choose songs">
+          <span id="dropzone-text">Drop songs here or click to choose</span>
+        </div>
+        <input id="file-input" type="file" accept="audio/*" multiple hidden />
+
+        <div id="progress-wrap" hidden>
+          <div id="progress-stage">Analyzing…</div>
+          <div id="progress-track"><div id="progress-fill"></div></div>
+        </div>
+
+        <button id="play-button" hidden>Play</button>
+        <div id="start-error" class="start-error" hidden></div>
+      </div>
+
+      <div id="hud" hidden></div>
+
+      <aside id="playlist-panel" class="panel" hidden>
+        <div id="playlist-header">
+          <span id="playlist-title">Playlist</span>
+          <div id="playlist-header-actions">
+            <button id="pl-add" class="tp-btn-text" aria-label="Add songs">Add</button>
+            <button id="pl-clear" class="tp-btn-text" aria-label="Clear playlist">Clear</button>
+            <button id="pl-close" class="tp-btn" aria-label="Close playlist">&times;</button>
+          </div>
+        </div>
+        <ul id="playlist-items"></ul>
+      </aside>
+
+      <div id="transport" class="panel" hidden>
+        <button id="tp-playlist" class="tp-btn" aria-label="Toggle playlist">&#9776;</button>
+        <button id="tp-shuffle" class="tp-btn" aria-label="Shuffle">&#128256;</button>
+        <button id="tp-prev" class="tp-btn" aria-label="Previous track">&#9198;</button>
+        <button id="tp-playpause" class="tp-btn" aria-label="Play/Pause">&#9658;</button>
+        <button id="tp-next" class="tp-btn" aria-label="Next track">&#9197;</button>
+        <button id="tp-repeat" class="tp-btn" aria-label="Repeat">&#128257;</button>
+
+        <div id="tp-time" class="tp-time">0:00</div>
+
+        <div id="tp-seek-wrap">
+          <div id="tp-sections"></div>
+          <input id="tp-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+          <div id="tp-seek-hover" hidden></div>
+        </div>
+
+        <div id="tp-duration" class="tp-time">0:00</div>
+
+        <button id="tp-mute" class="tp-btn" aria-label="Mute">&#128266;</button>
+        <input id="tp-volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
+
+        <select id="tp-mode" aria-label="Visual mode">
+          <option value="enhanced">Enhanced</option>
+          <option value="classic">Classic MilkDrop</option>
+          <option value="hybrid">Hybrid</option>
+        </select>
+
+        <button id="tp-preset" class="tp-btn-text" aria-label="Next preset">Next preset</button>
+
+        <select id="tp-particles" aria-label="Particle count">
+          <option value="65536">64K</option>
+          <option value="262144">256K</option>
+          <option value="1048576">1M</option>
+        </select>
+
+        <button id="tp-hud" class="tp-btn-text" aria-label="Toggle HUD">HUD</button>
+        <button id="tp-fullscreen" class="tp-btn" aria-label="Fullscreen">&#9974;</button>
+        <button id="tp-help" class="tp-btn" aria-label="Keyboard shortcuts">?</button>
+      </div>
+
+      <div id="help-overlay" hidden>
+        <div id="help-panel" class="panel">
+          <div id="help-header">
+            <span>Keyboard shortcuts</span>
+            <button id="help-close" class="tp-btn" aria-label="Close help">&times;</button>
+          </div>
+          <dl id="help-list">
+            <dt>Space</dt>
+            <dd>Play / pause</dd>
+            <dt>&larr; / &rarr;</dt>
+            <dd>Seek -5s / +5s</dd>
+            <dt>Shift + &larr; / &rarr;</dt>
+            <dd>Previous / next track</dd>
+            <dt>F</dt>
+            <dd>Fullscreen</dd>
+            <dt>H</dt>
+            <dd>Toggle HUD</dd>
+            <dt>N</dt>
+            <dd>Next preset</dd>
+            <dt>1 / 2 / 3</dt>
+            <dd>Enhanced / Classic / Hybrid mode</dd>
+            <dt>M</dt>
+            <dd>Mute</dd>
+            <dt>P</dt>
+            <dd>Toggle playlist</dd>
+            <dt>?</dt>
+            <dd>Toggle this help</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
