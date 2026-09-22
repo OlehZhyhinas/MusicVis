@@ -177,11 +177,13 @@ export class Visualizer implements IVisualizer {
     const s = Math.min(1, MAX_SIDE / Math.max(w, h));
     w = Math.round(w * s);
     h = Math.round(h * s);
+    // The visualizer owns the canvas backing size; always enforce it, even when
+    // the render targets can be kept, so it never drifts from the GL viewport.
+    if (this.canvas.width !== w) this.canvas.width = w;
+    if (this.canvas.height !== h) this.canvas.height = h;
     if (w === this.width && h === this.height && this.fb) return;
     this.width = w;
     this.height = h;
-    this.canvas.width = w;
-    this.canvas.height = h;
     this.stats.width = w;
     this.stats.height = h;
     const gl = this.gl;

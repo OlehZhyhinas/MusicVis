@@ -52,12 +52,8 @@ async function main(): Promise<void> {
   }
 
   function resizeCanvas(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    visualizer?.resize(w, h, dpr);
+    // Canvas backing size is owned by the visualizer (it caps resolution).
+    visualizer?.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
