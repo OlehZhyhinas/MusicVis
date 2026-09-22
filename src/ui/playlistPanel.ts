@@ -78,7 +78,7 @@ export class PlaylistPanel {
   render(playlist: Playlist): void {
     const current = playlist.currentTrack;
     if (playlist.isEmpty) {
-      this.listEl.innerHTML = '<li class="pl-empty">No songs yet. Drop some in, or use Add.</li>';
+      this.listEl.innerHTML = '';
       return;
     }
     this.listEl.innerHTML = '';

@@ -13,15 +13,9 @@ import { loadSetting, saveSetting } from './ui/storage';
 async function main(): Promise<void> {
   const appRoot = document.getElementById('app') as HTMLElement;
   const canvas = document.getElementById('viz-canvas') as HTMLCanvasElement;
-  const startScreen = document.getElementById('start-screen') as HTMLElement;
-  const dropzoneEl = document.getElementById('dropzone') as HTMLElement;
+  const emptyStateEl = document.getElementById('playlist-empty') as HTMLElement;
   const fileInput = document.getElementById('file-input') as HTMLInputElement;
   const dropOverlay = document.getElementById('drop-overlay') as HTMLElement;
-  const progressWrap = document.getElementById('progress-wrap') as HTMLElement;
-  const progressStage = document.getElementById('progress-stage') as HTMLElement;
-  const progressFill = document.getElementById('progress-fill') as HTMLElement;
-  const playButton = document.getElementById('play-button') as HTMLButtonElement;
-  const startError = document.getElementById('start-error') as HTMLElement;
   const transportEl = document.getElementById('transport') as HTMLElement;
   const hudEl = document.getElementById('hud') as HTMLElement;
   const playlistPanelEl = document.getElementById('playlist-panel') as HTMLElement;
@@ -165,15 +159,11 @@ async function main(): Promise<void> {
     const cur = playlist.currentTrack;
     if (cur && cur.status === 'analyzing') {
       transport.setTrackLoading(cur.progress);
-      if (!startScreen.classList.contains('hidden')) {
-        progressStage.textContent = 'Analyzing…';
-        progressFill.style.width = `${Math.round(cur.progress * 100)}%`;
-      }
     } else if (cur && (cur.status === 'ready' || cur.status === 'error')) {
       transport.setTrackLoading(null);
     }
+    emptyStateEl.hidden = !playlist.isEmpty;
     if (playlist.isEmpty) {
-      startScreen.classList.remove('hidden');
       transport.hide();
       playlistPanel.setCollapsed(false);
     }
@@ -265,17 +255,14 @@ async function main(): Promise<void> {
     try {
       await audioCtx!.resume();
       player!.play();
-      startScreen.classList.add('hidden');
-      playButton.hidden = true;
       updateMediaSessionPlaybackState();
     } catch {
-      playButton.hidden = false;
+      // Autoplay blocked: the transport's play button is already visible.
     }
   }
 
   async function playTrack(track: Track): Promise<void> {
     const token = ++loadToken;
-    startError.hidden = true;
     try {
       if (!audioCtx) audioCtx = new AudioContext();
       await audioCtx.resume();
@@ -293,15 +280,8 @@ async function main(): Promise<void> {
       sampler = null;
       updateMediaSessionMetadata(track);
 
-      // First-ever load shows the big progress bar on the start screen;
-      // later track switches show progress via the transport + playlist panel.
-      const startScreenVisible = !startScreen.classList.contains('hidden');
-      if (startScreenVisible) {
-        playButton.hidden = true;
-        progressWrap.hidden = false;
-        progressFill.style.width = '0%';
-        progressStage.textContent = track.status === 'ready' ? 'Ready' : 'Analyzing…';
-      }
+      // Analysis progress shows in the transport and the playlist row.
+      transport.show();
 
       const { buffer, result } = await playlist.ensureLoaded(audioCtx, track);
       if (token !== loadToken) return; // superseded by a newer selection
@@ -315,8 +295,6 @@ async function main(): Promise<void> {
 
       transport.setSections(result.sections, result.duration);
       transport.setTrackLoading(null);
-      transport.show();
-      progressWrap.hidden = true;
       songLoaded = true;
 
       playlist.evictStaleBuffers();
@@ -326,11 +304,8 @@ async function main(): Promise<void> {
     } catch (err) {
       if (token !== loadToken) return;
       console.error(err);
-      progressWrap.hidden = true;
       transport.setTrackLoading(null);
       const message = err instanceof Error ? err.message : 'Could not load this track.';
-      startError.hidden = false;
-      startError.textContent = message;
       showToast(`Failed to load "${track.title}": ${message}`, 'error');
     }
   }
@@ -343,13 +318,10 @@ async function main(): Promise<void> {
     }
   }
 
-  installDropzone(dropzoneEl, fileInput, dropOverlay, {
+  installDropzone(emptyStateEl, fileInput, dropOverlay, {
     onFiles: (files) => handleAddedFiles(files),
   });
 
-  playButton.addEventListener('click', () => {
-    void attemptAutoplay();
-  });
 
   window.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;

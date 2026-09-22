@@ -56,60 +56,7 @@ body {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
 }
 
-/* Start screen */
-#start-screen {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  padding: 40px 48px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  width: min(480px, calc(100vw - 32px));
-  text-align: center;
-  transition:
-    opacity 0.4s ease,
-    visibility 0.4s ease;
-}
-
-#start-screen.hidden {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-#app-title {
-  margin: 0;
-  font-weight: 600;
-  font-size: 22px;
-  letter-spacing: 0.04em;
-  color: var(--fg);
-}
-
-#dropzone {
-  width: 100%;
-  padding: 40px 20px;
-  border: 1.5px dashed rgba(255, 255, 255, 0.25);
-  border-radius: 12px;
-  color: var(--fg-dim);
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease;
-  font-size: 15px;
-}
-
-#dropzone:hover,
-#dropzone:focus-visible {
-  border-color: var(--accent);
-  color: var(--fg);
-  background: rgba(127, 216, 255, 0.06);
-  outline: none;
-}
-
+/* Drop overlay */
 #drop-overlay {
   position: absolute;
   inset: 0;
@@ -137,53 +84,6 @@ body {
   border-radius: 16px;
   font-size: 20px;
   color: var(--accent);
-}
-
-#progress-wrap {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-#progress-stage {
-  font-size: 13px;
-  color: var(--fg-dim);
-}
-
-#progress-track {
-  width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-}
-
-#progress-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent), #b98bff);
-  transition: width 0.2s ease;
-}
-
-#play-button {
-  padding: 12px 36px;
-  font-size: 16px;
-  border-radius: 999px;
-  border: 1px solid var(--panel-border);
-  background: var(--accent);
-  color: #05060a;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-#play-button:hover {
-  filter: brightness(1.08);
-}
-
-.start-error {
-  color: var(--danger);
-  font-size: 13px;
 }
 
 /* HUD */
@@ -436,6 +336,45 @@ select#tp-particles {
   gap: 6px;
 }
 
+#playlist-empty {
+  flex: 1 1 auto;
+  margin: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#playlist-items:empty {
+  display: none;
+}
+
+#playlist-empty[hidden] {
+  display: none;
+}
+
+#playlist-empty:hover,
+#playlist-empty:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.playlist-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.playlist-empty-hint {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
 #playlist-items {
   list-style: none;
   margin: 0;
@@ -606,12 +545,8 @@ select#tp-particles {
   }
 
   select#tp-mode,
-  .tp-btn-text {
+  #transport .tp-btn-text {
     display: none;
-  }
-
-  #start-screen {
-    padding: 28px 24px;
   }
 
   #playlist-panel {

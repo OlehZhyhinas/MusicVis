@@ -15,21 +15,7 @@
         <div class="drop-overlay-inner">Drop to add</div>
       </div>
 
-      <div id="start-screen" class="panel">
-        <h1 id="app-title">MusicVis</h1>
-        <div id="dropzone" tabindex="0" role="button" aria-label="Choose songs">
-          <span id="dropzone-text">Drop songs here or click to choose</span>
-        </div>
-        <input id="file-input" type="file" accept="audio/*" multiple hidden />
-
-        <div id="progress-wrap" hidden>
-          <div id="progress-stage">Analyzing…</div>
-          <div id="progress-track"><div id="progress-fill"></div></div>
-        </div>
-
-        <button id="play-button" hidden>Play</button>
-        <div id="start-error" class="start-error" hidden></div>
-      </div>
+      <input id="file-input" type="file" accept="audio/*" multiple hidden />
 
       <div id="hud" hidden></div>
 
@@ -43,6 +29,10 @@
           </div>
         </div>
         <ul id="playlist-items"></ul>
+        <div id="playlist-empty" tabindex="0" role="button" aria-label="Add songs">
+          <span class="playlist-empty-title">Add songs</span>
+          <span class="playlist-empty-hint">or drop audio files anywhere</span>
+        </div>
       </aside>
 
       <div id="transport" class="panel" hidden>
