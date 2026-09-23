@@ -1025,37 +1025,49 @@ vec2 curve(float k, float inst) {
     id: 'E20', name: 'Moonrise', kind: 'dark minimal', energy: [0, 0.45],
     palette: 'analogous', hue: 0.62, sat: 0.5, feedback: false, adapt: 0.15, vignette: 0.5,
     js(f, r) {
-      // The moon is a blobby dancer: drums kick a 3-lobe wobble, vocals (or the
-      // melody) a 5-lobe ripple, the other instruments a 7-lobe shimmer, the bass makes
-      // it breathe; it sways once per bar, hops and squashes on each beat.
-      const st = (k: number) => f.stem[k] * f.gate[k];
+      // A soft blob with five arms. Each arm reaches out and pulls back
+      // smoothly (about half a second) with its own instrument plus a slow
+      // breath of its own, sways side to side once every 2 bars out of step
+      // with the others, and the whole set turns once every 16 bars. No
+      // spikes: the body bobs gently with the beat and drifts once per bar.
+      const g = (k: number) => f.stem[k] * f.gate[k];
+      const drivers = [f.onset[0] * f.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * melodic(f)), g(3), f.loud];
       r.mem.halo = approach(mem(r, 'halo'), Math.max(f.loud, melodic(f)), 3, f.dt);
-      r.mem.l3 = approach(mem(r, 'l3'), 0.09 * f.onset[0] * f.gate[0] + 0.04 * st(0), 10, f.dt);
-      r.mem.l5 = approach(mem(r, 'l5'), 0.1 * Math.max(st(2), 0.7 * melodic(f)), 4, f.dt);
-      r.mem.l7 = approach(mem(r, 'l7'), 0.045 * st(3) + 0.04 * f.loud, 4, f.dt);
+      r.mem.dp = approach(mem(r, 'dp'), f.gate[0], 1, f.dt);
       r.v[0] = r.mem.halo;
       r.v[1] = 0.1 + 0.06 * Math.sin(f.phase * 0.01);
       r.v[2] = 0.035 * Math.sin(TAU * f.barPhase);
-      r.v[3] = 0.025 * f.beatPulse;
-      r.v[4] = 0.18 * f.beatPulse;
-      r.v[5] = r.mem.l3;
-      r.v[6] = r.mem.l5;
-      r.v[7] = r.mem.l7;
-      r.v[8] = f.beats * 0.5;
-      r.v[9] = 0.12 * st(1);
+      r.v[3] = 0.008 * Math.sin(TAU * f.beatPhase) * r.mem.dp;
+      r.v[4] = 0.06 * g(1);                                   // breathe
+      r.v[5] = 0.29;                                          // arm angular width
+      r.v[6] = 0.5 * Math.sin((TAU * f.bars) / 3);            // curl
+      const spin = (TAU * f.bars) / 16;
+      for (let k = 0; k < 5; k++) {
+        const sway = 0.45 * Math.sin((TAU * f.bars) / 2 + k * 1.3);
+        r.v[8 + k] = spin + (k * TAU) / 5 + sway;
+        const breath = 0.5 + 0.5 * Math.sin((TAU * f.bars) / (2 + k * 0.5) + k * 2.1);
+        const target = 0.2 + 0.8 * drivers[k] + 0.45 * breath;
+        r.v[16 + k] = r.mem['len' + k] = approach(mem(r, 'len' + k, target), target, 2.5, f.dt);
+      }
     },
     comp: /* glsl */ `
 // Signed distance to the dancing moon; used for both the moon and its
 // reflection so they always match.
 float moonSd(vec2 q, vec2 c) {
-  vec2 d = (q - c) * vec2(1.0 / (1.0 + 0.5 * uV[1].x), 1.0 / (1.0 - uV[1].x));
+  vec2 d = q - c;
+  float r = length(d);
   float a = atan(d.y, d.x);
-  float ph = uV[2].x;
-  float R = 0.065 * (1.0 + uV[2].y
-    + uV[1].y * sin(3.0 * a + ph)
-    + uV[1].z * sin(5.0 * a - ph * 1.3)
-    + uV[1].w * sin(7.0 * a + ph * 0.7));
-  return length(d) - R;
+  float R0 = 0.05 * (1.0 + uV[1].x);
+  float rel = max(r / R0 - 1.0, 0.0);
+  float ext = 0.0;
+  for (int k = 0; k < 5; k++) {
+    // Arms curl a little and taper toward the tips.
+    float ang = uV[2 + k / 4][k % 4] + uV[1].z * rel;
+    float da = atan(sin(a - ang), cos(a - ang));
+    float w = uV[1].y / (1.0 + 1.9 * rel);
+    ext += uV[4 + k / 4][k % 4] * exp(-da * da / (w * w));
+  }
+  return (r - R0 * (1.0 + ext)) * 0.6;
 }
 
 vec3 comp(vec2 uv, vec2 p) {
