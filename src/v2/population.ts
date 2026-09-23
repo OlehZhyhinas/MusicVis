@@ -39,16 +39,17 @@ export interface Member {
 /**
  * File / storage format. 1: genomes of format 1 (no draw chains or merges);
  * 2: genomes of format 2 and the per-child crossover tag; 3: descriptive,
- * inherited names (fromJSON renames every bred child of an older file, in
- * generation order, keeping ids / votes / parents / genomes). Version 1 and 2
- * data loads unchanged apart from that rename (repair() lifts every genome to
- * format 2 without altering it).
+ * inherited names (fromJSON renames every bred child of a version 1-2 file, in
+ * generation order, keeping ids / votes / parents / genomes); 4: genomes of
+ * format 3 (bodies made of sub-genes). Older genomes are converted on load by
+ * repair() (legacy.ts), keeping each member's id, votes, parents and name; a
+ * converted child's screening descriptor is dropped so it is measured again.
  */
-export const POPULATION_VERSION = 3;
+export const POPULATION_VERSION = 4;
 
 export interface PopulationData {
   format: 'musicvis-v2-population';
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
   seedVersion?: number;
   counter: number;
@@ -324,9 +325,17 @@ export class Population {
     for (const raw of d.members) {
       if (!raw || typeof raw.id !== 'string' || !/^G\d+-[A-Z0-9]+$/.test(raw.id)) continue;
       // Structurally broken genomes are dropped; only parameter values get repaired.
-      const rg = raw.genome as Partial<Genome> | undefined;
-      if (!rg || ((rg.v as number) !== 1 && rg.v !== 2) || !Array.isArray(rg.chain) || !Array.isArray(rg.emitters) || !rg.emitters.length || !rg.carrier || !rg.color) continue;
-      const g = repair(rg);
+      const rg = raw.genome as unknown as Record<string, unknown> | undefined;
+      if (!rg || !Array.isArray(rg.chain) || !rg.carrier || !rg.color) continue;
+      const old = rg.v === 1 || rg.v === 2;
+      const parts = old ? rg.emitters : rg.bodies;
+      if ((!old && rg.v !== 3) || !Array.isArray(parts) || !parts.length) continue;
+      let g: Genome;
+      try {
+        g = repair(rg);
+      } catch {
+        continue;
+      }
       if (validate(g).length) continue;
       const m: Member = {
         id: raw.id,
@@ -344,7 +353,7 @@ export class Population {
         views: Math.floor(n(raw.views)),
         watch: n(raw.watch),
         hidden: !!raw.hidden,
-        descriptor: Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
+        descriptor: !old && Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
       };
       if (CROSS_TAGS.includes(raw.cross as CrossTag)) m.cross = raw.cross;
       p.members.set(m.id, m);
@@ -359,13 +368,13 @@ export class Population {
     p.votesSinceBreed = Math.floor(n(d.votesSinceBreed));
     p.seedVersion = Math.max(1, Math.floor(n(d.seedVersion, 1)));
 
-    // Format-3 migration: rename every bred child with the descriptive, inherited
-    // scheme (older files kept the random adjective-noun pairs). Seeds (gen 0)
-    // keep their name as loaded. Parents are renamed before children (gen order)
-    // so inheritance sees each parent's *new* name. Ids, votes and genomes are
-    // untouched. A file already at the current version is left alone.
+    // Version-3 migration: rename every bred child of a version 1-2 file with the
+    // descriptive, inherited scheme (those files kept random adjective-noun
+    // pairs). Seeds (gen 0) keep their name as loaded. Parents are renamed before
+    // children (gen order) so inheritance sees each parent's *new* name. Ids and
+    // votes are untouched. Version 3+ names are kept as they are.
     const fileVersion = typeof d.version === 'number' ? d.version : 1;
-    if (fileVersion < POPULATION_VERSION) {
+    if (fileVersion < 3) {
       const used = new Set(p.list().filter((m) => m.gen === 0).map((m) => m.name));
       const order = p.list().filter((m) => m.gen > 0).sort((a, b) => a.gen - b.gen || a.id.localeCompare(b.id));
       for (const m of order) {

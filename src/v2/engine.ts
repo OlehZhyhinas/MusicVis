@@ -13,10 +13,24 @@ import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, c
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import {
-  CARRIER_SCHEMA, COLOR_SCHEMA, EMITTER_SCHEMAS, OP_SCHEMAS, clampParam, drawOpId, flatEmitters, structuralKey,
-  type EmitterGene, type FlameVar, type Genome, type Params, type Scheme, type Schema, type Signal,
+  CARRIER_SCHEMA, COLOR_SCHEMA, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
+  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, clampParam, drawOpId, structuralKey,
+  type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type Params, type Scheme, type Schema,
+  type ShapeGene, type Signal,
 } from './genome';
-import { WAVE_FS, WAVE_VS, buildSources } from './glsl';
+import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
+
+/** One copy of a body this frame: position, angle, scale, level (brightness), hue offset, previous position. */
+interface Copy {
+  x: number;
+  y: number;
+  a: number;
+  s: number;
+  level: number;
+  hue: number;
+  px?: number;
+  py?: number;
+}
 
 const TAU = Math.PI * 2;
 const SPIN_WRAP = TAU * 16;
@@ -375,6 +389,21 @@ export class ProgramCache {
 
 // ---------------------------------------------------------------- slots
 
+/** How one curve body is drawn this frame (one draw per copy). */
+interface CurveDraw {
+  body: number;
+  top: boolean;
+  bright: number;
+  thick: number;
+  n: number;
+  soft: number;
+  dash: number;
+  /** Copies: x, y, angle, scale, flipX, flipY. */
+  copies: number[][];
+  deform: number;
+  dp: [number, number, number, number];
+}
+
 /** One genome running at a Stage: its feedback buffer and JS-side state. */
 export class Slot {
   weight = 1;
@@ -382,39 +411,46 @@ export class Slot {
   readonly cols = new Float32Array(9);
   readonly opA = new Float32Array(24);
   readonly opB = new Float32Array(24);
-  readonly em = new Float32Array(64);
-  readonly drA = new Float32Array(12);
-  readonly drB = new Float32Array(12);
-  drN = 0;
-  /** flatEmitters(genome): merges followed by their parts (shader slot order). */
-  readonly flat: EmitterGene[];
-  readonly ink = new Float32Array(24);
-  readonly blob = new Float32Array(24);
+  readonly nb: number;
+  /** Per-body uniform slots (BODY_VEC4 vec4 each), copies, curve slots and draw ops. */
+  readonly bd: Float32Array;
+  readonly cp: Float32Array;
+  readonly cq: Float32Array;
+  readonly wv: Float32Array;
+  readonly drA: Float32Array;
+  readonly drB: Float32Array;
   readonly seg = new Float32Array(48 * 4);
   readonly segZ = new Float32Array(48);
   segN = 0;
-  readonly waveU = new Float32Array(16);
-  readonly arm = new Float32Array(12);
-  waveBright = 0;
-  waveThick = 1.5;
-  waveN = 512;
+  curves: CurveDraw[] = [];
   rem: number[] = [];
   shift = [0, 0];
   decay = 0.9;
   delta = new Map<string, number>();
   flameSpec: FlameSpec | null = null;
   flameMorph = 0;
+  flameHue = 0;
+  /** The body throwing sparks (-1: none) and its spawn settings. */
+  sparks = -1;
+  spawn = { mode: 4, count: 3, angle: 0, radius: 0.3 };
 
   constructor(
     readonly genome: Genome,
     readonly progs: GenomePrograms,
     readonly fb: PingPong,
   ) {
-    this.flat = flatEmitters(genome);
+    this.nb = genome.bodies.length;
+    this.bd = new Float32Array(this.nb * BODY_VEC4 * 4);
+    this.cp = new Float32Array(this.nb * COPY_SLOTS * 4);
+    this.cq = new Float32Array(this.nb * COPY_SLOTS * 4);
+    this.wv = new Float32Array(this.nb * 16);
+    this.drA = new Float32Array(this.nb * 12);
+    this.drB = new Float32Array(this.nb * 12);
+    this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
   }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
-  P(group: 'op' | 'em' | 'car' | 'col' | 'dr', i: number, p: Params, k: string, schema: Schema): number {
+  P(group: GeneGroup, i: number, p: Params, k: string, schema: Schema): number {
     const base = p[k];
     const d = this.delta.get(`${group}${i}.${k}`);
     if (d === undefined) return base;
@@ -567,8 +603,7 @@ export class Stage {
 
   /** New slot for a genome (programs must be ready). */
   makeSlot(g: Genome, progs: GenomePrograms): Slot {
-    const s = new Slot(g, progs, this.makeFb());
-    return s;
+    return new Slot(g, progs, this.makeFb());
   }
 
   disposeSlot(s: Slot): void {
@@ -600,7 +635,6 @@ export class Stage {
 
     const slots = this.slots.filter((s) => s.weight > 0.001);
     for (const s of slots) this.tick(s, sdt);
-    const dom = slots.reduce<Slot | null>((a, b) => (!a || b.weight > a.weight ? b : a), null);
 
     // Fluid, particles, flame: owned by the heaviest slot that uses them.
     const fluidSlot = slots.filter((s) => s.genome.carrier.kind === 'fluid').sort((a, b) => b.weight - a.weight)[0];
@@ -613,7 +647,7 @@ export class Stage {
       this.fluid.dissipation = 0.6;
       this.fluid.step(sdt, this.sig.clock, cp.fnoise * (0.3 + 0.7 * F.act) * (0.3 + 0.7 * F.stem[3]) * 0.5 * sdt * 60, cp.vort, F.aspect);
     }
-    const partSlot = slots.filter((s) => s.flat.some((e) => e.kind === 'particles')).sort((a, b) => b.weight - a.weight)[0] ?? null;
+    const partSlot = slots.filter((s) => s.sparks >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (partSlot && eng.hq) this.updateParticles(partSlot, sdt, !!fluidSlot);
     const flameSlot = slots.filter((s) => s.flameSpec).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flameSlot && eng.hq) {
@@ -621,9 +655,8 @@ export class Stage {
       const spec = flameSlot.flameSpec!;
       const n = Math.min(spec.count, this.opts.flameCap);
       if (Math.abs(this.flame.count - n) > n * 0.1) this.flame.setCount(n);
-      const fe = flameSlot.flat.find((e) => e.kind === 'flame')!;
       this.flame.configure(spec, {
-        spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: flameSlot.flameMorph, hue: fe.p.hue, bars: F.bars, beat: F.beatPulse,
+        spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: flameSlot.flameMorph, hue: flameSlot.flameHue, bars: F.bars, beat: F.beatPulse,
       });
     }
 
@@ -647,11 +680,8 @@ export class Stage {
       eng.fs.draw();
     }
     for (const s of slots) {
-      for (const e of s.genome.emitters) {
-        if (e.layer !== 'top') continue;
-        if (e.kind === 'wave') this.drawWave(s, s.weight, sdt, false);
-        if (e.kind === 'particles' && s === partSlot) this.drawParticles(s, e, s.weight);
-      }
+      for (const c of s.curves) if (c.top) this.drawCurve(s, c, s.weight, sdt, false);
+      if (s === partSlot && s.genome.bodies[s.sparks].emit.p.top > 0.5) this.drawParticles(s, s.weight, false);
     }
     gl.disable(gl.BLEND);
 
@@ -670,7 +700,6 @@ export class Stage {
       post.contrast += c.contrast * w;
     }
     if (!slots.length) Object.assign(post, { bloom: 1, exposure: 1, vignette: 0.45, adapt: 0.3, ca: 0, contrast: 0.03 });
-    void dom;
     this.post(post, target, state.dt);
   }
 
@@ -727,7 +756,6 @@ export class Stage {
         }
         case 'translate': {
           const v = [P('vx'), P('vy')];
-          // Lanes move at 1x or 2x the shift (still whole pixels).
           const lanes = o.p.lanes > 1 ? o.p.lanes : 0;
           a[j + 2] = lanes;
           while (s.rem.length < 12) s.rem.push(0);
@@ -736,7 +764,6 @@ export class Stage {
             const n = Math.round(px);
             s.rem[i * 2 + k] = px - n;
             a[j + k] = n / this.h;
-            // Edge strips already cover twice the shift (rain lanes move at up to 2x).
             s.shift[k] += n / this.h;
           }
           break;
@@ -746,7 +773,6 @@ export class Stage {
           a[j + 1] = o.p.axis;
           break;
         case 'stretch': {
-          // In the warp the stretch compounds every frame, so it is applied gently.
           const k = o.stage === 'warp' ? Math.min(1, 0.04 * f60) : 1;
           a[j] = P('base');
           a[j + 1] = P('amt') * k;
@@ -801,177 +827,227 @@ export class Stage {
       }
     });
 
-    this.packDraw(s, sdt);
-
-    // Emitters (merge parts tick in their own slots after the merge).
     s.flameSpec = null;
-    s.waveBright = 0;
-    s.flat.forEach((e, slot) => this.tickEmitter(s, e, slot, sdt));
+    s.curves = [];
+    s.segN = 0;
+    g.bodies.forEach((b, bi) => this.tickBody(s, b, bi, sdt));
+  }
+
+  // ------------------------------------------------------------ bodies
+
+  /** Instrument voices: 0 drums, 1 bass, 2 vocals (or the melody), 3 other, 4 loudness. */
+  private voice(k: number): number {
+    const F = this.sig.F;
+    switch (k % 5) {
+      case 0: return Math.max(F.onset[0], F.stem[0] * 0.5);
+      case 1: return F.stem[1];
+      case 2: return Math.max(F.stem[2], 0.7 * this.sig.melodic());
+      case 3: return F.stem[3];
+      default: return F.loud;
+    }
   }
 
   /**
-   * Draw-space ops: the chain's per-frame rates become absolute shaping
-   * amounts applied to the emitters' own coordinates, breathing with the
-   * music (loudness, beat, bass). Folds and variations keep their meaning.
+   * One body's frame: material, shape state, copies (placement then motion),
+   * deformation, emission and fuse, all packed into the slot's uniform arrays.
    */
-  private packDraw(s: Slot, sdt: number): void {
-    const F = this.sig.F;
-    const A = F.aspect * 0.5;
-    const draw = s.genome.draw ?? [];
-    s.drN = draw.length;
-    const beat = F.beatPulse * F.gate[0];
-    const mod = 0.55 + 0.6 * F.loud + 0.3 * beat;
-    draw.forEach((o, i) => {
-      const P = (k: string) => s.P('dr', i, o.p, k, OP_SCHEMAS[o.op]);
-      const a = s.drA;
-      const j = i * 4;
-      a[j] = a[j + 1] = a[j + 2] = a[j + 3] = 0;
-      s.drB[j] = drawOpId(o.op);
-      const key = (k: string) => `dr${i}.${k}`;
-      const center = (w: number) => {
-        a[j] = (o.p.cx ?? 0) + w * A * 0.64 * Math.sin((TAU * F.bars) / 8);
-        a[j + 1] = (o.p.cy ?? 0) + w * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
-      };
-      switch (o.op) {
-        case 'swirl':
-          center(P('wander'));
-          a[j + 2] = P('amt') * 60 * o.w * mod;
-          a[j + 3] = P('k');
-          break;
-        case 'twist':
-          center(0);
-          a[j + 2] = P('amt') * 60 * o.w * mod;
-          break;
-        case 'ripple': {
-          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed * TAU) % 4096);
-          a[j] = P('amp') * 20 * o.w * (0.6 + 0.8 * F.stem[1]);
-          a[j + 1] = P('freq');
-          a[j + 2] = ph;
-          a[j + 3] = o.p.radial;
-          break;
-        }
-        case 'noise': {
-          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed) % 4096);
-          a[j] = P('amp') * 25 * o.w * mod;
-          a[j + 1] = P('scale');
-          a[j + 2] = ph;
-          break;
-        }
-        case 'rotate': {
-          center(P('wander'));
-          const sign = o.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
-          const ang = (s.mem[key('ang')] = ((s.mem[key('ang')] ?? 0) - (o.p.lock * this.sig.spinStep + P('rate') * o.w * sdt * 60 * F.speed) * sign) % (TAU * 64));
-          a[j + 2] = ang;
-          break;
-        }
-        case 'zoom':
-          center(P('wander'));
-          // A breathing scale: outward-flying zooms swell on the beat, inward ones contract.
-          a[j + 2] = 1 + P('rate') * 12 * o.w * (0.3 + 1.2 * beat + 0.5 * F.stem[1]);
-          a[j + 3] = o.p.radial;
-          break;
-        case 'mirror':
-          a[j] = o.p.axis;
-          break;
-        case 'kaleido':
-          a[j] = o.p.n;
-          a[j + 1] = F.spin * o.p.lock;
-          break;
-        default: // flame variations
-          a[j] = Math.min(1, o.w * (0.7 + 0.3 * mod));
-          a[j + 1] = P('s');
-      }
-    });
-  }
-
-  private tickEmitter(s: Slot, e: EmitterGene, slot: number, sdt: number): void {
+  private tickBody(s: Slot, b: BodyGene, bi: number, sdt: number): void {
     const F = this.sig.F;
     const sig = this.sig;
-    const sch = EMITTER_SCHEMAS[e.kind];
-    const P = (k: string) => s.P('em', slot, e.p, k, sch);
+    const E = s.bd;
+    const o = bi * BODY_VEC4 * 4;
+    E.fill(0, o, o + BODY_VEC4 * 4);
     const m = s.mem;
-    const E = s.em;
-    const o = slot * 16;
-    E.fill(0, o, o + 16);
-    const gain = P('gain');
-    E[o] = gain;
-    E[o + 1] = P('hue');
-    const A = F.aspect * 0.5;
-    const key = (k: string) => `${e.kind}.${k}`;
+    const key = (k: string) => `b${bi}.${k}`;
     const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const set = (k: string, v: number) => (m[key(k)] = v);
+    const A = F.aspect * 0.5;
+    const cls = SHAPE_CLASS[b.shape.kind];
+    const PS = (k: string) => s.P('sh', bi, b.shape.p, k, SHAPE_SCHEMAS[b.shape.kind]);
+    const PP = (k: string) => s.P('pl', bi, b.place.p, k, PLACE_SCHEMAS[b.place.kind]);
+    const PM = (k: string) => s.P('mo', bi, b.motion.p, k, MOTION_SCHEMAS[b.motion.kind]);
+    const PD = (k: string) => s.P('de', bi, b.deform.p, k, DEFORM_SCHEMAS[b.deform.kind]);
+    const PA = (k: string) => s.P('ma', bi, b.material.p, k, MATERIAL_SCHEMAS[b.material.kind]);
+    const PE = (k: string) => s.P('em', bi, b.emit.p, k, EMIT_SCHEMAS[b.emit.kind]);
+    const gain = PA('gain');
+    const hue = PA('hue');
 
-    switch (e.kind) {
-      case 'merge': {
-        // t follows its driver; the blend radius and line width swell with the bass.
-        const bars = F.bars / Math.max(1, e.p.rate);
-        const drv = [P('t'), 0.5 - 0.5 * Math.cos(TAU * bars), F.stem[1] * F.gate[1], F.melody, F.loud, Math.min(1, F.surge * 0.8)][e.p.drive] ?? P('t');
-        const tt = mm('t', P('t'));
-        m[key('t')] = approach(tt, P('t') + (drv - P('t')) * P('depth'), e.p.drive >= 2 ? 3 : 20, sdt);
-        const bass = (m[key('bs')] = approach(mm('bs'), F.stem[1] * F.gate[1], 4, sdt));
-        E[o + 2] = e.p.mode;
-        E[o + 3] = P('k') * (0.6 + 0.9 * bass);
-        E[o + 4] = clamp01(m[key('t')]);
-        E[o + 5] = P('line');
-        E[o + 6] = P('fill');
-        E[o + 7] = P('width') * (1 + 1.2 * bass);
-        E[o + 8] = e.p.inside;
-        E[o + 9] = 0.45 + 0.8 * F.loud + 0.35 * F.beatPulse * F.gate[0];
+    // Material: slot 0 (gain, hue, a, b), slot 1.
+    const halo = (m[key('halo')] = approach(mm('halo'), Math.max(F.loud, sig.melodic()), 3, sdt));
+    E[o] = gain;
+    E[o + 1] = hue;
+    switch (b.material.kind) {
+      case 'line': E[o + 2] = PA('width'); E[o + 3] = PA('halo'); break;
+      case 'fill': E[o + 2] = PA('soft'); E[o + 3] = PA('halo'); E[o + 4] = PA('outline'); E[o + 5] = PA('core'); E[o + 6] = PA('clip'); E[o + 7] = halo; break;
+      case 'glow': E[o + 2] = PA('width'); E[o + 3] = PA('base'); E[o + 4] = PA('halo'); break;
+      case 'dots': E[o + 2] = PA('spacing'); E[o + 3] = PA('size'); break;
+      case 'textured': E[o + 2] = PA('amount'); E[o + 3] = PA('halo'); E[o + 4] = b.material.p.tex; E[o + 5] = PA('clip'); E[o + 6] = halo; break;
+      case 'chrome': E[o + 2] = PA('chrome'); break;
+    }
+
+    // Copies: placement, then motion.
+    const copies = this.placeCopies(s, b, bi, sdt);
+    this.applyMotion(s, b, bi, copies, sdt);
+    const n = Math.min(COPY_SLOTS, copies.length);
+    for (let i = 0; i < COPY_SLOTS; i++) {
+      const c = copies[Math.min(i, copies.length - 1)];
+      const j = (bi * COPY_SLOTS + i) * 4;
+      s.cp[j] = c.x; s.cp[j + 1] = c.y; s.cp[j + 2] = c.a; s.cp[j + 3] = c.s;
+      s.cq[j] = c.level; s.cq[j + 1] = c.hue; s.cq[j + 2] = c.px ?? c.x; s.cq[j + 3] = c.py ?? c.y;
+    }
+
+    // Shape: slots 2-3 (and the curve / segment / field / flame state).
+    const R = this.packShape(s, b.shape, bi, o + 8, sdt, false, copies);
+    E[o + 16] = n;
+    E[o + 17] = b.place.p.fuse ?? 0;
+    E[o + 19] = R;
+
+    // Fold placements: slots 5-6.
+    if (b.place.kind === 'grid') {
+      E[o + 20] = PP('scale'); E[o + 21] = PP('jitter'); E[o + 22] = PP('density'); E[o + 23] = PP('lit');
+      E[o + 24] = PP('links'); E[o + 25] = b.place.p.lattice;
+      E[o + 26] = clamp01(Math.max(sig.melodic(), 0.4 * F.stem[1]) * 1.8);
+      E[o + 26] = Math.max(0.3, E[o + 26]);
+      E[o + 27] = PP('twinkle');
+    } else if (b.place.kind === 'ring') {
+      E[o + 20] = b.place.p.n; E[o + 21] = PP('radius');
+    } else if (b.place.kind === 'mirror') {
+      E[o + 20] = b.place.p.axis;
+    }
+
+    // Deformation: slots 7-11.
+    this.packDeform(s, b, bi, o + 28, sdt);
+    const ops = b.deform.ops ?? [];
+    this.packOps(s, ops, bi, sdt);
+
+    // Emission: slot 12 (cover amount, tip, ops count, body visibility).
+    E[o + 48] = b.emit.kind === 'cover' ? PE('amt') : 0;
+    E[o + 49] = b.emit.kind === 'cover' || b.emit.kind === 'trail' ? PE('tip') : 0;
+    E[o + 50] = ops.length;
+    E[o + 51] = b.emit.kind === 'sparks' ? PE('body') : 1;
+
+    // Fuse: slot 13 (mode, blend radius, t, inside), 14-15 the fused shape.
+    if (b.fuse) {
+      const f = b.fuse;
+      const PF = (k: string) => s.P('fu', bi, f.p, k, FUSE_SCHEMA);
+      const bars = F.bars / Math.max(1, f.p.rate);
+      const drv = [PF('t'), 0.5 - 0.5 * Math.cos(TAU * bars), F.stem[1] * F.gate[1], F.melody, F.loud, Math.min(1, F.surge * 0.8)][f.p.drive] ?? PF('t');
+      const tt = mm('ft', PF('t'));
+      set('ft', approach(tt, PF('t') + (drv - PF('t')) * PF('depth'), f.p.drive >= 2 ? 3 : 20, sdt));
+      const bass = set('fbs', approach(mm('fbs'), F.stem[1] * F.gate[1], 4, sdt));
+      E[o + 52] = f.p.mode;
+      E[o + 53] = PF('k') * (0.6 + 0.9 * bass);
+      E[o + 54] = clamp01(mm('ft'));
+      E[o + 55] = f.p.inside;
+      this.packShape(s, f.shape, bi, o + 56, sdt, true, copies);
+    }
+
+    // Emission side effects.
+    if (b.emit.kind === 'dye') this.dye(s, b, bi, copies, PE('force'));
+    if (b.emit.kind === 'sparks' && s.sparks === bi) this.sparkSpawn(s, b, copies);
+    if (cls === 'curve' && !b.fuse) this.queueCurve(s, b, bi, copies);
+    if (cls === 'flame' && b.shape.xforms) {
+      const c0 = copies[0];
+      const spin = b.motion.kind === 'spin' ? b.motion.p.rate * (b.motion.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1) : 0;
+      const xs = b.shape.xforms;
+      if (F.dropStart) set('mt', mm('mt') > 0.5 ? 0 : 1);
+      set('m', mm('m') + (mm('mt') - mm('m')) * (1 - Math.exp(-sdt * 0.8)));
+      s.flameMorph = mm('m');
+      s.flameHue = hue;
+      const pulse = b.motion.kind === 'pulse' ? 1 + PM('amp') * F.beatPulse * F.gate[0] : 1;
+      s.flameSpec = {
+        xforms: xs.map((x) => ({
+          aff: x.aff.slice(0, 6) as [number, number, number, number, number, number],
+          weight: x.weight,
+          color: x.color,
+          vars: x.vars as Partial<Record<FlameVar, number>>,
+          alt: x.alt as Partial<Record<FlameVar, number>> | undefined,
+          spin: x.spin,
+          bass: x.bass,
+          drift: x.drift[0] || x.drift[1] ? [x.drift[0], x.drift[1]] : undefined,
+          pulse: x.pulse,
+        })),
+        count: b.shape.p.count,
+        iters: 4,
+        rounds: b.shape.p.rounds,
+        zoom: PS('zoom') * c0.s * pulse,
+        offset: [c0.x, c0.y],
+        camSpin: spin,
+        gain,
+        flow: PS('flow'),
+        breathe: PS('breathe'),
+      };
+    }
+  }
+
+  /** Copy positions from the placement gene. */
+  private placeCopies(s: Slot, b: BodyGene, bi: number, sdt: number): Copy[] {
+    const F = this.sig.F;
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const set = (k: string, v: number) => (m[key(k)] = v);
+    const A = F.aspect * 0.5;
+    const PP = (k: string) => s.P('pl', bi, b.place.p, k, PLACE_SCHEMAS[b.place.kind]);
+    const p = b.place.p;
+    const out: Copy[] = [];
+    const add = (x: number, y: number, level = 1, hue = 0, sc = 1, a = 0): Copy => {
+      const c: Copy = { x, y, a, s: sc, level, hue };
+      out.push(c);
+      return c;
+    };
+    const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
+    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
+    set('bi', F.barIndex);
+    set('bt', F.beatIndex);
+    switch (b.place.kind) {
+      case 'point':
+        add(PP('x'), PP('y'));
+        break;
+      case 'orbit': {
+        const n = p.count;
+        const follow = PP('follow');
+        const R = PP('radius');
+        const ocx = PP('x') + follow * A * 0.64 * Math.sin((TAU * F.bars) / 8);
+        const ocy = PP('y') + follow * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
+        const lvl = Math.max(F.stem[3], F.stem[2]) * 0.8 + 0.2 * F.loud;
+        for (let i = 0; i < n; i++) {
+          const ang = F.spin * p.rate + (i / n) * TAU;
+          add(ocx + R * Math.cos(ang), ocy + R * Math.sin(ang), lvl, i * 0.25 + 0.1, 1, ang);
+        }
         break;
       }
-      case 'spectrum':
-        E[o + 2] = P('x'); E[o + 3] = P('y');
-        E[o + 4] = e.p.mode; E[o + 5] = e.p.bins; E[o + 6] = P('radius'); E[o + 7] = P('len');
-        E[o + 8] = P('fill');
-        break;
-      case 'stars': {
-        m[key('drift')] = (mm('drift') + sdt * F.speed * P('drift') * 6) % 1000;
-        E[o + 2] = m[key('drift')];
-        E[o + 3] = Math.max(sig.melodic(), 0.4 * F.stem[1]) * 1.2;
-        E[o + 4] = P('density'); E[o + 5] = P('scale'); E[o + 6] = P('links'); E[o + 7] = P('twinkle');
+      case 'row': {
+        const n = p.count;
+        const wv = PP('wander');
+        for (let i = 0; i < n; i++) {
+          const rx = (i - (n - 1) / 2) * (1.2 / Math.max(1, n)) * A + 0.05 * Math.sin(F.phase * 0.4 + i * 2.1);
+          const k4 = i % 4;
+          const lvl = k4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[k4];
+          add(rx + wv * Math.sin(F.phase * 0.23 + i * 1.9), PP('y'), lvl, i * 0.25 + 0.1);
+        }
         break;
       }
-      case 'ink': {
-        const n = e.p.count;
-        E[o + 2] = n;
-        const orbit = P('orbit');
-        const R = P('radius');
-        const wv = P('wander');
-        const size = P('size');
-        const force = P('force');
-        const inst = P('inst');
-        const xs = P('xs');
-        const follow = P('follow');
-        const jump = e.p.jump === 1;
-        if (e.p.swap === 1 && ((F.barIndex % 2) + 2) % 2 === 1) E[o + 1] += 0.333;
+      case 'stations': {
+        // Sources at stations; with inst they follow their instruments (drums jump every bar or
+        // every hit, bass swings out, vocals follow the melody, other roams).
+        const n = p.count;
+        const wv = PP('wander');
+        const inst = PP('inst');
+        const xs = PP('xs');
+        const jump = p.jump === 1;
+        const swap = p.swap === 1 && ((F.barIndex % 2) + 2) % 2 === 1 ? 0.333 : 0;
         const stations = [[-0.55 * A, -0.2], [0, -0.28], [0, 0.18], [0.55 * A, -0.05], [-0.3 * A, 0.25], [0.3 * A, 0.25]];
-        const fl = this.fluid && s.genome.carrier.kind === 'fluid' ? this.fluid : null;
-        // Orbit centre: the bar-locked wander path shared with zoom / swirl / rotate.
-        const ocx = follow * A * 0.64 * Math.sin((TAU * F.bars) / 8);
-        const ocy = follow * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
-        // Instrument-driven sources: drums jump (every bar, or every hit), bass
-        // swings out with the bass, vocals follow the melody, other roams.
-        const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
-        const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
-        m[key('bi')] = F.barIndex;
-        m[key('bt')] = F.beatIndex;
-        const hits = [F.hit > 0.5 && mm('h0') <= 0.5, F.onset[1] > 0.5 && mm('h1') <= 0.5, F.onset[2] > 0.5 && mm('h2') <= 0.5, F.onset[3] > 0.5 && mm('h3') <= 0.5];
-        m[key('h0')] = F.hit;
-        m[key('h1')] = F.onset[1];
-        m[key('h2')] = F.onset[2];
-        m[key('h3')] = F.onset[3];
-        const tf = Math.min(1.6, Math.max(0.5, F.bpm / 120));
         if (inst > 0 && (jump ? F.hit > 0 : newBar)) {
-          const c = (m[key('jn')] = mm('jn') + 1);
-          m[key('dtx')] = (h11(c * 1.7) - 0.5) * 1.2 * A;
-          m[key('dty')] = (h11(c * 2.9) - 0.5) * (jump ? 0.7 : 0.6);
+          const c = set('jn', mm('jn') + 1);
+          set('dtx', (h11(c * 1.7) - 0.5) * 1.2 * A);
+          set('dty', (h11(c * 2.9) - 0.5) * (jump ? 0.7 : 0.6));
         }
         for (let i = 0; i < n; i++) {
           const k4 = i % 4;
           const st = stations[i % 6];
-          const row = P('row');
-          const rx = (i - (n - 1) / 2) * (1.2 / Math.max(1, n)) * A + 0.05 * Math.sin(F.phase * 0.4 + i * 2.1);
-          let sx = st[0] + (rx - st[0]) * row + wv * Math.sin(F.phase * 0.23 + i * 1.9);
-          let sy = st[1] + (-0.5 - st[1]) * row + wv * 0.7 * Math.sin(F.phase * 0.31 + i * 2.7) * (1 - row);
+          let sx = st[0] + wv * Math.sin(F.phase * 0.23 + i * 1.9);
+          let sy = st[1] + wv * 0.7 * Math.sin(F.phase * 0.31 + i * 2.7);
           const lvlOld = k4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[k4];
           const lvlInst = k4 === 0 ? (jump ? F.hitPulse : F.onset[0]) : F.stem[k4];
           if (inst > 0) {
@@ -983,60 +1059,361 @@ export class Stage {
             else [tx, ty] = [0.55 * A * Math.cos(F.phase * 0.11 + 1), 0.25 * Math.sin(F.phase * 0.13)];
             tx *= xs * mir;
             const rate = k4 === 0 ? (jump ? 30 : 3) : 1.5;
-            const ix = (m[key('x' + i)] = approach(mm('x' + i, tx), tx, rate, sdt));
-            const iy = (m[key('y' + i)] = approach(mm('y' + i, ty), ty, rate, sdt));
+            const ix = set('x' + i, approach(mm('x' + i, tx), tx, rate, sdt));
+            const iy = set('y' + i, approach(mm('y' + i, ty), ty, rate, sdt));
             sx += (ix - sx) * inst;
             sy += (iy - sy) * inst;
           }
-          const ang = F.spin * 0.5 + (i / n) * TAU;
-          const ox = ocx + R * Math.cos(ang), oy = ocy + R * Math.sin(ang);
-          const x = sx + (ox - sx) * orbit;
-          const y = sy + (oy - sy) * orbit;
-          const lvl = lvlOld + (lvlInst - lvlOld) * inst;
-          const strength = lvl * (1 - orbit) + (Math.max(F.stem[3], F.stem[2]) * 0.8 + 0.2 * F.loud) * orbit;
-          s.ink[i * 4] = x;
-          s.ink[i * 4 + 1] = y;
-          s.ink[i * 4 + 2] = strength;
-          s.ink[i * 4 + 3] = size * (0.7 + 0.8 * strength);
-          if (fl && force > 0) {
-            // Free-running pushes (aim turns with the bar) blended with instrument
-            // pushes (aim steps on each hit, ink goes out in tempo-scaled beat pulses).
-            const Fo = strength > 0.04 && (k4 > 0 || F.hit > 0) ? (k4 === 0 ? 1400 * F.hit : 420 * strength) : 0;
-            let Fi = 0;
-            if (inst > 0) {
-              if (hits[k4]) m[key('a' + i)] = mm('a' + i, i * (TAU / 4)) + (0.35 + 0.5 * h11(F.beatIndex * 3.1 + i)) * (i % 2 ? -1 : 1);
-              if (k4 === 0) Fi = hits[0] ? 650 * F.hit * tf : 0;
-              else if (lvlInst > 0.04) Fi = 45 * lvlInst * tf * Math.min(3, sdt * 60) + (newBeat ? 260 * lvlInst * tf : 0);
-            }
-            const Fm = (Fo + (Fi - Fo) * inst) * (0.4 + 0.6 * F.act) * force;
-            const a = inst > 0.5 ? mm('a' + i, i * (TAU / 4)) : F.spin * 0.5 + i * (TAU / 4);
-            if (Fm > 0) fl.splat(x / F.aspect + 0.5, y + 0.5, Math.cos(a) * Fm, Math.sin(a) * Fm, 0.002, 0);
-          }
+          add(sx, sy, lvlOld + (lvlInst - lvlOld) * inst, i * 0.25 + 0.1 + swap);
         }
         break;
       }
-      case 'wire': {
-        E[o + 2] = P('thick');
-        const solid = e.p.solid === 5 ? ((F.sectionIndex % 4) + 4) % 4 : e.p.solid;
-        const beat = F.beatPulse * F.gate[0];
-        const scale = P('scale') + 0.07 * F.stem[1] + 0.02 * beat;
-        const ang = F.spin * e.p.lock * 4;
+      case 'float': {
+        // Slow Lissajous paths; each copy's size follows its instrument (bass, bass, drums, other...).
+        const n = p.count;
+        const src = [1, 1, 0, 2, 3, 3];
+        const spread = PP('spread');
+        const speed = PP('speed');
+        const ph = set('ph', (mm('ph') + sdt * F.speed) % 4096);
+        for (let i = 0; i < n; i++) {
+          const t = ph * (speed * 0.9 + 0.03 * i);
+          const lv = src[i] === 0 ? F.onset[0] * 0.6 + F.stem[0] * 0.4 : F.stem[src[i]];
+          const tr = 0.75 + 1.25 * lv + (0.015 / 0.06) * F.beatPulse * F.gate[0];
+          const rr = set('r' + i, approach(mm('r' + i, tr), tr, 8, sdt));
+          add(spread * A * Math.sin(t + i * 1.7) * (0.6 + 0.4 * Math.sin(t * 0.37 + i)), 0.26 * (spread / 0.55) * Math.sin(t * 1.31 + i * 2.3), 1, 0, rr);
+        }
+        break;
+      }
+      case 'outline': {
+        const n = p.count;
+        const R = PP('radius');
+        const cx = PP('x');
+        const cy = PP('y');
+        for (let i = 0; i < n; i++) {
+          const u = F.spin * p.rate / TAU + i / n;
+          const a = u * TAU;
+          let x: number, y: number;
+          if (p.path === 0) [x, y] = [R * Math.cos(a), R * Math.sin(a)];
+          else if (p.path === 1) {
+            // Around a square: corners at the diagonals.
+            const t = ((u % 1) + 1) % 1 * 4;
+            const side = Math.floor(t);
+            const f = t - side;
+            const pts = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+            const [ax, ay] = pts[side];
+            const [bx, by] = pts[(side + 1) % 4];
+            x = (ax + (bx - ax) * f) * R * 0.75;
+            y = (ay + (by - ay) * f) * R * 0.75;
+          } else [x, y] = [R * 1.3 * Math.sin(a), R * 0.6 * Math.sin(2 * a)];
+          add(cx + x, cy + y, this.voice(i % 4), i * 0.2, 1, a);
+        }
+        break;
+      }
+      case 'walker':
+        this.walk(s, b, bi, out);
+        break;
+      case 'grid':
+        add(0, 0, 1, 0, 1, F.spin * p.lock);
+        break;
+      case 'ring': {
+        add(PP('x'), PP('y'));
+        // Four voices for the ring's copies (drums, bass, vocals, other), cycling around it.
+        for (let k = 1; k < 4; k++) add(PP('x'), PP('y'), 1, k * 0.25 + 0.1);
+        out[0].hue = 0.1;
+        for (let k = 0; k < 4; k++) out[k].level = 0.35 + 0.9 * this.voice(k);
+        break;
+      }
+      case 'mirror':
+        add(PP('x'), PP('y'));
+        break;
+    }
+    if (!out.length) add(0, 0);
+    return out;
+  }
+
+  /**
+   * Walker heads roaming the screen: head 0 steers with the melody, head 1 with the bass. Head 0
+   * turns every `every` beats, head 1 every 2 x `every`; turn-on-hits motion adds sharp turns on
+   * drum hits / bass onsets. Turns are free or square, the path curves gently between them,
+   * bounces off (or wraps around) the edges and moves `step` per beat.
+   */
+  private walk(s: Slot, b: BodyGene, bi: number, out: Copy[]): void {
+    const F = this.sig.F;
+    const P = (k: string) => s.P('pl', bi, b.place.p, k, PLACE_SCHEMAS.walker);
+    const m = s.mem;
+    const mm = (k: string, init = 0) => m[`b${bi}.w${k}`] ?? (m[`b${bi}.w${k}`] = init);
+    const set = (k: string, v: number) => (m[`b${bi}.w${k}`] = v);
+    const A = F.aspect * 0.5;
+    const M = 0.07;
+    const p = b.place.p;
+    let db = F.beats - mm('lb', F.beats);
+    if (db < 0) db += 256;
+    if (db > 2) db = F.dt * 2;
+    set('lb', F.beats);
+    const hits = b.motion.kind === 'hits' ? s.P('mo', bi, b.motion.p, 'amt', MOTION_SCHEMAS.hits) : 0;
+    const hitRise = F.hit > 0.7 && mm('hp') <= 0.7;
+    set('hp', F.hit);
+    const bassRise = F.onset[1] > 0.6 && mm('bp') <= 0.6;
+    set('bp', F.onset[1]);
+    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bi', F.beatIndex);
+    set('bi', F.beatIndex);
+    const step = P('step') * (0.7 + 0.5 * F.act);
+    const turn = P('turn');
+    const curve = P('curve');
+    const every = p.every;
+    const heads: [string, boolean, boolean, number, number, number, number, number][] = [
+      ['m', newBeat && F.beatIndex % every === 0, hitRise, -0.3 * A, 0.15, 0.3, step * 1.18, F.melody],
+      ['b', newBeat && F.beatIndex % (every * 2) === 0, bassRise, 0.3 * A, -0.2, 2.6, step * 0.82, F.stem[1]],
+    ];
+    for (let h = 0; h < p.heads; h++) {
+      const [k, turnNow, heavyRaw, sx, sy, sa, perBeat, steer] = heads[h];
+      const heavy = heavyRaw && hits > 0;
+      const x = mm(k + 'x', sx);
+      const y = mm(k + 'y', sy);
+      let ang = mm(k + 'a', sa);
+      if (turnNow || heavy) {
+        const c = set(k + 'n', mm(k + 'n') + 1);
+        const side = h11(c * 7.3 + h * 50) < 0.5 ? -1 : 1;
+        if (p.square === 1) ang += side * (heavy ? Math.PI : Math.PI / 2);
+        else ang += side * turn * (heavy ? (1.3 + 1.2 * h11(c * 3.7 + 1 + h * 59)) * hits : 0.45 + 0.9 * h11(c * 3.7 + 1 + h * 59));
+      }
+      if (p.square !== 1) ang += (steer - 0.5) * 0.8 * curve * F.dt;
+      const d = db * perBeat;
+      let nx = x + Math.cos(ang) * d;
+      let ny = y + Math.sin(ang) * d;
+      let px = x, py = y;
+      if (p.wrap === 1) {
+        if (nx < -A) { nx += 2 * A; px = nx; py = ny; }
+        if (nx > A) { nx -= 2 * A; px = nx; py = ny; }
+        if (ny < -0.5) { ny += 1; px = nx; py = ny; }
+        if (ny > 0.5) { ny -= 1; px = nx; py = ny; }
+      } else {
+        if (nx < -A + M || nx > A - M) {
+          ang = Math.PI - ang;
+          nx = Math.min(A - M, Math.max(-A + M, nx));
+        }
+        if (ny < -0.5 + M || ny > 0.5 - M) {
+          ang = -ang;
+          ny = Math.min(0.5 - M, Math.max(-0.5 + M, ny));
+        }
+      }
+      set(k + 'a', ang % (TAU * 64));
+      set(k + 'x', nx);
+      set(k + 'y', ny);
+      const level = h === 0 ? 0.25 + this.sig.melodic() * 0.55 : 0.25 + 0.6 * F.stem[1] * (0.3 + 0.7 * F.act);
+      const hue = h === 0 ? F.melody * 0.7 + 0.2 * F.beatPulse : 0.5 + 0.4 * F.stem[1] + 0.15 * F.barPulse;
+      // Dots keep the snake's widths (melody thin, bass thick); larger shapes breathe more gently.
+      const dot = b.shape.kind === 'dot';
+      const sc = h === 0 ? (dot ? 0.6 + 0.8 * F.loud : 0.8 + 0.4 * F.loud) : dot ? 1.1 + 2 * F.stem[1] : 0.85 + 0.5 * F.stem[1];
+      out.push({ x: nx, y: ny, a: ang, s: sc, level, hue, px, py });
+    }
+    // The bass head is drawn first so the melody head paints over it.
+    if (out.length === 2) out.reverse();
+  }
+
+  /** Motion genes move each copy (phase offset per copy). */
+  private applyMotion(s: Slot, b: BodyGene, bi: number, copies: Copy[], sdt: number): void {
+    const F = this.sig.F;
+    const mo = b.motion;
+    const P = (k: string) => s.P('mo', bi, mo.p, k, MOTION_SCHEMAS[mo.kind]);
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.m${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const set = (k: string, v: number) => (m[key(k)] = v);
+    const A = F.aspect * 0.5;
+    const solid = b.shape.kind === 'solid';
+    const walker = b.place.kind === 'walker';
+    copies.forEach((c, i) => {
+      const ph = i * 1.3;
+      switch (mo.kind) {
+        case 'spin': {
+          // Solids and flames turn their own way (3D yaw / the flame camera).
+          if (solid || b.shape.kind === 'flame' || walker) break;
+          const sign = mo.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
+          c.a += F.spin * mo.p.rate * sign;
+          break;
+        }
+        case 'sway': {
+          const w = Math.sin((TAU * F.bars) / mo.p.period + ph);
+          c.x += P('amp') * w;
+          c.a += P('tilt') * 0.35 * w;
+          break;
+        }
+        case 'bob': {
+          const amp = P('amp');
+          const dp = set('dp', approach(mm('dp'), F.gate[0], 1, sdt / Math.max(1, copies.length)));
+          c.x += 0.035 * amp * Math.sin(TAU * F.barPhase + ph);
+          c.y += 0.03 * Math.sin(F.phase * 0.01) + 0.008 * amp * Math.sin(TAU * F.beatPhase + ph) * dp;
+          break;
+        }
+        case 'drift': {
+          if (i === 0) {
+            set('dx', (mm('dx') + P('vx') * sdt * F.speed) % 64);
+            set('dy', (mm('dy') + P('vy') * sdt * F.speed) % 64);
+          }
+          c.x += mm('dx');
+          c.y += mm('dy');
+          if (b.place.kind !== 'grid') {
+            // Wrap around the screen.
+            c.x = ((((c.x + A) % (2 * A)) + 2 * A) % (2 * A)) - A;
+            c.y = ((((c.y + 0.5) % 1) + 1) % 1) - 0.5;
+            if (c.px !== undefined) [c.px, c.py] = [c.x, c.y];
+          }
+          break;
+        }
+        case 'circle': {
+          const a = (TAU * F.bars) / mo.p.period + ph;
+          c.x += P('radius') * Math.cos(a);
+          c.y += P('radius') * Math.sin(a);
+          break;
+        }
+        case 'hits': {
+          if (walker) break;
+          // A jolt that stays: each drum hit turns the copy.
+          if (i === 0) {
+            const rise = F.hit > 0.5 && mm('hp') <= 0.5;
+            set('hp', F.hit);
+            if (rise) {
+              const n = set('hn', mm('hn') + 1);
+              set('ha', mm('ha') + P('amt') * (0.5 + 0.5 * h11(n * 3.1)) * (h11(n * 7.7) < 0.5 ? -1 : 1));
+            }
+            set('hs', approach(mm('hs'), mm('ha'), 14, sdt));
+          }
+          c.a += mm('hs');
+          break;
+        }
+        case 'pulse':
+          c.s *= 1 + P('amp') * F.beatPulse * F.gate[0];
+          break;
+      }
+    });
+  }
+
+  /**
+   * A shape's parameter slots (two vec4 from `o`) plus its frame state. Returns the shape's
+   * characteristic size in scene units (for arms, textures and tips).
+   */
+  private packShape(s: Slot, sh: ShapeGene, bi: number, o: number, sdt: number, fused: boolean, copies: Copy[]): number {
+    const F = this.sig.F;
+    const sig = this.sig;
+    const E = s.bd;
+    const group = fused ? 'fs' : 'sh';
+    const P = (k: string) => s.P(group, bi, sh.p, k, SHAPE_SCHEMAS[sh.kind]);
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.${group}.${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const set = (k: string, v: number) => (m[key(k)] = v);
+    const b = s.genome.bodies[bi];
+    const beat = F.beatPulse * F.gate[0];
+    switch (sh.kind) {
+      case 'dot': {
+        const r = P('r') * (1 + 0.08 * F.stem[1]);
+        E[o] = r;
+        return Math.max(r, b.material.kind === 'glow' ? b.material.p.width : 0.004);
+      }
+      case 'polygon':
+        E[o] = sh.p.n; E[o + 1] = P('r'); E[o + 2] = P('round');
+        return P('r');
+      case 'star':
+        E[o] = sh.p.n; E[o + 1] = P('r'); E[o + 2] = P('inner');
+        return P('r');
+      case 'segment':
+        E[o] = P('len'); E[o + 1] = P('w');
+        return P('len') * 0.5;
+      case 'solid': {
+        // Segments in the body's local frame; spin motion turns the solid in 3D.
+        const solid = sh.p.solid === 5 ? ((F.sectionIndex % 4) + 4) % 4 : sh.p.solid;
+        const scale = P('size') + 0.07 * F.stem[1] + 0.02 * beat;
+        const mo = b.motion;
+        const ang = mo.kind === 'spin' ? F.spin * mo.p.rate * (mo.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1) : 0;
         let n = 0;
-        if (solid === 4) {
-          n = polygonSegs(s, 0, e.p.sides, scale * 0.5, ang, 1);
-        } else {
+        if (solid === 4) n = polygonSegs(s, 0, sh.p.sides, scale * 0.5, ang, 1);
+        else {
           const tilt = P('tilt') + 0.25 * Math.sin(F.phase * 0.07);
           n = projectSolid(SOLIDS[solid], s, 0, ang, tilt, scale, 1);
           const inner = clamp01((F.act - 0.45) / 0.25) * P('inner');
           if (inner > 0.01) n = projectSolid(SOLIDS[(solid + 2) % 4], s, n, -ang * 0.5, -tilt, scale * 0.45, inner * 0.7);
         }
         s.segN = n;
-        break;
+        E[o] = scale;
+        return scale * 0.5;
       }
+      case 'bars':
+        E[o] = sh.p.mode; E[o + 1] = sh.p.bins; E[o + 2] = P('radius'); E[o + 3] = P('len');
+        E[o + 4] = P('fill'); E[o + 5] = 0.025 * F.stem[1];
+        return sh.p.mode === 1 || sh.p.mode === 2 ? P('radius') + P('len') * 0.5 : 0.3;
+      case 'curve': {
+        const u = s.wv;
+        const w0 = bi * 16;
+        const ph = set('ph', (mm('ph') + sdt * F.speed * 0.07) % 4096);
+        u[w0] = sh.p.form; u[w0 + 1] = P('amp'); u[w0 + 2] = 0; u[w0 + 3] = 0;
+        u[w0 + 4] = P('radius'); u[w0 + 5] = P('turns'); u[w0 + 6] = sh.p.ra + 0.004 * Math.sin(F.phase * 0.05); u[w0 + 7] = sh.p.rb * (F.minor ? 0.75 : 1) - 0.005;
+        u[w0 + 8] = ph; u[w0 + 9] = 0; u[w0 + 10] = b.material.p.hue; u[w0 + 11] = 0;
+        u[w0 + 12] = u[w0 + 13] = u[w0 + 14] = u[w0 + 15] = 0;
+        if (sh.p.form === 5) {
+          const L = WAVE_RATIOS.length;
+          const stepN = Math.floor(Math.max(0, F.barIndex) / sh.p.rb);
+          const [ra, rb] = WAVE_RATIOS[(((F.keyTonic + stepN * 5 + sh.p.ra - 1) % L) + L) % L];
+          const fx = set('fx', approach(mm('fx', ra), ra, 1.2, sdt));
+          const fy = set('fy', approach(mm('fy', rb), rb, 1.2, sdt));
+          const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
+          set('bi', F.barIndex);
+          const swing = set('sw', newBar ? 1 : mm('sw') * Math.exp(-sdt * 1.2));
+          const det = 0.012 * (F.melody - 0.5) + 0.004 * Math.sin(F.phase * 0.05);
+          u[w0 + 4] = fx; u[w0 + 5] = fx * 2 + 0.01 + det; u[w0 + 6] = fy; u[w0 + 7] = fy * (F.minor ? 1.5 : 2) - 0.01;
+          u[w0 + 8] = P('radius') * 0.72 * (0.75 + 0.2 * F.loud + 0.3 * swing);
+          u[w0 + 9] = 0;
+          u[w0 + 11] = P('amp') * 1.5 + 0.35 * sig.melodic() + 0.35 * F.onset[0];
+          u[w0 + 12] = F.spin * 0.25;
+          u[w0 + 13] = F.phase * 0.07 + F.beats * 0.25;
+          u[w0 + 14] = 1.3 + F.phase * 0.05 - F.beats * 0.18;
+          u[w0 + 15] = 0.5 - F.phase * 0.04 + F.beats * 0.11;
+        }
+        E[o] = P('radius');
+        return sh.p.form === 0 ? 0.3 : P('radius');
+      }
+      case 'aurora': {
+        const t = set('t', (mm('t') + sdt * F.speed * 0.15) % 512);
+        const lvl = Math.max(F.stem[2], F.stem[3] * 0.7 * (1 - F.gate[2])) + 0.08 * F.loud;
+        if (fused) {
+          E[o + 1] = P('fall'); E[o + 2] = P('rays'); E[o + 3] = P('wav');
+          E[o + 4] = t; E[o + 5] = lvl;
+        } else {
+          const f = bi * BODY_VEC4 * 4 + 64;
+          E[f] = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+          E[f + 1] = s.P('ma', bi, b.material.p, 'hue', MATERIAL_SCHEMAS[b.material.kind]);
+          E[f + 2] = lvl;
+          E[f + 3] = t;
+          E[f + 4] = 0; E[f + 5] = P('fall'); E[f + 6] = P('rays'); E[f + 7] = P('wav');
+        }
+        return 0.2;
+      }
+      case 'plasma': case 'terrain': case 'edge':
+        this.packField(s, b, bi, sdt, copies);
+        return 0.2;
+      case 'flame':
+        return 0.28 * (P('zoom') / 0.22);
+    }
+    return 0.1;
+  }
+
+  /** Full-screen chunk shapes: their four field slots (EA..ED = slots 16-19), as the old emitters packed them. */
+  private packField(s: Slot, b: BodyGene, bi: number, sdt: number, copies: Copy[]): void {
+    const F = this.sig.F;
+    const E = s.bd;
+    const o = bi * BODY_VEC4 * 4 + 64;
+    const sh = b.shape;
+    const P = (k: string) => s.P('sh', bi, sh.p, k, SHAPE_SCHEMAS[sh.kind]);
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.f.${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+    E[o] = gain;
+    E[o + 1] = s.P('ma', bi, b.material.p, 'hue', MATERIAL_SCHEMAS[b.material.kind]);
+    switch (sh.kind) {
       case 'plasma': {
         const tempo = P('tempo');
         m[key('t')] = (mm('t') + sdt * F.speed * P('speed') * 0.66) % 256;
-        // Contours either run on beat bursts (tempo 0) or flow a quarter band per beat (tempo 1).
         const lb = mm('lb', F.beats);
         let db = F.beats - lb;
         if (db < 0) db += 256;
@@ -1057,76 +1434,42 @@ export class Stage {
         E[o + 12] = 1 + (0.9 * F.beatPulse - 0.45) * P('pulse');
         break;
       }
-      case 'aurora': {
-        m[key('t')] = (mm('t') + sdt * F.speed * 0.15) % 512;
-        E[o + 2] = Math.max(F.stem[2], F.stem[3] * 0.7 * (1 - F.gate[2])) + 0.08 * F.loud;
-        E[o + 3] = m[key('t')];
-        E[o + 4] = P('y'); E[o + 5] = P('fall'); E[o + 6] = P('rays'); E[o + 7] = P('wav');
-        break;
-      }
-      case 'blobs': {
-        const n = e.p.count;
-        E[o + 2] = n;
-        E[o + 3] = P('chrome');
-        const src = [1, 1, 0, 2, 3, 3];
-        const size = P('size');
-        const spread = P('spread');
-        const speed = P('speed');
-        m[key('ph')] = (mm('ph') + sdt * F.speed) % 4096;
-        const ph = m[key('ph')];
-        for (let i = 0; i < n; i++) {
-          const t = ph * (speed * 0.9 + 0.03 * i);
-          const lv = src[i] === 0 ? F.onset[0] * 0.6 + F.stem[0] * 0.4 : F.stem[src[i]];
-          const tr = size * (0.75 + 1.25 * lv) + 0.015 * F.beatPulse * F.gate[0];
-          const rr = approach(mm('r' + i, tr), tr, 8, sdt);
-          m[key('r' + i)] = rr;
-          s.blob[i * 4] = spread * A * Math.sin(t + i * 1.7) * (0.6 + 0.4 * Math.sin(t * 0.37 + i));
-          s.blob[i * 4 + 1] = 0.26 * (spread / 0.55) * Math.sin(t * 1.31 + i * 2.3);
-          s.blob[i * 4 + 2] = rr;
-        }
-        break;
-      }
       case 'edge': {
-        const side = e.p.side;
+        const side = sh.p.side;
         const perp = side === 0 || side === 3 ? Math.abs(s.shift[0]) : Math.abs(s.shift[1]);
         E[o + 2] = perp + 2 / this.h;
-        E[o + 4] = e.p.mode; E[o + 5] = side; E[o + 6] = P('base'); E[o + 7] = P('height');
+        E[o + 4] = sh.p.mode; E[o + 5] = side; E[o + 6] = P('base'); E[o + 7] = P('height');
         E[o + 8] = P('density');
-        if (e.p.mode === 0) {
-          const b = F.beatIndex >= 0 ? F.beatIndex : Math.floor(F.time * 2);
-          let start = mm('start', b);
+        if (sh.p.mode === 0) {
+          const bb = F.beatIndex >= 0 ? F.beatIndex : Math.floor(F.time * 2);
+          let start = mm('start', bb);
           let wide = mm('wide', 1);
-          if (b >= start + wide || b < start) {
-            start = m[key('start')] = b;
-            wide = m[key('wide')] = h11(b * 1.7) < 0.3 ? 2 : 1;
+          if (bb >= start + wide || bb < start) {
+            start = m[key('start')] = bb;
+            wide = m[key('wide')] = h11(bb * 1.7) < 0.3 ? 2 : 1;
             const lv = 0.6 * F.loud + 0.4 * Math.max(F.stem[1], F.stem[3]);
-            m[key('h')] = (0.04 + P('height') * Math.pow(h11(b * 3.3), 1.6) + 0.12 * lv) * (0.6 + 0.4 * F.act);
-            m[key('cols')] = 3 + Math.floor(h11(b * 5.1) * 3) * wide;
+            m[key('h')] = (0.04 + P('height') * Math.pow(h11(bb * 3.3), 1.6) + 0.12 * lv) * (0.6 + 0.4 * F.act);
+            m[key('cols')] = 3 + Math.floor(h11(bb * 5.1) * 3) * wide;
             m[key('lit')] = (0.08 + 0.3 * Math.max(F.stem[3], F.stem[2]) + 0.15 * F.act) * (0.5 + P('density'));
           }
-          const frac = (b - start + (F.beatIndex >= 0 ? F.beatPhase : (F.time * 2) % 1)) / wide;
+          const frac = (bb - start + (F.beatIndex >= 0 ? F.beatPhase : (F.time * 2) % 1)) / wide;
           E[o + 9] = mm('cols', 4);
           E[o + 12] = mm('h', 0.1); E[o + 13] = start; E[o + 14] = mm('lit', 0.3); E[o + 15] = frac;
-        } else if (e.p.mode === 1) {
+        } else if (sh.p.mode === 1) {
           const y = (F.melody - 0.5) * 0.62 + P('base') * 0.3;
           const prev = mm('y', y);
           const yy = approach(prev, y, 6, sdt);
           m[key('y')] = yy;
-          E[o] = gain * sig.melodic() * 1.2;
+          E[o] = gain * this.sig.melodic() * 1.2;
           E[o + 10] = yy; E[o + 11] = prev;
-        } else if (e.p.mode === 3) {
+        } else if (sh.p.mode === 3) {
           const tgt = clamp01(0.6 * F.loud + 0.4 * F.stem[1] + 0.15 * Math.sin(F.phase * 0.4));
           m[key('th')] = approach(mm('th', tgt), tgt, 3, sdt);
           E[o + 10] = m[key('th')];
         }
         break;
       }
-      case 'tiles':
-        E[o + 2] = Math.max(sig.melodic(), 0.3 * F.stem[1]);
-        E[o + 3] = F.spin * e.p.lock;
-        E[o + 4] = e.p.shape; E[o + 5] = P('scale'); E[o + 6] = P('lit'); E[o + 7] = P('edges');
-        break;
-      case 'horizon': {
+      case 'terrain': {
         const prev = mm('lb', F.beats);
         let d = F.beats - prev;
         if (d < 0) d += 256;
@@ -1134,199 +1477,265 @@ export class Stage {
         m[key('lb')] = F.beats;
         m[key('sc')] = (mm('sc') + d * P('speed') * (0.5 + 0.5 * F.act)) % 1;
         E[o + 2] = m[key('sc')];
-        E[o + 4] = P('y'); E[o + 5] = P('density'); E[o + 6] = P('peaks');
+        E[o + 4] = 0; E[o + 5] = P('density'); E[o + 6] = P('peaks');
         E[o + 8] = P('terrain'); E[o + 9] = P('flash');
         break;
       }
-      case 'orb': {
-        m[key('halo')] = approach(mm('halo'), Math.max(F.loud, sig.melodic()), 3, sdt);
-        const bob = P('bob');
-        const dp = (m[key('dp')] = approach(mm('dp'), F.gate[0], 1, sdt));
-        E[o + 2] = P('x') + 0.035 * bob * Math.sin(TAU * F.barPhase);
-        E[o + 3] = P('y') + 0.03 * Math.sin(F.phase * 0.01) + 0.008 * bob * Math.sin(TAU * F.beatPhase) * dp;
-        E[o + 4] = P('radius') * (1 + 0.08 * F.stem[1]); E[o + 5] = P('halo'); E[o + 6] = P('stripes'); E[o + 7] = P('craters');
-        E[o + 8] = m[key('halo')];
-        const arms = P('arms');
-        E[o + 9] = arms;
-        E[o + 10] = P('clip');
-        if (arms > 0.001) {
-          // Five arms: drums, bass, vocals (or the melody), other, loudness. Each
-          // reaches and retracts smoothly with its driver plus a breath of its own,
-          // sways every 2 bars out of step with the others; the set turns every 16.
-          const g = (k: number) => F.stem[k] * F.gate[k];
-          const drivers = [F.onset[0] * F.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * sig.melodic()), g(3), F.loud];
-          const spin = (TAU * F.bars) / 16;
-          for (let k = 0; k < 5; k++) {
-            s.arm[k] = spin + (k * TAU) / 5 + 0.45 * Math.sin((TAU * F.bars) / 2 + k * 1.3);
-            const breath = 0.5 + 0.5 * Math.sin((TAU * F.bars) / (2 + k * 0.5) + k * 2.1);
-            const target = 0.2 + 0.8 * drivers[k] + 0.45 * breath;
-            s.arm[5 + k] = m[key('len' + k)] = approach(mm('len' + k, target), target, 2.5, sdt);
-          }
-          s.arm[10] = 0.5 * Math.sin((TAU * F.bars) / 3);
-          s.arm[11] = 0.29;
+    }
+    void copies;
+  }
+
+  /** Deformation slots 7-11 (arms: count, reach, curl now, width; angles; lengths). */
+  private packDeform(s: Slot, b: BodyGene, bi: number, o: number, sdt: number): void {
+    const F = this.sig.F;
+    const E = s.bd;
+    const d = b.deform;
+    const P = (k: string) => s.P('de', bi, d.p, k, DEFORM_SCHEMAS[d.kind]);
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.d${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    switch (d.kind) {
+      case 'arms': {
+        // Each arm reaches and retracts with its instrument plus a breath of its own, sways every
+        // 2 bars out of step with the others; the set turns once per `turn` bars.
+        const n = d.p.count;
+        const g = (k: number) => F.stem[k] * F.gate[k];
+        const drivers = [F.onset[0] * F.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * this.sig.melodic()), g(3), F.loud];
+        const spin = (TAU * F.bars) / d.p.turn;
+        const sway = P('sway');
+        for (let k = 0; k < n; k++) {
+          const ang = spin + (k * TAU) / n + 0.45 * sway * Math.sin((TAU * F.bars) / 2 + k * 1.3);
+          const breath = 0.5 + 0.5 * Math.sin((TAU * F.bars) / (2 + (k % 5) * 0.5) + k * 2.1);
+          const target = 0.2 + 0.8 * drivers[k % 5] + 0.45 * breath;
+          const len = (m[key('len' + k)] = approach(mm('len' + k, target), target, 2.5, sdt));
+          E[o + 4 + (k < 4 ? k : 4 + k - 4)] = ang;
+          E[o + 12 + (k < 4 ? k : 4 + k - 4)] = len;
         }
+        E[o] = n;
+        E[o + 1] = P('reach');
+        E[o + 2] = P('curl') * 0.5 * Math.sin((TAU * F.bars) / 3);
+        E[o + 3] = P('width');
         break;
       }
-      case 'wave': {
-        const u = s.waveU;
-        m[key('ph')] = (mm('ph') + sdt * F.speed * 0.07) % 4096;
-        u[0] = e.p.shape; u[1] = P('amp'); u[2] = P('x'); u[3] = P('y');
-        u[4] = P('radius'); u[5] = P('turns'); u[6] = e.p.ra + 0.004 * Math.sin(F.phase * 0.05); u[7] = e.p.rb * (F.minor ? 0.75 : 1) - 0.005;
-        u[8] = m[key('ph')]; u[9] = F.spin * 0.0625; u[10] = P('hue'); u[11] = 0;
-        u[12] = u[13] = u[14] = u[15] = 0;
-        if (e.p.shape === 5) {
-          // Pendulum harmonograph: the ratio steps every rb bars through a
-          // circle-of-fifths order from the key (offset ra) and glides; phases
-          // advance with the beat, a quarter turn per bar; downbeats swing it,
-          // the melody detunes it and drum hits widen the second pendulum.
-          const L = WAVE_RATIOS.length;
-          const stepN = Math.floor(Math.max(0, F.barIndex) / e.p.rb);
-          const [ra, rb] = WAVE_RATIOS[(((F.keyTonic + stepN * 5 + e.p.ra - 1) % L) + L) % L];
-          const fx = (m[key('fx')] = approach(mm('fx', ra), ra, 1.2, sdt));
-          const fy = (m[key('fy')] = approach(mm('fy', rb), rb, 1.2, sdt));
-          const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
-          m[key('bi')] = F.barIndex;
-          const swing = (m[key('sw')] = newBar ? 1 : mm('sw') * Math.exp(-sdt * 1.2));
-          const det = 0.012 * (F.melody - 0.5) + 0.004 * Math.sin(F.phase * 0.05);
-          u[4] = fx; u[5] = fx * 2 + 0.01 + det; u[6] = fy; u[7] = fy * (F.minor ? 1.5 : 2) - 0.01;
-          u[8] = P('radius') * 0.72 * (0.75 + 0.2 * F.loud + 0.3 * swing);
-          u[9] = 0;
-          u[11] = P('amp') * 1.5 + 0.35 * sig.melodic() + 0.35 * F.onset[0];
-          u[12] = F.spin * 0.25;
-          u[13] = F.phase * 0.07 + F.beats * 0.25;
-          u[14] = 1.3 + F.phase * 0.05 - F.beats * 0.18;
-          u[15] = 0.5 - F.phase * 0.04 + F.beats * 0.11;
-        }
-        s.waveBright = gain * 0.5 * (0.3 + 0.9 * Math.max(F.loud, 0.6 * sig.melodic()));
-        s.waveThick = P('thick');
-        s.waveN = e.p.shape === 3 || e.p.shape === 5 ? 1024 : 512;
+      case 'wobble':
+        E[o] = d.p.lobes;
+        E[o + 1] = P('amp') * (0.6 + 0.8 * F.stem[1] * F.gate[1]);
+        E[o + 2] = -F.spin * d.p.rate * d.p.lobes;
+        break;
+      case 'noise': {
+        const ph = (m[key('ph')] = (mm('ph') + sdt * P('speed') * F.speed) % 4096);
+        E[o] = P('amp') * (0.6 + 0.8 * F.loud);
+        E[o + 1] = P('scale');
+        E[o + 2] = ph;
         break;
       }
-      case 'snake':
-        this.tickSnake(s, e, slot, sdt);
+      case 'twist':
+        E[o] = P('amt') * (0.6 + 0.6 * F.loud);
         break;
-      case 'particles':
-        break;
-      case 'flame': {
-        const xs = e.xforms ?? [];
-        // A drop reverses the vars <-> alt morph (as in V1).
-        if (F.dropStart) m[key('mt')] = mm('mt') > 0.5 ? 0 : 1;
-        m[key('m')] = mm('m') + (mm('mt') - mm('m')) * (1 - Math.exp(-sdt * 0.8));
-        s.flameMorph = m[key('m')];
-        s.flameSpec = {
-          xforms: xs.map((x) => ({
-            aff: x.aff.slice(0, 6) as [number, number, number, number, number, number],
-            weight: x.weight,
-            color: x.color,
-            vars: x.vars as Partial<Record<FlameVar, number>>,
-            alt: x.alt as Partial<Record<FlameVar, number>> | undefined,
-            spin: x.spin,
-            bass: x.bass,
-            drift: x.drift[0] || x.drift[1] ? [x.drift[0], x.drift[1]] : undefined,
-            pulse: x.pulse,
-          })),
-          count: e.p.count,
-          iters: 4,
-          rounds: e.p.rounds,
-          zoom: P('zoom'),
-          offset: [P('ox'), P('oy')],
-          camSpin: e.p.camSpin,
-          gain,
-          flow: P('flow'),
-          breathe: P('breathe'),
-        };
-        break;
-      }
     }
   }
 
   /**
-   * Two heads (melody, bass) roaming the screen. The melody head turns every
-   * second beat and sharply on heavy drum hits; the bass head turns on each
-   * downbeat and sharply on strong bass hits. Turns are at any angle, they curve
-   * gently in between, bounce off the edges and move a fixed distance per beat.
+   * A body's deform ops: the chain's per-frame rates become absolute shaping amounts,
+   * breathing with the music (loudness, beat, bass). Folds and variations keep their meaning.
    */
-  private tickSnake(s: Slot, e: EmitterGene, slot: number, sdt: number): void {
+  private packOps(s: Slot, ops: OpGene[], bi: number, sdt: number): void {
     const F = this.sig.F;
-    const P = (k: string) => s.P('em', slot, e.p, k, EMITTER_SCHEMAS.snake);
-    const m = s.mem;
-    const mm = (k: string, init = 0) => m['snake.' + k] ?? (m['snake.' + k] = init);
-    const set = (k: string, v: number) => (m['snake.' + k] = v);
-    const E = s.em;
-    const o = slot * 16;
     const A = F.aspect * 0.5;
-    const M = 0.07;
-    const n = e.p.count;
-    E[o + 2] = n;
-    E[o + 3] = P('cover');
-    let db = F.beats - mm('lb', F.beats);
-    if (db < 0) db += 256;
-    if (db > 2) db = sdt * 2;
-    set('lb', F.beats);
-    const hitRise = F.hit > 0.7 && mm('hp') <= 0.7;
-    set('hp', F.hit);
-    const bassRise = F.onset[1] > 0.6 && mm('bp') <= 0.6;
-    set('bp', F.onset[1]);
-    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bi', F.beatIndex);
-    const newBar = F.barIndex >= 0 && F.barIndex !== mm('ri', F.barIndex);
-    set('bi', F.beatIndex);
-    set('ri', F.barIndex);
-    const step = P('step') * (0.7 + 0.5 * F.act);
-    const turn = P('turn');
-    const curve = P('curve');
-    const heads: [string, boolean, boolean, number, number, number, number, number][] = [
-      // key, turn now, heavy turn, start x, start y, start angle, distance per beat, steering signal
-      ['m', newBeat && F.beatIndex % 2 === 0, hitRise, -0.3 * A, 0.15, 0.3, step * 1.18, F.melody],
-      ['b', newBar, bassRise, 0.3 * A, -0.2, 2.6, step * 0.82, F.stem[1]],
-    ];
-    for (let h = 0; h < n; h++) {
-      const [k, turnNow, heavy, sx, sy, sa, perBeat, steer] = heads[h];
-      const x = mm(k + 'x', sx);
-      const y = mm(k + 'y', sy);
-      let ang = mm(k + 'a', sa);
-      set(k + 'px', x);
-      set(k + 'py', y);
-      if (turnNow || heavy) {
-        const c = set(k + 'n', mm(k + 'n') + 1);
-        const side = h11(c * 7.3 + h * 50) < 0.5 ? -1 : 1;
-        ang += side * turn * ((heavy ? 1.3 : 0.45) + (heavy ? 1.2 : 0.9) * h11(c * 3.7 + 1 + h * 59));
+    const beat = F.beatPulse * F.gate[0];
+    const mod = 0.55 + 0.6 * F.loud + 0.3 * beat;
+    ops.forEach((op, i) => {
+      const P = (k: string) => s.P('dr', bi * 3 + i, op.p, k, OP_SCHEMAS[op.op]);
+      const a = s.drA;
+      const j = (bi * 3 + i) * 4;
+      a[j] = a[j + 1] = a[j + 2] = a[j + 3] = 0;
+      s.drB[j] = drawOpId(op.op);
+      const key = (k: string) => `dr${bi}.${i}.${k}`;
+      const center = (w: number) => {
+        a[j] = (op.p.cx ?? 0) + w * A * 0.64 * Math.sin((TAU * F.bars) / 8);
+        a[j + 1] = (op.p.cy ?? 0) + w * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
+      };
+      switch (op.op) {
+        case 'swirl':
+          center(P('wander'));
+          a[j + 2] = P('amt') * 60 * op.w * mod;
+          a[j + 3] = P('k');
+          break;
+        case 'twist':
+          center(0);
+          a[j + 2] = P('amt') * 60 * op.w * mod;
+          break;
+        case 'ripple': {
+          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed * TAU) % 4096);
+          a[j] = P('amp') * 20 * op.w * (0.6 + 0.8 * F.stem[1]);
+          a[j + 1] = P('freq');
+          a[j + 2] = ph;
+          a[j + 3] = op.p.radial;
+          break;
+        }
+        case 'noise': {
+          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed) % 4096);
+          a[j] = P('amp') * 25 * op.w * mod;
+          a[j + 1] = P('scale');
+          a[j + 2] = ph;
+          break;
+        }
+        case 'rotate': {
+          center(P('wander'));
+          const sign = op.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
+          const ang = (s.mem[key('ang')] = ((s.mem[key('ang')] ?? 0) - (op.p.lock * this.sig.spinStep + P('rate') * op.w * sdt * 60 * F.speed) * sign) % (TAU * 64));
+          a[j + 2] = ang;
+          break;
+        }
+        case 'zoom':
+          center(P('wander'));
+          a[j + 2] = 1 + P('rate') * 12 * op.w * (0.3 + 1.2 * beat + 0.5 * F.stem[1]);
+          a[j + 3] = op.p.radial;
+          break;
+        case 'mirror':
+          a[j] = op.p.axis;
+          break;
+        case 'kaleido':
+          a[j] = op.p.n;
+          a[j + 1] = F.spin * op.p.lock;
+          break;
+        default: // flame variations
+          a[j] = Math.min(1, op.w * (0.7 + 0.3 * mod));
+          a[j + 1] = P('s');
       }
-      ang += (steer - 0.5) * 0.8 * curve * sdt;
-      const d = db * perBeat;
-      let nx = x + Math.cos(ang) * d;
-      let ny = y + Math.sin(ang) * d;
-      if (nx < -A + M || nx > A - M) {
-        ang = Math.PI - ang;
-        nx = Math.min(A - M, Math.max(-A + M, nx));
+    });
+  }
+
+  /** Dye emission: copies push the fluid (instrument pushes for stations, beat pulses otherwise). */
+  private dye(s: Slot, b: BodyGene, bi: number, copies: Copy[], force: number): void {
+    const F = this.sig.F;
+    const fl = this.fluid && s.genome.carrier.kind === 'fluid' ? this.fluid : null;
+    if (!fl || force <= 0) return;
+    const m = s.mem;
+    const key = (k: string) => `b${bi}.y${k}`;
+    const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
+    const inst = b.place.kind === 'stations' ? s.P('pl', bi, b.place.p, 'inst', PLACE_SCHEMAS.stations) : 0;
+    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
+    m[key('bt')] = F.beatIndex;
+    const hits = [F.hit > 0.5 && mm('h0') <= 0.5, F.onset[1] > 0.5 && mm('h1') <= 0.5, F.onset[2] > 0.5 && mm('h2') <= 0.5, F.onset[3] > 0.5 && mm('h3') <= 0.5];
+    m[key('h0')] = F.hit;
+    m[key('h1')] = F.onset[1];
+    m[key('h2')] = F.onset[2];
+    m[key('h3')] = F.onset[3];
+    const tf = Math.min(1.6, Math.max(0.5, F.bpm / 120));
+    const sdt = F.dt;
+    if (b.place.kind === 'grid') {
+      // A grid drops dye at a new star-like spot on every beat.
+      if (newBeat) {
+        const c = F.beatIndex * 1.37 + bi;
+        const x = (h11(c) - 0.5) * F.aspect * 0.9;
+        const y = h11(c * 2.1) - 0.5;
+        const a = h11(c * 3.3) * TAU;
+        const Fm = 300 * (0.3 + F.loud) * force * (0.4 + 0.6 * F.act);
+        fl.splat(x / F.aspect + 0.5, y + 0.5, Math.cos(a) * Fm, Math.sin(a) * Fm, 0.002, 0);
       }
-      if (ny < -0.5 + M || ny > 0.5 - M) {
-        ang = -ang;
-        ny = Math.min(0.5 - M, Math.max(-0.5 + M, ny));
-      }
-      set(k + 'a', ang % (TAU * 64));
-      set(k + 'x', nx);
-      set(k + 'y', ny);
-      const q = o + 4 + h * 4;
-      E[q] = nx;
-      E[q + 1] = ny;
-      E[q + 2] = x;
-      E[q + 3] = y;
+      return;
     }
-    const width = P('width');
-    E[o + 12] = (0.006 + 0.008 * F.loud) * width;
-    E[o + 13] = 0.25 + this.sig.melodic() * 0.55;
-    E[o + 14] = (0.011 + 0.02 * F.stem[1]) * width;
-    E[o + 15] = 0.25 + 0.6 * F.stem[1] * (0.3 + 0.7 * F.act);
+    copies.forEach((c, i) => {
+      const k4 = i % 4;
+      const strength = c.level;
+      const lvlInst = k4 === 0 ? F.onset[0] : F.stem[k4];
+      const Fo = strength > 0.04 && (k4 > 0 || F.hit > 0) ? (k4 === 0 ? 1400 * F.hit : 420 * strength) : 0;
+      let Fi = 0;
+      if (inst > 0) {
+        if (hits[k4]) m[key('a' + i)] = mm('a' + i, i * (TAU / 4)) + (0.35 + 0.5 * h11(F.beatIndex * 3.1 + i)) * (i % 2 ? -1 : 1);
+        if (k4 === 0) Fi = hits[0] ? 650 * F.hit * tf : 0;
+        else if (lvlInst > 0.04) Fi = 45 * lvlInst * tf * Math.min(3, sdt * 60) + (newBeat ? 260 * lvlInst * tf : 0);
+      }
+      const Fm = (Fo + (Fi - Fo) * inst) * (0.4 + 0.6 * F.act) * force;
+      const a = inst > 0.5 ? mm('a' + i, i * (TAU / 4)) : F.spin * 0.5 + i * (TAU / 4) + c.a;
+      if (Fm > 0) fl.splat(c.x / F.aspect + 0.5, c.y + 0.5, Math.cos(a) * Fm, Math.sin(a) * Fm, 0.002, 0);
+    });
+  }
+
+  /** Where the sparks are born: the placement's copies (rotating emitters), its centre, ring or row. */
+  private sparkSpawn(s: Slot, b: BodyGene, copies: Copy[]): void {
+    const F = this.sig.F;
+    const sp = s.spawn;
+    sp.count = 3;
+    sp.radius = 0.3;
+    sp.angle = TAU * F.barPhase;
+    const k = b.place.kind;
+    const c0 = copies[0];
+    if (b.fuse) {
+      // Born on the fused shape's rim.
+      sp.mode = 2;
+      sp.count = 6;
+      sp.radius = Math.max(0.05, s.bd[s.genome.bodies.indexOf(b) * BODY_VEC4 * 4 + 19]);
+      sp.angle = F.spin * 0.25;
+      return;
+    }
+    if (b.shape.kind === 'curve' && b.shape.p.form === 0) sp.mode = 1;
+    else if (k === 'grid') sp.mode = 0;
+    else if (k === 'ring') sp.mode = 3;
+    else if (k === 'row' && b.place.p.y < -0.35) sp.mode = 5;
+    else if (copies.length === 1 && Math.hypot(c0.x, c0.y) < 0.03) sp.mode = 4;
+    else if (k === 'orbit' && Math.hypot(b.place.p.x, b.place.p.y) < 0.03) {
+      sp.mode = 2;
+      sp.count = copies.length;
+      sp.radius = Math.hypot(c0.x, c0.y);
+      sp.angle = Math.atan2(c0.y, c0.x);
+    } else {
+      // One copy per frame in turn: the sparks spread over all of them.
+      const c = copies[this.frame % copies.length];
+      sp.mode = 2;
+      sp.count = 1;
+      sp.radius = Math.hypot(c.x, c.y);
+      sp.angle = Math.atan2(c.y, c.x);
+    }
+  }
+
+  /** Curve bodies: one geometry draw per copy (ring and mirror folds become copies too). */
+  private queueCurve(s: Slot, b: BodyGene, bi: number, copies: Copy[]): void {
+    const F = this.sig.F;
+    const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+    const mk = b.material.kind;
+    const list: number[][] = [];
+    const c0 = copies[0];
+    if (b.place.kind === 'ring') {
+      const n = b.place.p.n;
+      const rad = s.P('pl', bi, b.place.p, 'radius', PLACE_SCHEMAS.ring);
+      for (let i = 0; i < n; i++) {
+        const a = c0.a + (i / n) * TAU;
+        list.push([c0.x + rad * Math.cos(a), c0.y + rad * Math.sin(a), a - Math.PI / 2, c0.s, 1, 1]);
+      }
+    } else if (b.place.kind === 'mirror') {
+      const ax = b.place.p.axis;
+      list.push([c0.x, c0.y, c0.a, c0.s, 1, 1]);
+      if (ax === 0 || ax === 2) list.push([-c0.x, c0.y, -c0.a, c0.s, -1, 1]);
+      if (ax === 1 || ax === 2) list.push([c0.x, -c0.y, -c0.a, c0.s, 1, -1]);
+      if (ax === 2) list.push([-c0.x, -c0.y, c0.a, c0.s, -1, -1]);
+    } else for (const c of copies) list.push([c.x, c.y, c.a, c.s * (copies.length > 1 ? 0.35 + 0.65 * Math.min(1, c.level + 0.3) : 1), 1, 1]);
+    const d = b.deform;
+    const o = bi * BODY_VEC4 * 4;
+    const dk = { none: 0, arms: 1, wobble: 2, noise: 3, twist: 4 }[d.kind];
+    s.curves.push({
+      body: bi,
+      top: b.emit.kind === 'none',
+      bright: gain * 0.5 * (0.3 + 0.9 * Math.max(F.loud, 0.6 * this.sig.melodic())) * (b.emit.kind === 'sparks' ? b.emit.p.body : 1),
+      thick: mk === 'line' ? b.material.p.width : mk === 'glow' ? 3 + b.material.p.width * 60 : 1.5,
+      n: b.shape.p.form === 3 || b.shape.p.form === 5 ? 1024 : 512,
+      soft: mk === 'glow' ? 1 : 0,
+      dash: mk === 'dots' ? 3 + b.material.p.spacing * 400 : 0,
+      copies: list,
+      deform: dk,
+      dp: [s.bd[o + 28], s.bd[o + 29], s.bd[o + 30], s.bd[o + 31]],
+    });
   }
 
   private updateParticles(s: Slot, sdt: number, fluid: boolean): void {
     const eng = this.eng;
     if (!this.particles) this.particles = new Particles(eng.gl, eng.fs);
-    const slot = s.flat.findIndex((e) => e.kind === 'particles');
-    const e = s.flat[slot];
-    const sch = EMITTER_SCHEMAS.particles;
-    const P = (k: string) => s.P('em', slot, e.p, k, sch);
-    const n = Math.min(e.p.count, this.opts.particleCap);
+    const bi = s.sparks;
+    const b = s.genome.bodies[bi];
+    const sch = EMIT_SCHEMAS.sparks;
+    const P = (k: string) => s.P('em', bi, b.emit.p, k, sch);
+    const n = Math.min(b.emit.p.count, this.opts.particleCap);
     if (Math.abs(this.particles.count - n) > n * 0.15) this.particles.setCount(n);
     const F = this.sig.F;
     const pu = this.pu;
@@ -1342,7 +1751,7 @@ export class Stage {
     const flow = s.genome.carrier.kind === 'flow' ? s.genome.carrier.p.famt * 300 : 0;
     pu.curl = (P('curl') + flow) * (0.5 + F.stem[3]);
     pu.zoomFlow = P('zoomFlow') * F.speed * (1 + 0.8 * F.stem[1]);
-    // Particles follow the chain's rotation too, so a vortex carries its stars.
+    // Particles follow the chain's rotation too, so a vortex carries its sparks.
     let rot = 0;
     for (const o of s.genome.chain) if (o.op === 'rotate') rot += o.p.lock * 4 * (this.sig.spinStep / Math.max(sdt, 1e-3)) * 0.25;
     pu.rotFlow = -rot;
@@ -1350,103 +1759,63 @@ export class Stage {
     pu.drag = P('drag');
     pu.lifeRate = P('life');
     pu.speed = P('speed') * F.speed;
-    // Surge: speed and zoom flow follow the beat envelope (V1 Warp Speed).
+    // Surge: speed and zoom flow follow the beat envelope.
     const surge = 1 + (0.35 + F.surge - 1) * P('surge');
     pu.speed *= surge;
     pu.zoomFlow *= surge;
-    pu.spawnFrom = pu.spawnTo = e.p.spawn;
+    pu.spawnFrom = pu.spawnTo = s.spawn.mode;
     pu.spawnMix = 0;
-    pu.emitAngle = TAU * F.barPhase;
+    pu.emitAngle = s.spawn.angle;
+    pu.emitCount = s.spawn.count;
+    pu.emitRadius = s.spawn.radius;
     pu.burst = F.hit > 0 ? 0.02 * F.act : 0;
     pu.burstSeed = Math.random() * 1000;
     pu.burstSpeed = 0.3 + F.stem[0] + F.drop;
     pu.liftX = 0;
     pu.liftY = P('lift') * F.speed;
     pu.spread = P('spread');
-    pu.emitCount = 3;
-    pu.emitRadius = 0.3;
-    const mg = s.genome.emitters.find((x) => x.kind === 'merge' && x.parts![1] === e);
-    if (mg) this.mergeSpawn(s, mg.parts![0]);
     this.particles.update(pu);
   }
 
-  /**
-   * Particles consuming a merge are born on its shape: along a waveform line,
-   * or from emitters on the shape's rim (orb arm tips, polygon corners, the ink
-   * sources, a ring), the rest anywhere (the feedback mask shapes them).
-   */
-  private mergeSpawn(s: Slot, shape: EmitterGene): void {
-    const pu = this.pu;
+  private drawParticles(s: Slot, weight: number, fb: boolean): void {
+    if (!this.particles || s.sparks < 0) return;
     const F = this.sig.F;
-    const o = s.flat.indexOf(shape) * 16;
-    const E = s.em;
-    let mode = 0;
-    switch (shape.kind) {
-      case 'wave':
-        if (shape.p.shape === 0) mode = 1;
-        else {
-          mode = 2;
-          pu.emitCount = 6;
-          pu.emitRadius = s.waveU[4];
-          pu.emitAngle = F.spin * 0.25;
-        }
-        break;
-      case 'orb':
-        mode = 2;
-        pu.emitCount = E[o + 9] > 0.001 ? 5 : 8;
-        pu.emitRadius = E[o + 4] * (1 + 0.8 * E[o + 9]);
-        pu.emitAngle = E[o + 9] > 0.001 ? s.arm[0] : F.spin * 0.25;
-        break;
-      case 'wire': {
-        mode = 2;
-        pu.emitCount = shape.p.solid === 4 ? shape.p.sides : 4;
-        pu.emitRadius = (shape.p.scale + 0.07 * F.stem[1]) * 0.5;
-        pu.emitAngle = F.spin * shape.p.lock * 4;
-        break;
-      }
-      case 'ink':
-        mode = 2;
-        pu.emitCount = shape.p.count;
-        pu.emitRadius = shape.p.radius;
-        pu.emitAngle = F.spin * 0.5;
-        break;
-      case 'spectrum':
-        if (shape.p.mode === 1 || shape.p.mode === 2) {
-          mode = 3;
-        } else mode = 5;
-        break;
-      case 'blobs':
-        mode = 4;
-        break;
-    }
-    pu.spawnFrom = pu.spawnTo = mode;
-  }
-
-  private drawParticles(s: Slot, e: EmitterGene, weight: number): void {
-    if (!this.particles) return;
-    const F = this.sig.F;
-    const slot = s.flat.indexOf(e);
-    const sch = EMITTER_SCHEMAS.particles;
-    const size = Math.max(1, s.P('em', slot, e.p, 'size', sch) * (this.h / 1080));
+    const b = s.genome.bodies[s.sparks];
+    const sch = EMIT_SCHEMAS.sparks;
+    const size = Math.max(1, s.P('em', s.sparks, b.emit.p, 'size', sch) * (this.h / 1080));
     const alive = 0.35 + 0.65 * F.act;
-    const bright = s.P('em', slot, e.p, 'gain', sch) * 1.4 * weight * (e.layer === 'fb' ? 0.5 : 1) * (0.7 + 0.6 * F.beatPulse * F.gate[0]);
+    const gain = s.P('ma', s.sparks, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+    const bright = gain * 1.4 * weight * (fb ? 0.5 : 1) * (0.7 + 0.6 * F.beatPulse * F.gate[0]);
     this.particles.draw(size, bright, alive, s.cols);
   }
 
-  private drawWave(s: Slot, weight: number, sdt: number, fb: boolean): void {
+  private drawCurve(s: Slot, c: CurveDraw, weight: number, sdt: number, fb: boolean): void {
     const eng = this.eng;
     const gl = eng.gl;
     const p = eng.pWave.use();
     this.setCommon(p, s, sdt, fb);
     // At least a pixel wide; below 1080p the energy is scaled down so small renders match.
-    const want = s.waveThick * (this.h / 1080);
+    const want = c.thick * (this.h / 1080);
     const thick = Math.max(1, want);
-    p.f1('uN', s.waveN)
+    const o = c.body * BODY_VEC4 * 4;
+    const bd = s.bd;
+    p.f1('uN', c.n)
       .f1('uThick', thick)
-      .f1('uBright', s.waveBright * weight * (fb ? 1 : 3) * Math.sqrt(Math.min(1, want / thick)))
-      .f4v('uW', s.waveU);
+      .f1('uBright', c.bright * weight * (fb ? 1 : 3) * Math.sqrt(Math.min(1, want / thick)) / Math.sqrt(Math.max(1, c.copies.length)))
+      .f4v('uW', s.wv.subarray(c.body * 16, c.body * 16 + 16))
+      .i1('uDk', c.deform)
+      .f4('uDp', c.dp[0], c.dp[1], c.dp[2], c.dp[3])
+      .f4('uArmA0', bd[o + 32], bd[o + 33], bd[o + 34], bd[o + 35])
+      .f4('uArmA1', bd[o + 36], bd[o + 37], bd[o + 38], bd[o + 39])
+      .f4('uArmL0', bd[o + 40], bd[o + 41], bd[o + 42], bd[o + 43])
+      .f4('uArmL1', bd[o + 44], bd[o + 45], bd[o + 46], bd[o + 47])
+      .i1('uDrBase', c.body * 3)
+      .i1('uDrN', Math.round(bd[o + 50]));
     gl.bindVertexArray(eng.lineVao);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, s.waveN * 2);
+    for (const cp of c.copies) {
+      p.f4('uT', cp[0], cp[1], cp[2], cp[3]).f2('uFlip', cp[4], cp[5]).f1('uDash', c.dash).f1('uSoft', c.soft);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, c.n * 2);
+    }
   }
 
   private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean): void {
@@ -1471,13 +1840,8 @@ export class Stage {
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
-    for (const e of g.emitters) {
-      if (e.layer !== 'fb') continue;
-      if (e.kind === 'wave') this.drawWave(s, 1, sdt, true);
-      if (e.kind === 'particles' && partOwner) this.drawParticles(s, e, 1);
-      // A merge's particle consumer draws into the feedback, masked by the merge shape.
-      if (e.kind === 'merge' && e.parts![1].kind === 'particles' && partOwner) this.drawParticles(s, e.parts![1], 1);
-    }
+    for (const c of s.curves) if (!c.top) this.drawCurve(s, c, 1, sdt, true);
+    if (partOwner && s.sparks >= 0 && g.bodies[s.sparks].emit.p.top < 0.5) this.drawParticles(s, 1, true);
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;
       const fill = 1 - Math.max(0, Math.min(0.995, s.decay));
@@ -1526,18 +1890,16 @@ export class Stage {
       .f1('uAccum', fbPass ? 1 : 6)
       .f4v('uOpA', s.opA)
       .f4v('uOpB', s.opB)
-      .f4v('uEm', s.em)
+      .f4v('uBd', s.bd)
+      .f4v('uCp', s.cp)
+      .f4v('uCq', s.cq)
+      .f4v('uWv', s.wv)
       .f4v('uDrA', s.drA)
       .f4v('uDrB', s.drB)
-      .i1('uDrN', s.drN)
-      .f4v('uW', s.waveU)
-      .f4v('uInk', s.ink)
-      .f4v('uBlob', s.blob)
       .f4v('uSeg', s.seg)
       .f4v('uSegZ', s.segZ)
       .i1('uSegN', s.segN)
-      .f1v('uChroma', this.sig.chroma)
-      .f1v('uArm', s.arm)
+      .f4v('uChroma4', this.sig.chroma)
       .f1('uBarPulse', F.barPulse)
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex);

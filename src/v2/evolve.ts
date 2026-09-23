@@ -144,15 +144,15 @@ export class Evolution {
           g = res.genome;
           tag = res.tag;
           if (this.rng() < 0.35) {
-            const n = g.emitters.length;
+            const n = g.bodies.length;
             g = mutate(g, this.rng, 0.4, undefined, true);
-            if (g.emitters.length > n) tag = 'layered';
-            else if (tag === 'merged' && !g.emitters.some((e) => e.kind === 'merge')) tag = 'fused';
+            if (g.bodies.length > n) tag = 'layered';
+            else if (tag === 'merged' && !g.bodies.some((b) => b.fuse)) tag = 'fused';
           }
         } else {
-          const n = parents[0].genome.emitters.length;
+          const n = parents[0].genome.bodies.length;
           g = mutate(parents[0].genome, this.rng, 1 + Math.min(2, tried * 0.12));
-          if (g.emitters.length > n) tag = 'layered';
+          if (g.bodies.length > n) tag = 'layered';
         }
         if (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g))) continue;
         const res: ScreenResult = await this.screener.screen(g);

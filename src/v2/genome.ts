@@ -1,23 +1,35 @@
-// V2 genome: one shared vocabulary so any two presets can swap parts.
+// V2 genome, format 3: the unit of inheritance is an idea, not a whole object.
 //
-//   chain      ordered space transforms (vec2 -> vec2). Motion ops run in the
-//              feedback warp; fold ops (mirror, tile, polar, kaleido) and the
-//              flame variations can run in the warp ('warp' stage) or at
-//              display time ('view' stage, applied before sampling).
-//   emitters   1-3 distinct light sources (fragment fields, line geometry,
-//              GPU particles, a fractal-flame IFS). A 'merge' emitter fuses two
-//              parts into one shape through their signed distance fields.
-//   draw       shaping ops applied to the emitters' own coordinates at draw
-//              time (a domain warp inside the emitter shaders), so a parent's
-//              motion can bend another parent's drawing instead of only the trail.
+//   chain      ordered space transforms of the carrier (vec2 -> vec2). Motion
+//              ops run in the feedback warp; fold ops and flame variations can
+//              run in the warp or at display time ('view' stage).
+//   bodies     1-2 light sources (3 only in converted old data). Each body is a
+//              set of independent sub-genes, one per locus:
+//                shape     what is drawn (dot, polygon, star, segment, wireframe
+//                          solid, spectrum bars, a curve, or a larger chunk:
+//                          plasma, aurora, terrain, edge strips, fractal flame)
+//                place     where copies sit (a point, an orbit, a wandering
+//                          walker, instrument stations, a row, floating copies,
+//                          a path, or a grid / ring / mirror fold)
+//                motion    how each copy moves (spin, sway, bob, drift, circle,
+//                          turn on hits, pulse)
+//                deform    how the shape is bent (arms, wobble lobes, noise,
+//                          twist) plus optional draw-space ops
+//                material  how it is lit (line, fill, glow, dots, textured, chrome)
+//                emit      what it leaves behind (nothing, a trail, paint over
+//                          older trail, dye into the fluid, sparks)
+//              A body may also fuse a second shape into its own (smooth union,
+//              music-driven morph, or a region the body lights up inside).
 //   carrier    how existing light moves: feedback warp, fluid, flow field, none.
 //   color      palette around the key hue plus post settings.
 //   reactions  music signal -> parameter, with a gain.
 //
 // Every numeric parameter has a spec (range, integer, discrete choices) so
-// mutation and crossover always stay in range; repair() enforces all of it.
+// mutation and crossover always stay in range; repair() enforces all of it and
+// also lifts older formats (see legacy.ts).
 
 import { FLAME_VARIATIONS, type FlameVar } from './variations';
+import { repair as repairV2, upgradeV2 } from './legacy';
 
 export { FLAME_VARIATIONS };
 export type { FlameVar };
@@ -37,6 +49,8 @@ const P = (min: number, max: number, def: number, extra: Partial<ParamSpec> = {}
 const I = (min: number, max: number, def: number): ParamSpec => ({ min, max, def, int: true });
 const C = (choices: number[], def: number): ParamSpec => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
 const LOCKS = [-0.25, -0.125, -0.0625, 0, 0.0625, 0.125, 0.25];
+/** Bar-locked turn rates, turns per bar. */
+export const TURNS = [-1, -0.5, -0.25, -0.125, -0.0625, 0, 0.0625, 0.125, 0.25, 0.5, 1];
 
 // ------------------------------------------------------------------ chain
 
@@ -53,39 +67,27 @@ export const OP_SCHEMAS: Record<string, Schema> = {
   // rate > 0: content streams outward (flying in); < 0: inward.
   zoom: { rate: P(-0.02, 0.06, 0.008), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), radial: P(0, 1, 0), wander: P(0, 0.35, 0) },
   // lock: turns per bar (bar-locked spin); rate: free rotation, rad per frame.
-  // wander: the centre follows the same bar-locked path as zoom / swirl wander.
   rotate: { lock: C(LOCKS, 0.0625), rate: P(-0.01, 0.01, 0), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), alt: C([0, 1], 0), wander: P(0, 0.35, 0) },
-  // content velocity, p units per second (applied as whole-pixel shifts).
-  // lanes > 1: columns (or rows) per unit that move at 1x or 2x speed, like rain.
+  // content velocity, p units per second; lanes > 1: columns per unit moving at 1x or 2x.
   translate: { vx: P(-0.5, 0.5, 0), vy: P(-0.5, 0.5, 0), lanes: P(0, 50, 0) },
   swirl: { amt: P(-0.03, 0.03, 0.01), k: P(1, 12, 6), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), wander: P(0, 0.35, 0) },
   twist: { amt: P(-0.012, 0.012, 0.003), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0) },
   ripple: { amp: P(0, 0.004, 0.0008), freq: P(2, 40, 8), speed: P(0.2, 4, 0.7), radial: C([0, 1], 0) },
   noise: { amp: P(0, 0.003, 0.0012), scale: P(0.8, 5, 2), speed: P(0.05, 1, 0.3) },
-  // Constant outward shift (p units per frame) away from the spine (axis 0),
-  // the horizon line (1) or the centre (2): ink pushed apart, beat pushes via reactions.
   push: { amt: P(-0.01, 0.01, 0.001), axis: C([0, 1, 2], 0) },
   mirror: { axis: C([0, 1, 2], 0) },
   tile: { n: P(1.2, 4, 2) },
   polar: { scale: P(0.4, 1.6, 1), lock: C(LOCKS, 0) },
   kaleido: { n: I(3, 12, 6), lock: C(LOCKS, 0.0625) },
-  // Spectrum stretch: the screen is cut into vertical strips, one spectrum band
-  // each; content above (and mirrored below) the base line stretches taller in
-  // loud strips and on the beat. win brightens loud strips, sky adds a bass-lit
-  // glow above the base. In the view stage it acts on the displayed picture
-  // only; in the warp stage it slowly pulls content up the loud strips.
+  // Spectrum stretch of the displayed picture (view) or a slow pull up loud strips (warp).
   stretch: { base: P(-0.4, 0.2, -0.16), amt: P(0, 1.5, 0.9), beat: P(0, 0.4, 0.18), strips: I(8, 64, 32), win: P(0, 1, 1), sky: P(0, 1, 0) },
 };
 for (const v of VAR_OPS) OP_SCHEMAS[v] = VAR_SCHEMA;
 
-/**
- * Ops allowed in the draw-space chain. Their per-frame rates are reinterpreted
- * as absolute shaping amounts (see engine.ts packDraw); translate, push,
- * stretch, tile and polar stay carrier / view-stage only.
- */
+/** Ops allowed as draw-space shaping (a body's deform ops); rates become absolute amounts. */
 export const DRAW_OPS: OpKind[] = ['swirl', 'twist', 'ripple', 'noise', 'rotate', 'zoom', 'mirror', 'kaleido', ...VAR_OPS];
 export const MAX_DRAW = 3;
-/** GLSL type id of a draw op (engine uniform uDrB[i].x); variations are 20 + their index. */
+/** GLSL type id of a draw op; variations are 20 + their index. */
 export function drawOpId(op: OpKind): number {
   const fixed = ['', 'swirl', 'twist', 'ripple', 'noise', 'rotate', 'zoom', 'mirror', 'kaleido'].indexOf(op);
   if (fixed > 0) return fixed;
@@ -94,7 +96,6 @@ export function drawOpId(op: OpKind): number {
 export function isDrawOp(op: string): boolean {
   return (DRAW_OPS as string[]).includes(op);
 }
-
 export function isFold(op: OpKind): boolean {
   return (FOLD_OPS as readonly string[]).includes(op);
 }
@@ -114,77 +115,53 @@ export interface OpGene {
   p: Params;
 }
 
-// --------------------------------------------------------------- emitters
+// ---------------------------------------------------------------- shapes
 
-export const EMITTER_KINDS = [
-  'wave', 'spectrum', 'particles', 'stars', 'ink', 'wire', 'plasma', 'aurora', 'blobs', 'flame', 'edge', 'tiles', 'horizon', 'orb',
-  'snake', 'merge',
-] as const;
-export type EmitterKind = (typeof EMITTER_KINDS)[number];
-/** Every kind a plain (non-merge) emitter can have: random picks and merge parts. */
-export const BASIC_KINDS: EmitterKind[] = EMITTER_KINDS.filter((k) => k !== 'merge');
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame'] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
- * Kinds with a 2D signed distance field (glsl.ts SDF_GLSL): they can be one
- * side of a smooth union / morph, or the region a mask merge emits inside.
- * The others take part in merges only as the masked consumer.
+ * sdf: a distance field in the body's local space (every material and placement applies).
+ * curve: line geometry (a distance field too for forms 0, 1, 2, 4, used when fused).
+ * field: a full-screen chunk with its own look (materials only set its gain / hue).
+ * flame: the fractal-flame IFS (point geometry; placed by its camera offset).
  */
-export const SDF_KINDS: EmitterKind[] = ['orb', 'wire', 'wave', 'spectrum', 'snake', 'aurora', 'blobs', 'ink'];
-/** Consumers drawn as geometry: a mask merge masks their feedback trail. */
-export const GEOMETRY_KINDS: EmitterKind[] = ['particles', 'flame'];
-export const isSdfKind = (k: EmitterKind) => SDF_KINDS.includes(k);
-export type Layer = 'fb' | 'top';
-
-const COMMON_EMIT: Schema = { gain: P(0.05, 3, 1), hue: P(0, 1, 0) };
-
-export const EMITTER_SCHEMAS: Record<EmitterKind, Schema> = {
-  // shape: 0 line, 1 circle, 2 spiral, 3 lissajous, 4 arc (span turns * 0.37 rad),
-  // 5 pendulum harmonograph: ratios walk the circle of fifths from the key every rb
-  // bars (offset ra), phases advance with the beat, downbeats swing it.
-  wave: { ...COMMON_EMIT, shape: C([0, 1, 2, 3, 4, 5], 0), amp: P(0.05, 0.5, 0.24), x: P(-0.3, 0.3, 0), y: P(-0.35, 0.35, 0), radius: P(0.08, 0.45, 0.27), turns: P(1, 6, 3), ra: I(1, 6, 2), rb: I(1, 6, 3), thick: P(0.8, 3, 1.5) },
-  // mode: 0 bars on a baseline, 1 upper arc, 2 full ring, 3 mirrored bars
-  spectrum: { ...COMMON_EMIT, mode: C([0, 1, 2, 3], 1), x: P(-0.3, 0.3, 0), y: P(-0.45, 0.2, -0.42), bins: I(12, 64, 40), radius: P(0.08, 0.35, 0.2), len: P(0.1, 0.5, 0.3), fill: P(0.3, 0.9, 0.6) },
-  // spawn: 0 anywhere, 1 waveform, 2 rotating emitters, 3 ring, 4 centre, 5 bottom edge
-  // surge: speed and zoom flow follow the beat-surge envelope (fast attack, slow ease, jumps on drops)
-  particles: { ...COMMON_EMIT, spawn: C([0, 1, 2, 3, 4, 5], 4), count: P(1024, 65536, 16384, { log: true, int: true }), size: P(1.5, 6, 2.6), speed: P(0.05, 1, 0.3), curl: P(0, 0.5, 0.05), zoomFlow: P(-0.5, 1.5, 0.5), lift: P(-0.2, 0.2, 0), drag: P(1, 5, 2.5), life: P(0.1, 0.8, 0.3), spread: P(0.01, 0.2, 0.05), surge: P(0, 1, 0) },
-  stars: { ...COMMON_EMIT, density: P(0.2, 0.8, 0.5), scale: P(3, 12, 6.5), links: P(0, 1, 0.8), twinkle: P(0, 1, 0.3), drift: P(0, 0.1, 0.03) },
-  // orbit 0: blobs sit at stem stations; 1: they circle the centre, bar locked
-  // row 1: blobs line up along the bottom edge (smoke sources)
-  // inst 1: sources follow their instruments (drums jump to a new spot every bar,
-  //   or on every hit with jump 1; bass swings out with the bass; vocals follow
-  //   the melody), fluid pushes step their aim on hits and pulse on the beat at
-  //   a tempo-scaled speed. xs scales how far they roam sideways.
-  // follow: the orbit centre wanders on the bar-locked path. swap 1: colours trade places every bar.
-  ink: { ...COMMON_EMIT, count: I(1, 6, 4), orbit: P(0, 1, 0), row: P(0, 1, 0), radius: P(0.1, 0.45, 0.3), size: P(0.008, 0.05, 0.02), wander: P(0, 0.2, 0.1), force: P(0, 1.5, 1), inst: P(0, 1, 0), xs: P(0.02, 1, 1), jump: C([0, 1], 0), follow: P(0, 0.35, 0), swap: C([0, 1], 0) },
-  // solid: 0 tetra, 1 cube, 2 octa, 3 icosa, 4 polygon, 5 follow sections
-  wire: { ...COMMON_EMIT, solid: C([0, 1, 2, 3, 4, 5], 5), sides: I(3, 8, 6), scale: P(0.06, 0.35, 0.2), tilt: P(0, 1, 0.45), lock: C(LOCKS, 0.25), inner: P(0, 1, 0.6), thick: P(0.8, 2.5, 1.3) },
-  // tempo 1: contours flow a quarter band per beat (smooth, no bursts) and a smoothed bass swells the warp
-  // and thickens the lines; pulse: lines brighten on the beat; melHue: the melody shifts the hue.
-  plasma: { ...COMMON_EMIT, scale: P(0.8, 3, 1.7), warp: P(0.5, 3, 2), bands: P(3, 12, 8), lines: P(0, 1, 0.8), speed: P(0.05, 0.4, 0.15), tempo: P(0, 1, 0), pulse: P(0, 1, 0), melHue: P(0, 1, 0) },
-  aurora: { ...COMMON_EMIT, y: P(-0.3, 0.25, 0), fall: P(2, 10, 5), rays: P(8, 40, 24), wav: P(0.5, 3, 1.4) },
-  blobs: { ...COMMON_EMIT, count: I(3, 6, 6), size: P(0.03, 0.12, 0.06), spread: P(0.3, 0.7, 0.55), speed: P(0.05, 0.3, 0.12), chrome: P(0, 1, 1) },
-  // flow: vars <-> alt morph cycles per 8 bars (0 = only drops morph); breathe: camera zoom per unit bass
-  flame: { ...COMMON_EMIT, count: C([65536, 131072, 262144, 524288], 262144), zoom: P(0.1, 0.45, 0.22), camSpin: C(LOCKS, 0.0625), rounds: I(1, 2, 2), ox: P(-0.2, 0.2, 0), oy: P(-0.2, 0.2, 0), flow: P(0, 2, 0), breathe: P(0, 0.4, 0) },
-  // mode: 0 skyline, 1 melody ribbon, 2 spectral rain, 3 terrain ridge. side: 0 right, 1 top, 2 bottom, 3 left
-  edge: { ...COMMON_EMIT, mode: C([0, 1, 2, 3], 0), side: C([0, 1, 2, 3], 0), base: P(-0.3, 0.3, -0.16), height: P(0.1, 0.5, 0.3), density: P(0.2, 1, 0.6) },
-  // shape: 0 hex, 1 square, 2 triangle
-  tiles: { ...COMMON_EMIT, shape: C([0, 1, 2], 0), scale: P(3, 10, 5), lock: C(LOCKS, 0.0625), lit: P(0.2, 0.8, 0.5), edges: P(0, 1, 0.6) },
-  // terrain: ray-marched hills either side of a valley, following the spectrum, with a kick ridge
-  // rolling toward the viewer and lines coloured by height; flash: the grid flashes on downbeats.
-  horizon: { ...COMMON_EMIT, y: P(-0.3, 0.1, -0.06), speed: P(0.2, 1, 0.5), density: P(0.5, 3, 1.5), peaks: P(0, 1, 1), terrain: P(0, 1, 0), flash: P(0, 1, 0) },
-  // arms: five tapered, curling arms that reach with drums, bass, vocals, other and loudness plus a
-  // breath of their own, sway every 2 bars and turn every 16. bob: drift per bar, bob on the beat.
-  // clip: nothing is drawn below this height (a sun setting behind the horizon).
-  orb: { ...COMMON_EMIT, x: P(-0.5, 0.5, 0), y: P(-0.3, 0.35, 0.1), radius: P(0.04, 0.25, 0.1), halo: P(0, 1, 0.5), stripes: P(0, 1, 0), craters: P(0, 1, 0), arms: P(0, 1, 0), bob: P(0, 1, 0), clip: P(-0.6, 0.35, -0.6) },
-  // Two heads (melody, bass) roaming at free angles: they turn on beats / downbeats (sharply on heavy
-  // hits), curve gently between turns, bounce off the edges and move step units per beat. cover 1:
-  // the newest body paints over older trail; 0: it adds light.
-  snake: { ...COMMON_EMIT, count: I(1, 2, 2), step: P(0.03, 0.2, 0.11), turn: P(0, 1.5, 1), curve: P(0, 2, 0.8), width: P(0.5, 3, 1), cover: P(0, 1, 1) },
-  // Two parts fused into one shape. mode 0: smooth union (k = blend radius, grows with the bass);
-  // 1: morph mix(sdA, sdB, t); 2: mask, part B only lights up inside (inside 1) or along (0) part A.
-  // t drifts toward a music driver by depth: drive 0 none, 1 bar-locked sweep every rate bars,
-  // 2 bass, 3 melody, 4 loudness, 5 beat surge. line / fill: outline and body brightness.
-  merge: { ...COMMON_EMIT, mode: C([0, 1, 2], 0), k: P(0.02, 0.25, 0.08), t: P(0, 1, 0.5), drive: C([0, 1, 2, 3, 4, 5], 1), depth: P(0, 1, 0.6), rate: C([2, 4, 8, 16], 8), line: P(0, 1, 0.7), fill: P(0, 1, 0.5), width: P(0.5, 3, 1.2), inside: C([0, 1], 1) },
+export type ShapeClass = 'sdf' | 'curve' | 'field' | 'flame';
+export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
+  dot: 'sdf', polygon: 'sdf', star: 'sdf', segment: 'sdf', solid: 'sdf', bars: 'sdf',
+  curve: 'curve', plasma: 'field', aurora: 'field', terrain: 'field', edge: 'field', flame: 'flame',
 };
+/** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
+export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame'];
+
+export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
+  dot: { r: P(0, 0.3, 0.02) },
+  polygon: { n: I(3, 8, 6), r: P(0.005, 0.45, 0.12), round: P(0, 1, 0) },
+  star: { n: I(4, 9, 5), r: P(0.01, 0.45, 0.12), inner: P(0.2, 0.8, 0.45) },
+  segment: { len: P(0.01, 0.8, 0.2), w: P(0.001, 0.05, 0.006) },
+  // solid: 0 tetra, 1 cube, 2 octa, 3 icosa, 4 polygon (sides), 5 follows the song sections.
+  solid: { solid: C([0, 1, 2, 3, 4, 5], 5), sides: I(3, 8, 6), size: P(0.06, 0.35, 0.2), tilt: P(0, 1, 0.45), inner: P(0, 1, 0.6) },
+  // mode: 0 bars on a baseline, 1 upper arc, 2 full ring, 3 mirrored bars.
+  bars: { mode: C([0, 1, 2, 3], 1), bins: I(12, 64, 40), radius: P(0.08, 0.35, 0.2), len: P(0.1, 0.5, 0.3), fill: P(0.3, 0.9, 0.6) },
+  // form: 0 waveform line, 1 circle, 2 spiral, 3 lissajous, 4 arc, 5 pendulum harmonograph
+  // (ratios walk the circle of fifths every rb bars, offset ra; phases advance with the beat).
+  curve: { form: C([0, 1, 2, 3, 4, 5], 0), amp: P(0.05, 0.5, 0.24), radius: P(0.08, 0.45, 0.27), turns: P(1, 6, 3), ra: I(1, 6, 2), rb: I(1, 6, 3) },
+  plasma: { scale: P(0.8, 3, 1.7), warp: P(0.5, 3, 2), bands: P(3, 12, 8), lines: P(0, 1, 0.8), speed: P(0.05, 0.4, 0.15), tempo: P(0, 1, 0), pulse: P(0, 1, 0), melHue: P(0, 1, 0) },
+  aurora: { fall: P(2, 10, 5), rays: P(8, 40, 24), wav: P(0.5, 3, 1.4) },
+  // terrain: ray-marched hills either side of a valley following the spectrum; flash: downbeat flash.
+  terrain: { speed: P(0.2, 1, 0.5), density: P(0.5, 3, 1.5), peaks: P(0, 1, 1), terrain: P(0, 1, 0), flash: P(0, 1, 0) },
+  // mode: 0 skyline, 1 melody ribbon, 2 spectral rain, 3 terrain ridge. side: 0 right, 1 top, 2 bottom, 3 left.
+  edge: { mode: C([0, 1, 2, 3], 0), side: C([0, 1, 2, 3], 0), base: P(-0.3, 0.3, -0.16), height: P(0.1, 0.5, 0.3), density: P(0.2, 1, 0.6) },
+  // flow: vars <-> alt morph cycles per 8 bars (0 = only drops morph); breathe: zoom per unit bass.
+  flame: { count: C([65536, 131072, 262144, 524288], 262144), zoom: P(0.1, 0.45, 0.22), rounds: I(1, 2, 2), flow: P(0, 2, 0), breathe: P(0, 0.4, 0) },
+};
+
+/** True when this shape has a distance field (it can be fused, painted over, masked by). */
+export function sdfCapable(s: Pick<ShapeGene, 'kind' | 'p'>): boolean {
+  const c = SHAPE_CLASS[s.kind];
+  if (c === 'sdf') return true;
+  if (s.kind === 'curve') return s.p.form !== 3 && s.p.form !== 5;
+  return s.kind === 'aurora';
+}
 
 export interface FlameXformGene {
   /** [a, b, c, d, e, f]: x' = a x + b y + e, y' = c x + d y + f */
@@ -204,14 +181,169 @@ export const AFF_RANGE = [-1.2, 1.2];
 export const XFORM_SPIN = LOCKS;
 export const XFORM_DRIFT = 0.4;
 
-export interface EmitterGene {
-  kind: EmitterKind;
-  layer: Layer;
+// ------------------------------------------------------------ placement
+
+export const PLACE_KINDS = ['point', 'orbit', 'walker', 'stations', 'row', 'float', 'outline', 'grid', 'ring', 'mirror'] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+/** Folds: the shader repeats the shape by folding space (one evaluation); the rest are explicit copies. */
+export const FOLD_PLACES: PlaceKind[] = ['grid', 'ring', 'mirror'];
+export const isFoldPlace = (k: PlaceKind) => FOLD_PLACES.includes(k);
+export const MAX_COPIES = 6;
+
+export const PLACE_SCHEMAS: Record<PlaceKind, Schema> = {
+  point: { x: P(-0.6, 0.6, 0), y: P(-0.45, 0.45, 0) },
+  // Copies circling a centre (bar-locked, rate turns per bar); follow: the centre wanders. fuse: copies melt together.
+  orbit: { count: I(1, 6, 2), radius: P(0.05, 0.45, 0.3), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0), follow: P(0, 0.35, 0), rate: C(TURNS, 0.5), fuse: P(0, 0.2, 0) },
+  // 1-2 heads roaming the screen, moving step units per beat: head 0 turns every `every` beats, head 1 every
+  // 2 x `every`; square: 90 degree turns; wrap: wrap around the edges instead of bouncing; curve: steering.
+  walker: { heads: I(1, 2, 2), step: P(0.03, 0.2, 0.11), every: C([1, 2, 4, 8], 2), square: C([0, 1], 0), wrap: C([0, 1], 0), curve: P(0, 2, 0.8), turn: P(0, 1.5, 1) },
+  // One copy per instrument (drums, bass, vocals, other): inst 1 moves them with their instruments (drums jump
+  // every bar, or on every hit with jump 1; bass swings out; vocals follow the melody). xs: sideways roam.
+  stations: { count: I(1, 6, 4), inst: P(0, 1, 1), xs: P(0.02, 1, 1), jump: C([0, 1], 0), wander: P(0, 0.2, 0.1), swap: C([0, 1], 0), fuse: P(0, 0.2, 0) },
+  // Copies in a row (smoke sources along the bottom).
+  row: { count: I(1, 6, 4), y: P(-0.5, 0.3, -0.5), wander: P(0, 0.2, 0.05) },
+  // Copies floating on slow Lissajous paths within `spread`; sizes follow their instruments.
+  float: { count: I(1, 6, 6), spread: P(0.3, 0.7, 0.55), speed: P(0.05, 0.3, 0.12), fuse: P(0, 0.3, 0) },
+  // Copies travelling along a path: 0 circle, 1 polygon corners, 2 figure eight.
+  outline: { count: I(1, 6, 5), path: C([0, 1, 2], 0), radius: P(0.08, 0.45, 0.25), rate: C(TURNS, 0.125), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0) },
+  // Lattice fold: 0 square, 1 hex, 2 triangle; scale: cells per unit; density: fraction of cells used;
+  // lit < 1: cells light on a beat-random schedule; links: lines to lit neighbours; lock: grid turns per bar.
+  grid: { lattice: C([0, 1, 2], 0), scale: P(2, 14, 6.5), jitter: P(0, 0.6, 0.6), density: P(0.1, 1, 0.5), lit: P(0.1, 1, 1), links: P(0, 1, 0), twinkle: P(0, 1, 0.3), lock: C(TURNS, 0) },
+  ring: { n: I(2, 12, 6), radius: P(0, 0.45, 0.25), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0) },
+  // Mirror fold across the vertical (0), horizontal (1) or both (2) axes; the copy sits at (x, y).
+  mirror: { axis: C([0, 1, 2], 0), x: P(0, 0.6, 0.2), y: P(-0.45, 0.45, 0) },
+};
+
+// ---------------------------------------------------------------- motion
+
+export const MOTION_KINDS = ['none', 'spin', 'sway', 'bob', 'drift', 'circle', 'hits', 'pulse'] as const;
+export type MotionKind = (typeof MOTION_KINDS)[number];
+export const MOTION_SCHEMAS: Record<MotionKind, Schema> = {
+  none: {},
+  // Bar-locked spin (turns per bar); alt: reverses every other bar. Solids turn in 3D.
+  spin: { rate: C(TURNS, 0.25), alt: C([0, 1], 0) },
+  // Sideways swing with a period in bars, tilting a little.
+  sway: { amp: P(0, 0.15, 0.04), period: C([1, 2, 4, 8], 2), tilt: P(0, 1, 0.3) },
+  // Drift once per bar and bob on the beat.
+  bob: { amp: P(0, 2, 1) },
+  // Slow drift (units per second), wrapping around the screen.
+  drift: { vx: P(-0.1, 0.1, 0.005), vy: P(-0.1, 0.1, 0) },
+  // A small circle around the placement, period in bars.
+  circle: { radius: P(0, 0.12, 0.03), period: C([1, 2, 4, 8, 16], 4) },
+  // Turn on drum hits (walker heads: a sharp turn; other copies: a jolt that stays).
+  hits: { amt: P(0, 1.5, 1) },
+  // Size kick on the beat.
+  pulse: { amp: P(0, 0.5, 0.15) },
+};
+
+// ---------------------------------------------------------------- deform
+
+export const DEFORM_KINDS = ['none', 'arms', 'wobble', 'noise', 'twist'] as const;
+export type DeformKind = (typeof DEFORM_KINDS)[number];
+export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
+  none: {},
+  // Tapered curling arms that reach with drums, bass, vocals, other and loudness plus a breath of their
+  // own; sway every 2 bars, turn once per `turn` bars.
+  arms: { count: I(3, 7, 5), reach: P(0, 1, 1), width: P(0.15, 0.5, 0.29), curl: P(0, 1, 1), sway: P(0, 1, 1), turn: C([8, 16, 32], 16) },
+  // Wobbling lobes around the outline, turning at `rate` turns per bar, swelling with the bass.
+  wobble: { lobes: I(2, 9, 5), amp: P(0, 0.4, 0.12), rate: C(TURNS, 0.125) },
+  noise: { amp: P(0, 0.08, 0.02), scale: P(1, 8, 3), speed: P(0.05, 1, 0.3) },
+  // Rotation growing with the distance from the centre (radians per unit), breathing with loudness.
+  twist: { amt: P(-8, 8, 3) },
+};
+
+// -------------------------------------------------------------- material
+
+export const MATERIAL_KINDS = ['line', 'fill', 'glow', 'dots', 'textured', 'chrome'] as const;
+export type MaterialKind = (typeof MATERIAL_KINDS)[number];
+const MAT_COMMON: Schema = { gain: P(0.02, 3, 1), hue: P(0, 1, 0) };
+export const MATERIAL_SCHEMAS: Record<MaterialKind, Schema> = {
+  // Thin glowing outline (width in pixels at 1080p), brighter with loudness.
+  line: { ...MAT_COMMON, width: P(0.8, 3, 1.3), halo: P(0, 1, 0.12) },
+  // Solid body: soft edge, outer halo, cell outline, core gradient, clip height (hidden below it).
+  fill: { ...MAT_COMMON, soft: P(0, 1, 0.3), halo: P(0, 1, 0), outline: P(0, 1, 0), core: P(0, 1, 0), clip: P(-0.6, 0.35, -0.6) },
+  // Gaussian glow (width in scene units) growing with the copy's level; base: brightness at silence.
+  glow: { ...MAT_COMMON, width: P(0.001, 0.06, 0.02), base: P(0, 1, 0), halo: P(0, 1, 0) },
+  // Stippled: dots filling the body.
+  dots: { ...MAT_COMMON, spacing: P(0.006, 0.05, 0.016), size: P(0.2, 0.9, 0.45) },
+  // tex: 0 craters (moon), 1 stripes with a warm gradient (setting sun), 2 lit windows.
+  textured: { ...MAT_COMMON, tex: C([0, 1, 2], 0), amount: P(0, 1, 1), halo: P(0, 1, 0.5), clip: P(-0.6, 0.35, -0.6) },
+  // Mirror-like surface reflecting the palette; chrome 0 = soft plastic.
+  chrome: { ...MAT_COMMON, chrome: P(0, 1, 1) },
+};
+/** Materials whose brightness is a steady level (the rest accumulate into the trail). */
+export const STATIC_MATERIALS: MaterialKind[] = ['fill', 'textured', 'chrome'];
+
+// -------------------------------------------------------------- emission
+
+export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks'] as const;
+export type EmitKind = (typeof EMIT_KINDS)[number];
+export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
+  // Redrawn every frame on top of the picture.
+  none: {},
+  // Drawn into the feedback so it leaves a trail; tip: a bright point where each copy is now.
+  trail: { tip: P(0, 1, 0) },
+  // The newest stroke paints over older trail (amt), instead of adding light.
+  cover: { amt: P(0, 1, 1), tip: P(0, 1, 1) },
+  // Drawn into the feedback and pushed into the fluid (force) on hits and beats.
+  dye: { force: P(0, 1.5, 1) },
+  // Throws GPU particles from the copies; body: how visible the body itself stays; top: sparks drawn on top.
+  sparks: {
+    count: P(1024, 65536, 16384, { log: true, int: true }), size: P(1.5, 6, 2.6), speed: P(0.05, 1, 0.3), curl: P(0, 0.5, 0.05),
+    zoomFlow: P(-0.5, 1.5, 0.5), lift: P(-0.2, 0.2, 0), drag: P(1, 5, 2.5), life: P(0.1, 0.8, 0.3), spread: P(0.01, 0.2, 0.05),
+    surge: P(0, 1, 0), top: C([0, 1], 0), body: P(0, 1, 1),
+  },
+};
+
+// ------------------------------------------------------------------ fuse
+
+/**
+ * A second shape fused into the body. mode 0: smooth union (k = blend radius, grows with the bass);
+ * 1: morph mix(body, other, t); 2: the body only lights up inside (inside 1) or along (0) the other shape.
+ * t drifts toward a music driver by depth: drive 0 none, 1 bar-locked sweep every rate bars, 2 bass,
+ * 3 melody, 4 loudness, 5 beat surge.
+ */
+export const FUSE_SCHEMA: Schema = {
+  mode: C([0, 1, 2], 0), k: P(0.02, 0.25, 0.08), t: P(0, 1, 0.5), drive: C([0, 1, 2, 3, 4, 5], 1), depth: P(0, 1, 0.6),
+  rate: C([2, 4, 8, 16], 8), inside: C([0, 1], 1),
+};
+
+// ------------------------------------------------------------------ genes
+
+export interface Gene<K extends string = string> {
+  kind: K;
   p: Params;
-  xforms?: FlameXformGene[]; // flame only
-  /** merge only: [shape A, shape B (or the masked consumer in mode 2)], plain kinds. */
-  parts?: EmitterGene[];
 }
+export interface ShapeGene extends Gene<ShapeKind> {
+  xforms?: FlameXformGene[]; // flame only
+}
+export interface DeformGene extends Gene<DeformKind> {
+  /** Draw-space ops bending the body after its own deformation (absent when empty). */
+  ops?: OpGene[];
+}
+export interface FuseGene {
+  shape: ShapeGene;
+  p: Params;
+}
+export interface BodyGene {
+  shape: ShapeGene;
+  place: Gene<PlaceKind>;
+  motion: Gene<MotionKind>;
+  deform: DeformGene;
+  material: Gene<MaterialKind>;
+  emit: Gene<EmitKind>;
+  fuse?: FuseGene;
+}
+/** The six loci of a body, in a fixed order (homologous slots for crossover). */
+export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit'] as const;
+export type Locus = (typeof LOCI)[number];
+
+export const LOCUS_KINDS: Record<Locus, readonly string[]> = {
+  shape: SHAPE_KINDS, place: PLACE_KINDS, motion: MOTION_KINDS, deform: DEFORM_KINDS, material: MATERIAL_KINDS, emit: EMIT_KINDS,
+};
+export const LOCUS_SCHEMAS: Record<Locus, Record<string, Schema>> = {
+  shape: SHAPE_SCHEMAS, place: PLACE_SCHEMAS, motion: MOTION_SCHEMAS, deform: DEFORM_SCHEMAS, material: MATERIAL_SCHEMAS, emit: EMIT_SCHEMAS,
+};
 
 // ---------------------------------------------------------------- carrier
 
@@ -259,31 +391,41 @@ export interface ColorGene {
 // surge: beat envelope with a fast attack and slow ease that cruises with loudness and jumps on drops.
 export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge'] as const;
 export type Signal = (typeof SIGNALS)[number];
-// dr: the draw-space chain. em indexes flatEmitters() (a merge, then its two parts).
-export type GeneGroup = 'op' | 'em' | 'car' | 'col' | 'dr';
-export const GENE_GROUPS: GeneGroup[] = ['op', 'em', 'car', 'col', 'dr'];
+/**
+ * Reaction targets. op: chain[i]; car / col: the carrier / colour (i = 0); body loci, i = body index:
+ * sh shape, pl place, mo motion, de deform, ma material, em emit, fu fuse, fs fused shape;
+ * dr: a body's deform op, i = body * MAX_DRAW + op.
+ */
+export type GeneGroup = 'op' | 'car' | 'col' | 'sh' | 'pl' | 'mo' | 'de' | 'ma' | 'em' | 'fu' | 'fs' | 'dr';
+export const GENE_GROUPS: GeneGroup[] = ['op', 'car', 'col', 'sh', 'pl', 'mo', 'de', 'ma', 'em', 'fu', 'fs', 'dr'];
+export const BODY_GROUPS: Record<Locus, GeneGroup> = { shape: 'sh', place: 'pl', motion: 'mo', deform: 'de', material: 'ma', emit: 'em' };
 export interface ReactionGene {
   src: Signal;
   g: GeneGroup;
-  i: number; // index into chain / flat emitters / draw chain (0 for car / col)
+  i: number;
   k: string; // parameter name
   gain: number; // -1..1, fraction of the parameter's half range per unit signal
 }
 export const MAX_REACTIONS = 6;
-/** Parameters reactions may not touch (structural switches). */
-const NO_REACT = new Set(['mode', 'shape', 'spawn', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'camSpin', 'sides', 'ra', 'rb', 'n', 'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside']);
+/** Parameters reactions may not touch (structural switches, counts, clocks). */
+const NO_REACT = new Set([
+  'mode', 'form', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'sides', 'ra', 'rb', 'n',
+  'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
+  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse',
+]);
 
 // ----------------------------------------------------------------- genome
 
-/** Genome format. 1: before draw chains and merges (still loads unchanged). */
-export const GENOME_VERSION = 2;
+/**
+ * Genome format. 1: before draw chains and merges; 2: one emitter object per light source
+ * (legacy.ts); 3: bodies made of sub-genes. Older formats load through repair().
+ */
+export const GENOME_VERSION = 3;
 
 export interface Genome {
-  v: 2;
+  v: 3;
   chain: OpGene[];
-  /** Draw-space shaping ops (absent when empty, as in every format-1 genome). */
-  draw?: OpGene[];
-  emitters: EmitterGene[];
+  bodies: BodyGene[];
   carrier: CarrierGene;
   color: ColorGene;
   reactions: ReactionGene[];
@@ -291,22 +433,10 @@ export interface Genome {
 }
 
 export const MAX_CHAIN = 6;
-/** Hard cap for any genome (older children may have 3). */
-export const MAX_EMITTERS = 3;
+/** Hard cap for any genome (converted old children may have 3). */
+export const MAX_BODIES = 3;
 /** Cap for newly bred children: one body, a second layer only by a rare mutation. */
-export const MAX_CHILD_EMITTERS = 2;
-/** Emitters plus merge parts: the shaders have four emitter uniform slots. */
-export const MAX_FLAT = 4;
-
-/** Emitters with each merge followed by its two parts: reaction 'em' indices and shader slots. */
-export function flatEmitters(g: Pick<Genome, 'emitters'>): EmitterGene[] {
-  const out: EmitterGene[] = [];
-  for (const e of g.emitters) {
-    out.push(e);
-    if (e.kind === 'merge' && e.parts) out.push(...e.parts);
-  }
-  return out;
-}
+export const MAX_CHILD_BODIES = 2;
 
 export type Species =
   | 'terrain' | 'rain' | 'vortex' | 'ink' | 'scope' | 'plasma' | 'mirror'
@@ -339,7 +469,7 @@ export function inRange(v: number, s: ParamSpec): boolean {
   return !s.int || Number.isInteger(v);
 }
 
-function repairParams(p: unknown, schema: Schema): Params {
+export function repairParams(p: unknown, schema: Schema): Params {
   const src = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
   const out: Params = {};
   for (const k of Object.keys(schema)) {
@@ -355,15 +485,32 @@ export function defaultParams(schema: Schema): Params {
   return out;
 }
 
+/** Schema of a body locus gene. */
+export function locusSchema(locus: Locus, kind: string): Schema {
+  return LOCUS_SCHEMAS[locus][kind] ?? {};
+}
+
 export function schemaFor(g: Genome, group: GeneGroup, i: number): Schema | null {
   if (group === 'op') return g.chain[i] ? OP_SCHEMAS[g.chain[i].op] : null;
-  if (group === 'dr') return g.draw?.[i] ? OP_SCHEMAS[g.draw[i].op] : null;
-  if (group === 'em') {
-    const e = flatEmitters(g)[i];
-    return e ? EMITTER_SCHEMAS[e.kind] : null;
-  }
   if (group === 'car') return CARRIER_SCHEMA;
-  return COLOR_SCHEMA;
+  if (group === 'col') return COLOR_SCHEMA;
+  if (group === 'dr') {
+    const o = g.bodies[Math.floor(i / MAX_DRAW)]?.deform.ops?.[i % MAX_DRAW];
+    return o ? OP_SCHEMAS[o.op] : null;
+  }
+  const b = g.bodies[i];
+  if (!b) return null;
+  switch (group) {
+    case 'sh': return SHAPE_SCHEMAS[b.shape.kind];
+    case 'pl': return PLACE_SCHEMAS[b.place.kind];
+    case 'mo': return MOTION_SCHEMAS[b.motion.kind];
+    case 'de': return DEFORM_SCHEMAS[b.deform.kind];
+    case 'ma': return MATERIAL_SCHEMAS[b.material.kind];
+    case 'em': return EMIT_SCHEMAS[b.emit.kind];
+    case 'fu': return b.fuse ? FUSE_SCHEMA : null;
+    case 'fs': return b.fuse ? SHAPE_SCHEMAS[b.fuse.shape.kind] : null;
+  }
+  return null;
 }
 
 export function reactable(schema: Schema): string[] {
@@ -372,6 +519,7 @@ export function reactable(schema: Schema): string[] {
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
 
 export function repairXform(x: Partial<FlameXformGene> | undefined): FlameXformGene {
   const src = x ?? {};
@@ -408,81 +556,136 @@ export function repairXform(x: Partial<FlameXformGene> | undefined): FlameXformG
   return out;
 }
 
-function repairOp(o: Partial<OpGene> | undefined): OpGene | null {
+export function repairOp(o: Partial<OpGene> | undefined): OpGene | null {
   if (!o || !OP_KINDS.includes(o.op as OpKind)) return null;
   const op = o.op as OpKind;
   const stage: Stage = stageFree(op) ? (o.stage === 'view' ? 'view' : 'warp') : 'warp';
   return { op, stage, w: clamp(num(o.w, 1), 0, 1), p: repairParams(o.p, OP_SCHEMAS[op]) };
 }
 
-function repairDrawOp(o: Partial<OpGene> | undefined): OpGene | null {
+export function repairDrawOp(o: Partial<OpGene> | undefined): OpGene | null {
   if (!o || !isDrawOp(o.op as string)) return null;
   const op = o.op as OpKind;
   return { op, stage: 'warp', w: clamp(num(o.w, 1), 0, 1), p: repairParams(o.p, OP_SCHEMAS[op]) };
 }
 
-/** A merge whose parts break the rules degrades: parts swap roles, or it falls back to its first part. */
-function repairMerge(e: Partial<EmitterGene>): EmitterGene | null {
-  const parts = (Array.isArray(e.parts) ? e.parts : []).map((x) => (x && x.kind !== 'merge' ? repairEmitter(x) : null)).filter((x): x is EmitterGene => !!x);
-  if (parts.length < 2 || parts[0].kind === parts[1].kind) return parts[0] ?? null;
-  let [a, b] = parts;
-  const p = repairParams(e.p, EMITTER_SCHEMAS.merge);
-  if (p.mode !== 2 && !(isSdfKind(a.kind) && isSdfKind(b.kind))) p.mode = 2;
-  if (p.mode === 2 && !isSdfKind(a.kind)) {
-    if (!isSdfKind(b.kind)) return a;
-    [a, b] = [b, a];
-  }
-  for (const x of p.mode === 2 ? [a] : [a, b]) {
-    // Lissajous / pendulum curves have no distance field: a shaped wave becomes a circle.
-    if (x.kind === 'wave' && (x.p.shape === 3 || x.p.shape === 5)) x.p.shape = 1;
-  }
-  a.layer = 'fb';
-  b.layer = 'fb';
-  const geo = GEOMETRY_KINDS.includes(b.kind);
-  return { kind: 'merge', layer: geo ? 'fb' : e.layer === 'top' ? 'top' : 'fb', p, parts: [a, b] };
+function repairGene<K extends string>(raw: unknown, kinds: readonly K[], schemas: Record<string, Schema>, fallback: K): Gene<K> {
+  const r = isObj(raw) ? raw : {};
+  const kind = kinds.includes(r.kind as K) ? (r.kind as K) : fallback;
+  return { kind, p: repairParams(r.p, schemas[kind]) };
 }
 
-function repairEmitter(e: Partial<EmitterGene> | undefined): EmitterGene | null {
-  if (!e || !EMITTER_KINDS.includes(e.kind as EmitterKind)) return null;
-  const kind = e.kind as EmitterKind;
-  if (kind === 'merge') return repairMerge(e);
-  // Flames and particles need accumulation; field emitters may sit on either layer.
-  const layer: Layer = kind === 'flame' ? 'fb' : e.layer === 'top' ? 'top' : 'fb';
-  const out: EmitterGene = { kind, layer, p: repairParams(e.p, EMITTER_SCHEMAS[kind]) };
-  if (kind === 'flame') {
-    const xs = (Array.isArray(e.xforms) ? e.xforms : []).slice(0, MAX_XFORMS).map(repairXform);
+export function repairShape(raw: unknown, fallback: ShapeKind = 'dot'): ShapeGene {
+  const g = repairGene(raw, SHAPE_KINDS, SHAPE_SCHEMAS, fallback) as ShapeGene;
+  if (g.kind === 'flame') {
+    const src = isObj(raw) && Array.isArray(raw.xforms) ? (raw.xforms as Partial<FlameXformGene>[]) : [];
+    const xs = src.slice(0, MAX_XFORMS).map(repairXform);
     if (!xs.length) xs.push(repairXform({ vars: { linear: 0.5, spherical: 0.5 } }), repairXform({ aff: [0.5, 0, 0, 0.5, 0.5, 0], vars: { sinusoidal: 1 } }));
-    out.xforms = xs;
+    g.xforms = xs;
   }
-  return out;
+  return g;
+}
+
+/** Copy count a placement expresses (fold placements: 1 evaluation, reported as 1). */
+export function copyCount(place: Gene<PlaceKind>): number {
+  switch (place.kind) {
+    case 'orbit': case 'stations': case 'row': case 'float': case 'outline': return place.p.count;
+    case 'walker': return place.p.heads;
+    default: return 1;
+  }
+}
+/** Name of the copy-count parameter of a placement, if it has one. */
+export function countKey(k: PlaceKind): string | null {
+  if (k === 'walker') return 'heads';
+  if (k === 'orbit' || k === 'stations' || k === 'row' || k === 'float' || k === 'outline') return 'count';
+  return null;
 }
 
 /**
- * Returns a valid genome: every parameter clamped into its spec, unknown
- * fields dropped, caps enforced, dangling reactions retargeted or removed.
- * Idempotent: repair(repair(g)) deep-equals repair(g).
+ * One body made valid: every locus kind known and its params in range, and the
+ * combinations the renderer expresses: chunk shapes take a single copy and no
+ * paint-over, a flame needs a placement with a position and a trail, a curve
+ * cannot use a grid or the solid materials, a fused shape needs distance fields.
+ */
+export function repairBody(raw: unknown): BodyGene {
+  const r = isObj(raw) ? raw : {};
+  const shape = repairShape(r.shape);
+  const place = repairGene(r.place, PLACE_KINDS, PLACE_SCHEMAS, 'point');
+  const motion = repairGene(r.motion, MOTION_KINDS, MOTION_SCHEMAS, 'none');
+  const deform = repairGene(r.deform, DEFORM_KINDS, DEFORM_SCHEMAS, 'none') as DeformGene;
+  const material = repairGene(r.material, MATERIAL_KINDS, MATERIAL_SCHEMAS, 'glow');
+  const emit = repairGene(r.emit, EMIT_KINDS, EMIT_SCHEMAS, 'trail');
+  const rawOps = isObj(r.deform) && Array.isArray(r.deform.ops) ? (r.deform.ops as Partial<OpGene>[]) : [];
+  const ops = rawOps.map(repairDrawOp).filter((o): o is OpGene => !!o).slice(0, MAX_DRAW);
+  if (ops.length) deform.ops = ops;
+
+  const cls = SHAPE_CLASS[shape.kind];
+  const setKind = <K extends string>(gene: Gene<K>, kind: K, schemas: Record<string, Schema>, keep: Params = {}) => {
+    gene.kind = kind;
+    gene.p = repairParams({ ...keep }, schemas[kind]);
+  };
+  // Chunk shapes are drawn once: every copy count becomes 1.
+  if (cls === 'field' || cls === 'flame') {
+    const ck = countKey(place.kind);
+    if (ck) place.p[ck] = 1;
+    if (place.kind === 'float') place.p.fuse = 0;
+  }
+  if (cls === 'flame' && isFoldPlace(place.kind)) setKind(place, 'point', PLACE_SCHEMAS, { x: place.p.x ?? 0, y: place.p.y ?? 0 });
+  if (cls === 'flame' && emit.kind !== 'trail' && emit.kind !== 'sparks') setKind(emit, 'trail', EMIT_SCHEMAS);
+  if (cls === 'curve' && place.kind === 'grid') setKind(place, 'point', PLACE_SCHEMAS);
+  if (cls === 'curve' && (material.kind === 'fill' || material.kind === 'textured' || material.kind === 'chrome')) {
+    setKind(material, 'line', MATERIAL_SCHEMAS, { gain: material.p.gain, hue: material.p.hue });
+  }
+  if (cls !== 'sdf' && emit.kind === 'cover' && !(cls === 'curve' && isObj(r.fuse))) setKind(emit, 'trail', EMIT_SCHEMAS, { tip: emit.p.tip });
+
+  const body: BodyGene = { shape, place, motion, deform, material, emit };
+  if (isObj(r.fuse)) {
+    const f = r.fuse as Record<string, unknown>;
+    const fs = repairShape(f.shape, 'dot');
+    const fp = repairParams(f.p, FUSE_SCHEMA);
+    if (fp.mode !== 2 && !sdfCapable(shape)) fp.mode = 2;
+    // The same kind twice only makes sense as a region (e.g. sparks born inside a disc).
+    const ok = sdfCapable(fs) && (fs.kind !== shape.kind || fp.mode === 2);
+    if (ok) {
+      body.fuse = { shape: fs, p: fp };
+      // A fused curve is drawn through its distance field.
+      if (shape.kind === 'curve' && (shape.p.form === 3 || shape.p.form === 5)) shape.p.form = 1;
+    }
+  }
+  if (cls === 'curve' && !body.fuse && emit.kind === 'cover') setKind(emit, 'trail', EMIT_SCHEMAS, { tip: emit.p.tip });
+  return body;
+}
+
+/**
+ * Returns a valid genome: every parameter clamped into its spec, unknown fields
+ * dropped, caps enforced, dangling reactions retargeted or removed, and the GPU
+ * cost brought under the budget by dropping copies. Older formats (1, 2) are
+ * converted first. Idempotent: repair(repair(g)) deep-equals repair(g).
  */
 export function repair(input: unknown): Genome {
-  const g = (input && typeof input === 'object' ? input : {}) as Partial<Genome>;
+  let src = (isObj(input) ? input : {}) as Record<string, unknown>;
+  if (src.v !== 3 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
+  const g = src as Partial<Genome>;
   const chain = (Array.isArray(g.chain) ? g.chain : []).map(repairOp).filter((o): o is OpGene => !!o).slice(0, MAX_CHAIN);
-  const draw = (Array.isArray(g.draw) ? g.draw : []).map(repairDrawOp).filter((o): o is OpGene => !!o).slice(0, MAX_DRAW);
-  // Kinds are unique across emitters and merge parts (they share uniform arrays); one merge at most.
-  const seen = new Set<EmitterKind>();
-  const emitters: EmitterGene[] = [];
-  let flat = 0;
-  for (const e of Array.isArray(g.emitters) ? g.emitters : []) {
-    let r = repairEmitter(e);
-    if (r?.kind === 'merge' && (seen.has('merge') || r.parts!.some((x) => seen.has(x.kind)) || flat + 3 > MAX_FLAT)) {
-      r = r.parts!.find((x) => !seen.has(x.kind)) ?? null;
+
+  const bodies: BodyGene[] = [];
+  const used = new Set<ShapeKind>();
+  let sparks = false;
+  for (const raw of Array.isArray(g.bodies) ? g.bodies : []) {
+    if (bodies.length >= MAX_BODIES) break;
+    const b = repairBody(raw);
+    if (UNIQUE_SHAPES.includes(b.shape.kind) && used.has(b.shape.kind)) continue;
+    if (b.fuse && UNIQUE_SHAPES.includes(b.fuse.shape.kind) && (used.has(b.fuse.shape.kind) || b.fuse.shape.kind === b.shape.kind)) delete b.fuse;
+    // One particle system per genome: a second sparks body leaves a plain trail.
+    if (b.emit.kind === 'sparks') {
+      if (sparks) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
+      sparks = true;
     }
-    if (!r || seen.has(r.kind) || flat + 1 > MAX_FLAT) continue;
-    seen.add(r.kind);
-    for (const x of r.parts ?? []) seen.add(x.kind);
-    emitters.push(r);
-    flat += 1 + (r.parts?.length ?? 0);
-    if (emitters.length >= MAX_EMITTERS) break;
+    used.add(b.shape.kind);
+    if (b.fuse) used.add(b.fuse.shape.kind);
+    bodies.push(b);
   }
-  if (!emitters.length) emitters.push({ kind: 'wave', layer: 'fb', p: defaultParams(EMITTER_SCHEMAS.wave) });
+  if (!bodies.length) bodies.push(repairBody({ shape: { kind: 'curve' }, place: { kind: 'point' }, material: { kind: 'line' }, emit: { kind: 'trail' } }));
   const ck = CARRIER_KINDS.includes(g.carrier?.kind as CarrierKind) ? (g.carrier!.kind as CarrierKind) : 'warp';
   const carrier: CarrierGene = { kind: ck, p: repairParams(g.carrier?.p, CARRIER_SCHEMA) };
   const scheme = SCHEMES.includes(g.color?.scheme as Scheme) ? (g.color!.scheme as Scheme) : 'analogous';
@@ -496,21 +699,17 @@ export function repair(input: unknown): Genome {
     lo = c - 0.075;
     hi = c + 0.075;
   }
-  // draw only appears when non-empty, so format-1 genomes repair to the same JSON (bar the version).
-  const out: Genome = draw.length
-    ? { v: 2, chain, draw, emitters, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] }
-    : { v: 2, chain, emitters, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
-  const flatLen = flatEmitters(out).length;
+  const out: Genome = { v: 3, chain, bodies, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
+  fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
     if (out.reactions.length >= MAX_REACTIONS) break;
     if (!r || !SIGNALS.includes(r.src as Signal)) continue;
     const group = GENE_GROUPS.includes(r.g) ? r.g : null;
     if (!group) continue;
-    const len = group === 'op' ? chain.length : group === 'em' ? flatLen : group === 'dr' ? draw.length : 1;
-    if (!len) continue;
-    const i = group === 'op' || group === 'em' || group === 'dr' ? ((Math.floor(num(r.i, 0)) % len) + len) % len : 0;
-    const keys = reactable(schemaFor(out, group, i)!);
+    const i = reactionIndex(out, group, num(r.i, 0));
+    if (i < 0) continue;
+    const keys = reactable(schemaFor(out, group, i) ?? {});
     if (!keys.length) continue;
     const k = keys.includes(r.k) ? r.k : keys.includes('gain') ? 'gain' : keys[0];
     const gain = clamp(num(r.gain, 0.3), -1, 1);
@@ -520,6 +719,44 @@ export function repair(input: unknown): Genome {
   return out;
 }
 
+/** A reaction index wrapped onto an existing target of the group, or -1 when the group has none. */
+function reactionIndex(g: Genome, group: GeneGroup, raw: number): number {
+  const wrap = (n: number) => (n ? ((Math.floor(raw) % n) + n) % n : -1);
+  if (group === 'car' || group === 'col') return 0;
+  if (group === 'op') return wrap(g.chain.length);
+  if (group === 'dr') {
+    const slots: number[] = [];
+    g.bodies.forEach((b, bi) => b.deform.ops?.forEach((_o, j) => slots.push(bi * MAX_DRAW + j)));
+    if (!slots.length) return -1;
+    return slots.includes(Math.floor(raw)) ? Math.floor(raw) : slots[wrap(slots.length)];
+  }
+  if (group === 'fu' || group === 'fs') {
+    const withFuse = g.bodies.map((b, bi) => (b.fuse ? bi : -1)).filter((x) => x >= 0);
+    if (!withFuse.length) return -1;
+    return withFuse.includes(Math.floor(raw)) ? Math.floor(raw) : withFuse[0];
+  }
+  return wrap(g.bodies.length);
+}
+
+/** Drops copies (most expensive body first) until the estimated cost fits the budget. */
+function fitBudget(g: Genome): void {
+  for (let guard = 0; guard < 24 && estimateCost(g) > COST_BUDGET_MS * 0.95; guard++) {
+    let best: BodyGene | null = null;
+    let bc = 0;
+    for (const b of g.bodies) {
+      const ck = countKey(b.place.kind);
+      if (!ck || b.place.p[ck] <= 1) continue;
+      const c = bodyCost(b);
+      if (c > bc) {
+        bc = c;
+        best = b;
+      }
+    }
+    if (!best) break;
+    best.place.p[countKey(best.place.kind)!] -= 1;
+  }
+}
+
 function round4(x: number): number {
   return Math.round(x * 1e4) / 1e4;
 }
@@ -527,11 +764,15 @@ function round4(x: number): number {
 /** Lists every rule a genome breaks (empty when valid). Does not modify it. */
 export function validate(g: Genome): string[] {
   const errs: string[] = [];
-  const chk = (p: Params, s: Schema, where: string) => {
+  const chk = (p: Params | undefined, s: Schema, where: string) => {
+    if (!p || typeof p !== 'object') {
+      errs.push(`${where} params`);
+      return;
+    }
     for (const k of Object.keys(s)) if (!inRange(p[k], s[k])) errs.push(`${where}.${k}=${p[k]} out of range`);
     for (const k of Object.keys(p)) if (!(k in s)) errs.push(`${where}.${k} unknown`);
   };
-  if (g.v !== 2) errs.push('version');
+  if (g.v !== 3) errs.push('version');
   if (!Array.isArray(g.chain) || g.chain.length > MAX_CHAIN) errs.push('chain length');
   g.chain?.forEach((o, i) => {
     if (!OP_KINDS.includes(o.op)) errs.push(`chain[${i}] op ${o.op}`);
@@ -539,61 +780,78 @@ export function validate(g: Genome): string[] {
     if (!(o.w >= 0 && o.w <= 1)) errs.push(`chain[${i}].w`);
     if (o.stage === 'view' && !stageFree(o.op)) errs.push(`chain[${i}] stage`);
   });
-  if (g.draw !== undefined) {
-    if (!Array.isArray(g.draw) || !g.draw.length || g.draw.length > MAX_DRAW) errs.push('draw length');
-    g.draw?.forEach?.((o, i) => {
-      if (!isDrawOp(o.op)) errs.push(`draw[${i}] op ${o.op}`);
-      else chk(o.p, OP_SCHEMAS[o.op], `draw[${i}]`);
-      if (!(o.w >= 0 && o.w <= 1)) errs.push(`draw[${i}].w`);
-      if (o.stage !== 'warp') errs.push(`draw[${i}] stage`);
-    });
-  }
-  if (!Array.isArray(g.emitters) || g.emitters.length < 1 || g.emitters.length > MAX_EMITTERS) errs.push('emitter count');
-  const kinds = new Set<string>();
-  const checkEmitter = (e: EmitterGene, where: string) => {
-    if (!EMITTER_KINDS.includes(e.kind)) {
-      errs.push(`${where} kind`);
-      return;
+  if (!Array.isArray(g.bodies) || g.bodies.length < 1 || g.bodies.length > MAX_BODIES) errs.push('body count');
+  const used = new Set<string>();
+  let sparks = 0;
+  g.bodies?.forEach((b, i) => {
+    const w = `bodies[${i}]`;
+    for (const locus of LOCI) {
+      const gene = b[locus] as Gene;
+      if (!gene || !LOCUS_KINDS[locus].includes(gene.kind)) {
+        errs.push(`${w}.${locus} kind`);
+        continue;
+      }
+      chk(gene.p, locusSchema(locus, gene.kind), `${w}.${locus}`);
     }
-    chk(e.p, EMITTER_SCHEMAS[e.kind], where);
-    if (kinds.has(e.kind)) errs.push(`${where} duplicate kind`);
-    kinds.add(e.kind);
-    if (e.kind === 'flame') {
-      if (!e.xforms || e.xforms.length < 1 || e.xforms.length > MAX_XFORMS) errs.push('flame xforms count');
-      e.xforms?.forEach((x, j) => {
+    if (errs.length) return;
+    const cls = SHAPE_CLASS[b.shape.kind];
+    const checkXforms = (s: ShapeGene, where: string) => {
+      if (s.kind !== 'flame') {
+        if (s.xforms) errs.push(`${where} stray xforms`);
+        return;
+      }
+      if (!s.xforms || s.xforms.length < 1 || s.xforms.length > MAX_XFORMS) errs.push(`${where} xforms count`);
+      s.xforms?.forEach((x, j) => {
         if (x.aff.length !== 6 || x.aff.some((a) => !(a >= AFF_RANGE[0] && a <= AFF_RANGE[1]))) errs.push(`xform[${j}].aff`);
         if (!(x.weight >= 0.05 && x.weight <= 1)) errs.push(`xform[${j}].weight`);
         if (!(x.color >= 0 && x.color <= 1)) errs.push(`xform[${j}].color`);
         const vs = Object.entries(x.vars);
-        if (!vs.length || vs.some(([k, w]) => !FLAME_VARIATIONS.includes(k as FlameVar) || !(w! >= 0 && w! <= 1))) errs.push(`xform[${j}].vars`);
+        if (!vs.length || vs.some(([k, v]) => !FLAME_VARIATIONS.includes(k as FlameVar) || !(v! >= 0 && v! <= 1))) errs.push(`xform[${j}].vars`);
         if (!LOCKS.includes(x.spin)) errs.push(`xform[${j}].spin`);
         if (!(x.bass >= 0 && x.bass <= 0.3)) errs.push(`xform[${j}].bass`);
         if (!(x.pulse >= 0 && x.pulse <= 0.3)) errs.push(`xform[${j}].pulse`);
         if (!Array.isArray(x.drift) || x.drift.length !== 2 || x.drift.some((d) => !(d >= 0 && d <= XFORM_DRIFT))) errs.push(`xform[${j}].drift`);
-        if (x.alt && Object.entries(x.alt).some(([k, w]) => !FLAME_VARIATIONS.includes(k as FlameVar) || !(w! >= 0 && w! <= 1))) errs.push(`xform[${j}].alt`);
+        if (x.alt && Object.entries(x.alt).some(([k, v]) => !FLAME_VARIATIONS.includes(k as FlameVar) || !(v! >= 0 && v! <= 1))) errs.push(`xform[${j}].alt`);
       });
-      if (e.layer !== 'fb') errs.push('flame layer');
-    } else if (e.xforms) errs.push(`${where} stray xforms`);
-    if (e.kind === 'merge') {
-      const ps = e.parts;
-      if (!Array.isArray(ps) || ps.length !== 2) {
-        errs.push(`${where} parts`);
-        return;
+    };
+    checkXforms(b.shape, `${w}.shape`);
+    if (b.deform.ops !== undefined) {
+      if (!Array.isArray(b.deform.ops) || !b.deform.ops.length || b.deform.ops.length > MAX_DRAW) errs.push(`${w} deform ops length`);
+      b.deform.ops?.forEach?.((o, j) => {
+        if (!isDrawOp(o.op)) errs.push(`${w}.ops[${j}] op ${o.op}`);
+        else chk(o.p, OP_SCHEMAS[o.op], `${w}.ops[${j}]`);
+        if (!(o.w >= 0 && o.w <= 1)) errs.push(`${w}.ops[${j}].w`);
+        if (o.stage !== 'warp') errs.push(`${w}.ops[${j}] stage`);
+      });
+    }
+    const ck = countKey(b.place.kind);
+    if ((cls === 'field' || cls === 'flame') && ck && b.place.p[ck] !== 1) errs.push(`${w} chunk shape with copies`);
+    if (cls === 'flame' && isFoldPlace(b.place.kind)) errs.push(`${w} flame fold placement`);
+    if (cls === 'flame' && b.emit.kind !== 'trail' && b.emit.kind !== 'sparks') errs.push(`${w} flame emission`);
+    if (cls === 'curve' && b.place.kind === 'grid') errs.push(`${w} curve on a grid`);
+    if (cls === 'curve' && (b.material.kind === 'fill' || b.material.kind === 'textured' || b.material.kind === 'chrome')) errs.push(`${w} curve material`);
+    if (cls !== 'sdf' && b.emit.kind === 'cover' && !(cls === 'curve' && b.fuse)) errs.push(`${w} cover without a distance field`);
+    for (const k of [b.shape.kind, ...(b.fuse?.shape ? [b.fuse.shape.kind] : [])]) {
+      if (!UNIQUE_SHAPES.includes(k)) continue;
+      if (used.has(k)) errs.push(`${w} duplicate ${k}`);
+      used.add(k);
+    }
+    if (b.emit.kind === 'sparks') sparks++;
+    if (b.fuse) {
+      const f = b.fuse;
+      if (!f.shape || !SHAPE_KINDS.includes(f.shape.kind)) errs.push(`${w}.fuse shape kind`);
+      else {
+        chk(f.shape.p, SHAPE_SCHEMAS[f.shape.kind], `${w}.fuse.shape`);
+        checkXforms(f.shape, `${w}.fuse.shape`);
+        if (!sdfCapable(f.shape)) errs.push(`${w}.fuse shape has no distance field`);
+        if (f.shape.kind === b.shape.kind && f.p.mode !== 2) errs.push(`${w}.fuse same kind`);
       }
-      ps.forEach((x, j) => {
-        if (x.kind === 'merge') errs.push(`${where}.parts[${j}] nested merge`);
-        else checkEmitter(x, `${where}.parts[${j}]`);
-        if (x.layer !== 'fb') errs.push(`${where}.parts[${j}] layer`);
-      });
-      if (!isSdfKind(ps[0].kind)) errs.push(`${where} part A has no distance field`);
-      if (e.p.mode !== 2 && !isSdfKind(ps[1].kind)) errs.push(`${where} part B has no distance field`);
-      for (const x of e.p.mode === 2 ? [ps[0]] : ps) if (x.kind === 'wave' && (x.p.shape === 3 || x.p.shape === 5)) errs.push(`${where} wave shape`);
-      if (GEOMETRY_KINDS.includes(ps[1].kind) && e.layer !== 'fb') errs.push(`${where} layer`);
-    } else if (e.parts) errs.push(`${where} stray parts`);
-  };
-  g.emitters?.forEach((e, i) => checkEmitter(e, `emitters[${i}]`));
-  if (g.emitters?.filter((e) => e.kind === 'merge').length > 1) errs.push('more than one merge');
-  if (g.emitters && flatEmitters(g).length > MAX_FLAT) errs.push('too many emitter slots');
+      chk(f.p, FUSE_SCHEMA, `${w}.fuse`);
+      if (f.p.mode !== 2 && !sdfCapable(b.shape)) errs.push(`${w}.fuse needs a distance field`);
+      if (b.shape.kind === 'curve' && (b.shape.p.form === 3 || b.shape.p.form === 5)) errs.push(`${w}.fuse curve form`);
+    }
+  });
+  if (sparks > 1) errs.push('more than one sparks emission');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
   if (!SCHEMES.includes(g.color?.scheme)) errs.push('scheme');
@@ -620,12 +878,25 @@ export function fnv1a(s: string): number {
   return h >>> 0;
 }
 
+/** Shader layer a body draws on: 'fb' accumulates into the feedback, 'top' is redrawn in the composite. */
+export function bodyLayer(b: BodyGene): 'fb' | 'top' {
+  return b.emit.kind === 'none' ? 'top' : 'fb';
+}
+
+/** Structural key of one body (what changes its shader code). Motion and all numbers are uniforms. */
+export function bodyKey(b: BodyGene): string {
+  const place = isFoldPlace(b.place.kind) ? b.place.kind : 'loop';
+  const metaball = b.shape.kind === 'dot' && (b.place.p.fuse ?? 0) > 0 ? 'm' : '';
+  const fuse = b.fuse ? `+${b.fuse.p.mode}${b.fuse.shape.kind}${b.fuse.p.inside}` : '';
+  const emit = b.emit.kind === 'cover' ? 'c' : b.emit.kind === 'sparks' ? (b.emit.p.top > 0.5 ? 'st' : 's') : '';
+  return `${b.shape.kind}:${place}${metaball}:${b.deform.kind}:${b.material.kind}${b.material.kind === 'textured' ? b.material.p.tex : ''}:${bodyLayer(b)}${emit}${fuse}`;
+}
+
 /** Everything that changes the compiled shaders (numeric params are uniforms). */
 export function structuralKey(g: Genome): string {
-  // Draw ops are uniform driven (one shared loop in the shaders), so they are not structural.
   const ops = g.chain.map((o) => `${o.op}${o.stage === 'view' ? '@v' : ''}`).join(',');
-  const em = g.emitters.map((e) => `${e.kind}${e.parts ? `[${e.p.mode}:${e.parts.map((x) => x.kind).join('+')}]` : ''}@${e.layer}`).sort().join(',');
-  return `${ops}|${em}|${g.carrier.kind}|r${g.color.p.reflect}t${g.color.p.tonemap}`;
+  const bodies = g.bodies.map(bodyKey).join(',');
+  return `${ops}|${bodies}|${g.carrier.kind}|r${g.color.p.reflect}t${g.color.p.tonemap}`;
 }
 
 export function genomeHash(g: Genome): number {
@@ -636,43 +907,72 @@ export function cloneGenome(g: Genome): Genome {
   return JSON.parse(JSON.stringify(g)) as Genome;
 }
 
+export function cloneBody(b: BodyGene): BodyGene {
+  return JSON.parse(JSON.stringify(b)) as BodyGene;
+}
+
 // -------------------------------------------------------- classification
 
 export function speciesScores(g: Genome): Record<Species, number> {
   const s = Object.fromEntries(SPECIES.map((k) => [k, 0])) as Record<Species, number>;
-  for (const e of flatEmitters(g)) {
-    const p = e.p;
-    const w = 0.6 + 0.4 * Math.min(1, p.gain);
-    switch (e.kind) {
+  for (const b of g.bodies) {
+    const sp = b.shape.p;
+    const w = 0.6 + 0.4 * Math.min(1, b.material.p.gain);
+    const pk = b.place.kind;
+    const hidden = b.emit.kind === 'sparks' && b.emit.p.body < 0.3;
+    const shapeW = hidden ? 0.3 : 1;
+    switch (b.shape.kind) {
       case 'flame': s.flame += 3.2 * w; break;
-      case 'wave': s.scope += 2.4 * w; break;
-      case 'spectrum': s.spectrum += 2.6 * w; break;
-      case 'particles':
-        s.stars += 1.8 * w;
-        if (p.spawn === 5 && p.lift > 0.03) s.rain += 1.6;
-        if (p.spawn === 4 && p.zoomFlow > 0.5) s.stars += 1;
-        break;
-      case 'stars': s.stars += 2.6 * w; break;
-      case 'ink': (p.orbit > 0.5 ? (s.vortex += 0.8) : (s.ink += 1.4)); s.ink += 0.4; break;
-      case 'wire': s.wire += 2.6 * w; break;
+      case 'curve': s.scope += 2.4 * w * shapeW; break;
+      case 'bars': s.spectrum += 2.6 * w * shapeW; break;
+      case 'solid': s.wire += 2.6 * w * shapeW; break;
       case 'plasma': s.plasma += 2.6 * w; break;
       case 'aurora': s.aurora += 2.6 * w; break;
-      case 'blobs': s.chrome += 2.6 * w; break;
-      case 'edge': (p.mode === 2 ? (s.rain += 2.6) : (s.terrain += 2.6)); if (p.side === 1 || p.side === 2) s.rain += 0.6; break;
-      case 'tiles': s.mirror += 2.4 * w; break;
-      case 'horizon': s.terrain += 2.6 * w; break;
-      case 'orb': s.terrain += 1.2 * w; break;
-      case 'snake': s.scope += 2.4 * w; break;
+      case 'terrain': s.terrain += 2.6 * w; break;
+      case 'edge': (sp.mode === 2 ? (s.rain += 2.6) : (s.terrain += 2.6)); if (sp.side === 1 || sp.side === 2) s.rain += 0.6; break;
+      case 'dot':
+        if (pk === 'grid') s.stars += 2.6 * w * shapeW;
+        else if (pk === 'walker') s.scope += 2.4 * w * shapeW;
+        else if (pk === 'float' || b.material.kind === 'chrome') s.chrome += 2.6 * w * shapeW;
+        else if (pk === 'orbit') { s.vortex += 0.8 * shapeW; s.ink += 0.4 * shapeW; }
+        else if (pk === 'stations' || pk === 'row') s.ink += 1.8 * shapeW;
+        else s.terrain += 1.2 * w * shapeW;
+        break;
+      case 'polygon': case 'star':
+        if (pk === 'grid') s.mirror += 2.4 * w * shapeW;
+        else s.wire += 1.4 * w * shapeW;
+        break;
+      case 'segment':
+        if (pk === 'walker') s.scope += 2 * w * shapeW;
+        else s.wire += 1.2 * w * shapeW;
+        break;
+    }
+    if (b.material.kind === 'chrome' && b.shape.kind !== 'dot') s.chrome += 1;
+    if (b.emit.kind === 'dye') s.ink += 1;
+    if (b.emit.kind === 'sparks') {
+      const e = b.emit.p;
+      s.stars += 1.8;
+      if (pk === 'row' && e.lift > 0.03) s.rain += 1.6;
+      if (pk === 'point' && e.zoomFlow > 0.5) s.stars += 1;
+    }
+    if (pk === 'ring' || pk === 'mirror') s.mirror += 1.2;
+    if (b.deform.kind === 'twist') s.vortex += 0.6;
+    if (b.deform.kind === 'noise') s.ink += 0.3;
+    for (const o of b.deform.ops ?? []) {
+      if (o.op === 'swirl' || o.op === 'twist' || o.op === 'rotate') s.vortex += 0.6;
+      else if (o.op === 'mirror' || o.op === 'kaleido') s.mirror += 1.2;
+      else if (isVarOp(o.op)) s.flame += 0.4;
+    }
+    if (b.fuse) {
+      const f = b.fuse.shape;
+      if (f.kind === 'solid') s.wire += 1;
+      else if (f.kind === 'curve') s.scope += 1;
+      else if (f.kind === 'bars') s.spectrum += 1;
+      else if (f.kind === 'aurora') s.aurora += 1;
     }
   }
   if (g.carrier.kind === 'fluid') s.ink += 2.6;
   if (g.carrier.kind === 'flow') s.rain += 0.4;
-  for (const o of g.draw ?? []) {
-    // Shaping ops bend the drawing: they read as a (weaker) trait of their kind.
-    if (o.op === 'swirl' || o.op === 'twist' || o.op === 'rotate') s.vortex += 0.6;
-    else if (o.op === 'mirror' || o.op === 'kaleido') s.mirror += 1.2;
-    else if (isVarOp(o.op)) s.flame += 0.4;
-  }
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -723,38 +1023,62 @@ export function energyOf(g: Genome): Energy {
 export function estimateCost(g: Genome): number {
   let ms = 1.3; // feedback + composite + bloom + exposure + final
   for (const o of g.chain) ms += o.op === 'noise' ? 0.35 : isVarOp(o.op) ? 0.12 : o.op === 'stretch' ? 0.08 : 0.05;
-  // Draw ops run once per fullscreen pass (feedback and composite) before the fields.
-  for (const o of g.draw ?? []) ms += o.op === 'noise' ? 0.4 : isVarOp(o.op) ? 0.12 : 0.06;
   if (g.carrier.kind === 'fluid') ms += 1.1;
   if (g.carrier.kind === 'flow') ms += 0.35;
   if (g.carrier.p.blur > 0) ms += 0.2;
-  for (const e of g.emitters) ms += emitterCost(e);
+  for (const b of g.bodies) ms += bodyCost(b);
   return ms;
 }
 
-const FIELD_COST: Partial<Record<EmitterKind, number>> = {
-  spectrum: 0.25, stars: 1.1, ink: 0.25, wire: 1.5, plasma: 1.8, aurora: 0.9, blobs: 0.5, edge: 0.2, tiles: 0.5, horizon: 0.4, orb: 0.3, wave: 0.15,
-  snake: 0.2,
+/** One distance-field evaluation of a shape, per full-screen pass. */
+const SDF_COST: Record<ShapeKind, number> = {
+  dot: 0.03, polygon: 0.06, star: 0.07, segment: 0.03, solid: 1.3, bars: 0.2, curve: 0.35, aurora: 0.45,
+  plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3,
 };
-/** Distance-field evaluation per pixel (merge sides); the spiral wave walks its windings. */
-const SDF_COST: Partial<Record<EmitterKind, number>> = {
-  orb: 0.3, wire: 1.3, wave: 0.35, spectrum: 0.2, snake: 0.1, aurora: 0.45, blobs: 0.4, ink: 0.2,
-};
+const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 1.8, aurora: 0.9, edge: 0.2 };
+const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.04, fill: 0.04, glow: 0.03, dots: 0.08, textured: 0.22, chrome: 0.3 };
 
-function emitterCost(e: EmitterGene): number {
-  if (e.kind === 'particles') return 0.25 + (e.p.count / 65536) * 0.6;
-  if (e.kind === 'horizon') return 0.4 + (e.p.terrain > 0.001 ? 1.6 : 0);
-  if (e.kind === 'orb') return 0.3 + (e.p.arms > 0.001 ? 0.25 : 0);
-  if (e.kind === 'flame') return (e.p.count / 262144) * e.p.rounds * 1.3;
-  if (e.kind === 'merge' && e.parts) {
-    const [a, b] = e.parts;
-    const sdf = (x: EmitterGene) => (SDF_COST[x.kind] ?? 0.3) + (x.kind === 'orb' && x.p.arms > 0.001 ? 0.25 : 0);
-    // Shading plus both fields; a mask merge evaluates the consumer as usual (plus the feedback mask).
-    let ms = 0.2 + sdf(a);
-    if (e.p.mode === 2) ms += emitterCost(b) + (GEOMETRY_KINDS.includes(b.kind) ? 0.1 + sdf(a) : 0);
-    else ms += sdf(b);
+function deformCost(b: BodyGene): number {
+  let ms = 0;
+  switch (b.deform.kind) {
+    case 'arms': ms += 0.04 * b.deform.p.count; break;
+    case 'wobble': ms += 0.03; break;
+    case 'noise': ms += 0.32; break;
+    case 'twist': ms += 0.02; break;
+  }
+  for (const o of b.deform.ops ?? []) ms += o.op === 'noise' ? 0.4 : isVarOp(o.op) ? 0.12 : 0.06;
+  return ms;
+}
+
+/** Evaluations of the shape per pixel a placement costs. */
+export function evalCount(b: BodyGene): number {
+  if (b.place.kind === 'grid') return b.place.p.lattice === 0 && b.place.p.jitter > 0.25 ? 9 : 1;
+  if (isFoldPlace(b.place.kind)) return 1;
+  return copyCount(b.place);
+}
+
+export function bodyCost(b: BodyGene): number {
+  const cls = SHAPE_CLASS[b.shape.kind];
+  let ms = 0;
+  if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
+  if (cls === 'flame') {
+    ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.3;
+    if (b.fuse) ms += 0.2 + SDF_COST[b.fuse.shape.kind];
     return ms;
   }
-  return FIELD_COST[e.kind] ?? 0.3;
+  if (cls === 'field') {
+    const base = b.shape.kind === 'terrain' ? 0.4 + (b.shape.p.terrain > 0.001 ? 1.6 : 0) : FIELD_COST[b.shape.kind] ?? 0.3;
+    ms += base + deformCost(b) + (b.fuse ? 0.2 + SDF_COST[b.fuse.shape.kind] : 0);
+    return ms;
+  }
+  if (cls === 'curve' && !b.fuse) {
+    const draws = b.place.kind === 'ring' ? b.place.p.n : b.place.kind === 'mirror' ? 2 : copyCount(b.place);
+    return ms + 0.15 * draws;
+  }
+  const n = evalCount(b);
+  let per = SDF_COST[b.shape.kind] + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;
+  if (b.place.kind === 'grid' && b.place.p.links > 0.01) per += 0.06;
+  ms += n * per + MATERIAL_COST[b.material.kind] * (b.place.p.fuse > 0 ? 1 : Math.min(n, 3)) + (b.emit.kind === 'cover' ? 0.03 : 0);
+  return ms;
 }
 export const COST_BUDGET_MS = 8;

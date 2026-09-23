@@ -1,10 +1,15 @@
-// GLSL for V2: a copy of V1's shader library with V2 uniforms, the chain op
-// snippets, the emitter fields, and the genome -> shader builders.
-// Numeric genome parameters are uniforms; only structure changes the source,
-// so compiled programs are cached by structuralKey().
+// GLSL for V2: the shared library, the chain op snippets, and the builders
+// that assemble each body's shader from its sub-genes (shape distance field,
+// placement fold or copy loop, deformation, material, emission). Numeric
+// genome parameters are uniforms (packed per frame by engine.ts); only
+// structure changes the source, so compiled programs are cached by
+// structuralKey().
 
 import { FLAME_VARIATION_GLSL } from './variations';
-import { GEOMETRY_KINDS, flatEmitters, type EmitterGene, type EmitterKind, type Genome, type OpGene } from './genome';
+import {
+  SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
+  type BodyGene, type Genome, type OpGene, type ShapeKind,
+} from './genome';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -58,7 +63,13 @@ vec3 hueRotate(vec3 c, float a) {
 }
 `;
 
-const LIB = /* glsl */ `
+/** Per-body uniform vec4 slots (see engine.ts packBody for the layout). */
+export const BODY_VEC4 = 20;
+/** Explicit copies per body (uCp / uCq entries). */
+export const COPY_SLOTS = 6;
+
+function lib(nb: number): string {
+  return /* glsl */ `
 uniform vec2 uRes;
 uniform float uAspect, uTime, uPhase, uDt, uF60, uSpeed;
 uniform float uBeat, uBar, uBars, uBeats, uBeatPulse, uBarPulse;
@@ -67,24 +78,23 @@ uniform vec4 uStem, uOnset, uPres;
 uniform float uAct, uBuild, uDrop, uLoud, uMelody, uKeyHue;
 uniform vec3 uColA, uColB, uColC;
 uniform float uDecay;
-uniform float uLayerK;   // 1 - decay in the feedback pass, 1 in the composite: static fields look the same on either layer
-uniform float uAccum;    // 1 in the feedback pass, ~6 in the composite: accumulating emitters look the same on either layer
+uniform float uLayerK;   // 1 - decay in the feedback pass, 1 in the composite: steady materials look the same on either layer
+uniform float uAccum;    // 1 in the feedback pass, ~6 in the composite: accumulating materials look the same on either layer
 uniform vec4 uOpA[6], uOpB[6];
-uniform vec4 uEm[16];   // four emitter slots (flatEmitters order), four vec4 each
-uniform vec4 uW[4];     // wave curve (see WAVE_VS); also read by the wave distance field
-uniform vec4 uDrA[3], uDrB[3]; // draw-space ops: A = amounts, B.x = op type id
-uniform int uDrN;
-uniform vec4 uInk[6], uBlob[6];
+uniform vec4 uBd[${nb * BODY_VEC4}];   // per-body parameters
+uniform vec4 uCp[${nb * COPY_SLOTS}];  // copies: (x, y, angle, scale)
+uniform vec4 uCq[${nb * COPY_SLOTS}];  // copies: (level, hue offset, previous x, previous y)
+uniform vec4 uWv[${nb * 4}];           // curve parameters per body (see WAVE_VS)
+uniform vec4 uDrA[${nb * 3}], uDrB[${nb * 3}]; // draw-space ops per body: A = amounts, B.x = op type id
 uniform vec4 uSeg[48];
 uniform vec4 uSegZ[12];
 uniform int uSegN;
-uniform float uChroma[12];
-uniform float uArm[12]; // orb arms: 5 angles, 5 lengths, curl, width
+uniform vec4 uChroma4[3];
 uniform sampler2D uWave, uSpec;
 
 float waveAt(float x) { return texture(uWave, vec2(x, 0.5)).r; }
 float specAt(float x) { return texture(uSpec, vec2(clamp(x, 0.0, 1.0), 0.5)).r; }
-float chromaAt(float i) { return uChroma[int(mod(i, 12.0))]; }
+float chromaAt(float i) { int k = int(mod(i, 12.0)); return uChroma4[k / 4][k % 4]; }
 vec3 pal(float t) {
   t = fract(t) * 3.0;
   if (t < 1.0) return mix(uColA, uColB, t);
@@ -105,15 +115,22 @@ float fbm4(vec2 p) {
 }
 vec3 keyCol(float pc, float s, float v) { return hsv2rgb(vec3(fract(uKeyHue + pc * 7.0 / 12.0), s, v)); }
 vec3 lin(vec3 c) { return c * c; }
-// View-stage ops may scale the sampled picture and add light (stretch's window
-// brightening and sky); both are ignored in the feedback pass.
+float segZ(int i) { return uSegZ[i / 4][i % 4]; }
+float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
+// View-stage ops may scale the sampled picture and add light (stretch); ignored in the feedback pass.
 float vMul = 1.0;
 vec3 vAdd = vec3(0.0);
+// Grid cells pass their twinkle to the materials.
+float gTw = 1.0;
+// Metaball gradient for the chrome material (valid when gMetaOn > 0.5).
+vec2 gMeta = vec2(0.0);
+float gMetaOn = 0.0;
+float gMetaF = 1.0;
 `;
+}
 
 // ------------------------------------------------------------- chain ops
-// Each snippet transforms `p` in place; OA / OB are the op's uniform slots,
-// filled per frame by the engine (see engine.ts packOp).
+// Each snippet transforms `p` in place; OA / OB are the op's uniform slots.
 
 const OP_GLSL: Record<string, string> = {
   zoom: `{ vec2 d = p - OA.xy; float r = length(d); float z = 1.0 + OA.z * mix(1.0, 0.5 + r * 1.2, OA.w); p = OA.xy + d / z; }`,
@@ -131,9 +148,14 @@ const OP_GLSL: Record<string, string> = {
   kaleido: `{ float seg = TAU / OA.x; float a = mod(atan(p.y, p.x) + OA.y, seg); a = abs(a - seg * 0.5); p = length(p) * vec2(cos(a), sin(a)); }`,
 };
 
+function opCode(o: OpGene, i: number): string {
+  const src = o.op.startsWith('v_') ? `{ p = mix(p, V_${o.op.slice(2)}(p * OA.y) / OA.y, OA.x); }` : OP_GLSL[o.op];
+  return '  ' + src.replace(/OA/g, `uOpA[${i}]`).replace(/OB/g, `uOpB[${i}]`) + '\n';
+}
+
 // ------------------------------------------------------- draw-space ops
-// One uniform-driven loop shared by every genome: the draw chain changes only
-// uniforms, never the shader source. With uDrN = 0 it returns p untouched.
+// A uniform-driven loop: a body's deform ops change only uniforms. Applied in
+// scene space before the placement, so they bend the whole arrangement.
 
 const DRAW_GLSL = /* glsl */ `
 vec2 varById(int i, vec2 p) {
@@ -165,20 +187,20 @@ vec2 drawOp(int t, vec4 A, vec2 p) {
   if (t >= 20) return mix(p, varById(t - 20, p * A.y) / A.y, A.x);
   return p;
 }
-vec2 drawWarp(vec2 p) {
+vec2 drawWarp(vec2 p, int base, int n) {
   for (int i = 0; i < 3; i++) {
-    if (i >= uDrN) break;
-    p = drawOp(int(uDrB[i].x + 0.5), uDrA[i], p);
+    if (i >= n) break;
+    p = drawOp(int(uDrB[base + i].x + 0.5), uDrA[base + i], p);
   }
   return p;
 }
 // Line geometry is moved forward, so only the continuous ops apply (reversed).
-vec2 drawWarpFwd(vec2 p) {
+vec2 drawWarpFwd(vec2 p, int base, int n) {
   for (int i = 0; i < 3; i++) {
-    if (i >= uDrN) break;
-    int t = int(uDrB[i].x + 0.5);
+    if (i >= n) break;
+    int t = int(uDrB[base + i].x + 0.5);
     if (t >= 7) continue;
-    vec4 A = uDrA[i];
+    vec4 A = uDrA[base + i];
     if (t == 6) A.z = 1.0 / max(A.z, 0.2);
     else if (t == 3 || t == 4) A.x = -A.x;
     else A.z = -A.z;
@@ -186,123 +208,151 @@ vec2 drawWarpFwd(vec2 p) {
   }
   return p;
 }
+vec4 hexCell(vec2 p) {
+  const vec2 s = vec2(1.0, 1.7320508);
+  vec4 hC = floor(vec4(p, p - vec2(0.5, 1.0)) / s.xyxy) + 0.5;
+  vec4 h = vec4(p - hC.xy * s, p - (hC.zw + 0.5) * s);
+  return dot(h.xy, h.xy) < dot(h.zw, h.zw) ? vec4(h.xy, hC.xy) : vec4(h.zw, hC.zw + 0.5);
+}
+vec4 triCell(vec2 q) {
+  vec2 s = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
+  vec2 id = floor(s);
+  vec2 f = fract(s);
+  float up = step(f.x + f.y, 1.0);
+  vec2 cc = up > 0.5 ? vec2(0.3333) : vec2(0.6667);
+  vec2 d = f - cc;
+  return vec4(vec2(d.x + d.y * 0.5, d.y * 0.866), id * 2.0 + vec2(up, 0.0));
+}
+float sdPoly(vec2 p, float r, float n) {
+  float an = PI / n;
+  float off = (mod(n, 2.0) > 0.5 || abs(n - 6.0) < 0.5) ? an : 0.0;
+  float bn = mod(atan(p.x, p.y) + off, 2.0 * an) - an;
+  p = length(p) * vec2(cos(bn), abs(sin(bn)));
+  vec2 acs = vec2(cos(an), sin(an));
+  p -= r * acs;
+  p.y += clamp(-p.y, 0.0, r * acs.y);
+  return length(p) * sign(p.x);
+}
+float sdStar(vec2 p, float r, float n, float m) {
+  float an = PI / n;
+  float en = PI / m;
+  vec2 acs = vec2(cos(an), sin(an));
+  vec2 ecs = vec2(cos(en), sin(en));
+  float bn = mod(atan(p.x, p.y), 2.0 * an) - an;
+  p = length(p) * vec2(cos(bn), abs(sin(bn)));
+  p -= r * acs;
+  p += ecs * clamp(-dot(p, ecs), 0.0, r * acs.y / ecs.y);
+  return length(p) * sign(p.x);
+}
 `;
 
-function opCode(o: OpGene, i: number): string {
-  const src = o.op.startsWith('v_') ? `{ p = mix(p, V_${o.op.slice(2)}(p * OA.y) / OA.y, OA.x); }` : OP_GLSL[o.op];
-  return '  ' + src.replace(/OA/g, `uOpA[${i}]`).replace(/OB/g, `uOpB[${i}]`) + '\n';
-}
+// --------------------------------------------------------------- shapes
+// vec3 SHP(vec2 q): (signed distance in local units, colour shade, brightness
+// shade). SA / SB are the shape's two parameter vec4s; WV the curve slots.
 
-// -------------------------------------------------------------- emitters
-// Field emitters: vec3 em_<kind>(vec2 p) in p space. EA..ED are the emitter's
-// four uniform vec4 slots (EA = gain, hue, ...). "Accumulating" emitters are
-// tuned for the feedback layer and use uAccum; "static" fields use uLayerK.
-
-const EMIT_GLSL: Partial<Record<EmitterKind, string>> = {
-  spectrum: /* glsl */ `
-vec3 em_spectrum(vec2 p) {
-  vec4 A = EA, B = EB, C = EC;
-  vec2 O = A.zw;
-  int mode = int(B.x + 0.5);
-  float N = B.y;
-  float aa = 1.5 * px();
-  float gw = C.x * 0.5;
-  vec3 c = vec3(0.0);
-  if (mode == 0 || mode == 3) {
-    float hw = uAspect * 0.5;
-    float s = mode == 0 ? (p.x + hw) / (2.0 * hw) : abs(p.x - O.x) / hw;
-    float bin = (floor(s * N) + 0.5) / N;
-    float gap = abs(fract(s * N) - 0.5);
-    float lv = specAt(bin * 0.8 + 0.02);
-    float h = 0.008 + B.w * lv * lv;
-    float y = mode == 0 ? p.y - O.y : abs(p.y - O.y);
-    float bar = smoothstep(gw + 0.03, gw - 0.03, gap) * smoothstep(-aa, 0.0, y) * smoothstep(h + aa, h, y);
-    c = pal(bin * 0.5 + A.y) * bar * (0.4 + 0.8 * lv);
-  } else {
-    vec2 d = p - O;
-    if (mode == 1 && d.y < 0.0) return vec3(0.0);
-    float r = length(d);
-    float a = atan(d.y, d.x);
-    float s = mode == 1 ? abs(a / PI - 0.5) * 2.0 : abs(a / PI);
-    float bin = (floor(s * N) + 0.5) / N;
-    float gap = abs(fract(s * N) - 0.5);
-    float lv = specAt(bin * 0.8 + 0.02);
-    float r0 = B.z + 0.025 * uStem.y;
-    float len = 0.015 + B.w * lv * lv;
-    float bar = smoothstep(gw + 0.03, gw - 0.03, gap) * smoothstep(r0 + 0.012, r0 + 0.012 + aa, r) * smoothstep(r0 + 0.012 + len + aa, r0 + 0.012 + len, r);
-    c = pal(bin * 0.5 + A.y) * bar;
-    c += mix(uColA, vec3(1.0, 0.85, 0.6), 0.4) * smoothstep(r0, r0 - aa, r) * (0.12 + 0.2 * uStem.y);
-  }
-  return c * A.x * 0.1 * uAccum;
-}`,
-
-  stars: /* glsl */ `
-vec2 starPos(vec2 cell) { return cell + 0.2 + 0.6 * hash22(cell * 1.7 + 0.3); }
-bool hasStar(vec2 cell, float dens) { return hash12(cell * 1.3 + 7.1) < dens; }
-vec3 em_stars(vec2 p) {
-  vec4 A = EA, B = EB;
-  float S = B.y;
-  vec2 q = p * S + vec2(A.z, 0.0);
-  vec2 cell = floor(q);
-  vec3 c = vec3(0.0);
-  float pw = S * px();
-  float lvl = clamp(A.w * 1.5, 0.3, 1.0);
-  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    vec2 cc = cell + vec2(i, j);
-    if (!hasStar(cc, B.x)) continue;
-    vec2 sp = starPos(cc);
-    float pc = floor(hash12(cc + 3.7) * 12.0);
-    float e = pow(chromaAt(pc), 2.5) * lvl;
-    vec3 col = keyCol(pc + A.y * 12.0, 0.3, 1.0);
-    float tw = 1.0 - 0.3 * B.w + 0.3 * B.w * sin(uTime * (0.5 + hash12(cc)) + pc);
-    float sd = length(q - sp);
-    c += col * (0.4 * tw + 1.6 * e) * (glow(sd, pw * (1.8 + 2.5 * e)) + 0.08 * glow(sd, pw * 10.0));
-    if (B.z > 0.01) {
-      for (int k = 0; k < 2; k++) {
-        vec2 nc = cc + (k == 0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
-        if (!hasStar(nc, B.x)) continue;
-        float pc2 = floor(hash12(nc + 3.7) * 12.0);
-        float link = min(e, pow(chromaAt(pc2), 2.5) * lvl);
-        if (link < 0.04) continue;
-        c += mix(col, keyCol(pc2 + A.y * 12.0, 0.3, 1.0), 0.5) * link * B.z * glow(sdSeg(q, sp, starPos(nc)), pw * 1.1) * 0.8;
-      }
-    }
-  }
-  return c * 0.08 * A.x * uAccum;
-}`,
-
-  ink: /* glsl */ `
-vec3 em_ink(vec2 p) {
-  vec3 c = vec3(0.0);
-  int n = int(EA.z + 0.5);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
-    vec4 e = uInk[i];
-    c += pal(float(i) * 0.25 + 0.1 + EA.y) * e.z * glow(length(p - e.xy), e.w);
-  }
-  return c * 0.4 * EA.x * uAccum;
-}`,
-
-  wire: /* glsl */ `
-float segZ(int i) { return uSegZ[i / 4][i % 4]; }
-vec3 em_wire(vec2 p) {
-  vec3 c = vec3(0.0);
-  float w = px() * EA.z;
+const SHAPE_SDF: Partial<Record<ShapeKind, string>> = {
+  dot: `vec3 SHP(vec2 q) { return vec3(length(q) - SA.x, 0.0, 1.0); }`,
+  polygon: `vec3 SHP(vec2 q) { float r = SA.y; float rd = SA.z * 0.35 * r; return vec3(sdPoly(q, r - rd, SA.x) - rd, 0.0, 1.0); }`,
+  star: `vec3 SHP(vec2 q) { return vec3(sdStar(q, SA.y, SA.x, 2.0 + (SA.x - 2.0) * SA.z), 0.0, 1.0); }`,
+  segment: `vec3 SHP(vec2 q) { return vec3(sdSeg(q, vec2(-SA.x * 0.5, 0.0), vec2(SA.x * 0.5, 0.0)) - SA.y, 0.0, 1.0); }`,
+  solid: `vec3 SHP(vec2 q) {
+  float d = 1e3, z = 0.0;
   for (int i = 0; i < 48; i++) {
     if (i >= uSegN) break;
     vec4 s = uSeg[i];
-    float d = sdSeg(p, s.xy, s.zw);
-    float z = segZ(i);
-    c += pal(z * 0.4 + 0.1 + EA.y) * z * (glow(d, w) + 0.12 * glow(d, min(w * 7.0, 0.012 * EA.z)));
+    float di = sdSeg(q, s.xy, s.zw);
+    if (di < d) { d = di; z = segZ(i); }
   }
-  // Lines are a pixel or two wide at any resolution: keep their energy resolution independent.
-  return c * (0.12 + 0.08 * uLoud) * EA.x * uAccum * sqrt(clamp(uRes.y / 1080.0, 0.1, 1.0));
+  return vec3(d, z * 0.4 + 0.1, z);
 }`,
+  // Spectrum bars with gaps: a box per bin (SA = mode, bins, radius, len; SB = fill, bass swell).
+  bars: `vec3 SHP(vec2 q) {
+  int mode = int(SA.x + 0.5);
+  float N = SA.y;
+  if (mode == 0 || mode == 3) {
+    float hw = uAspect * 0.5;
+    float s = mode == 0 ? (q.x + hw) / (2.0 * hw) : abs(q.x) / hw;
+    float fb = s * N;
+    float bin = (floor(fb) + 0.5) / N;
+    float lv = specAt(bin * 0.8 + 0.02);
+    float h = 0.008 + SA.w * lv * lv;
+    float y = mode == 0 ? q.y : abs(q.y);
+    float cw = (mode == 0 ? 2.0 * hw : hw) / N;
+    vec2 dd = vec2(abs(fract(fb) - 0.5) * cw - SB.x * 0.5 * cw, abs(y - h * 0.5) - h * 0.5);
+    float d = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+    d = max(d, abs(q.x) - hw);
+    return vec3(d, bin * 0.5, 0.4 + 0.8 * lv);
+  }
+  float r = length(q);
+  float a = atan(q.y, q.x);
+  float s = mode == 1 ? abs(a / PI - 0.5) * 2.0 : abs(a / PI);
+  float dsda = mode == 1 ? 2.0 / PI : 1.0 / PI;
+  float fb = s * N;
+  float bin = (floor(fb) + 0.5) / N;
+  float lv = specAt(bin * 0.8 + 0.02);
+  float r0 = SA.z + SB.y + 0.012;
+  float len = 0.015 + SA.w * lv * lv;
+  float tang = abs(fract(fb) - 0.5) / N / dsda * r;
+  vec2 dd = vec2(tang - SB.x * 0.5 / N / dsda * r, abs(r - r0 - len * 0.5) - len * 0.5);
+  float d = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+  if (mode == 1) d = max(d, -q.y);
+  vec3 o = vec3(d, bin * 0.5, 0.4 + 0.8 * lv);
+  float dh = r - (r0 - 0.012);
+  if (dh < o.x) o = vec3(dh, 0.0, 0.25 + 0.4 * uStem.y);
+  return o;
+}`,
+  // Waveform curves with a distance field (line, circle, spiral, arc); WV = the body's curve slots.
+  curve: `vec3 SHP(vec2 q) {
+  vec4 A = WV0, B = WV1, C = WV2;
+  q = rot2(-C.y) * q;
+  int sh = int(A.x + 0.5);
+  float w = 0.004;
+  if (sh == 0) {
+    float hw = uAspect * 0.42;
+    float k = clamp(q.x / (2.0 * hw) + 0.5, 0.0, 1.0);
+    float env = smoothstep(0.0, 0.12, k) * smoothstep(1.0, 0.88, k);
+    float d = abs(q.y - waveAt(k) * A.y * env) * 0.7;
+    return vec3(max(d, abs(q.x) - hw) - w, k, 1.0);
+  }
+  float r = length(q);
+  float a = atan(q.y, q.x);
+  if (sh == 2) {
+    float best = 1e3;
+    for (int n = 0; n < 7; n++) {
+      float k = (fract(a / TAU) + float(n)) / max(B.y, 1.0);
+      if (k > 1.0) break;
+      float rk = B.x * (0.12 + 0.88 * k) + waveAt(k) * A.y * 0.2 * k;
+      best = min(best, abs(r - rk));
+    }
+    return vec3(best * 0.8 - w, 0.3, 1.0);
+  }
+  if (sh == 4) {
+    float span = max(B.y * 0.37, 1e-3);
+    float k = a / span + 0.5;
+    float kc = clamp(k, 0.0, 1.0);
+    float rk = B.x + waveAt(kc) * A.y * 0.4;
+    float ae = (kc - 0.5) * span;
+    return vec3((k == kc ? abs(r - rk) * 0.8 : length(q - rk * vec2(cos(ae), sin(ae)))) - w, kc * 0.66, 1.0);
+  }
+  float k = fract(a / TAU);
+  return vec3(abs(r - (B.x + waveAt(abs(k * 2.0 - 1.0)) * A.y * 0.35)) * 0.8 - w, k * 0.66, 1.0);
+}`,
+  // A ribbon band (fused shapes only): SA = (-, fall, rays, wav), SB = (time, level).
+  aurora: `vec3 SHP(vec2 q) {
+  float t = SB.x;
+  float y0 = 0.09 * sin(q.x * SA.w + t) + 0.06 * (fbm2(vec2(q.x * 1.8 - t * 0.7, t)) - 0.5);
+  float hw = 0.02 + 0.03 * clamp(SB.y, 0.0, 1.5);
+  return vec3((abs(q.y - y0 - hw) - hw) * 0.8, 0.2, 1.0);
+}`,
+};
 
+// ---------------------------------------------------------------- fields
+// Chunk shapes with their own look: vec3 FLD(vec2 p) in the body's local frame.
+// EA..ED are the body's four field slots (EA = gain, hue, ...), packed as before.
+
+const FIELD_GLSL: Partial<Record<ShapeKind, string>> = {
   plasma: /* glsl */ `
-vec3 em_plasma(vec2 p) {
-  // A: gain, hue, time, band offset. B: scale, warp, bands, lines.
-  // C: warp offset, bass swell, line thickening, hue shift. D.x: beat brightness.
+vec3 FLD(vec2 p) {
   vec4 A = EA, B = EB, C = EC;
   float t = A.z;
   vec2 q = p * B.x;
@@ -316,9 +366,8 @@ vec3 em_plasma(vec2 p) {
   vec3 base = pal(f * 1.2 + t * 0.15 + A.y + C.w) * pow(f, 3.0) * mix(0.35, 0.08, B.w);
   return (base + pal(f + 0.33 + A.y + C.w) * ln * B.w * (0.15 + 0.45 * uLoud) * ED.x * (0.6 + 0.4 * f)) * A.x * uLayerK;
 }`,
-
   aurora: /* glsl */ `
-vec3 em_aurora(vec2 p) {
+vec3 FLD(vec2 p) {
   vec4 A = EA, B = EB;
   float t = A.w;
   float y0 = B.x + 0.09 * sin(p.x * B.w + t) + 0.06 * (fbm2(vec2(p.x * 1.8 - t * 0.7, t)) - 0.5);
@@ -329,35 +378,6 @@ vec3 em_aurora(vec2 p) {
   vec3 col = mix(pal(A.y), uColC, smoothstep(0.0, 0.3, dy));
   return col * body * rays * A.z * 0.03 * A.x * uAccum;
 }`,
-
-  blobs: /* glsl */ `
-vec3 em_blobs(vec2 p) {
-  float F = 0.0;
-  vec2 g = vec2(0.0);
-  int n = int(EA.z + 0.5);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
-    vec2 d = p - uBlob[i].xy;
-    float r2 = uBlob[i].z * uBlob[i].z;
-    float q = 1.0 / (dot(d, d) + 1e-4);
-    F += r2 * q;
-    g += -2.0 * r2 * q * q * d;
-  }
-  float e = fwidth(F) * 1.2;
-  float m = smoothstep(1.0 - e, 1.0 + e, F);
-  vec3 nn = normalize(vec3(-g * 0.05, 1.0));
-  vec3 r = reflect(vec3(0.0, 0.0, -1.0), nn);
-  vec3 env = mix(uColB * 0.03, pal(EA.y) * 0.7, smoothstep(-0.3, 0.9, r.y));
-  env += vec3(1.0) * glow(r.y - 0.2 - 0.12 * sin(r.x * 3.0 + uPhase * 0.3), 0.06);
-  env += uColC * pow(max(-r.x, 0.0), 5.0) * 0.8;
-  float fres = pow(1.0 - nn.z, 2.0);
-  vec3 chrome = env * (0.3 + 0.7 * fres) + vec3(0.02);
-  vec3 soft = pal(EA.y + F * 0.1) * (0.25 + 0.5 * fres);
-  vec3 surf = mix(soft, chrome, EA.w);
-  vec3 bg = uColB * 0.003 + uColC * 0.015 * smoothstep(0.2, 1.0, F);
-  return mix(bg, surf, m) * EA.x * uLayerK;
-}`,
-
   edge: /* glsl */ `
 vec2 edgeLocal(vec2 p, float side) {
   float hw = uAspect * 0.5;
@@ -366,7 +386,7 @@ vec2 edgeLocal(vec2 p, float side) {
   if (side < 2.5) return vec2(p.x, p.y + 0.5);
   return vec2(p.y, p.x + hw);
 }
-vec3 em_edge(vec2 p) {
+vec3 FLD(vec2 p) {
   vec4 A = EA, B = EB, C = EC, D = ED;
   vec2 L = edgeLocal(p, B.y);
   float u = L.x, v = L.y;
@@ -406,7 +426,6 @@ vec3 em_edge(vec2 p) {
     float halfLen = (B.y < 0.5 || B.y > 2.5) ? 0.5 : uAspect * 0.5;
     float bin = abs(u) / halfLen;
     float lv = specAt(bin * 0.75 + 0.03);
-    // Drops are born on an eighth-note grid; the first eighth of each bar fires a fuller curtain.
     float e8 = uBeats * 2.0;
     float win = step(fract(e8), 0.14 + 0.08 * m);
     float down = step(uBar, 0.125);
@@ -424,51 +443,7 @@ vec3 em_edge(vec2 p) {
   c += mix(pal(A.y), vec3(1.0), 0.3) * glow(y - h, 0.003) * (0.4 + 0.8 * uLoud);
   return c * A.x * uAccum;
 }`,
-
-  tiles: /* glsl */ `
-vec4 hexCell(vec2 p) {
-  const vec2 s = vec2(1.0, 1.7320508);
-  vec4 hC = floor(vec4(p, p - vec2(0.5, 1.0)) / s.xyxy) + 0.5;
-  vec4 h = vec4(p - hC.xy * s, p - (hC.zw + 0.5) * s);
-  return dot(h.xy, h.xy) < dot(h.zw, h.zw) ? vec4(h.xy, hC.xy) : vec4(h.zw, hC.zw + 0.5);
-}
-float hexD(vec2 q) { q = abs(q); return max(dot(q, vec2(0.5, 0.8660254)), q.x); }
-vec4 tileCell(vec2 q, float shape) {
-  if (shape < 0.5) return hexCell(q);
-  if (shape < 1.5) return vec4(fract(q) - 0.5, floor(q));
-  vec2 s = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
-  vec2 id = floor(s);
-  vec2 f = fract(s);
-  float up = step(f.x + f.y, 1.0);
-  vec2 cc = up > 0.5 ? vec2(0.3333) : vec2(0.6667);
-  vec2 d = f - cc;
-  return vec4(vec2(d.x + d.y * 0.5, d.y * 0.866), id * 2.0 + vec2(up, 0.0));
-}
-float tileD(vec2 l, float shape) {
-  if (shape < 0.5) return hexD(l);
-  if (shape < 1.5) return max(abs(l.x), abs(l.y)) * 0.9;
-  return length(l) * 1.5;
-}
-vec3 em_tiles(vec2 p) {
-  vec4 A = EA, B = EB;
-  vec2 q = rot2(A.w) * p * B.y;
-  vec4 h = tileCell(q, B.x);
-  float pc = floor(hash12(h.zw) * 12.0);
-  float e = pow(chromaAt(pc), 2.0) * clamp(A.z * 1.5, 0.3, 1.0);
-  float trig = step(hash12(h.zw + floor(uBeats)), B.z * (0.6 + 0.8 * uAct));
-  float d = tileD(h.xy, B.x);
-  float aa = fwidth(d) * 1.5;
-  float fill = smoothstep(0.43, 0.43 - aa, d) * (0.5 + 0.5 * smoothstep(0.43, 0.0, d));
-  vec3 c = lin(keyCol(pc + A.y * 12.0, 0.8, 1.0)) * fill * e * e * trig * (0.02 + 0.12 * uBeatPulse) * uAccum;
-  float edge = smoothstep(aa, 0.0, abs(d - 0.47));
-  c += mix(uColB, uColC, 0.5) * edge * 0.035 * (0.5 + uLoud) * B.w * uLayerK;
-  return c * A.x;
-}`,
-
-  horizon: /* glsl */ `
-// Floor height at w = (x, z): a valley down the middle, hills either side whose
-// ridges follow the spectrum (frequency maps outward) and a ridge that rolls
-// toward the viewer on every kick; scrolls with the grid.
+  terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);
   float z = w.y + scroll * 2.0;
@@ -481,7 +456,7 @@ float hzTerrain(vec2 w, float scroll, float amt) {
   h *= smoothstep(18.0, 6.0, w.y);
   return min(h, 0.32) * amt;
 }
-vec3 em_horizon(vec2 p) {
+vec3 FLD(vec2 p) {
   vec4 A = EA, B = EB, C = EC;
   float hz = B.x;
   vec3 c = vec3(0.0);
@@ -490,7 +465,6 @@ vec3 em_horizon(vec2 p) {
     float zFlat = 0.35 / dy;
     float z = zFlat, h = 0.0;
     if (C.x > 0.001) {
-      // Ray-march the heightfield: the eye is 0.35 above the floor.
       float z0 = 0.2, st = 0.08;
       for (int k = 0; k < 40; k++) {
         float zt = z0 + st;
@@ -523,290 +497,466 @@ vec3 em_horizon(vec2 p) {
   }
   return c * A.x * uLayerK;
 }`,
-
-  orb: /* glsl */ `
-vec3 em_orb(vec2 p) {
-  vec4 A = EA, B = EB, C = EC;
-  vec2 d = p - A.zw;
-  float md = length(d);
-  float R = B.x;
-  // Signed distance to the rim; with arms, five tapered curling arms reach out.
-  float sd = md - R;
-  if (C.y > 0.001) {
-    float a = atan(d.y, d.x);
-    float rel = max(md / R - 1.0, 0.0);
-    float ext = 0.0;
-    for (int k = 0; k < 5; k++) {
-      float ang = uArm[k] + uArm[10] * rel;
-      float da = atan(sin(a - ang), cos(a - ang));
-      float w = uArm[11] / (1.0 + 1.9 * rel);
-      ext += uArm[5 + k] * exp(-da * da / (w * w));
-    }
-    sd = (md - R * (1.0 + ext * C.y)) * 0.6;
-  }
-  vec3 moon = mix(vec3(1.0, 0.95, 0.85), pal(A.y), 0.3);
-  vec3 sun = mix(uColC, uColB, smoothstep(-R, R, d.y));
-  vec3 body = mix(moon, sun, B.z);
-  float cut = d.y > 0.02 * R / 0.19 ? 1.0 : step(0.35 - d.y / R * 0.5, fract(d.y / R * 4.5 - uPhase * 0.2));
-  cut = mix(1.0, cut, B.z);
-  float tex = mix(1.0, 0.7 + 0.3 * fbm2(d * 1.8 / R), B.w);
-  vec3 c = body * smoothstep(0.0, -0.0025, sd) * cut * tex * 0.5;
-  c += pal(A.y) * step(0.0, sd) * B.y * (0.06 * exp(-sd * 10.0) + 0.12 * C.x * exp(-sd * 4.0));
-  c *= smoothstep(C.z - 0.0015, C.z + 0.0015, p.y);
-  return c * A.x * uLayerK;
-}`,
-
-  snake: /* glsl */ `
-// Two heads: B = melody head (x, y, prev x, prev y), C = bass head, D = widths and
-// brightness (w0, b0, w1, b1); A.z = head count, A.w = cover. Each frame's new
-// stretch of body paints over (cover 1) or adds to (cover 0) the older trail.
-vec3 em_snake(vec2 p, vec3 c) {
-  vec4 A = EA, B = EB, C = EC, D = ED;
-  vec3 base = c;
-  if (A.z > 1.5) {
-    float wb = D.z;
-    vec3 cb = pal(0.5 + 0.4 * uStem.y + 0.15 * uBarPulse + A.y) * D.w * A.x;
-    float kb = smoothstep(wb, wb * 0.4, sdSeg(p, C.zw, C.xy));
-    base = mix(base + cb * kb * 0.3 * uAccum, mix(base, cb, kb), A.w);
-    base += cb * glow(length(p - C.xy), wb * 1.3) * 0.3 * uAccum;
-  }
-  float wm = D.x;
-  vec3 cm = pal(uMelody * 0.7 + 0.2 * uBeatPulse + A.y) * D.y * A.x;
-  float km = smoothstep(wm, wm * 0.4, sdSeg(p, B.zw, B.xy));
-  base = mix(base + cm * km * 0.3 * uAccum, mix(base, cm, km), A.w);
-  base += vec3(1.0) * glow(length(p - B.xy), wm * 1.3) * D.y * A.x * 0.25 * uAccum;
-  return base;
-}`,
 };
 
-function slotted(src: string, slot: number): string {
-  return src
-    .replace(/\bEA\b/g, `uEm[${slot * 4}]`)
-    .replace(/\bEB\b/g, `uEm[${slot * 4 + 1}]`)
-    .replace(/\bEC\b/g, `uEm[${slot * 4 + 2}]`)
-    .replace(/\bED\b/g, `uEm[${slot * 4 + 3}]`);
-}
+// ------------------------------------------------------------- deform
+// vec2 DFM(vec2 q, out float k): bends the shape in its local unit frame;
+// k corrects the distance field for the stretch. D = BD(7).
 
-function emitterCode(kind: EmitterKind, slot: number): string {
-  const src = EMIT_GLSL[kind];
-  return src ? slotted(src, slot) : '';
-}
-
-// ------------------------------------------------------ distance fields
-// float sd_<kind>(vec2 p): signed distance (negative inside) to the shape the
-// emitter draws, from the same uniforms its tick fills. Line-like shapes are
-// thin bands. Merge emitters fuse two of these into one figure.
-
-const SDF_GLSL: Partial<Record<EmitterKind, string>> = {
-  orb: /* glsl */ `
-float sd_orb(vec2 p) {
-  vec2 d = p - EA.zw;
-  float md = length(d);
-  float R = EB.x;
-  if (EC.y <= 0.001) return md - R;
-  float a = atan(d.y, d.x);
+const DEFORM_GLSL: Record<string, string> = {
+  none: `vec2 DFM(vec2 q, out float k) { k = 1.0; return q; }`,
+  // D = (count, reach, curl now, width); BD(8..9) = angles, BD(10..11) = lengths.
+  arms: `float armA(int j) { return j < 4 ? BD(8)[j] : BD(9)[j - 4]; }
+float armL(int j) { return j < 4 ? BD(10)[j] : BD(11)[j - 4]; }
+vec2 DFM(vec2 q, out float k) {
+  vec4 D = BD(7);
+  float R = max(BD(4).w, 1e-3);
+  float md = length(q);
+  float a = atan(q.y, q.x);
   float rel = max(md / R - 1.0, 0.0);
   float ext = 0.0;
-  for (int k = 0; k < 5; k++) {
-    float ang = uArm[k] + uArm[10] * rel;
+  int n = int(D.x + 0.5);
+  for (int j = 0; j < 7; j++) {
+    if (j >= n) break;
+    float ang = armA(j) + D.z * rel;
     float da = atan(sin(a - ang), cos(a - ang));
-    float w = uArm[11] / (1.0 + 1.9 * rel);
-    ext += uArm[5 + k] * exp(-da * da / (w * w));
+    float w = D.w / (1.0 + 1.9 * rel);
+    ext += armL(j) * exp(-da * da / (w * w));
   }
-  return (md - R * (1.0 + ext * EC.y)) * 0.6;
+  float s = 1.0 + ext * D.y;
+  k = s * 0.6;
+  return q / s;
 }`,
-  wire: /* glsl */ `
-float sd_wire(vec2 p) {
-  float d = 1e3;
-  for (int i = 0; i < 48; i++) {
-    if (i >= uSegN) break;
-    d = min(d, sdSeg(p, uSeg[i].xy, uSeg[i].zw));
-  }
-  return d - 0.003 * EA.z;
+  // D = (lobes, amp now, phase, -)
+  wobble: `vec2 DFM(vec2 q, out float k) {
+  vec4 D = BD(7);
+  float s = 1.0 + D.y * sin(D.x * atan(q.y, q.x) + D.z);
+  k = s * 0.8;
+  return q / s;
 }`,
-  wave: /* glsl */ `
-float sd_wave(vec2 p) {
-  vec4 A = uW[0], B = uW[1], C = uW[2];
-  vec2 q = rot2(-C.y) * (p - A.zw);
-  int sh = int(A.x + 0.5);
-  float w = 0.004;
-  if (sh == 0) {
-    float hw = uAspect * 0.42;
-    float k = clamp(q.x / (2.0 * hw) + 0.5, 0.0, 1.0);
-    float env = smoothstep(0.0, 0.12, k) * smoothstep(1.0, 0.88, k);
-    float d = abs(q.y - waveAt(k) * A.y * env) * 0.7;
-    return max(d, abs(q.x) - hw) - w;
-  }
-  float r = length(q);
-  float a = atan(q.y, q.x);
-  if (sh == 2) {
-    float best = 1e3;
-    for (int n = 0; n < 7; n++) {
-      float k = (fract(a / TAU) + float(n)) / max(B.y, 1.0);
-      if (k > 1.0) break;
-      float rk = B.x * (0.12 + 0.88 * k) + waveAt(k) * A.y * 0.2 * k;
-      best = min(best, abs(r - rk));
-    }
-    return best * 0.8 - w;
-  }
-  if (sh == 4) {
-    float span = max(B.y * 0.37, 1e-3);
-    float k = a / span + 0.5;
-    float kc = clamp(k, 0.0, 1.0);
-    float rk = B.x + waveAt(kc) * A.y * 0.4;
-    float ae = (kc - 0.5) * span;
-    return (k == kc ? abs(r - rk) * 0.8 : length(q - rk * vec2(cos(ae), sin(ae)))) - w;
-  }
-  float k = fract(a / TAU);
-  return abs(r - (B.x + waveAt(abs(k * 2.0 - 1.0)) * A.y * 0.35)) * 0.8 - w;
+  // D = (amp now, scale, phase, -)
+  noise: `vec2 DFM(vec2 q, out float k) {
+  vec4 D = BD(7);
+  k = 0.8;
+  return q + curlNoise(q * D.y + 4.0, D.z) * D.x;
 }`,
-  spectrum: /* glsl */ `
-float sd_spectrum(vec2 p) {
-  vec2 O = EA.zw;
-  int mode = int(EB.x + 0.5);
-  float N = EB.y;
-  if (mode == 0 || mode == 3) {
-    float hw = uAspect * 0.5;
-    float s = mode == 0 ? (p.x + hw) / (2.0 * hw) : abs(p.x - O.x) / hw;
-    float lv = specAt((floor(s * N) + 0.5) / N * 0.8 + 0.02);
-    float h = 0.008 + EB.w * lv * lv;
-    float y = mode == 0 ? p.y - O.y : abs(p.y - O.y);
-    return max(y - h, -y) * 0.8;
-  }
-  vec2 d = p - O;
-  float r = length(d);
-  float a = atan(d.y, d.x);
-  float s = mode == 1 ? abs(a / PI - 0.5) * 2.0 : abs(a / PI);
-  float lv = specAt((floor(s * N) + 0.5) / N * 0.8 + 0.02);
-  float sd = (r - (EB.z + 0.025 * uStem.y + 0.015 + EB.w * lv * lv)) * 0.8;
-  return mode == 1 ? max(sd, -d.y) : sd;
-}`,
-  snake: /* glsl */ `
-float sd_snake(vec2 p) {
-  float d = sdSeg(p, EB.zw, EB.xy) - ED.x;
-  if (EA.z > 1.5) d = min(d, sdSeg(p, EC.zw, EC.xy) - ED.z);
-  return d;
-}`,
-  aurora: /* glsl */ `
-float sd_aurora(vec2 p) {
-  float t = EA.w;
-  float y0 = EB.x + 0.09 * sin(p.x * EB.w + t) + 0.06 * (fbm2(vec2(p.x * 1.8 - t * 0.7, t)) - 0.5);
-  float hw = 0.02 + 0.03 * clamp(EA.z, 0.0, 1.5);
-  return (abs(p.y - y0 - hw) - hw) * 0.8;
-}`,
-  blobs: /* glsl */ `
-float sd_blobs(vec2 p) {
-  float F = 0.0, rs = 0.0;
-  int n = int(EA.z + 0.5);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
-    vec2 d = p - uBlob[i].xy;
-    F += uBlob[i].z * uBlob[i].z / (dot(d, d) + 1e-4);
-    rs += uBlob[i].z;
-  }
-  return rs / float(max(n, 1)) * (inversesqrt(max(F, 1e-4)) - 1.0);
-}`,
-  ink: /* glsl */ `
-float sd_ink(vec2 p) {
-  float d = 1e3;
-  int n = int(EA.z + 0.5);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
-    vec4 e = uInk[i];
-    d = min(d, length(p - e.xy) - e.w * (1.5 + 2.0 * e.z));
-  }
-  return d;
+  // D = (amount now, -, -, -)
+  twist: `vec2 DFM(vec2 q, out float k) {
+  k = 0.9;
+  return rot2(BD(7).x * length(q)) * q;
 }`,
 };
 
-function sdfCode(kind: EmitterKind, slot: number): string {
-  const src = SDF_GLSL[kind];
+// ------------------------------------------------------------ materials
+// vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex): paint colour
+// and coverage for one copy (s = distance in scene units, colour shade,
+// brightness shade; q = local position; Q = copy level, hue; R = copy size),
+// ex = extra light around it. M0 = BD(0) = (gain, hue, a, b), M1 = BD(1).
+
+const BODY_COL = `vec3 COL(vec4 Q, float cs, float sat) {
+  if (Q.y < -0.5) { vec3 k = keyCol(-Q.y - 1.0 + BD(0).y * 12.0, sat, 1.0); return sat > 0.7 ? lin(k) : k; }
+  return pal(BD(0).y + Q.y + cs);
+}`;
+
+const MATERIAL_GLSL: Record<string, string> = {
+  // M0 = (gain, hue, width px, halo)
+  line: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  ex = vec3(0.0);
+  float w = px() * BD(0).z;
+  float cov = glow(s.x, w) + BD(0).w * glow(s.x, min(w * 7.0, 0.012 * BD(0).z));
+  vec3 col = COL(Q, s.y, 0.3) * s.z * Q.x * (0.12 + 0.08 * uLoud) * sqrt(clamp(uRes.y / 1080.0, 0.1, 1.0));
+  return vec4(col, cov);
+}`,
+  // M0 = (gain, hue, soft, halo), M1 = (outline, core, clip, halo level)
+  fill: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  float aa = px() * 1.2;
+  float cov = smoothstep(aa, -max(aa, BD(0).z * R), s.x);
+  cov *= 1.0 - 0.5 * BD(1).y + 0.5 * BD(1).y * smoothstep(0.0, -R, s.x);
+  vec3 col = COL(Q, s.y, 0.8) * s.z * Q.x * 0.5;
+  ex = COL(Q, 0.0, 0.8) * step(0.0, s.x) * BD(0).w * (0.06 * exp(-s.x * 10.0) + 0.12 * BD(1).w * exp(-s.x * 4.0));
+  ex += mix(uColB, uColC, 0.5) * smoothstep(aa, 0.0, abs(s.x - 0.08 * R)) * 0.035 * (0.5 + uLoud) * BD(1).x;
+  float clip = smoothstep(BD(1).z - 0.0015, BD(1).z + 0.0015, p.y);
+  ex *= clip;
+  return vec4(col, cov * clip);
+}`,
+  // M0 = (gain, hue, width, base), M1 = (halo, -, -, -)
+  glow: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  ex = vec3(0.0);
+  float w = max(BD(0).z * (0.7 + 0.8 * Q.x), px() * (1.5 + 2.0 * Q.x));
+  float dd = max(s.x, 0.0);
+  float cov = glow(dd, w) + BD(1).x * glow(dd, w * 6.0);
+  vec3 col = COL(Q, s.y, 0.3) * s.z * (BD(0).w * gTw + Q.x) * 0.4;
+  return vec4(col, cov);
+}`,
+  // M0 = (gain, hue, spacing, size)
+  dots: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  ex = vec3(0.0);
+  float sp = BD(0).z;
+  vec2 g = fract(q / sp + 0.5) - 0.5;
+  float dm = smoothstep(BD(0).w * 0.5, BD(0).w * 0.5 - 0.12, length(g));
+  float aa = px() * 1.2;
+  float cov = max(smoothstep(aa, -aa, s.x), glow(s.x, sp * 0.6)) * dm;
+  vec3 col = COL(Q, s.y, 0.5) * s.z * Q.x * 0.35;
+  return vec4(col, cov);
+}`,
+  // M0 = (gain, hue, amount, halo), M1 = (tex, clip, halo level, -)
+  textured: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  float amt = BD(0).z;
+  float sd = s.x;
+  vec3 moon = mix(vec3(1.0, 0.95, 0.85), COL(Q, 0.0, 0.5), 0.3);
+  vec3 body = moon;
+  float cut = 1.0, tex = 1.0;
+#if TEX == 0
+  tex = mix(1.0, 0.7 + 0.3 * fbm2(q * 1.8 / R), amt);
+#elif TEX == 1
+  vec3 sun = mix(uColC, uColB, smoothstep(-R, R, q.y));
+  body = mix(moon, sun, amt);
+  cut = q.y > 0.02 * R / 0.19 ? 1.0 : step(0.35 - q.y / R * 0.5, fract(q.y / R * 4.5 - uPhase * 0.2));
+  cut = mix(1.0, cut, amt);
+#else
+  vec2 cell = floor(q / (R * 0.2));
+  vec2 f = fract(q / (R * 0.2));
+  float on = step(hash12(cell + floor(uBars) * 7.0), 0.25 + 0.5 * Q.x) * step(0.25, f.x) * step(0.3, f.y) * step(f.x, 0.75) * step(f.y, 0.8);
+  body = mix(moon * 0.12, mix(vec3(1.0, 0.8, 0.5), COL(Q, 0.1, 0.5), 0.3) * (0.6 + 0.6 * hash12(cell)), on * amt);
+#endif
+  vec3 col = body * cut * tex * 0.5 * Q.x;
+  float cov = smoothstep(0.0, -0.0025, sd);
+  ex = COL(Q, 0.0, 0.5) * step(0.0, sd) * BD(0).w * (0.06 * exp(-sd * 10.0) + 0.12 * BD(1).z * exp(-sd * 4.0));
+  float clip = smoothstep(BD(1).y - 0.0015, BD(1).y + 0.0015, p.y);
+  ex *= clip;
+  return vec4(col, cov * clip);
+}`,
+  // M0 = (gain, hue, chrome, -)
+  chrome: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  vec3 nn;
+  float F;
+  if (gMetaOn > 0.5) {
+    nn = normalize(vec3(-gMeta * 0.05, 1.0));
+    F = gMetaF;
+  } else {
+    vec2 gd = vec2(dFdx(s.x), dFdy(s.x)) / px();
+    float gl = length(gd);
+    gd = gl > 1e-4 ? gd / gl : vec2(0.0);
+    float h = R + s.x;
+    float slope = clamp(h / sqrt(max(R * R - h * h, 1e-6)), 0.0, 6.0);
+    nn = normalize(vec3(gd * slope, 1.0));
+    F = 1.0 / max(1e-3, pow(1.0 + s.x / max(R, 1e-3), 2.0));
+  }
+  float aa = px() * 1.4;
+  float cov = smoothstep(aa, -aa, s.x);
+  vec3 r = reflect(vec3(0.0, 0.0, -1.0), nn);
+  vec3 env = mix(uColB * 0.03, COL(Q, 0.0, 0.5) * 0.7, smoothstep(-0.3, 0.9, r.y));
+  env += vec3(1.0) * glow(r.y - 0.2 - 0.12 * sin(r.x * 3.0 + uPhase * 0.3), 0.06);
+  env += uColC * pow(max(-r.x, 0.0), 5.0) * 0.8;
+  float fres = pow(1.0 - nn.z, 2.0);
+  vec3 chrome = env * (0.3 + 0.7 * fres) + vec3(0.02);
+  vec3 soft = COL(Q, F * 0.1, 0.5) * (0.25 + 0.5 * fres);
+  vec3 col = mix(soft, chrome, BD(0).z) * Q.x;
+  ex = (uColB * 0.003 + uColC * 0.015 * smoothstep(0.2, 1.0, F)) * (1.0 - cov);
+  return vec4(col, cov);
+}`,
+};
+
+// -------------------------------------------------------------- bodies
+
+interface BodyCode {
+  code: string;
+  /** Statement drawing the body: `c = body_i(p, c);` (p is the name of the coordinate). */
+  call: (coord: string) => string;
+  /** Feedback-pass mask for point geometry (flame / sparks) shaped by a fused shape or a deformation. */
+  fbMask: string | null;
+}
+
+/** Replaces the per-body macros with this body's uniform slots. */
+function slot(src: string, bi: number, suffix: string): string {
+  const b = bi * BODY_VEC4;
+  return src
+    .replace(/BD\((\d+)\)/g, (_m, k: string) => `uBd[${b + Number(k)}]`)
+    .replace(/\bEA\b/g, `uBd[${b + 16}]`)
+    .replace(/\bEB\b/g, `uBd[${b + 17}]`)
+    .replace(/\bEC\b/g, `uBd[${b + 18}]`)
+    .replace(/\bED\b/g, `uBd[${b + 19}]`)
+    .replace(/\bWV(\d)\b/g, (_m, k: string) => `uWv[${bi * 4 + Number(k)}]`)
+    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
+}
+
+/** Shape distance field for the body (SA/SB = its parameter slots). */
+function shapeCode(kind: ShapeKind, name: 'SHP' | 'FSH', slots: [number, number]): string {
+  const src = SHAPE_SDF[kind];
   if (!src) throw new Error(`no distance field for ${kind}`);
-  return slotted(src, slot);
+  return src.replace(/\bSHP\b/g, name).replace(/\bSA\b/g, `BD(${slots[0]})`).replace(/\bSB\b/g, `BD(${slots[1]})`);
 }
 
-/**
- * A merge emitter at flat slot s (parts at s + 1, s + 2): em_merge(p) draws
- * one figure from the two distance fields; mode 2 lights part B up inside or
- * along part A. Merge slot: A = (gain, hue, mode, k), B = (t, line, fill,
- * width), C = (inside, brightness, -, -).
- */
-function mergeCode(m: EmitterGene, s: number): string {
-  const [a, b] = m.parts!;
-  const mode = m.p.mode;
-  const M = (i: number) => `uEm[${s * 4 + i}]`;
-  const PA = `uEm[${(s + 1) * 4}]`;
-  const PB = `uEm[${(s + 2) * 4}]`;
-  let code = sdfCode(a.kind, s + 1) + '\n';
-  let consumer = 'vec3(0.0)';
-  if (mode !== 2) code += sdfCode(b.kind, s + 2) + '\n';
-  else if (b.kind === 'wave') {
-    code += sdfCode('wave', s + 2) + '\n';
-    consumer = `pal(${PB}.y + 0.4 + ${M(0)}.y) * glow(sd_wave(p), w) * 0.12 * uAccum`;
-  } else if (b.kind === 'ink') {
-    code += emitterCode('ink', s + 2) + '\n';
-  } else if (!GEOMETRY_KINDS.includes(b.kind)) {
-    code += emitterCode(b.kind, s + 2) + '\n';
-    consumer = COVER_EMITTERS.has(b.kind) ? `em_${b.kind}(p, vec3(0.0))` : `em_${b.kind}(p)`;
+/** Does this body draw through its distance field in the full-screen passes? */
+function drawsSdf(b: BodyGene): boolean {
+  const cls = SHAPE_CLASS[b.shape.kind];
+  return cls === 'sdf' || (cls === 'curve' && !!b.fuse);
+}
+
+export function isMetaball(b: BodyGene): boolean {
+  return b.shape.kind === 'dot' && (b.place.p.fuse ?? 0) > 0 && !isFoldPlace(b.place.kind) && b.deform.kind === 'none' && !b.fuse;
+}
+
+function bodyCode(b: BodyGene, bi: number): BodyCode {
+  const sfx = String(bi);
+  const cls = SHAPE_CLASS[b.shape.kind];
+  const layerK = STATIC_MATERIALS.includes(b.material.kind) ? 'uLayerK' : 'uAccum';
+  const cover = b.emit.kind === 'cover';
+  const C0 = bi * 6;
+  const ops = b.deform.ops?.length ? `p = drawWarp(p, ${bi * 3}, int(BD(12).z + 0.5));` : '';
+  const fuse = b.fuse;
+  let pre = '';
+  if (cls === 'field') pre += FIELD_GLSL[b.shape.kind] ?? '';
+  if (drawsSdf(b)) pre += shapeCode(b.shape.kind, 'SHP', [2, 3]) + '\n';
+  if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
+  pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
+  if (drawsSdf(b)) pre += BODY_COL + '\n' + MATERIAL_GLSL[b.material.kind].replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
+
+  // Fuse: blend the second shape's field into s (same local frame).
+  const fuseOp = !fuse
+    ? ''
+    : fuse.p.mode === 0
+      ? `{ vec3 f = FSH(qd); f.x *= sc * dk; float kk = max(BD(13).y, 1e-3); float h = clamp(0.5 + 0.5 * (f.x - s.x) / kk, 0.0, 1.0); s = vec3(mix(f.x, s.x, h) - kk * h * (1.0 - h), mix(f.y + 0.4, s.y, h), mix(f.z, s.z, h)); }`
+      : fuse.p.mode === 1
+        ? `{ vec3 f = FSH(qd); f.x *= sc * dk; float t = BD(13).z; s = vec3(mix(s.x, f.x, t), mix(s.y, f.y + 0.4, t), mix(s.z, f.z, t)); }`
+        : `{ vec3 f = FSH(qd); f.x *= sc * dk; float w = max(px() * 1.2, 0.0025); mreg = ${fuse.p.inside ? 'smoothstep(0.004, -0.004, f.x)' : 'glow(f.x, w * 6.0)'}; outl += glow(f.x, w) * 0.05; }`;
+  const regionBoost = fuse?.p.mode === 2 ? ' * (0.05 + 1.8 * mreg)' : '';
+
+  // One copy: local frame q (scene units), scale sc, copy info Q, centre T.
+  const evalCopy = (q: string, Q: string, T: string) => {
+    let s = `  {
+    vec2 qq = ${q};
+    float sc = max(${T}.w, 1e-3);
+    float dk;
+    vec2 qd = DFM(qq / sc, dk);
+    vec3 s = SHP(qd);
+    s.x *= sc * dk;
+    float mreg = 1.0;
+    ${fuseOp}
+    vec3 ex;
+    vec4 m = MAT(s, qq, ${Q}, max(BD(4).w, 1e-3) * sc, p, ex);
+    m.a *= 1.0${regionBoost};
+`;
+    if (cover) {
+      s += `    vec3 col = m.rgb * gain;
+    c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
+    c += ex * gain * ${layerK};
+    c += mix(vec3(${Q}.x), col, 0.6) * glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * 0.3 * BD(12).y * uAccum;
   }
-  const field =
-    mode === 0
-      ? `float d2 = sd_${b.kind}(p); float k = max(${M(0)}.w, 1e-3); float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0); side = h; return mix(d2, d1, h) - k * h * (1.0 - h);`
-      : mode === 1
-        ? `float d2 = sd_${b.kind}(p); side = 1.0 - ${M(1)}.x; return mix(d1, d2, ${M(1)}.x);`
-        : `side = 1.0; return d1;`;
-  let masked = '';
-  if (mode === 2) {
-    masked =
-      b.kind === 'ink'
-        ? `  float dye = 0.0;
-  for (int i = 0; i < 6; i++) { if (float(i) >= ${PB}.z - 0.5) break; dye += uInk[i].z; }
-  c += em_ink(p) + pal(${PB}.y + 0.1 + 0.03 * uBars) * dye * m * 0.1 * uAccum;
+`;
+    } else {
+      s += `    acc += m.rgb * m.a + ex;
+    tip += glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * ${Q}.x;
+  }
+`;
+    }
+    return s;
+  };
+
+  let placeCode = '';
+  const k = b.place.kind;
+  if (cls === 'field') {
+    // A chunk shape: one frame (a copy's transform, or a fold).
+    let q = `rot2(-uCp[${C0}].z) * (p - uCp[${C0}].xy) / max(uCp[${C0}].w, 1e-3)`;
+    if (k === 'mirror') q = `rot2(-uCp[${C0}].z) * (mirrorFold(p, BD(5).x) - uCp[${C0}].xy)`;
+    else if (k === 'ring') q = `ringFold(p, uCp[${C0}], BD(5).x, BD(5).y).xy`;
+    else if (k === 'grid') q = `(fract(rot2(-uCp[${C0}].z) * (p - uCp[${C0}].xy) * BD(5).x + 0.5) - 0.5) / BD(5).x * 2.0`;
+    placeCode = `  float dk;
+  vec2 q = DFM(${q}, dk);
+  vec3 col = FLD(q);
+`;
+    if (fuse) {
+      placeCode += `  { vec3 f = FSH(q); float w = max(px() * 1.2, 0.0025); float mreg = ${fuse.p.inside ? 'smoothstep(0.004, -0.004, f.x)' : 'glow(f.x, w * 6.0)'}; col = col * (0.05 + 1.8 * mreg) + pal(BD(0).y + 0.4) * glow(f.x, w) * 0.05 * uAccum * BD(0).x; }
+`;
+    }
+    placeCode += `  c += col;
+`;
+  } else if (drawsSdf(b)) {
+    if (isMetaball(b)) {
+      // Copies melt into one surface: an inverse-square field with an exact gradient.
+      placeCode = `  int n = int(BD(4).x + 0.5);
+  float F = 0.0, rs = 0.0;
+  vec2 g = vec2(0.0);
+  vec4 Qm = vec4(0.0);
+  for (int i = 0; i < 6; i++) {
+    if (i >= n) break;
+    vec4 T = uCp[${C0} + i];
+    vec2 d = p - T.xy;
+    float r = max(BD(2).x * T.w, 1e-3);
+    float iq = 1.0 / (dot(d, d) + 1e-4);
+    F += r * r * iq;
+    g += -2.0 * r * r * iq * iq * d;
+    rs += r;
+    Qm += uCq[${C0} + i] * r * r * iq;
+  }
+  Qm /= max(F, 1e-5);
+  float dm = rs / float(max(n, 1)) * (inversesqrt(max(F, 1e-4)) - 1.0);
+  gMeta = g; gMetaOn = 1.0; gMetaF = F;
+  vec3 ex;
+  vec4 m = MAT(vec3(dm, 0.0, 1.0), p, Qm, max(BD(4).w, 1e-3), p, ex);
+  gMetaOn = 0.0;
+`;
+      placeCode += cover
+        ? `  vec3 col = m.rgb * gain;
+  c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
+  c += ex * gain * ${layerK};
 `
-        : `  c += (${consumer}) * (0.05 + 1.8 * m);
+        : `  acc += m.rgb * m.a + ex;
 `;
+    } else if (k === 'grid') {
+      placeCode = `  vec4 T0 = uCp[${C0}];
+  float S = BD(5).x, jit = BD(5).y, dens = BD(5).z, lit = BD(5).w;
+  float links = BD(6).x, lvl = BD(6).z, twk = BD(6).w;
+  int lat = int(BD(6).y + 0.5);
+  vec2 g0 = rot2(-T0.z) * (p - T0.xy) * S;
+  if (lat == 0) {
+    vec2 cell = floor(g0);
+    int K = jit > 0.25 ? 1 : 0;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      if (abs(i) > K || abs(j) > K) continue;
+      vec2 cc = cell + vec2(i, j);
+      if (hash12(cc * 1.3 + 7.1) >= dens) continue;
+      vec2 sp = cc + 0.5 + jit * (hash22(cc * 1.7 + 0.3) - 0.5);
+      float pc = floor(hash12(cc + 3.7) * 12.0);
+      float e = pow(chromaAt(pc), 2.5) * lvl;
+      float gate = lit < 0.99 ? step(hash12(cc + floor(uBeats)), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse) : 1.0;
+      gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
+      vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
+${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(g0 - sp) / S')}
+      if (links > 0.01) {
+        for (int kk = 0; kk < 2; kk++) {
+          vec2 nc = cc + (kk == 0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+          if (hash12(nc * 1.3 + 7.1) >= dens) continue;
+          float pc2 = floor(hash12(nc + 3.7) * 12.0);
+          float link = min(e, pow(chromaAt(pc2), 2.5) * lvl) * gate;
+          if (link < 0.04) continue;
+          vec2 np = nc + 0.5 + jit * (hash22(nc * 1.7 + 0.3) - 0.5);
+          acc += mix(COL(Qc, 0.0, 0.3), COL(vec4(0.0, -1.0 - pc2, 0.0, 0.0), 0.0, 0.3), 0.5) * link * links * glow(sdSeg(g0, sp, np) / S, px() * 1.1) * 0.8 * 0.2;
+        }
+      }
+    }
+  } else {
+    vec4 h = lat == 1 ? hexCell(g0) : triCell(g0);
+    vec2 cc = h.zw;
+    if (hash12(cc * 1.3 + 7.1) < dens) {
+      float pc = floor(hash12(cc) * 12.0);
+      float e = pow(chromaAt(pc), 2.0) * lvl;
+      float gate = 1.0;
+      if (lit < 0.99) { gate = step(hash12(cc + floor(uBeats)), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse); e *= e; }
+      gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
+      vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
+${evalCopy('h.xy / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(h.xy) / S')}
+    }
   }
-  code += /* glsl */ `
-float mergeD(vec2 p, out float side) {
-  float d1 = sd_${a.kind}(p);
-  ${field}
-}
-float mergeMask(vec2 p) {
-  float side;
-  float d = mergeD(p, side);
-  float w = max(px() * 1.2, 0.0025) * ${M(1)}.w;
-  return ${M(2)}.x > 0.5 ? smoothstep(0.004, -0.004, d) : glow(d, max(w * 16.0, 0.09));
-}
-vec3 em_merge(vec2 p) {
-  float side;
-  float d = mergeD(p, side);
-  float w = max(px() * 1.2, 0.0025) * ${M(1)}.w;
-  float aa = max(fwidth(d), 1e-4);
-  float inside = smoothstep(aa, -aa, d);
-  float body = inside * (0.3 + 0.7 * exp(d * 14.0));
-  float line = glow(d, w) + 0.18 * glow(d, w * 5.0);
-  vec3 col = mix(pal(${PB}.y + 0.4 + ${M(0)}.y), pal(${PA}.y + 0.05 + ${M(0)}.y), side);
-  float fillK = ${mode === 2 ? '0.0' : `${M(1)}.z`};
-  vec3 c = col * (fillK * body * 0.45 * uLayerK + ${M(1)}.y * line * ${mode !== 2 ? '0.1' : GEOMETRY_KINDS.includes(b.kind) ? '0.02' : '0.05'} * uAccum) * ${M(2)}.y;
-${mode === 2 ? `  float m = ${M(2)}.x > 0.5 ? inside : glow(d, w * 6.0);
-${masked}` : ''}  return c * ${M(0)}.x;
-}
+  gTw = 1.0;
 `;
-  return code;
-}
+    } else if (k === 'ring') {
+      placeCode = `  vec4 T0 = uCp[${C0}];
+  vec3 rq = ringFold(p, T0, BD(5).x, BD(5).y);
+  int ci = int(mod(rq.z, 4.0) + 4.0) % 4;
+  vec4 Qc = uCq[${C0} + ci];
+${evalCopy('rq.xy', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(rq.xy)')}
+`;
+    } else if (k === 'mirror') {
+      placeCode = `  vec4 T0 = uCp[${C0}];
+  vec2 mp = mirrorFold(p, BD(5).x);
+  vec4 Qc = uCq[${C0}];
+${evalCopy('rot2(-T0.z) * (mp - T0.xy)', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(mp - T0.xy)')}
+`;
+    } else if ((b.place.p.fuse ?? 0) > 0) {
+      // Copies melt together (smooth union), then one material pass.
+      placeCode = `  int n = int(BD(4).x + 0.5);
+  float kf = max(BD(4).y, 1e-3);
+  vec3 sF = vec3(1e3, 0.0, 1.0);
+  vec4 QF = vec4(0.0);
+  float wsum = 0.0;
+  for (int i = 0; i < 6; i++) {
+    if (i >= n) break;
+    vec4 T = uCp[${C0} + i];
+    vec4 Q = uCq[${C0} + i];
+    vec2 qq = rot2(-T.z) * (p - T.xy);
+    float sc = max(T.w, 1e-3);
+    float dk;
+    vec2 qd = DFM(qq / sc, dk);
+    vec3 s = SHP(qd);
+    s.x *= sc * dk;
+    float mreg = 1.0;
+    ${fuseOp}
+    float h = clamp(0.5 + 0.5 * (s.x - sF.x) / kf, 0.0, 1.0);
+    sF = vec3(mix(s.x, sF.x, h) - kf * h * (1.0 - h), mix(s.y, sF.y, h), mix(s.z, sF.z, h));
+    float wq = 1.0 / (1.0 + max(s.x, 0.0) * 40.0);
+    QF += Q * wq;
+    wsum += wq;
+  }
+  QF /= max(wsum, 1e-4);
+  vec3 ex;
+  vec4 m = MAT(sF, p - uCp[${C0}].xy, QF, max(BD(4).w, 1e-3), p, ex);
+`;
+      placeCode += cover
+        ? `  vec3 col = m.rgb * gain;
+  c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
+  c += ex * gain * ${layerK};
+`
+        : `  acc += m.rgb * m.a + ex;
+`;
+    } else {
+      // Explicit copies; each sweeps from its previous position (a continuous stroke at any frame rate).
+      placeCode = `  int n = int(BD(4).x + 0.5);
+  for (int i = 0; i < 6; i++) {
+    if (i >= n) break;
+    vec4 T = uCp[${C0} + i];
+    vec4 Q = uCq[${C0} + i];
+    vec2 pv = Q.zw;
+    vec2 dv = T.xy - pv;
+    float hh = clamp(dot(p - pv, dv) / max(dot(dv, dv), 1e-8), 0.0, 1.0);
+${evalCopy('rot2(-T.z) * (p - (pv + dv * hh))', 'Q', 'T')}
+  }
+`;
+    }
+    if (fuse?.p.mode === 2) placeCode = `  float outl = 0.0;\n` + placeCode + `  acc += pal(BD(0).y + 0.4) * outl;\n`;
+    if (!cover) placeCode += `  c += (acc * ${layerK} + vec3(1.0) * tip * 0.25 * BD(12).y * uAccum) * gain * BD(12).w;\n`;
+  }
 
-/** True when the genome's merge masks its feedback trail (a particle / flame consumer). */
-function masksFeedback(g: Genome): boolean {
-  const m = g.emitters.find((e) => e.kind === 'merge');
-  return !!m && m.p.mode === 2 && GEOMETRY_KINDS.includes(m.parts![1].kind);
-}
+  let fbMask: string | null = null;
+  if ((cls === 'flame' || (b.emit.kind === 'sparks' && !drawsSdf(b))) && (fuse || b.deform.kind !== 'none')) {
+    // Point geometry fades fast outside the fused shape (or the deformed silhouette) and lingers inside.
+    fbMask = `float fbMask_${sfx}(vec2 p0) {
+  vec2 p = p0;
+  ${ops}
+  vec4 T0 = uCp[${C0}];
+  vec2 q = rot2(-T0.z) * (p - T0.xy);
+  float dk;
+  vec2 qd = DFM(q, dk);
+  float d = ${fuse ? 'FSH(qd).x * dk' : `(length(qd) - max(BD(4).w, 1e-3)) * dk`};
+  return ${fuse && !fuse.p.inside ? 'glow(d, 0.09)' : 'smoothstep(0.004, -0.004, d)'};
+}`;
+  }
 
-/** Emitters that repaint what is under them: em_<kind>(p, c) returns the new colour. */
-const COVER_EMITTERS = new Set<EmitterKind>(['snake']);
-
-/** Emitters drawn as fullscreen fields (the rest are geometry passes). */
-export function isFieldEmitter(kind: EmitterKind): boolean {
-  return kind in EMIT_GLSL || kind === 'merge';
+  const helpers = `vec2 mirrorFold(vec2 p, float axis) { if (axis < 0.5) return vec2(abs(p.x), p.y); if (axis < 1.5) return vec2(p.x, abs(p.y)); return abs(p); }
+vec3 ringFold(vec2 p, vec4 T, float nr, float rad) {
+  vec2 d = rot2(-T.z) * (p - T.xy);
+  float seg = TAU / max(nr, 1.0);
+  float a = atan(d.y, d.x);
+  float id = floor(a / seg + 0.5);
+  float ar = a - id * seg;
+  vec2 q = length(d) * vec2(cos(ar), sin(ar)) - vec2(rad, 0.0);
+  return vec3(q.y, q.x, id);
+}`;
+  const body = `vec3 body_${sfx}(vec2 p, vec3 c) {
+  ${ops}
+  float gain = BD(0).x;
+  vec3 acc = vec3(0.0);
+  float tip = 0.0;
+${placeCode}  return c;
+}`;
+  const needHelpers = bi === 0 ? helpers + '\n' : '';
+  const code = slot(needHelpers + pre + (fbMask ? fbMask + '\n' : '') + body, bi, sfx);
+  const draws = cls === 'field' || drawsSdf(b);
+  return {
+    code,
+    call: (coord: string) => (draws ? `  c = body_${sfx}(${coord}, c);\n` : ''),
+    fbMask: fbMask ? `fbMask_${sfx}` : null,
+  };
 }
 
 // ------------------------------------------------------------- builders
@@ -817,41 +967,29 @@ export interface Sources {
 }
 
 export function buildSources(g: Genome): Sources {
+  const nb = g.bodies.length;
   const defs: string[] = [];
   if (g.carrier.kind === 'none') defs.push('NO_FEEDBACK');
   if (g.carrier.kind === 'fluid') defs.push('USE_FLUID');
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
   if (g.color.p.reflect > 0.5) defs.push('REFLECT');
   if (g.color.p.tonemap > 0.5) defs.push('LOG_TONE');
-  if (masksFeedback(g)) defs.push('MERGE_FB_MASK');
-  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + LIB + FLAME_VARIATION_GLSL + DRAW_GLSL;
+  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL;
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
   const viewOps = g.chain.map((o, i) => (o.stage === 'view' ? opCode(o, i) : '')).join('');
 
-  const fbEm: string[] = [];
-  const topEm: string[] = [];
-  let fbCover = '';
-  let topCover = '';
-  let fbCode = '';
-  let topCode = '';
-  // Slots follow flatEmitters(): a merge's parts take the slots after it.
-  const flat = flatEmitters(g);
-  for (const e of g.emitters) {
-    const slot = flat.indexOf(e);
-    if (!isFieldEmitter(e.kind)) continue;
-    const cover = COVER_EMITTERS.has(e.kind);
-    const code = e.kind === 'merge' ? mergeCode(e, slot) : emitterCode(e.kind, slot);
-    if (e.layer === 'fb') {
-      fbCode += code + '\n';
-      if (cover) fbCover += `  c = em_${e.kind}(p, c);\n`;
-      else fbEm.push(`em_${e.kind}(p)`);
-    } else {
-      topCode += code + '\n';
-      if (cover) topCover += `  c = em_${e.kind}(q, c);\n`;
-      else topEm.push(`em_${e.kind}(q)`);
-    }
-  }
+  let code = '';
+  let fbDraw = '';
+  let topDraw = '';
+  let masks = '';
+  g.bodies.forEach((b, bi) => {
+    const bc = bodyCode(b, bi);
+    code += bc.code + '\n';
+    if (bodyLayer(b) === 'fb') fbDraw += bc.call('p');
+    else topDraw += bc.call('q');
+    if (bc.fbMask) masks += `  c *= mix(0.88, 1.0, ${bc.fbMask}(p));\n`;
+  });
 
   const feedback = pre + /* glsl */ `
 in vec2 vUv;
@@ -874,11 +1012,10 @@ vec3 prevAt(vec2 uv) {
 vec2 warp(vec2 p) {
 ${warpOps}  return p;
 }
-${fbCode}
+${code}
 void main() {
   vec2 asp = vec2(uAspect, 1.0);
   vec2 p = (vUv - 0.5) * asp;
-  vec2 pd = drawWarp(p);
   vec3 c = vec3(0.0);
 #ifndef NO_FEEDBACK
   vec2 w = warp(p);
@@ -890,14 +1027,8 @@ void main() {
   suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
 #endif
   c = max(prevAt(suv) * uDecay - uDecaySub, 0.0);
-#ifdef MERGE_FB_MASK
-  // Particles / flame points fade fast outside the merge shape and linger inside it.
-  c *= mix(0.88, 1.0, mergeMask(pd));
-#endif
-#endif
-  p = pd; // emitters draw in draw space (identity without draw ops)
-  c += ${fbEm.length ? fbEm.join(' + ') : 'vec3(0.0)'};
-${fbCover}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
+${masks}#endif
+${fbDraw}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
 }`;
 
   const composite = pre + /* glsl */ `
@@ -909,7 +1040,7 @@ vec3 fb(vec2 q) { return texture(uFb, q / vec2(uAspect, 1.0) + 0.5).rgb; }
 vec2 view(vec2 p) {
 ${viewOps}  return p;
 }
-${topCode}
+${code}
 void main() {
   vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
   float att = 1.0;
@@ -921,20 +1052,15 @@ void main() {
   }
 #endif
   vec2 q = view(p);
-  vec2 qd = drawWarp(q);
 #ifdef LOG_TONE
   vec2 ox = vec2(0.5 / uRes.y, 0.0), oy = vec2(0.0, 0.5 / uRes.y);
   vec3 c = (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25 * vMul + vAdd;
-  q = qd;
-  c += ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
-${topCover}  float l = max(c.r, max(c.g, c.b));
+${topDraw}  float l = max(c.r, max(c.g, c.b));
   float b = log(1.0 + l * 24.0) / log(25.0);
   c = c / max(l, 1e-5) * pow(b, 1.1) * 0.55;
 #else
   vec3 c = fb(q) * vMul + vAdd;
-  q = qd;
-  c += ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
-${topCover}#endif
+${topDraw}#endif
   c *= att;
 #ifdef REFLECT
   c += uColC * glow(p.y - uReflectY, 0.0012) * 0.06 * step(0.99, att);
@@ -952,14 +1078,49 @@ ${topCover}#endif
   return { feedback, composite };
 }
 
+/** True when the body is drawn by the curve geometry pass. */
+export function drawsCurve(b: BodyGene): boolean {
+  return SHAPE_CLASS[b.shape.kind] === 'curve' && !b.fuse;
+}
+export { sdfCapable };
+
 // ------------------------------------------------------ line geometry
 
-export const WAVE_VS = HEAD + COMMON + LIB + FLAME_VARIATION_GLSL + DRAW_GLSL + /* glsl */ `
+/**
+ * Curve geometry: one draw per copy. uW: (form, amp, x, y) (radius, turns, ra, rb)
+ * (phase, rotation, hue, -) (pendulum phases); uT: the copy (x, y, angle, scale);
+ * uFlip: mirror scale; uDk: deform kind (0 none, 1 arms, 2 wobble, 3 noise, 4 twist)
+ * with uDp and the arm slots; uDrBase / uDrN: the body's draw ops.
+ */
+export const WAVE_VS = HEAD + COMMON + lib(3) + FLAME_VARIATION_GLSL + DRAW_GLSL + /* glsl */ `
 uniform float uN, uThick, uBright;
-// uW (in LIB): (shape, amp, x, y) (radius, turns, ra, rb) (phase, rotation, hue, -) (pendulum phases)
-// Pendulum (shape 5): uW[1] = frequencies, uW[2].x = scale, uW[2].w = second pendulum amplitude.
+uniform vec4 uW[4];
+uniform vec4 uT;
+uniform vec2 uFlip;
+uniform int uDk;
+uniform vec4 uDp, uArmA0, uArmA1, uArmL0, uArmL1;
+uniform int uDrBase, uDrN;
 out float vSide;
 out vec3 vCol;
+out float vK;
+vec2 deformFwd(vec2 q) {
+  if (uDk == 1) {
+    float a = atan(q.y, q.x);
+    float ext = 0.0;
+    int n = int(uDp.x + 0.5);
+    for (int j = 0; j < 7; j++) {
+      if (j >= n) break;
+      float ang = (j < 4 ? uArmA0[j] : uArmA1[j - 4]);
+      float da = atan(sin(a - ang), cos(a - ang));
+      ext += (j < 4 ? uArmL0[j] : uArmL1[j - 4]) * exp(-da * da / (uDp.w * uDp.w));
+    }
+    return q * (1.0 + ext * uDp.y);
+  }
+  if (uDk == 2) return q * (1.0 + uDp.y * sin(uDp.x * atan(q.y, q.x) + uDp.z));
+  if (uDk == 3) return q + curlNoise(q * uDp.y + 4.0, uDp.z) * uDp.x;
+  if (uDk == 4) return rot2(-uDp.x * length(q)) * q;
+  return q;
+}
 vec2 curve(float k) {
   vec4 A = uW[0], B = uW[1], C = uW[2];
   int sh = int(A.x + 0.5);
@@ -991,7 +1152,9 @@ vec2 curve(float k) {
     float y = sin(B.z * t + D.z) + C.w * sin(B.w * t + D.w);
     q = vec2(x, y) * damp * C.x;
   }
-  return drawWarpFwd(rot2(C.y) * q + A.zw);
+  q = rot2(C.y) * deformFwd(q);
+  q = rot2(uT.z) * q * uT.w * uFlip + uT.xy;
+  return drawWarpFwd(q, uDrBase, uDrN);
 }
 vec3 curveColor(float k) {
   int sh = int(uW[0].x + 0.5);
@@ -1011,16 +1174,21 @@ void main() {
   vec2 n = normalize(vec2(-t.y, t.x) + 1e-6);
   vec2 pp = a + n * side * uThick / uRes.y;
   vSide = side;
+  vK = k * uN;
   vCol = curveColor(k) * uBright;
   gl_Position = vec4(pp.x / (uAspect * 0.5), pp.y / 0.5, 0.0, 1.0);
 }`;
 
+/** uDash > 0: dotted (dash period in vertices); uHalo: wider soft falloff. */
 export const WAVE_FS = HEAD + /* glsl */ `
 in float vSide;
 in vec3 vCol;
+in float vK;
+uniform float uDash, uSoft;
 out vec4 o;
 void main() {
   float s = 1.0 - vSide * vSide;
-  o = vec4(vCol * (s * s + pow(s, 10.0) * 0.4), 1.0);
+  float prof = mix(s * s + pow(s, 10.0) * 0.4, sqrt(max(s, 0.0)) * 0.6, uSoft);
+  float dash = uDash > 0.5 ? smoothstep(0.5, 0.2, abs(fract(vK / uDash) - 0.5) * 2.0) : 1.0;
+  o = vec4(vCol * prof * dash, 1.0);
 }`;
-

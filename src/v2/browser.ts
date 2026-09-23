@@ -295,8 +295,8 @@ export class PresetBrowser {
 }
 
 const TAG_TITLE: Record<NonNullable<Member['cross']>, string> = {
-  fused: 'One parent draws, the other shapes it (motion, colour, carrier)',
-  morph: 'Same kind in both parents: one emitter with blended parameters',
+  fused: "One parent's shape with the other's ideas (placement, motion, material, trail)",
+  morph: 'Same shape in both parents: one shape with blended parameters',
   merged: 'Two shapes fused into one through their distance fields',
   layered: 'Rare: a second, separate layer on top',
 };

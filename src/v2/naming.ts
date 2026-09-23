@@ -1,10 +1,13 @@
 // Descriptive, inherited names for V2 population members.
 //
-// A name is "Adjective Noun" (a merge's noun may itself be two words: "Serpent
-// Lattice"). The noun says what the preset draws (its dominant emitter kind, a
-// hybrid for a fused pair, or a structural word when a fold chain dominates a
-// weak emitter). The adjective says how it moves or looks, picked from the
-// traits actually present in the genome, weighted by their strength. Neither
+// A name is "Adjective Noun" (a fused body's noun may itself be two words:
+// "Serpent Lattice"). The noun says what the preset draws: the main body's noun
+// family, from its shape, placement, material and emission (a dot walking is a
+// serpent, a dot on a grid a starfield, sparks from a hidden body a swarm), a
+// hybrid for a fused shape, or a structural word when a fold chain dominates a
+// faint body. The adjective says how it moves or looks, picked from the traits
+// actually present (motion, deformation, placement, material, emission, chain,
+// carrier, colour), weighted by their strength. Neither
 // ever names a fixed hue: the palette hue is an offset from the song's key at
 // runtime, so the same preset shows a different hue on every song.
 //
@@ -16,7 +19,7 @@
 // otherwise deterministic: a hash of the genome selects among the valid
 // synonyms, so export/import and re-runs reproduce the same name.
 
-import { flatEmitters, genomeHash, isVarOp, type EmitterGene, type EmitterKind, type Genome } from './genome';
+import { genomeHash, isVarOp, type BodyGene, type Genome, type ShapeGene } from './genome';
 
 // -------------------------------------------------------------- helpers
 
@@ -37,7 +40,12 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 
 // ---------------------------------------------------------------- nouns
 
-export const NOUN_POOLS: Record<Exclude<EmitterKind, 'merge'>, string[]> = {
+/** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
+export type NounKind =
+  | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment';
+
+export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
   spectrum: ['Skyline', 'Equalizer', 'Spires', 'Towers', 'Bars', 'Pillars', 'Palisade', 'Battlement', 'Cityscape', 'Columns', 'Facade', 'Metropolis'],
   particles: ['Swarm', 'Storm', 'Spray', 'Haze', 'Dust', 'Flurry', 'Shower', 'Cluster', 'Scatter', 'Drift', 'Cyclone', 'Blizzard'],
@@ -53,15 +61,50 @@ export const NOUN_POOLS: Record<Exclude<EmitterKind, 'merge'>, string[]> = {
   horizon: ['Ridge', 'Horizon', 'Dunes', 'Bluffs', 'Highlands', 'Foothills', 'Mesa', 'Escarpment', 'Terrain', 'Valley', 'Plateau', 'Badlands'],
   orb: ['Moon', 'Orb', 'Pearl', 'Lantern', 'Globe', 'Sphere', 'Bulb', 'Halo', 'Satellite', 'Beacon', 'Sun', 'Planet'],
   snake: ['Serpent', 'Trail', 'Ribbon', 'Wake', 'Coil', 'Sidewinder', 'Viper', 'Python', 'Eel', 'Adder', 'Slither', 'Curl'],
+  polygon: ['Prism', 'Facet', 'Shard', 'Hexagon', 'Gem', 'Tablet', 'Plate', 'Keystone', 'Tile', 'Emblem', 'Sigil', 'Lozenge'],
+  star: ['Star', 'Asterisk', 'Pinwheel', 'Starburst', 'Compass', 'Spur', 'Rowel', 'Sunburst', 'Blossom', 'Burr', 'Thistle', 'Urchin'],
+  segment: ['Stroke', 'Dash', 'Needle', 'Streak', 'Stitch', 'Splinter', 'Rod', 'Baton', 'Quill', 'Sliver', 'Spoke', 'Wand'],
 };
-/** Fallback for a kind that somehow has no pool (should not happen; every EMITTER_KIND but merge is covered). */
+
+/** The noun family of a body. */
+export function nounKind(b: BodyGene): NounKind {
+  const hidden = b.emit.kind === 'sparks' && b.emit.p.body < 0.3;
+  if (hidden && b.shape.kind !== 'flame') return 'particles';
+  return shapeNoun(b.shape, b);
+}
+
+function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
+  const pk = b?.place.kind;
+  switch (s.kind) {
+    case 'flame': return 'flame';
+    case 'plasma': return 'plasma';
+    case 'aurora': return 'aurora';
+    case 'terrain': return 'horizon';
+    case 'edge': return 'edge';
+    case 'curve': return 'wave';
+    case 'bars': return 'spectrum';
+    case 'solid': return 'wire';
+    case 'segment': return pk === 'walker' ? 'snake' : 'segment';
+    case 'polygon': return pk === 'grid' ? 'tiles' : 'polygon';
+    case 'star': return pk === 'grid' ? 'stars' : 'star';
+    case 'dot':
+      if (!b) return 'orb';
+      if (pk === 'walker') return 'snake';
+      if (pk === 'grid') return 'stars';
+      if (pk === 'float' || b.material.kind === 'chrome') return 'blobs';
+      if (pk === 'orbit' || pk === 'stations' || pk === 'row' || b.emit.kind === 'dye') return 'ink';
+      return 'orb';
+  }
+  return 'orb';
+}
+/** Fallback for a kind that somehow has no pool (should not happen; every noun kind is covered). */
 const GENERIC_NOUN = ['Signal', 'Glow', 'Pulse', 'Figure', 'Form', 'Shape'];
 
 /** A preset dominated by its fold chain (kaleido / mirror) over a faint emitter takes a structural noun. */
 const STRUCTURAL_NOUNS = ['Mandala', 'Kaleidoscope', 'Rosette', 'Medallion', 'Tunnel', 'Wheel', 'Rose', 'Prism', 'Labyrinth', 'Spiral', 'Portal', 'Rings'];
 
-/** Hand-picked pair names for common merges, keyed by each part's own word (still one of NOUN_POOLS[kind]). */
-const HYBRID_PAIRS: Partial<Record<string, Partial<Record<Exclude<EmitterKind, 'merge'>, string>>>> = {
+/** Hand-picked pair names for common fusions, keyed by each part's own word (still one of NOUN_POOLS[kind]). */
+const HYBRID_PAIRS: Partial<Record<string, Partial<Record<NounKind, string>>>> = {
   'snake+wire': { snake: 'Serpent', wire: 'Lattice' },
   'flame+orb': { flame: 'Flame', orb: 'Moon' },
   'ink+orb': { ink: 'Bloom', orb: 'Moon' },
@@ -77,17 +120,15 @@ const HYBRID_PAIRS: Partial<Record<string, Partial<Record<Exclude<EmitterKind, '
   'orb+plasma': { orb: 'Globe', plasma: 'Contour' },
 };
 
-function pairKey(a: EmitterKind, b: EmitterKind): string {
+function pairKey(a: NounKind, b: NounKind): string {
   return [a, b].sort().join('+');
 }
 
-/** A preset whose look comes from a strong fold chain over a faint emitter (kaleido / mirror). */
+/** A preset whose look comes from a strong fold chain over a faint body (kaleido / mirror). */
 function isStructural(g: Genome): boolean {
-  const body = g.emitters[0];
-  if (!body) return false;
-  const gain = body.kind === 'merge' ? Math.max(body.parts?.[0]?.p.gain ?? 0, body.parts?.[1]?.p.gain ?? 0) : (body.p.gain ?? 1);
-  if (gain >= 0.4) return false;
-  for (const o of [...g.chain, ...(g.draw ?? [])]) {
+  const body = g.bodies[0];
+  if (!body || body.material.p.gain >= 0.4) return false;
+  for (const o of [...g.chain, ...(body.deform.ops ?? [])]) {
     if ((o.op === 'kaleido' || o.op === 'mirror') && o.w >= 0.5) return true;
   }
   return false;
@@ -96,21 +137,22 @@ function isStructural(g: Genome): boolean {
 function pickNoun(g: Genome, parentNames: readonly string[]): string {
   const h = genomeHash(g);
   if (isStructural(g)) return pickWord(STRUCTURAL_NOUNS, h, parentNames);
-  const body: EmitterGene | undefined = g.emitters[0];
+  const body: BodyGene | undefined = g.bodies[0];
   if (!body) return pickWord(GENERIC_NOUN, h, parentNames);
-  if (body.kind === 'merge' && body.parts) {
-    // Merge parts are never themselves 'merge' (repair()/validate() forbid nesting).
-    const a = body.parts[0].kind as Exclude<EmitterKind, 'merge'>;
-    const b = body.parts[1].kind as Exclude<EmitterKind, 'merge'>;
+  const a = nounKind(body);
+  if (body.fuse) {
+    let b = shapeNoun(body.fuse.shape, null);
+    if (b === a) b = body.fuse.shape.kind === 'dot' ? 'orb' : b;
     const poolA = NOUN_POOLS[a] ?? GENERIC_NOUN;
     const poolB = NOUN_POOLS[b] ?? GENERIC_NOUN;
-    const curated = HYBRID_PAIRS[pairKey(a, b)];
-    const wordA = pickWord(poolA, h, parentNames, curated?.[a]);
-    const wordB = pickWord(poolB, h >>> 5, parentNames, curated?.[b]);
-    return `${wordA} ${wordB}`;
+    if (a !== b) {
+      const curated = HYBRID_PAIRS[pairKey(a, b)];
+      const wordA = pickWord(poolA, h, parentNames, curated?.[a]);
+      const wordB = pickWord(poolB.filter((w) => w !== wordA), h >>> 5, parentNames, curated?.[b]);
+      return `${wordA} ${wordB}`;
+    }
   }
-  const pool = body.kind === 'merge' ? GENERIC_NOUN : (NOUN_POOLS[body.kind] ?? GENERIC_NOUN);
-  return pickWord(pool, h, parentNames);
+  return pickWord(NOUN_POOLS[a] ?? GENERIC_NOUN, h, parentNames);
 }
 
 // ------------------------------------------------------------ adjectives
@@ -147,6 +189,12 @@ const TWO_TONE = ['Two-Tone', 'Dual', 'Contrasted', 'Split', 'Paired', 'Opposed'
 const PRISMATIC = ['Iridescent', 'Prismatic', 'Rainbow', 'Multicolored', 'Opalescent', 'Chromatic', 'Spectral', 'Variegated', 'Tri-Tone', 'Pearlescent', 'Nacreous', 'Shimmering'];
 const SHADOWED = ['Shadowed', 'Dim', 'Vignetted', 'Darkened', 'Eclipsed', 'Obscured', 'Umbral', 'Hooded', 'Cloaked', 'Murky', 'Occluded', 'Sombre'];
 const REFLECTED = ['Reflected', 'Pooled', 'Doubled', 'Inverted', 'Twinned', 'Glassy', 'Lucent', 'Specular', 'Echoed', 'Echoing', 'Glimmering', 'Lakeside'];
+const REACHING = ['Reaching', 'Tentacled', 'Grasping', 'Sprawling', 'Starfish', 'Clutching', 'Groping', 'Octopoid', 'Stretching', 'Flailing', 'Beckoning', 'Waving'];
+const DARTING = ['Darting', 'Lurching', 'Jolting', 'Zigzag', 'Swerving', 'Dodging', 'Jerking', 'Sidestepping', 'Careening', 'Bounding', 'Pouncing', 'Skipping'];
+const STIPPLED = ['Stippled', 'Dotted', 'Pointillist', 'Speckled', 'Freckled', 'Pebbled', 'Spotted', 'Granular', 'Sequined', 'Dappled', 'Flecked', 'Beaded'];
+const MOTTLED = ['Cratered', 'Pitted', 'Mottled', 'Weathered', 'Rugged', 'Scarred', 'Pockmarked', 'Worn', 'Stony', 'Dusty', 'Etched', 'Carved'];
+const SPARKING = ['Sparking', 'Crackling', 'Fizzing', 'Spitting', 'Sputtering', 'Scintillating', 'Effervescent', 'Popping', 'Sparkling', 'Glinting', 'Twinkling', 'Spangled'];
+const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
 function clamp01(x: number): number {
@@ -162,7 +210,7 @@ function traits(g: Genome): Trait[] {
     else list.push({ id, pool, weight });
   };
 
-  for (const o of [...g.chain, ...(g.draw ?? [])]) {
+  for (const o of [...g.chain, ...g.bodies.flatMap((b) => b.deform.ops ?? [])]) {
     const w = o.w;
     switch (o.op) {
       case 'swirl': add('spiral', SPIRAL, w * clamp01(0.5 + Math.abs(o.p.amt) * 40)); break;
@@ -191,7 +239,43 @@ function traits(g: Genome): Trait[] {
         if (isVarOp(o.op)) add('fractal', FRACTAL, w * 0.7);
     }
   }
-  if (flatEmitters(g).some((e) => e.kind === 'flame')) add('fractal', FRACTAL, 0.5);
+  if (g.bodies.some((b) => b.shape.kind === 'flame')) add('fractal', FRACTAL, 0.5);
+
+  // Body sub-genes: how each copy moves, how the shape is bent, where copies sit, how it is lit.
+  for (const [bi, b] of g.bodies.entries()) {
+    const k = bi === 0 ? 1 : 0.6;
+    const mp = b.motion.p;
+    switch (b.motion.kind) {
+      case 'spin': add('turning', TURNING, k * clamp01(0.4 + Math.abs(mp.rate) * 2)); break;
+      case 'sway': add('breathing', BREATHING, k * clamp01(0.4 + mp.amp * 6)); break;
+      case 'bob': add('breathing', BREATHING, k * clamp01(0.3 + mp.amp * 0.3)); break;
+      case 'drift': add('drift', DRIFT, k * clamp01(0.3 + (Math.abs(mp.vx) + Math.abs(mp.vy)) * 20)); break;
+      case 'circle': add('orbital', ORBITAL, k * clamp01(0.4 + mp.radius * 8)); break;
+      case 'hits': add('darting', DARTING, k * clamp01(0.4 + mp.amt * 0.4)); break;
+      case 'pulse': add('surging', SURGING, k * clamp01(0.4 + mp.amp * 2)); break;
+    }
+    const dp = b.deform.p;
+    switch (b.deform.kind) {
+      case 'arms': add('reaching', REACHING, k * clamp01(0.5 + dp.reach * 0.6)); break;
+      case 'wobble': add('rippling', RIPPLING, k * clamp01(0.4 + dp.amp * 2)); break;
+      case 'noise': add('wandering', WANDERING, k * clamp01(0.4 + dp.amp * 10)); break;
+      case 'twist': add('spiral', SPIRAL, k * clamp01(0.4 + Math.abs(dp.amt) * 0.12)); break;
+    }
+    switch (b.place.kind) {
+      case 'walker': add('drift', DRIFT, k * 0.6); break;
+      case 'grid': add('tiled', TILED, k * 0.55); break;
+      case 'ring': case 'mirror': add('mirrored', MIRRORED, k * 0.6); break;
+      case 'orbit': case 'outline': add('orbital', ORBITAL, k * 0.55); break;
+    }
+    switch (b.material.kind) {
+      case 'chrome': add('liquid', LIQUID, k * 0.6); break;
+      case 'dots': add('stippled', STIPPLED, k * 0.7); break;
+      case 'textured': if (b.material.p.tex === 0) add('mottled', MOTTLED, k * 0.5); break;
+    }
+    if (b.emit.kind === 'sparks') add('sparking', SPARKING, k * 0.55);
+    if (b.emit.kind === 'cover') add('painted', PAINTED, k * 0.45);
+    if (b.emit.kind === 'dye') add('liquid', LIQUID, k * 0.5);
+  }
 
   if (g.carrier.kind === 'fluid') add('liquid', LIQUID, 0.8);
   if (g.carrier.p.halfLife > 3) add('trailing', TRAILING, clamp01((g.carrier.p.halfLife - 3) / 10));
@@ -250,7 +334,8 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   rising: RISING, drift: DRIFT, rippling: RIPPLING, wandering: WANDERING, breathing: BREATHING, orbital: ORBITAL,
   tiled: TILED, fractal: FRACTAL, liquid: LIQUID, trailing: TRAILING, surging: SURGING, calm: CALM,
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
-  shadowed: SHADOWED, reflected: REFLECTED, generic: GENERIC_ADJ,
+  shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
+  sparking: SPARKING, painted: PAINTED, generic: GENERIC_ADJ,
 };
 
 /**
