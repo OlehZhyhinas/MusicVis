@@ -942,18 +942,55 @@ vec3 comp(vec2 uv, vec2 p) {
       r.v[0] = r.mem.scroll;
     },
     comp: /* glsl */ `
+// Terrain height at floor point w = (x, z): a valley down the middle, hills on
+// both sides whose ridges follow the spectrum (frequency maps outward), and a
+// ridge that rolls toward the viewer on every kick. Scrolls with the grid.
+float terrain(vec2 w) {
+  float ax = abs(w.x);
+  float z = w.y + uV[0].x * 2.0;
+  float side = smoothstep(0.35, 1.6, ax);
+  float lv = specAt(clamp(ax / 5.0, 0.0, 1.0) * 0.7 + 0.03);
+  float ridge = 0.6 + 0.4 * sin(z * 1.3 + ax * 0.9);
+  float h = side * (0.03 + 0.34 * lv * (0.4 + 0.6 * uAct)) * ridge;
+  float k = fract(z * 0.25 + 0.5);
+  h += uBeatPulse * uPres.x * 0.05 * exp(-pow((k - 0.5) * 9.0, 2.0)) * (0.4 + side);
+  // Flatten toward the horizon so distant terrain stays clean.
+  h *= smoothstep(18.0, 6.0, w.y);
+  return min(h, 0.32);
+}
+
 vec3 comp(vec2 uv, vec2 p) {
   float hz = -0.06;
   vec3 c = vec3(0.0);
   if (p.y < hz) {
     float dy = hz - p.y;
-    float z = 0.35 / dy;
+    // Ray-march the heightfield: the eye is 0.35 above the floor, and at depth
+    // z this pixel's ray is at height 0.35 - dy * z.
+    float zFlat = 0.35 / dy;
+    float z0 = 0.2, z = zFlat, h = 0.0;
+    float st = 0.08;
+    for (int k = 0; k < 40; k++) {
+      float zt = z0 + st;
+      if (zt >= zFlat) break;
+      if (0.35 - dy * zt <= terrain(vec2(p.x * zt, zt))) { z = zt; break; }
+      z0 = zt;
+      st *= 1.12;
+    }
+    // Refine the hit between z0 and z.
+    for (int k = 0; k < 5; k++) {
+      float zm = 0.5 * (z0 + z);
+      if (0.35 - dy * zm <= terrain(vec2(p.x * zm, zm))) z = zm; else z0 = zm;
+    }
+    h = terrain(vec2(p.x * z, z));
     float x = p.x * z;
     float gz = abs(fract(z * 0.5 + uV[0].x) - 0.5);
     float gx = abs(fract(x * 1.5) - 0.5);
     float wz = fwidth(z * 0.5) * 1.2, wx = fwidth(x * 1.5) * 1.2;
     float line = max(smoothstep(wz, 0.0, gz), smoothstep(wx, 0.0, gx));
-    c += uColA * line * exp(-z * 0.12) * (0.3 + 0.6 * uBeatPulse * uPres.x);
+    // Colour by height (valleys A, peaks C); every downbeat flashes the grid.
+    vec3 lc = mix(uColA, uColC, smoothstep(0.02, 0.22, h));
+    lc = mix(lc, vec3(1.0), 0.35 * uBarPulse);
+    c += lc * line * exp(-z * 0.12) * (0.35 + 0.5 * uBeatPulse * uPres.x + 0.8 * h);
     c += uColA * 0.03 * exp(-dy * 25.0);
   } else {
     float dy = p.y - hz;
