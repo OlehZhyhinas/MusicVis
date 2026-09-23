@@ -9,7 +9,9 @@ import { nameFor } from './naming';
 import { SEEDS, SEED_VERSION } from './seeds';
 import type { CrossTag, Rng } from './ops';
 
-const CROSS_TAGS: CrossTag[] = ['fused', 'morph', 'merged', 'layered'];
+/** How a member came to be: a crossover outcome, or 'edited' (saved from the gene editor). */
+export type MemberTag = CrossTag | 'edited';
+const CROSS_TAGS: MemberTag[] = ['fused', 'morph', 'merged', 'layered', 'edited'];
 
 export interface Member {
   id: string; // "G0-E07" for seeds, "G{gen}-{nnnn}" for children
@@ -32,8 +34,8 @@ export interface Member {
   hidden: boolean;
   /** Screening render descriptor: mean rgb, motion, mirror symmetry, radial symmetry, detail, coverage. */
   descriptor?: number[];
-  /** How a crossover child combined its parents (absent for seeds, mutants and older children). */
-  cross?: CrossTag;
+  /** How a crossover child combined its parents, or 'edited' (absent for seeds, mutants and older children). */
+  cross?: MemberTag;
 }
 
 /**
@@ -357,7 +359,7 @@ export class Population {
         hidden: !!raw.hidden,
         descriptor: !old && Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
       };
-      if (CROSS_TAGS.includes(raw.cross as CrossTag)) m.cross = raw.cross;
+      if (CROSS_TAGS.includes(raw.cross as MemberTag)) m.cross = raw.cross;
       p.members.set(m.id, m);
     }
     if (!p.members.size) throw new Error('The file has no valid presets.');

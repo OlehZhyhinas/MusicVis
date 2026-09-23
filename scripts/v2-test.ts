@@ -15,6 +15,17 @@ import {
 } from '../src/v2/ops';
 import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
 import { Population, fitness, POPULATION_VERSION, uniqueName } from '../src/v2/population';
+import {
+  CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, PALETTE_KINDS, REACTION_SCHEMA,
+  reactable, schemaFor,
+  type ParamSpec, type Schema, type Signal,
+} from '../src/v2/genome';
+import {
+  addDrawOp, addOp, addReaction, buildModel, editParam, expressAllele, freeTargets, fromSlider, moveOp, parseGenome,
+  reactionTargets, reactKey, removeDrawOp, removeOp, removeReaction, saveEdited, setParam, setReactionTarget, setStage,
+  switchKind, toSlider, SLIDER_STEPS,
+  type ParamControl, type Target,
+} from '../src/v2/geneEdit';
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
@@ -32,6 +43,14 @@ function seedByOrigin(origin: string): Genome {
 }
 const b0 = (origin: string): BodyGene => seedByOrigin(origin).bodies[0];
 const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Object.entries(schema).map(([k, s]) => [k, s.def]));
+
+/** A minimal valid genome (one grid of dots, empty chain) to build up structural edits from scratch. */
+function freshGenome(): Genome {
+  return repair({
+    v: 5, chain: [], bodies: [{ shape: { kind: 'dot' }, place: { kind: 'grid' } }],
+    carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [], energy: [0.2, 0.8],
+  });
+}
 
 // -------------------------------------------------------------- 1. seeds
 
@@ -796,6 +815,407 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
     }
   }
   check('allele.resurfaces', !!carrier && back > 0, carrier ? `${back}/600 grandchildren walk again (neither parent shows the walk)` : 'no carrier found');
+}
+
+// ------------------------------------------------------------- 17. gene editor
+
+{
+  // 1. Every locus/kind combo is reachable from at least one seed and modeled with the right controls.
+  const bad: string[] = [];
+  let n = 0;
+  for (const locus of LOCI) {
+    for (const kind of LOCUS_KINDS[locus]) {
+      n++;
+      let found: Genome | null = null;
+      for (const s of SEEDS) {
+        const r = switchKind(s.genome, { t: 'locus', b: 0, locus }, kind);
+        if (r.ok) { found = r.genome; break; }
+      }
+      if (!found) { bad.push(`${locus}=${kind}: no seed accepted this switch`); continue; }
+      const model = buildModel(found);
+      const sec = model.find((m) => m.id === `b0.${locus}`);
+      const expectedKeys = Object.keys(locusSchema(locus, kind));
+      if (!sec) { bad.push(`${locus}=${kind}: no section b0.${locus} in the model`); continue; }
+      if (sec.kind?.value !== kind) bad.push(`${locus}=${kind}: section kind.value=${sec.kind?.value}`);
+      const gotKeys = sec.params.map((p) => p.key);
+      if (JSON.stringify(gotKeys) !== JSON.stringify(expectedKeys)) bad.push(`${locus}=${kind}: params ${gotKeys.join(',')} != ${expectedKeys.join(',')}`);
+    }
+  }
+  check('editor.model-covers-loci', !bad.length, bad.slice(0, 12).join(' | ') || `all ${n} locus/kind combos reachable from a seed and modeled`);
+}
+
+{
+  // 2. Every control across every seed's model has the right widget, and genome-wide sections exist.
+  const bad: string[] = [];
+  const checkParams = (params: ParamControl[], where: string) => {
+    for (const p of params) {
+      if (p.spec.choices) {
+        const wantWidget = p.spec.choices.length <= 4 ? 'segmented' : 'select';
+        if (p.widget !== wantWidget) bad.push(`${where}.${p.key}: widget=${p.widget} expected ${wantWidget} (${p.spec.choices.length} choices)`);
+        if (!p.options || p.options.length !== p.spec.choices.length) bad.push(`${where}.${p.key}: options.length=${p.options?.length} != ${p.spec.choices.length}`);
+      } else if (p.widget !== 'slider') bad.push(`${where}.${p.key}: widget=${p.widget} expected slider`);
+    }
+  };
+  for (const s of SEEDS) {
+    const model = buildModel(s.genome);
+    const ids = new Set(model.map((m) => m.id));
+    for (const id of ['palette', 'tone', 'carrier', 'chain', 'reactions', 'energy']) {
+      if (!ids.has(id)) bad.push(`${s.origin}: missing genome-wide section "${id}"`);
+    }
+    for (const sec of model) {
+      checkParams(sec.params, `${s.origin}.${sec.id}`);
+      sec.items?.forEach((it) => checkParams(it.params, `${s.origin}.${sec.id}.${it.id}`));
+    }
+  }
+  check('editor.model-widgets', !bad.length, bad.slice(0, 12).join(' | ') || `every control across ${SEEDS.length} seeds has the right widget; genome-wide sections present`);
+}
+
+{
+  // 3. switchKind stays valid (or leaves the genome untouched with a reason) across seeds, loci, palette, carrier, chain ops.
+  const bad: string[] = [];
+  for (const s of SEEDS) {
+    for (const locus of LOCI) {
+      for (const kind of LOCUS_KINDS[locus]) {
+        const r = switchKind(s.genome, { t: 'locus', b: 0, locus }, kind);
+        if (r.ok) {
+          if (validate(r.genome).length) bad.push(`${s.origin}.${locus}=${kind}: invalid ${validate(r.genome).join(';')}`);
+          if (r.genome.bodies.length !== s.genome.bodies.length) bad.push(`${s.origin}.${locus}=${kind}: bodies length changed`);
+          if ((r.genome.bodies[0][locus] as Gene).kind !== kind) bad.push(`${s.origin}.${locus}=${kind}: kind not applied`);
+        } else {
+          if (JSON.stringify(r.genome) !== JSON.stringify(s.genome)) bad.push(`${s.origin}.${locus}=${kind}: genome changed on failure`);
+          if (!r.reason) bad.push(`${s.origin}.${locus}=${kind}: no reason on failure`);
+        }
+      }
+    }
+    for (const kind of PALETTE_KINDS) {
+      const r = switchKind(s.genome, { t: 'palette' }, kind);
+      if (r.ok) {
+        if (validate(r.genome).length || r.genome.palette.kind !== kind) bad.push(`${s.origin}.palette=${kind}: bad result`);
+      } else if (!r.reason) bad.push(`${s.origin}.palette=${kind}: no reason on failure`);
+    }
+    for (const kind of CARRIER_KINDS) {
+      const r = switchKind(s.genome, { t: 'carrier' }, kind);
+      if (r.ok) {
+        if (validate(r.genome).length || r.genome.carrier.kind !== kind) bad.push(`${s.origin}.carrier=${kind}: bad result`);
+      } else if (!r.reason) bad.push(`${s.origin}.carrier=${kind}: no reason on failure`);
+    }
+    if (s.genome.chain.length) {
+      for (const kind of OP_KINDS) {
+        const r = switchKind(s.genome, { t: 'op', j: 0 }, kind);
+        if (r.ok) {
+          if (validate(r.genome).length || r.genome.chain[0].op !== kind) bad.push(`${s.origin}.op0=${kind}: bad result`);
+        } else if (!r.reason) bad.push(`${s.origin}.op0=${kind}: no reason on failure`);
+      }
+    }
+  }
+  check('editor.kind-switch-valid', !bad.length, bad.slice(0, 12).join(' | ') || `switchKind valid (or clean-refused) across ${SEEDS.length} seeds x loci/kinds, palette, carrier, chain ops`);
+}
+
+{
+  // 4. Slider round-trip within one step for every non-choice ParamSpec, including log specs.
+  const bad: string[] = [];
+  const schemas: [string, Schema][] = [];
+  for (const locus of LOCI) for (const kind of LOCUS_KINDS[locus]) schemas.push([`${locus}.${kind}`, locusSchema(locus, kind)]);
+  schemas.push(['reaction', REACTION_SCHEMA], ['carrier', CARRIER_SCHEMA]);
+  for (const [name, schema] of schemas) {
+    for (const [key, spec] of Object.entries(schema) as [string, ParamSpec][]) {
+      if (spec.choices) continue;
+      const linStep = (spec.max - spec.min) / SLIDER_STEPS;
+      const logRatio = spec.log && spec.min > 0 ? Math.pow(spec.max / spec.min, 1 / SLIDER_STEPS) - 1 : 0;
+      for (const v of [spec.def, spec.min, spec.max]) {
+        const back = fromSlider(toSlider(v, spec), spec);
+        const localStep = spec.log && spec.min > 0 ? Math.max(v, spec.min) * logRatio : linStep;
+        const tol = Math.max(localStep, spec.int ? 1 : 0) + 1e-6;
+        if (Math.abs(back - v) > tol) bad.push(`${name}.${key}: v=${v} back=${back} tol=${tol.toFixed(5)}`);
+        if (spec.int && !Number.isInteger(back)) bad.push(`${name}.${key}: int spec gave ${back}`);
+      }
+      if (spec.log && spec.min > 0) {
+        const pMin = toSlider(spec.min, spec);
+        const pMax = toSlider(spec.max, spec);
+        if (pMin !== 0) bad.push(`${name}.${key}: log toSlider(min)=${pMin} != 0`);
+        if (pMax !== SLIDER_STEPS) bad.push(`${name}.${key}: log toSlider(max)=${pMax} != ${SLIDER_STEPS}`);
+        const pDef = toSlider(spec.def, spec);
+        if (!(pDef >= 0 && pDef <= SLIDER_STEPS)) bad.push(`${name}.${key}: log toSlider(def)=${pDef} out of [0, ${SLIDER_STEPS}]`);
+      }
+    }
+  }
+  check('editor.slider-roundtrip', !bad.length, bad.slice(0, 12).join(' | ') || 'fromSlider(toSlider(v)) within one step for def/min/max of every non-choice spec, incl. log halfLife/atk/rel');
+}
+
+{
+  // 5. setParam clamps out-of-range and non-integer input; energy keeps its gap; editParam repairs a broken count.
+  const bad: string[] = [];
+  for (const s of SEEDS) {
+    for (const locus of LOCI) {
+      const gene = s.genome.bodies[0][locus] as Gene;
+      const schema = locusSchema(locus, gene.kind);
+      const g = cloneGenome(s.genome);
+      const t: Target = { t: 'locus', b: 0, locus };
+      for (const key of Object.keys(schema)) {
+        const spec = schema[key];
+        const above = setParam(g, t, key, spec.max + 1000);
+        if (above > spec.max + 1e-9 || above < spec.min - 1e-9) bad.push(`${s.origin}.${locus}.${key}: above-max not clamped (${above})`);
+        const below = setParam(g, t, key, spec.min - 1000);
+        if (below < spec.min - 1e-9 || below > spec.max + 1e-9) bad.push(`${s.origin}.${locus}.${key}: below-min not clamped (${below})`);
+        if (spec.int) {
+          const frac = setParam(g, t, key, spec.def + 0.37);
+          if (!Number.isInteger(frac)) bad.push(`${s.origin}.${locus}.${key}: int spec gave ${frac}`);
+        }
+        if (validate(g).length) bad.push(`${s.origin}.${locus}.${key}: invalid after setParam ${validate(g).join(';')}`);
+      }
+    }
+  }
+  const eg = cloneGenome(SEEDS[0].genome);
+  setParam(eg, { t: 'energy' }, 'lo', 0.95);
+  const [elo, ehi] = eg.energy;
+  if (!(ehi - elo >= 0.15 - 1e-9) || ehi > 1 + 1e-9) bad.push(`energy: setting lo=0.95 gave lo=${elo} hi=${ehi}`);
+  if (validate(eg).length) bad.push(`energy: invalid after clamp ${validate(eg).join(';')}`);
+
+  // A field shape (plasma) given a counted placement beyond its single-copy rule must be repaired back.
+  const fieldBase = repair({
+    v: 5, chain: [], bodies: [{ shape: { kind: 'plasma' }, place: { kind: 'stations', p: { count: 1 } }, emit: { kind: 'trail' } }],
+    carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [], energy: [0.2, 0.8],
+  });
+  if (validate(fieldBase).length) bad.push(`field base invalid: ${validate(fieldBase).join(';')}`);
+  const countEdit = editParam(fieldBase, { t: 'locus', b: 0, locus: 'place' }, 'count', 6);
+  if (validate(countEdit.genome).length) bad.push(`editParam count=6 on a field shape left it invalid: ${validate(countEdit.genome).join(';')}`);
+  if (countEdit.genome.bodies[0].place.p.count !== 1) bad.push(`editParam count=6 on a field shape did not repair back to a single copy (count=${countEdit.genome.bodies[0].place.p.count})`);
+  if (!countEdit.repaired) bad.push('editParam count=6 on a field shape did not report repaired=true');
+  check('editor.setParam-clamps', !bad.length, bad.slice(0, 12).join(' | ') || 'setParam clamps range/int for every locus param, energy keeps its gap, editParam repairs a broken field-shape count');
+}
+
+{
+  // 6. Chain edits: fill to MAX_CHAIN and cap, moveOp swaps and carries reactions, removeOp drops/reindexes, setStage rules.
+  const bad: string[] = [];
+  let g = freshGenome();
+  let i = 0;
+  while (g.chain.length < MAX_CHAIN) {
+    const r = addOp(g, OP_KINDS[i % OP_KINDS.length]);
+    if (!r.ok) { bad.push(`addOp failed before the cap at length ${g.chain.length}: ${r.reason}`); break; }
+    if (validate(r.genome).length) bad.push(`chain.addOp: invalid ${validate(r.genome).join(';')}`);
+    g = r.genome;
+    i++;
+  }
+  if (g.chain.length !== MAX_CHAIN) bad.push(`chain length ${g.chain.length} != MAX_CHAIN ${MAX_CHAIN}`);
+  const overOp = addOp(g, OP_KINDS[0]);
+  if (overOp.ok) bad.push('addOp beyond MAX_CHAIN unexpectedly succeeded');
+
+  let g2 = addOp(addOp(freshGenome(), 'zoom').genome, 'kaleido').genome;
+  const addedReaction = addReaction(g2, 'bass');
+  if (!addedReaction.ok) bad.push(`could not add a reaction to set up the moveOp test: ${addedReaction.reason}`);
+  else {
+    g2 = addedReaction.genome;
+    const j2 = g2.reactions.length - 1;
+    const op0Targets = reactionTargets(g2).filter((x) => x.g === 'op' && x.i === 0);
+    if (op0Targets.length) {
+      const rewired = setReactionTarget(g2, j2, op0Targets[0]);
+      if (rewired.ok) g2 = rewired.genome;
+    }
+    const beforeReaction = g2.reactions.find((r) => r.g === 'op' && r.i === 0);
+    if (!beforeReaction) bad.push('chain.moveOp: could not get a reaction driving op index 0 for the test');
+    else {
+      const mv = moveOp(g2, 0, 1);
+      if (!mv.ok) bad.push(`moveOp failed: ${mv.reason}`);
+      else {
+        if (validate(mv.genome).length) bad.push(`moveOp: invalid ${validate(mv.genome).join(';')}`);
+        if (JSON.stringify(mv.genome.chain[0]) !== JSON.stringify(g2.chain[1]) || JSON.stringify(mv.genome.chain[1]) !== JSON.stringify(g2.chain[0])) {
+          bad.push('moveOp did not swap the first two ops');
+        }
+        const after = mv.genome.reactions.find((r) => r.g === 'op' && r.k === beforeReaction.k && r.i === 1);
+        if (!after) bad.push('moveOp did not carry the reaction targeting op 0 to op 1');
+
+        const rem = removeOp(mv.genome, 1);
+        if (!rem.ok) bad.push(`removeOp failed: ${rem.reason}`);
+        else {
+          if (validate(rem.genome).length) bad.push(`removeOp: invalid ${validate(rem.genome).join(';')}`);
+          if (rem.genome.chain.length !== mv.genome.chain.length - 1) bad.push('removeOp did not shrink the chain');
+          if (rem.genome.reactions.some((r) => r.g === 'op' && r.k === beforeReaction.k)) bad.push('removeOp did not drop the reaction that targeted the removed op');
+        }
+      }
+    }
+  }
+
+  const gZoom = addOp(freshGenome(), 'zoom').genome;
+  const stZoom = setStage(gZoom, gZoom.chain.length - 1, 'view');
+  if (stZoom.ok) bad.push('setStage(view) unexpectedly succeeded for the motion op "zoom"');
+  const gKal = addOp(freshGenome(), 'kaleido').genome;
+  const stKal = setStage(gKal, gKal.chain.length - 1, 'view');
+  if (!stKal.ok) bad.push(`setStage(view) failed for the fold op "kaleido": ${stKal.reason}`);
+  else if (validate(stKal.genome).length) bad.push(`setStage(kaleido, view): invalid ${validate(stKal.genome).join(';')}`);
+
+  check('editor.chain-ops', !bad.length, bad.slice(0, 12).join(' | ') || `chain fills to MAX_CHAIN=${MAX_CHAIN} and caps; moveOp swaps and carries reactions; removeOp reindexes/drops; setStage enforces warp-only motion ops`);
+}
+
+{
+  // 7. Draw (deform) ops: fill to MAX_DRAW and cap; removing the last op drops deform.ops entirely.
+  const bad: string[] = [];
+  let g = freshGenome();
+  let i = 0;
+  while ((g.bodies[0].deform.ops?.length ?? 0) < MAX_DRAW) {
+    const r = addDrawOp(g, 0, DRAW_OPS[i % DRAW_OPS.length]);
+    if (!r.ok) { bad.push(`addDrawOp failed before the cap at length ${g.bodies[0].deform.ops?.length ?? 0}: ${r.reason}`); break; }
+    if (validate(r.genome).length) bad.push(`addDrawOp: invalid ${validate(r.genome).join(';')}`);
+    g = r.genome;
+    i++;
+  }
+  if ((g.bodies[0].deform.ops?.length ?? 0) !== MAX_DRAW) bad.push(`draw ops length ${g.bodies[0].deform.ops?.length} != MAX_DRAW ${MAX_DRAW}`);
+  const overDraw = addDrawOp(g, 0, DRAW_OPS[0]);
+  if (overDraw.ok) bad.push('addDrawOp beyond MAX_DRAW unexpectedly succeeded');
+  while (g.bodies[0].deform.ops?.length) {
+    const j = g.bodies[0].deform.ops.length - 1;
+    const r = removeDrawOp(g, 0, j);
+    if (!r.ok) { bad.push(`removeDrawOp failed: ${r.reason}`); break; }
+    if (validate(r.genome).length) bad.push(`removeDrawOp: invalid ${validate(r.genome).join(';')}`);
+    g = r.genome;
+  }
+  if (g.bodies[0].deform.ops !== undefined) bad.push('deform.ops was not deleted after removing the last op');
+  check('editor.draw-ops', !bad.length, bad.slice(0, 12).join(' | ') || `deform ops fill to MAX_DRAW=${MAX_DRAW} and cap; removing the last op clears deform.ops`);
+}
+
+{
+  // 8. Reactions: fill to MAX_REACTIONS with distinct targets and cap; rewiring never double-drives a target;
+  // removeReaction shrinks; reactionTargets() reports only reactable keys with a group label.
+  const bad: string[] = [];
+  let g = cloneGenome(seedByOrigin('E21')); // two bodies -> plenty of free targets
+  g.reactions = [];
+  if (validate(g).length) bad.push(`base genome invalid: ${validate(g).join(';')}`);
+  const srcs: Signal[] = ['bass', 'beat', 'drums', 'vocals', 'other', 'melody'];
+  let i = 0;
+  while (g.reactions.length < MAX_REACTIONS) {
+    const r = addReaction(g, srcs[i % srcs.length]);
+    if (!r.ok) { bad.push(`addReaction failed before the cap at ${g.reactions.length}: ${r.reason}`); break; }
+    if (validate(r.genome).length) bad.push(`addReaction: invalid ${validate(r.genome).join(';')}`);
+    g = r.genome;
+    i++;
+  }
+  if (g.reactions.length !== MAX_REACTIONS) bad.push(`reactions length ${g.reactions.length} != MAX_REACTIONS ${MAX_REACTIONS}`);
+  const keys = g.reactions.map(reactKey);
+  if (new Set(keys).size !== keys.length) bad.push('two reactions drive the same target');
+  const overReaction = addReaction(g, 'bass');
+  if (overReaction.ok) bad.push('addReaction beyond MAX_REACTIONS unexpectedly succeeded');
+
+  const dup = setReactionTarget(g, 1, { g: g.reactions[0].g, i: g.reactions[0].i, k: g.reactions[0].k });
+  if (dup.ok) bad.push('setReactionTarget allowed driving a target twice');
+  const free = freeTargets(g, 1);
+  if (!free.length) bad.push('no free targets left to test a valid rewire');
+  else {
+    const rewired = setReactionTarget(g, 1, free[0]);
+    if (!rewired.ok) bad.push(`setReactionTarget to a free target failed: ${rewired.reason}`);
+    else if (validate(rewired.genome).length) bad.push(`setReactionTarget: invalid ${validate(rewired.genome).join(';')}`);
+  }
+  const beforeCount = g.reactions.length;
+  const removed = removeReaction(g, 0);
+  if (!removed.ok || removed.genome.reactions.length !== beforeCount - 1) bad.push('removeReaction did not reduce the reaction count by one');
+
+  const targets = reactionTargets(g);
+  if (!targets.length) bad.push('reactionTargets() returned nothing');
+  for (const t of targets) {
+    const s = schemaFor(g, t.g, t.i);
+    if (!s || !reactable(s).includes(t.k)) bad.push(`reactionTargets: ${t.g}${t.i}.${t.k} is not actually reactable`);
+    if (!t.group) bad.push(`reactionTargets: ${t.g}${t.i}.${t.k} has an empty group label`);
+  }
+  check('editor.reactions', !bad.length, bad.slice(0, 12).join(' | ') || `reactions fill to MAX_REACTIONS=${MAX_REACTIONS} with distinct targets and cap; rewiring never double-drives; reactionTargets() stays reactable`);
+}
+
+{
+  // 9. Expressing a silent allele swaps it into place and files the old kind as silent (flame never lingers as one).
+  const bad: string[] = [];
+  let carrier: { g: Genome; b: number; locus: Locus } | null = null;
+  outer:
+  for (const s of SEEDS) {
+    for (let bi = 0; bi < s.genome.bodies.length; bi++) {
+      const alt = s.genome.bodies[bi].alt;
+      if (alt) {
+        const locus = (Object.keys(alt) as Locus[])[0];
+        carrier = { g: s.genome, b: bi, locus };
+        break outer;
+      }
+    }
+  }
+  if (!carrier) {
+    // Silent alleles are a crossover artifact (see section 15): a plain randomGenome() never carries
+    // one, so breed random seed pairs (occasionally mutating) to reproduce how they actually arise.
+    const rng = mulberry32(123456);
+    for (let k = 0; k < 500 && !carrier; k++) {
+      let g = randomGenome(rng);
+      if (k % 2 === 0) g = crossover(SEEDS[Math.floor(rng() * SEEDS.length)].genome, SEEDS[Math.floor(rng() * SEEDS.length)].genome, rng);
+      if (rng() < 0.3) g = mutate(g, rng, 0.6);
+      for (let bi = 0; bi < g.bodies.length; bi++) {
+        const alt = g.bodies[bi].alt;
+        if (alt) {
+          const locus = (Object.keys(alt) as Locus[])[0];
+          carrier = { g, b: bi, locus };
+          break;
+        }
+      }
+    }
+  }
+  if (!carrier) {
+    bad.push('no genome with a silent allele found among the 24 seeds or 500 random/crossed genomes');
+  } else {
+    const { g, b, locus } = carrier;
+    const oldKind = (g.bodies[b][locus] as Gene).kind;
+    const silentKind = g.bodies[b].alt![locus]!.kind;
+    const r = expressAllele(g, b, locus);
+    if (!r.ok) bad.push(`expressAllele failed: ${r.reason}`);
+    else {
+      if (validate(r.genome).length) bad.push(`expressAllele: invalid ${validate(r.genome).join(';')}`);
+      if ((r.genome.bodies[b][locus] as Gene).kind !== silentKind) bad.push(`locus ${locus} not switched to the previously silent kind ${silentKind}`);
+      if (oldKind === 'flame') {
+        if (r.genome.bodies[b].alt?.[locus]) bad.push('a flame kind should not linger on as a new silent allele');
+      } else if (r.genome.bodies[b].alt?.[locus]?.kind !== oldKind) {
+        bad.push(`old kind ${oldKind} was not filed as the new silent allele for ${locus}`);
+      }
+    }
+  }
+  check('editor.express-allele', !bad.length, bad.join(' | ') || `expressAllele swaps ${carrier?.locus} into place and files the old kind as silent`);
+}
+
+{
+  // 10. saveEdited files an edit as a new generation, named uniquely, surviving population round-trip.
+  const bad: string[] = [];
+  const pop = Population.seeded();
+  const parent = pop.get('G0-E07') ?? pop.list()[0];
+  const curMotion = parent.genome.bodies[0].motion.kind;
+  const altMotion = MOTION_KINDS.find((k) => k !== curMotion)!;
+  const sw = switchKind(parent.genome, { t: 'locus', b: 0, locus: 'motion' }, altMotion);
+  if (!sw.ok) bad.push(`setup: switchKind(motion -> ${altMotion}) failed: ${sw.reason}`);
+  const child = saveEdited(pop, parent, sw.genome, 12345);
+  if (child.cross !== 'edited') bad.push(`child.cross=${child.cross} expected "edited"`);
+  if (JSON.stringify(child.parents) !== JSON.stringify([parent.id])) bad.push(`child.parents=${JSON.stringify(child.parents)} expected [${parent.id}]`);
+  if (child.gen !== parent.gen + 1) bad.push(`child.gen=${child.gen} expected ${parent.gen + 1}`);
+  if (!/^G1-\d{4}$/.test(child.id)) bad.push(`child.id=${child.id} does not match /^G1-\\d{4}$/`);
+  if (pop.get(child.id) !== child) bad.push('pop.get(child.id) !== child');
+  if (validate(child.genome).length) bad.push(`child.genome invalid: ${validate(child.genome).join(';')}`);
+  if (!child.name) bad.push('child has no name');
+  if (child.name === parent.name) bad.push(`child.name "${child.name}" is not unique from the parent's`);
+
+  const grandchild = saveEdited(pop, child, child.genome, 12346);
+  if (grandchild.gen !== 2 || !/^G2-\d{4}$/.test(grandchild.id)) bad.push(`grandchild gen/id wrong: ${grandchild.gen}/${grandchild.id}`);
+  const n1 = parseInt(child.id.split('-')[1], 10);
+  const n2 = parseInt(grandchild.id.split('-')[1], 10);
+  if (!(n2 > n1)) bad.push(`id counter did not increment: ${child.id} -> ${grandchild.id}`);
+
+  const pop2 = Population.fromJSON(JSON.parse(JSON.stringify(pop.toJSON())));
+  if (pop2.get(child.id)?.cross !== 'edited') bad.push('Population.fromJSON(toJSON()) lost cross="edited" on the saved edit');
+
+  check('editor.save-as-new', !bad.length, bad.join(' | ') || `saveEdited makes ${child.id} "${child.name}" (gen ${child.gen}) from ${parent.id}, then ${grandchild.id} at gen 2, surviving round-trip`);
+}
+
+{
+  // 11. parseGenome round-trips a bare genome and a {genome} wrapper, and rejects garbage with a reason.
+  const bad: string[] = [];
+  const seed = SEEDS[0].genome;
+  const r1 = parseGenome(JSON.stringify(seed));
+  if (!r1.ok) bad.push(`parseGenome(seed) failed: ${r1.reason}`);
+  else if (JSON.stringify(r1.genome) !== JSON.stringify(seed)) bad.push('parseGenome(seed) did not deep-equal the seed');
+  const r2 = parseGenome(JSON.stringify({ genome: seed }));
+  if (!r2.ok) bad.push(`parseGenome({genome: seed}) failed: ${r2.reason}`);
+  else if (JSON.stringify(r2.genome) !== JSON.stringify(seed)) bad.push('parseGenome({genome: seed}) did not deep-equal the seed');
+  const r3 = parseGenome('nope');
+  if (r3.ok) bad.push('parseGenome("nope") unexpectedly succeeded');
+  else if (!r3.reason) bad.push('parseGenome("nope") failed without a reason');
+  check('editor.parse-genome', !bad.length, bad.join(' | ') || 'parseGenome round-trips a genome and a {genome} wrapper, rejects garbage with a reason');
 }
 
 // -------------------------------------------------- 16. example crossovers

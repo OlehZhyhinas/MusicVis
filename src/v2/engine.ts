@@ -14,7 +14,7 @@ import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
-  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, clampParam, drawOpId, structuralKey,
+  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
   type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type PaletteGene, type Params, type Scheme, type Schema,
   type ShapeGene, type Signal,
 } from './genome';
@@ -464,9 +464,11 @@ export class Slot {
   /** The body throwing sparks (-1: none) and its spawn settings. */
   sparks = -1;
   spawn = { mode: 4, count: 3, angle: 0, radius: 0.3 };
+  /** Per reaction this frame: the source signal and the response after its curve (live meters). */
+  readonly meters = new Float32Array(MAX_REACTIONS * 2);
 
   constructor(
-    readonly genome: Genome,
+    public genome: Genome,
     readonly progs: GenomePrograms,
     readonly fb: PingPong,
   ) {
@@ -478,6 +480,12 @@ export class Slot {
     this.drA = new Float32Array(this.nb * 12);
     this.drB = new Float32Array(this.nb * 12);
     this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
+  }
+
+  /** Swaps in a genome with the same structure (same programs, same uniform layout): parameters only. */
+  retarget(g: Genome): void {
+    this.genome = g;
+    this.sparks = g.bodies.findIndex((b) => b.emit.kind === 'sparks');
   }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
@@ -747,6 +755,7 @@ export class Stage {
     g.reactions.forEach((r, j) => {
       const key = `${r.g}${r.i}.${r.k}`;
       let x = sig.signal(r.src);
+      if (j < MAX_REACTIONS) s.meters[j * 2] = x;
       if (r.thr > 0) x = Math.max(0, x - r.thr) / (1 - r.thr);
       if (r.q > 0.5) {
         const idx = Math.floor(F.beats / r.div);
@@ -760,6 +769,7 @@ export class Stage {
         const e = s.mem['re' + j] ?? x;
         x = s.mem['re' + j] = approach(e, x, 1 / (x > e ? r.atk : r.rel), sdt);
       }
+      if (j < MAX_REACTIONS) s.meters[j * 2 + 1] = x;
       s.delta.set(key, (s.delta.get(key) ?? 0) + r.gain * x);
     });
 
@@ -2176,6 +2186,32 @@ export interface RenderStats {
   scale: number;
 }
 
+/** The parameter set a reaction target names (see schemaFor). */
+function paramsFor(g: Genome, group: GeneGroup, i: number): Params | null {
+  switch (group) {
+    case 'op': return g.chain[i]?.p ?? null;
+    case 'car': return g.carrier.p;
+    case 'col': return g.tone.p;
+    case 'pal': return g.palette.p;
+    case 'dr': return g.bodies[Math.floor(i / MAX_DRAW)]?.deform.ops?.[i % MAX_DRAW]?.p ?? null;
+  }
+  const b = g.bodies[i];
+  if (!b) return null;
+  switch (group) {
+    case 'sh': return b.shape.p;
+    case 'pl': return b.place.p;
+    case 'mo': return b.motion.p;
+    case 'de': return b.deform.p;
+    case 'ma': return b.material.p;
+    case 'em': return b.emit.p;
+    case 'fe': return b.feel.p;
+    case 'cm': return b.color.p;
+    case 'fu': return b.fuse?.p ?? null;
+    case 'fs': return b.fuse?.shape.p ?? null;
+  }
+  return null;
+}
+
 /** Owns the GL context, shared programs and the main (on-canvas) stage with crossfades. */
 export class Engine {
   readonly gl: GL;
@@ -2258,6 +2294,49 @@ export class Engine {
 
   current(): Genome | null {
     return this.pending?.g ?? this.to?.genome ?? null;
+  }
+
+  /**
+   * Live edit of the genome on screen. A copy is taken. Same structure as what is showing (or already
+   * compiling): its parameters are swapped in place, no recompile, no crossfade ('inplace'). A new
+   * structure goes through the program cache and crossfades in over `secs` once linked ('compile');
+   * if it fails to compile the current picture stays (see failed()).
+   */
+  edit(g: Genome, secs = 0.3): 'inplace' | 'compile' {
+    const copy = cloneGenome(g);
+    const key = structuralKey(copy);
+    if (this.pending && structuralKey(this.pending.g) === key) {
+      this.pending.g = copy;
+      return 'compile';
+    }
+    if (this.to && structuralKey(this.to.genome) === key) {
+      this.pending = null;
+      this.to.retarget(copy);
+      return 'inplace';
+    }
+    this.show(copy, secs);
+    return 'compile';
+  }
+
+  /** True while a genome is waiting for its programs. */
+  get compiling(): boolean {
+    return !!this.pending;
+  }
+
+  /**
+   * Live reaction readouts of the genome on screen: per reaction its source signal, its response
+   * after the curve, and the driven parameter's value this frame (reactions applied).
+   */
+  reactionMeters(): { src: number; resp: number; value: number }[] {
+    const s = this.to;
+    if (!s) return [];
+    const g = s.genome;
+    return g.reactions.slice(0, MAX_REACTIONS).map((r, j) => {
+      const schema = schemaFor(g, r.g, r.i);
+      const p = paramsFor(g, r.g, r.i);
+      const value = schema && p && r.k in schema ? s.P(r.g, r.i, p, r.k, schema) : NaN;
+      return { src: s.meters[j * 2], resp: s.meters[j * 2 + 1], value };
+    });
   }
 
   playing(): Genome | null {

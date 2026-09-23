@@ -200,7 +200,7 @@ export class PresetBrowser {
       <img class="v2b-thumb" alt="" data-thumb="${esc(m.id)}" width="96" height="54" />
       <div class="v2b-main">
         <div class="v2b-name"><span class="v2b-id">${esc(m.id)}</span> ${esc(m.name)}</div>
-        <div class="v2b-meta"><span class="v2b-type">${esc(m.type)}</span> · ${m.energy} · gen ${m.gen}</div>
+        <div class="v2b-meta"><span class="v2b-type">${esc(m.type)}</span> · ${m.energy} · gen ${m.gen}${m.cross === 'edited' ? ` <em class="v2b-tag v2b-tag-edited" title="${esc(TAG_TITLE.edited)}">edited</em>` : ''}</div>
         <div class="v2b-lineage">${parents}</div>
       </div>
       <div class="v2b-stats">
@@ -299,6 +299,7 @@ const TAG_TITLE: Record<NonNullable<Member['cross']>, string> = {
   morph: 'Same shape in both parents: one shape with blended parameters',
   merged: 'Two shapes fused into one through their distance fields',
   layered: 'Rare: a second, separate layer on top',
+  edited: 'Edited by hand in the gene editor and saved as a new preset',
 };
 
 function esc(s: string): string {

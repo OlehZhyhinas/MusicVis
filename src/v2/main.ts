@@ -19,6 +19,7 @@ import { Store } from './store';
 import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
 import { fitness, type Member } from './population';
+import { GeneEditor } from './geneEditor';
 
 const EVOLVE_SECS = 30;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   let shuffle = loadSetting<boolean>('shuffle', false);
   let repeat = loadSetting<RepeatMode>('repeat', 'off');
   let evolveOn = loadSetting<boolean>('v2.evolve', false);
+  let genesOn = loadSetting<boolean>('v2.genesOn', true);
   let muted = false;
   hudEl.hidden = statsEl.hidden = !hudOn;
 
@@ -82,20 +84,31 @@ async function main(): Promise<void> {
     return currentId ? evo.pop.get(currentId) ?? null : null;
   }
 
-  function play(id: string, secs = 1.5, skipped = false): boolean {
+  /**
+   * Shows a preset. With unsaved gene edits a manual switch asks first (force skips the question);
+   * automatic switches never get here while editing (see choose()).
+   */
+  function play(id: string, secs = 1.5, skipped = false, force = false): boolean {
     const m = evo.pop.get(id);
     if (!m) return false;
+    if (!force && editor.dirty) {
+      editor.confirmDiscard(() => play(id, secs, skipped, true));
+      return true;
+    }
     evo.startView(m.id, skipped);
     currentId = m.id;
     eng.show(m.genome, secs);
     evolveTimer = 0;
     browser.markCurrent(m.id);
+    editor.load(m);
     updateBar();
     showLabel();
     return true;
   }
 
-  function choose(reason: ChooseReason, secs: number, skipped = false): void {
+  /** manual: the user asked (N, a dislike in evolve mode); automatic switches pause while editing. */
+  function choose(reason: ChooseReason, secs: number, skipped = false, manual = false): void {
+    if (editor.dirty && !manual) return;
     const m = evo.choose(reason, songCx, currentId);
     if (m) play(m.id, secs, skipped);
   }
@@ -116,7 +129,7 @@ async function main(): Promise<void> {
     evolveBtn.classList.toggle('active', evolveOn);
     evolveBtn.setAttribute('aria-pressed', String(evolveOn));
     const b = evo.breeding > 0 || screener.runner.busy;
-    statusEl.textContent = evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
+    statusEl.textContent = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
   }
 
   function vote(like: boolean): void {
@@ -128,7 +141,7 @@ async function main(): Promise<void> {
     void btn.offsetWidth;
     btn.classList.add('v2-voted');
     updateBar();
-    if (!like && evolveOn) choose('evolve', 1.2, false);
+    if (!like && evolveOn) choose('evolve', 1.2, false, true);
   }
 
   likeBtn.addEventListener('click', () => vote(true));
@@ -159,6 +172,29 @@ async function main(): Promise<void> {
     },
   });
   let playlistWasOpen = false;
+  const editor = new GeneEditor($<HTMLElement>('v2-genes'), {
+    eng,
+    evo,
+    adopt: (m) => {
+      // The saved child is the picture on screen: switch to it in place (no crossfade).
+      evo.startView(m.id, false);
+      currentId = m.id;
+      eng.edit(m.genome);
+      evolveTimer = 0;
+      browser.markCurrent(m.id);
+      editor.load(m);
+      updateBar();
+      showLabel();
+    },
+    onDirty: () => updateBar(),
+  });
+  editor.onClose = () => setGenes(false);
+  function setGenes(on: boolean): void {
+    genesOn = on;
+    saveSetting('v2.genesOn', on);
+    editor.setShown(hudOn && genesOn);
+  }
+  editor.setShown(hudOn && genesOn);
   evo.onChange = () => {
     browser.refresh();
     updateBar();
@@ -208,7 +244,7 @@ async function main(): Promise<void> {
       applyVolume();
     },
     onModeChange: () => {},
-    onNextPreset: () => choose(evolveOn ? 'evolve' : 'next', 1.2, true),
+    onNextPreset: () => choose(evolveOn ? 'evolve' : 'next', 1.2, true, true),
     onParticleCountChange: () => {},
     onFullscreen: () => toggleFullscreen(),
     onHudToggle: () => setHud(!hudOn),
@@ -295,6 +331,7 @@ async function main(): Promise<void> {
     hudOn = on;
     hudEl.hidden = statsEl.hidden = !on;
     saveSetting('v2.hudOn', on);
+    editor.setShown(on && genesOn);
   }
   function setHelpVisible(show: boolean): void {
     helpOverlay.hidden = !show;
@@ -425,7 +462,10 @@ async function main(): Promise<void> {
   presetGotoInput.addEventListener('blur', () => (presetGoto.hidden = true));
 
   window.addEventListener('keydown', (ev) => {
-    if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const tgt = ev.target;
+    if (tgt instanceof HTMLInputElement || tgt instanceof HTMLSelectElement || tgt instanceof HTMLTextAreaElement || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    // Nothing typed or pressed inside the gene editor (sliders, selects, buttons) triggers a shortcut.
+    if (tgt instanceof Element && tgt.closest('#v2-genes')) return;
     if (ev.key === '?') {
       setHelpVisible(!!helpOverlay.hidden);
       return;
@@ -457,7 +497,14 @@ async function main(): Promise<void> {
       case 'f': case 'F': toggleFullscreen(); break;
       case 'h': case 'H': setHud(!hudOn); break;
       case 'p': case 'P': playlistPanel.toggle(); break;
-      case 'n': case 'N': choose(evolveOn ? 'evolve' : 'next', 1.2, true); break;
+      case 'n': case 'N': choose(evolveOn ? 'evolve' : 'next', 1.2, true, true); break;
+      case 'k': case 'K':
+        // Gene editor: shown with the HUD; K with the HUD off opens both.
+        if (!hudOn) {
+          setHud(true);
+          setGenes(true);
+        } else setGenes(!(genesOn && hudOn));
+        break;
       case 'l': case 'L': vote(true); break;
       case 'd': case 'D': vote(false); break;
       case 'e': case 'E': setEvolve(!evolveOn); break;
@@ -485,7 +532,7 @@ async function main(): Promise<void> {
   window.setTimeout(() => void evo.describeMissing(24), 4000);
 
   // Debug / test handle.
-  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, play, choose, current };
+  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, play, choose, current, editor };
 
   const hud = new Hud(hudEl);
   let lastTime = performance.now();
@@ -511,10 +558,11 @@ async function main(): Promise<void> {
     }
 
     // Switching policy.
+    // Unsaved gene edits pause automatic switching (drops, evolve rotation, new songs).
     if (evolveOn) {
-      if (state.playing || !songLoaded || liveMode.active) evolveTimer += dt;
+      if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    } else if (state.sectionChanged && state.section?.label === 'drop') {
+    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop') {
       choose('drop', 0.35);
     }
 
@@ -524,6 +572,7 @@ async function main(): Promise<void> {
       console.error('render failed', err);
     }
     if (screener.runner.busy) screener.runner.pump(eng.stats.frameMs > 18 ? 2 : 5);
+    editor.tick(dt);
 
     if (hudOn) {
       const m = current();
