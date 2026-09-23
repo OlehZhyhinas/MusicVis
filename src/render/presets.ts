@@ -350,7 +350,9 @@ vec3 comp(vec2 uv, vec2 p) {
     palette: 'analogous', hue: 0.5, decay: 0.962, scroll: [0, -0.4], bloom: 1.1,
     js(f, r) {
       const fl = mem(r, 'flash', 0);
-      r.mem.flash = f.hit > 0.6 && f.act > 0.5 ? 1 : fl * Math.exp(-f.dt * 6);
+      const rising = f.hit > 0.6 && mem(r, 'hitPrev', 0) <= 0.6;
+      r.mem.hitPrev = f.hit;
+      r.mem.flash = rising && f.act > 0.5 ? 1 : fl * Math.exp(-f.dt * 6);
       r.v[0] = r.mem.flash;
       r.v[1] = 0.35 + 0.65 * f.act;
     },
@@ -367,14 +369,23 @@ vec3 draw(vec2 p, vec2 uv, vec3 prev) {
   float m = 1.0 + floor(hash11(col * 1.37) * 2.0);
   float bin = abs(p.x) / (uAspect * 0.5);
   float lv = specAt(bin * 0.75 + 0.03);
-  float gate = step(hash12(vec2(col, floor(uTime * 7.0 + hash11(col) * 7.0))), lv * lv * lv * uV[0].y * 0.9);
-  vec3 c = pal(bin * 0.5 + 0.1 * m) * gate * glow(xin, 0.055) * (0.5 + 0.35 * m);
+  // Drops are born on an eighth-note grid so rows of rain fall together in
+  // time; the first eighth of each bar fires a fuller, brighter curtain.
+  float e = uBeats * 2.0;
+  float slot = floor(e);
+  float win = step(fract(e), 0.14 + 0.08 * m);
+  float down = step(uBar, 0.125);
+  float thr = mix(0.03, 0.45, hash12(vec2(col, slot)));
+  float fire = step(thr, lv * uV[0].y * (1.0 + 0.8 * down));
+  float bright = (0.6 + 1.6 * lv) * (0.7 + 0.9 * uOnset.x + 0.6 * down);
+  vec3 c = pal(bin * 0.5 + 0.1 * m) * fire * win * bright * glow(xin, 0.055) * (0.5 + 0.35 * m);
   return c * 1.6;
 }`,
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
   vec3 c = fb(uv);
-  c += uColC * glow(p.y + 0.5, 0.012) * uLoud * 0.1;
+  // Splash line at the bottom pulses with the bass; drops flash the whole curtain.
+  c += uColC * glow(p.y + 0.5, 0.012) * (uLoud * 0.1 + uStem.y * uPres.y * 0.35 + uBeatPulse * 0.12);
   c += mix(uColC, vec3(1.0), 0.6) * uV[0].x * 0.05 * smoothstep(-0.5, 0.5, p.y);
   return c;
 }`,
@@ -382,7 +393,7 @@ vec3 comp(vec2 uv, vec2 p) {
   // ------------------------------------------------------------ E04
   {
     id: 'E04', name: 'Rising Smoke', kind: 'vertical rise', energy: [0.1, 0.6],
-    palette: 'split', hue: 0.02, decay: 0.988, blur: 0.3, adapt: 0.4,
+    palette: 'split', hue: 0.02, decay: 0.9935, blur: 0.3, adapt: 0.4,
     particles: {
       count: 1536, size: 5, bright: 1, spawn: SPAWN.bottom, target: 'top', speed: 0.6, curl: 0.1, life: 0.55,
       lift: [0, 0.12], drag: 1.5, minAct: 0.35,
@@ -390,7 +401,9 @@ vec3 comp(vec2 uv, vec2 p) {
     warp: /* glsl */ `
 vec2 warp(vec2 p) {
   vec2 c = curlNoise(p * 1.8 + vec2(0.0, -uPhase * 0.25), uPhase * 0.3);
-  return p - vec2(p.x * 0.0012, 0.0024 * uSpeed) * uF60 + c * 0.0012 * uF60;
+  // Rise fast enough to reach the top before fading; beats and bass push it up.
+  float rise = (0.0048 + 0.004 * uBeatPulse + 0.003 * uStem.y * uPres.y) * uSpeed;
+  return p - vec2(p.x * 0.0012, rise) * uF60 + c * 0.0014 * uF60;
 }`,
     draw: /* glsl */ `
 vec3 draw(vec2 p, vec2 uv, vec3 prev) {
@@ -407,7 +420,7 @@ vec3 draw(vec2 p, vec2 uv, vec3 prev) {
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
   vec3 c = fb(uv);
-  return c * (0.6 + 0.4 * smoothstep(0.5, -0.2, p.y));
+  return c * (0.8 + 0.2 * smoothstep(0.5, 0.2, p.y));
 }`,
   },
   // ------------------------------------------------------------ E05
