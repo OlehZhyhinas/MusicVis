@@ -819,7 +819,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
       vec2 sp = cc + 0.5 + jit * (hash22(cc * 1.7 + 0.3) - 0.5);
       float pc = floor(hash12(cc + 3.7) * 12.0);
       float e = pow(chromaAt(pc), 2.5) * lvl;
-      float gate = lit < 0.99 ? step(hash12(cc + floor(uBeats)), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse) : 1.0;
+      float gate = lit < 0.99 ? step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse) : 1.0;
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
       vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
 ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(g0 - sp) / S')}
@@ -842,7 +842,7 @@ ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length
       float pc = floor(hash12(cc) * 12.0);
       float e = pow(chromaAt(pc), 2.0) * lvl;
       float gate = 1.0;
-      if (lit < 0.99) { gate = step(hash12(cc + floor(uBeats)), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse); e *= e; }
+      if (lit < 0.99) { gate = step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse); e *= e; }
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
       vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
 ${evalCopy('h.xy / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(h.xy) / S')}

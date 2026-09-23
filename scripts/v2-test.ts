@@ -56,7 +56,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || 'repair(seed) === seed for all 24');
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || 'all 24 survive JSON + repair unchanged');
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 3, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION === 4, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;
@@ -158,7 +158,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
       for (let k = 0; k < 6; k++) {
         const base = randomBody(rng);
         (base as unknown as Record<string, Gene>)[locus] = randomGene(locus, rng, kind);
-        const g = repair({ v: 3, chain: [randomOp(rng)], bodies: [base], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [], energy: [0.2, 0.8] });
+        const g = repair({ v: 4, chain: [randomOp(rng)], bodies: [base], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [], energy: [0.2, 0.8] });
         n++;
         const errs = validate(g);
         if (errs.length) bad.push(`${locus}=${kind}:${errs.join(';')}`);
@@ -303,7 +303,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
       if (!sdfCapable(other) || UNIQUE_SHAPES.includes(b)) continue;
       const f = makeFuse(body, other, rng, mode);
       if (!f) continue;
-      const g = repair({ v: 3, chain: [randomOp(rng, 'swirl')], bodies: [f], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [{ src: 'bass', g: 'fu', i: 0, k: 'k', gain: 0.5 }], energy: [0.2, 0.8] });
+      const g = repair({ v: 4, chain: [randomOp(rng, 'swirl')], bodies: [f], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [{ src: 'bass', g: 'fu', i: 0, k: 'k', gain: 0.5 }], energy: [0.2, 0.8] });
       n++;
       const errs = validate(g);
       if (errs.length) bad.push(`${a}+${b}/${mode}:${errs.join(';')}`);
@@ -389,7 +389,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
   const pop2 = Population.fromJSON(JSON.parse(JSON.stringify(j1)));
   const norm = (d: ReturnType<Population['toJSON']>) => ({ ...d, members: [...d.members].sort((a, b) => a.id.localeCompare(b.id)) });
   check('serialization.roundtrip-equal', JSON.stringify(norm(j1)) === JSON.stringify(norm(pop2.toJSON())), 'toJSON -> JSON -> fromJSON -> toJSON matches');
-  check('serialization.version', j1.version === POPULATION_VERSION && POPULATION_VERSION === 4, `version=${j1.version}`);
+  check('serialization.version', j1.version === POPULATION_VERSION && POPULATION_VERSION === 5, `version=${j1.version}`);
   check('serialization.counter', pop2.addChild(randomGenome(mulberry32(9)), [p1, p2]).id === 'G1-0003', 'counter preserved');
   let threw = false;
   try {
@@ -581,7 +581,57 @@ const adjOf = (name: string) => name.split(/\s+/)[0];
   check('naming.dedupe', dup1 === 'Calm Orb II' && uniqueName(used, 'Calm Orb') === 'Calm Orb III', dup1);
 }
 
-// -------------------------------------------------- 12. example crossovers
+// ------------------------------------------------------ 12. feel genes
+
+{
+  // A format-3 genome (no feel, reactions without curves) gets the neutral feel: instant response,
+  // bar clock, grid-locked, i.e. exactly how it behaved.
+  const v3 = JSON.parse(JSON.stringify(seedByOrigin('E09'))) as Record<string, unknown> & { bodies: Record<string, unknown>[]; reactions: Record<string, unknown>[] };
+  v3.v = 3;
+  for (const b of v3.bodies) delete b.feel;
+  v3.reactions = v3.reactions.map((r) => ({ src: r.src, g: r.g, i: r.i, k: r.k, gain: r.gain }));
+  const g = repair(v3);
+  const f = g.bodies[0].feel;
+  check('feel.format3-neutral', !validate(g).length && g.v === 4 && f.kind === 'flow' && f.p.atk === 0.005 && f.p.rel === 0.005 && f.p.thr === 0 && f.p.sens === 1 && f.p.div === 4 && f.p.lock === 1
+    && g.reactions.every((r) => r.atk === 0.005 && r.rel === 0.005 && r.q === 0 && r.thr === 0), JSON.stringify(f.p));
+  check('feel.format3-reactions-kept', JSON.stringify(g.reactions.map((r) => [r.src, r.g, r.i, r.k, r.gain])) === JSON.stringify(seedByOrigin('E09').reactions.map((r) => [r.src, r.g, r.i, r.k, r.gain])), `${g.reactions.length} reactions`);
+
+  // One parent's look with the other's feel (polyhedra's calm clock on ink, and the reverse).
+  const e14f = b0('E14').feel.p, e06f = b0('E06').feel.p;
+  let inkCalm = 0, polyLively = 0;
+  for (let i = 0; i < 400; i++) {
+    const c = crossover(seedByOrigin('E06'), seedByOrigin('E14'), mulberry32(60000 + i));
+    const b = c.bodies[0];
+    if (b.shape.kind === 'dot' && b.place.kind === 'stations' && b.feel.p.rel === e14f.rel && b.feel.p.atk === e14f.atk) inkCalm++;
+    if (b.shape.kind === 'solid' && b.feel.p.rel === e06f.rel && b.feel.p.atk === e06f.atk) polyLively++;
+  }
+  check('feel.look-and-feel-split', inkCalm > 10 && polyLively > 10, `${inkCalm} ink children with polyhedra's feel, ${polyLively} polyhedra children with ink's feel (of 400)`);
+
+  // Feel mutations and reaction curves stay valid and in range.
+  const rng = mulberry32(61000);
+  const seen = new Set<string>();
+  const bad: string[] = [];
+  for (let i = 0; i < 1500; i++) {
+    const log: string[] = [];
+    const m = mutate(SEEDS[i % 24].genome, rng, 1 + rng(), log);
+    log.forEach((x) => seen.add(x));
+    if (validate(m).length) bad.push(validate(m).join(';'));
+  }
+  check('feel.mutations', !bad.length && ['swap-feel', 'change-clock', 'rewire-reaction', 'reaction-curve'].every((x) => seen.has(x)), bad[0] ?? 'feel swaps, clock changes, rewired sources and curve changes all valid');
+  const rg = randomGenome(mulberry32(62000));
+  check('feel.random-curves', rg.reactions.every((r) => r.atk >= 0.005 && r.rel >= 0.005 && (r.q === 0 || r.q === 1)), JSON.stringify(rg.reactions[0] ?? {}));
+
+  // Names read the feel: a stepped body, a calm clock.
+  const st = cloneGenome(seedByOrigin('E06'));
+  st.bodies[0].feel = { kind: 'step', p: { atk: 0.005, rel: 0.005, thr: 0, sens: 1, div: 4, lock: 1 } };
+  const stName = nameFor(repair(st));
+  const calm = cloneGenome(seedByOrigin('E06'));
+  calm.bodies[0].feel = { kind: 'flow', p: { atk: 0.2, rel: 2.5, thr: 0, sens: 1, div: 16, lock: 1 } };
+  const calmName = nameFor(repair(calm));
+  check('feel.names', ADJ_POOLS.stepped.includes(adjOf(stName)) || stName !== nameFor(seedByOrigin('E06')), `${stName} / ${calmName}`);
+}
+
+// -------------------------------------------------- 13. example crossovers
 
 {
   console.log('\n--- 30 example crossovers ---');

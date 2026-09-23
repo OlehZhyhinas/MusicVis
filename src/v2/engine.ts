@@ -20,6 +20,20 @@ import {
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 
+/**
+ * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
+ * scales its event spacing; bars / spin / phases are the body's own time.
+ */
+interface BodyClock {
+  mul: number;
+  s: number;
+  lock: boolean;
+  bars: number;
+  spin: number;
+  barPhase: number;
+  beatPhase: number;
+}
+
 /** One copy of a body this frame: position, angle, scale, level (brightness), hue offset, previous position. */
 interface Copy {
   x: number;
@@ -111,6 +125,9 @@ export class Signals {
   private prevBarPhase = 0;
   private prevDrumOnset = 0;
   private hitCooldown = 0;
+  private lastSection = -1;
+  /** 1 on a section change, easing back to 0 over about a bar. */
+  sectionPulse = 0;
 
   constructor(private gl: GL) {
     const f = formats(gl);
@@ -157,6 +174,9 @@ export class Signals {
     F.keyPulse = num(state.keyChangePulse, 0);
     F.barPulse = num(state.barPulse, 0);
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
+    this.sectionPulse *= Math.exp(-dt * 1.5);
+    if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
+    this.lastSection = F.sectionIndex;
     F.dropStart = !!state.sectionChanged && state.section?.label === 'drop';
     F.speed = (0.4 + 0.75 * F.act) * (1 + 0.5 * F.build) + 0.4 * F.drop * F.act;
     F.phase = (F.phase + dt * F.speed) % 4096;
@@ -276,6 +296,8 @@ export class Signals {
       case 'melody': return F.melody;
       case 'build': return F.build;
       case 'surge': return Math.min(1.5, F.surge);
+      case 'barpulse': return F.barPulse;
+      case 'section': return this.sectionPulse;
     }
   }
 
@@ -430,6 +452,7 @@ export class Slot {
   flameSpec: FlameSpec | null = null;
   flameMorph = 0;
   flameHue = 0;
+  flameClock = { spin: 0, bars: 0 };
   /** The body throwing sparks (-1: none) and its spawn settings. */
   sparks = -1;
   spawn = { mode: 4, count: 3, angle: 0, radius: 0.3 };
@@ -656,7 +679,7 @@ export class Stage {
       const n = Math.min(spec.count, this.opts.flameCap);
       if (Math.abs(this.flame.count - n) > n * 0.1) this.flame.setCount(n);
       this.flame.configure(spec, {
-        spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: flameSlot.flameMorph, hue: flameSlot.flameHue, bars: F.bars, beat: F.beatPulse,
+        spin: flameSlot.flameClock.spin, bass: F.stem[1], vocals: F.stem[2], morph: flameSlot.flameMorph, hue: flameSlot.flameHue, bars: flameSlot.flameClock.bars, beat: F.beatPulse,
       });
     }
 
@@ -711,11 +734,26 @@ export class Stage {
     const A = F.aspect * 0.5;
 
     // Reactions -> per-parameter deltas for this frame.
+    // Reactions -> per-parameter deltas: signal -> response curve (threshold, quantise, attack / release) -> gain.
     s.delta.clear();
-    for (const r of g.reactions) {
+    g.reactions.forEach((r, j) => {
       const key = `${r.g}${r.i}.${r.k}`;
-      s.delta.set(key, (s.delta.get(key) ?? 0) + r.gain * sig.signal(r.src));
-    }
+      let x = sig.signal(r.src);
+      if (r.thr > 0) x = Math.max(0, x - r.thr) / (1 - r.thr);
+      if (r.q > 0.5) {
+        const idx = Math.floor(F.beats / r.div);
+        if (idx !== s.mem['rq' + j]) {
+          s.mem['rq' + j] = idx;
+          s.mem['rh' + j] = x;
+        }
+        x = s.mem['rh' + j] ?? x;
+      }
+      if (r.atk > 0.006 || r.rel > 0.006) {
+        const e = s.mem['re' + j] ?? x;
+        x = s.mem['re' + j] = approach(e, x, 1 / (x > e ? r.atk : r.rel), sdt);
+      }
+      s.delta.set(key, (s.delta.get(key) ?? 0) + r.gain * x);
+    });
 
     // Palette
     const cp = g.color.p;
@@ -871,6 +909,7 @@ export class Stage {
     const PE = (k: string) => s.P('em', bi, b.emit.p, k, EMIT_SCHEMAS[b.emit.kind]);
     const gain = PA('gain');
     const hue = PA('hue');
+    this.clk = this.bodyClock(s, b, bi, sdt);
 
     // Material: slot 0 (gain, hue, a, b), slot 1.
     const halo = (m[key('halo')] = approach(mm('halo'), Math.max(F.loud, sig.melodic()), 3, sdt));
@@ -906,7 +945,8 @@ export class Stage {
     if (b.place.kind === 'grid') {
       E[o + 20] = PP('scale'); E[o + 21] = PP('jitter'); E[o + 22] = PP('density'); E[o + 23] = PP('lit');
       E[o + 24] = PP('links'); E[o + 25] = b.place.p.lattice;
-      E[o + 26] = clamp01(Math.max(sig.melodic(), 0.4 * F.stem[1]) * 1.8);
+      E[o + 26] = clamp01(this.resp('g', Math.max(sig.melodic(), 0.4 * F.stem[1])) * 1.8);
+      E[o + 18] = this.step(s, bi, 'lit', 1);
       E[o + 26] = Math.max(0.3, E[o + 26]);
       E[o + 27] = PP('twinkle');
     } else if (b.place.kind === 'ring') {
@@ -949,6 +989,7 @@ export class Stage {
     if (cls === 'flame' && b.shape.xforms) {
       const c0 = copies[0];
       const spin = b.motion.kind === 'spin' ? b.motion.p.rate * (b.motion.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1) : 0;
+      s.flameClock = { spin: this.clk.spin, bars: this.clk.bars % 48 };
       const xs = b.shape.xforms;
       if (F.dropStart) set('mt', mm('mt') > 0.5 ? 0 : 1);
       set('m', mm('m') + (mm('mt') - mm('m')) * (1 - Math.exp(-sdt * 0.8)));
@@ -980,6 +1021,89 @@ export class Stage {
     }
   }
 
+  private clk: BodyClock = { mul: 1, s: 1, lock: true, bars: 0, spin: 0, barPhase: 0, beatPhase: 0 };
+  private respBody = { s: null as Slot | null, bi: 0, b: null as BodyGene | null };
+
+  /** The body's clock: exactly the song's at the neutral feel (bar unit, grid-locked). */
+  private bodyClock(s: Slot, b: BodyGene, bi: number, sdt: number): BodyClock {
+    const F = this.sig.F;
+    const fp = b.feel.p;
+    const sc = fp.div / 4;
+    const mul = Math.min(2, Math.max(0.25, 1 / sc));
+    const lock = fp.lock > 0.5;
+    this.respBody = { s, bi, b };
+    const m = s.mem;
+    const k = (x: string) => `b${bi}.c${x}`;
+    if (lock && mul === 1) return { mul, s: sc, lock, bars: F.bars, spin: F.spin, barPhase: F.barPhase, beatPhase: F.beatPhase };
+    let dBars: number;
+    if (lock) {
+      const prev = m[k('pb')] ?? F.bars;
+      dBars = F.bars - prev;
+      if (dBars < -24) dBars += 48;
+      if (dBars < 0 || dBars > 1) dBars = (sdt * F.bpm) / 240;
+      m[k('pb')] = F.bars;
+    } else dBars = ((sdt * F.bpm) / 240) * (1 + 0.04 * Math.sin(this.sig.clock * 0.13 + bi));
+    const bars = (m[k('tb')] = ((m[k('tb')] ?? F.bars * mul) + dBars * mul) % 4096);
+    const spin = (m[k('sp')] = ((m[k('sp')] ?? F.spin * mul) + this.sig.spinStep * mul) % (TAU * 1024));
+    return { mul, s: sc, lock, bars, spin, barPhase: bars % 1, beatPhase: (bars * 4) % 1 };
+  }
+
+  /**
+   * An event on the body's clock every `beats` beats (scaled by its feel): on the beat grid when
+   * locked, at irregular intervals with the same average spacing when free.
+   */
+  private every(s: Slot, bi: number, key: string, beats: number): boolean {
+    const F = this.sig.F;
+    const m = s.mem;
+    const k = `b${bi}.e${key}`;
+    const span = Math.max(0.25, beats * this.clk.s);
+    if (this.clk.lock) {
+      const idx = Math.floor(F.beats / span + 1e-6);
+      const prev = m[k];
+      m[k] = idx;
+      return prev !== undefined && idx !== prev;
+    }
+    const t = (m[k + 't'] = (m[k + 't'] ?? 0) + (F.dt * F.bpm) / 60);
+    if (m[k + 'n'] === undefined) m[k + 'n'] = span * (0.6 + 0.8 * h11(bi * 7.1 + key.length));
+    if (t < m[k + 'n']) return false;
+    const c = (m[k + 'c'] = (m[k + 'c'] ?? 0) + 1);
+    m[k + 't'] = 0;
+    m[k + 'n'] = span * (0.6 + 0.8 * h11(c * 3.7 + bi));
+    return true;
+  }
+
+  /** Index of the current clock step (grid refreshes, held levels). */
+  private step(s: Slot, bi: number, key: string, beats: number): number {
+    const m = s.mem;
+    const k = `b${bi}.i${key}`;
+    if (this.every(s, bi, key, beats)) m[k] = (m[k] ?? 0) + 1;
+    return m[k] ?? 0;
+  }
+
+  /**
+   * A music level through the body's response curve: threshold, sensitivity, held on the clock grid
+   * (step feel), then attack / release smoothing. Neutral feel: the level unchanged.
+   */
+  private resp(key: string, raw: number): number {
+    const { s, bi, b } = this.respBody;
+    if (!s || !b) return raw;
+    const fp = b.feel.p;
+    let x = raw;
+    if (fp.thr > 0) x = Math.max(0, x - fp.thr) / (1 - fp.thr);
+    x *= fp.sens;
+    const m = s.mem;
+    const k = `b${bi}.r${key}`;
+    if (b.feel.kind === 'step') {
+      if (this.every(s, bi, 'q' + key, 1) || m[k + 'h'] === undefined) m[k + 'h'] = x;
+      x = m[k + 'h'];
+    }
+    if (fp.atk > 0.006 || fp.rel > 0.006) {
+      const e = m[k] ?? x;
+      x = m[k] = approach(e, x, 1 / (x > e ? fp.atk : fp.rel), this.sig.F.dt);
+    }
+    return x;
+  }
+
   /** Copy positions from the placement gene. */
   private placeCopies(s: Slot, b: BodyGene, bi: number, sdt: number): Copy[] {
     const F = this.sig.F;
@@ -996,10 +1120,7 @@ export class Stage {
       out.push(c);
       return c;
     };
-    const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
-    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
-    set('bi', F.barIndex);
-    set('bt', F.beatIndex);
+    const clk = this.clk;
     switch (b.place.kind) {
       case 'point':
         add(PP('x'), PP('y'));
@@ -1008,11 +1129,11 @@ export class Stage {
         const n = p.count;
         const follow = PP('follow');
         const R = PP('radius');
-        const ocx = PP('x') + follow * A * 0.64 * Math.sin((TAU * F.bars) / 8);
-        const ocy = PP('y') + follow * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
-        const lvl = Math.max(F.stem[3], F.stem[2]) * 0.8 + 0.2 * F.loud;
+        const ocx = PP('x') + follow * A * 0.64 * Math.sin((TAU * clk.bars) / 8);
+        const ocy = PP('y') + follow * 0.63 * Math.sin((TAU * clk.bars) / 6 + 1);
+        const lvl = this.resp('o', Math.max(F.stem[3], F.stem[2]) * 0.8 + 0.2 * F.loud);
         for (let i = 0; i < n; i++) {
-          const ang = F.spin * p.rate + (i / n) * TAU;
+          const ang = clk.spin * p.rate + (i / n) * TAU;
           add(ocx + R * Math.cos(ang), ocy + R * Math.sin(ang), lvl, i * 0.25 + 0.1, 1, ang);
         }
         break;
@@ -1023,8 +1144,8 @@ export class Stage {
         for (let i = 0; i < n; i++) {
           const rx = (i - (n - 1) / 2) * (1.2 / Math.max(1, n)) * A + 0.05 * Math.sin(F.phase * 0.4 + i * 2.1);
           const k4 = i % 4;
-          const lvl = k4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[k4];
-          add(rx + wv * Math.sin(F.phase * 0.23 + i * 1.9), PP('y'), lvl, i * 0.25 + 0.1);
+          const lvl = this.resp('c' + i, k4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[k4]);
+          add(rx + wv * Math.sin(F.phase * 0.23 * clk.mul + i * 1.9), PP('y'), lvl, i * 0.25 + 0.1);
         }
         break;
       }
@@ -1038,7 +1159,7 @@ export class Stage {
         const jump = p.jump === 1;
         const swap = p.swap === 1 && ((F.barIndex % 2) + 2) % 2 === 1 ? 0.333 : 0;
         const stations = [[-0.55 * A, -0.2], [0, -0.28], [0, 0.18], [0.55 * A, -0.05], [-0.3 * A, 0.25], [0.3 * A, 0.25]];
-        if (inst > 0 && (jump ? F.hit > 0 : newBar)) {
+        if (inst > 0 && (jump ? F.hit > 0 : this.every(s, bi, 'jump', 4))) {
           const c = set('jn', mm('jn') + 1);
           set('dtx', (h11(c * 1.7) - 0.5) * 1.2 * A);
           set('dty', (h11(c * 2.9) - 0.5) * (jump ? 0.7 : 0.6));
@@ -1064,7 +1185,7 @@ export class Stage {
             sx += (ix - sx) * inst;
             sy += (iy - sy) * inst;
           }
-          add(sx, sy, lvlOld + (lvlInst - lvlOld) * inst, i * 0.25 + 0.1 + swap);
+          add(sx, sy, this.resp('c' + i, lvlOld + (lvlInst - lvlOld) * inst), i * 0.25 + 0.1 + swap);
         }
         break;
       }
@@ -1074,10 +1195,10 @@ export class Stage {
         const src = [1, 1, 0, 2, 3, 3];
         const spread = PP('spread');
         const speed = PP('speed');
-        const ph = set('ph', (mm('ph') + sdt * F.speed) % 4096);
+        const ph = set('ph', (mm('ph') + sdt * F.speed * clk.mul) % 4096);
         for (let i = 0; i < n; i++) {
           const t = ph * (speed * 0.9 + 0.03 * i);
-          const lv = src[i] === 0 ? F.onset[0] * 0.6 + F.stem[0] * 0.4 : F.stem[src[i]];
+          const lv = this.resp('c' + i, src[i] === 0 ? F.onset[0] * 0.6 + F.stem[0] * 0.4 : F.stem[src[i]]);
           const tr = 0.75 + 1.25 * lv + (0.015 / 0.06) * F.beatPulse * F.gate[0];
           const rr = set('r' + i, approach(mm('r' + i, tr), tr, 8, sdt));
           add(spread * A * Math.sin(t + i * 1.7) * (0.6 + 0.4 * Math.sin(t * 0.37 + i)), 0.26 * (spread / 0.55) * Math.sin(t * 1.31 + i * 2.3), 1, 0, rr);
@@ -1090,7 +1211,7 @@ export class Stage {
         const cx = PP('x');
         const cy = PP('y');
         for (let i = 0; i < n; i++) {
-          const u = F.spin * p.rate / TAU + i / n;
+          const u = (clk.spin * p.rate) / TAU + i / n;
           const a = u * TAU;
           let x: number, y: number;
           if (p.path === 0) [x, y] = [R * Math.cos(a), R * Math.sin(a)];
@@ -1105,7 +1226,7 @@ export class Stage {
             x = (ax + (bx - ax) * f) * R * 0.75;
             y = (ay + (by - ay) * f) * R * 0.75;
           } else [x, y] = [R * 1.3 * Math.sin(a), R * 0.6 * Math.sin(2 * a)];
-          add(cx + x, cy + y, this.voice(i % 4), i * 0.2, 1, a);
+          add(cx + x, cy + y, this.resp('c' + i, this.voice(i % 4)), i * 0.2, 1, a);
         }
         break;
       }
@@ -1113,14 +1234,14 @@ export class Stage {
         this.walk(s, b, bi, out);
         break;
       case 'grid':
-        add(0, 0, 1, 0, 1, F.spin * p.lock);
+        add(0, 0, 1, 0, 1, clk.spin * p.lock);
         break;
       case 'ring': {
         add(PP('x'), PP('y'));
         // Four voices for the ring's copies (drums, bass, vocals, other), cycling around it.
         for (let k = 1; k < 4; k++) add(PP('x'), PP('y'), 1, k * 0.25 + 0.1);
         out[0].hue = 0.1;
-        for (let k = 0; k < 4; k++) out[k].level = 0.35 + 0.9 * this.voice(k);
+        for (let k = 0; k < 4; k++) out[k].level = 0.35 + 0.9 * this.resp('c' + k, this.voice(k));
         break;
       }
       case 'mirror':
@@ -1150,20 +1271,19 @@ export class Stage {
     if (db < 0) db += 256;
     if (db > 2) db = F.dt * 2;
     set('lb', F.beats);
+    db *= this.clk.mul;
     const hits = b.motion.kind === 'hits' ? s.P('mo', bi, b.motion.p, 'amt', MOTION_SCHEMAS.hits) : 0;
     const hitRise = F.hit > 0.7 && mm('hp') <= 0.7;
     set('hp', F.hit);
     const bassRise = F.onset[1] > 0.6 && mm('bp') <= 0.6;
     set('bp', F.onset[1]);
-    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bi', F.beatIndex);
-    set('bi', F.beatIndex);
     const step = P('step') * (0.7 + 0.5 * F.act);
     const turn = P('turn');
     const curve = P('curve');
     const every = p.every;
     const heads: [string, boolean, boolean, number, number, number, number, number][] = [
-      ['m', newBeat && F.beatIndex % every === 0, hitRise, -0.3 * A, 0.15, 0.3, step * 1.18, F.melody],
-      ['b', newBeat && F.beatIndex % (every * 2) === 0, bassRise, 0.3 * A, -0.2, 2.6, step * 0.82, F.stem[1]],
+      ['m', this.every(s, bi, 'wm', every), hitRise, -0.3 * A, 0.15, 0.3, step * 1.18, F.melody],
+      ['b', this.every(s, bi, 'wb', every * 2), bassRise, 0.3 * A, -0.2, 2.6, step * 0.82, F.stem[1]],
     ];
     for (let h = 0; h < p.heads; h++) {
       const [k, turnNow, heavyRaw, sx, sy, sa, perBeat, steer] = heads[h];
@@ -1200,11 +1320,13 @@ export class Stage {
       set(k + 'a', ang % (TAU * 64));
       set(k + 'x', nx);
       set(k + 'y', ny);
-      const level = h === 0 ? 0.25 + this.sig.melodic() * 0.55 : 0.25 + 0.6 * F.stem[1] * (0.3 + 0.7 * F.act);
-      const hue = h === 0 ? F.melody * 0.7 + 0.2 * F.beatPulse : 0.5 + 0.4 * F.stem[1] + 0.15 * F.barPulse;
+      const bass = this.resp('wb', F.stem[1]);
+      const loud = this.resp('wl', F.loud);
+      const level = h === 0 ? 0.25 + this.resp('wm', this.sig.melodic()) * 0.55 : 0.25 + 0.6 * bass * (0.3 + 0.7 * F.act);
+      const hue = h === 0 ? F.melody * 0.7 + 0.2 * F.beatPulse : 0.5 + 0.4 * bass + 0.15 * F.barPulse;
       // Dots keep the snake's widths (melody thin, bass thick); larger shapes breathe more gently.
       const dot = b.shape.kind === 'dot';
-      const sc = h === 0 ? (dot ? 0.6 + 0.8 * F.loud : 0.8 + 0.4 * F.loud) : dot ? 1.1 + 2 * F.stem[1] : 0.85 + 0.5 * F.stem[1];
+      const sc = h === 0 ? (dot ? 0.6 + 0.8 * loud : 0.8 + 0.4 * loud) : dot ? 1.1 + 2 * bass : 0.85 + 0.5 * bass;
       out.push({ x: nx, y: ny, a: ang, s: sc, level, hue, px, py });
     }
     // The bass head is drawn first so the melody head paints over it.
@@ -1230,11 +1352,11 @@ export class Stage {
           // Solids and flames turn their own way (3D yaw / the flame camera).
           if (solid || b.shape.kind === 'flame' || walker) break;
           const sign = mo.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
-          c.a += F.spin * mo.p.rate * sign;
+          c.a += this.clk.spin * mo.p.rate * sign;
           break;
         }
         case 'sway': {
-          const w = Math.sin((TAU * F.bars) / mo.p.period + ph);
+          const w = Math.sin((TAU * this.clk.bars) / mo.p.period + ph);
           c.x += P('amp') * w;
           c.a += P('tilt') * 0.35 * w;
           break;
@@ -1242,14 +1364,14 @@ export class Stage {
         case 'bob': {
           const amp = P('amp');
           const dp = set('dp', approach(mm('dp'), F.gate[0], 1, sdt / Math.max(1, copies.length)));
-          c.x += 0.035 * amp * Math.sin(TAU * F.barPhase + ph);
-          c.y += 0.03 * Math.sin(F.phase * 0.01) + 0.008 * amp * Math.sin(TAU * F.beatPhase + ph) * dp;
+          c.x += 0.035 * amp * Math.sin(TAU * this.clk.barPhase + ph);
+          c.y += 0.03 * Math.sin(F.phase * 0.01) + 0.008 * amp * Math.sin(TAU * this.clk.beatPhase + ph) * dp;
           break;
         }
         case 'drift': {
           if (i === 0) {
-            set('dx', (mm('dx') + P('vx') * sdt * F.speed) % 64);
-            set('dy', (mm('dy') + P('vy') * sdt * F.speed) % 64);
+            set('dx', (mm('dx') + P('vx') * sdt * F.speed * this.clk.mul) % 64);
+            set('dy', (mm('dy') + P('vy') * sdt * F.speed * this.clk.mul) % 64);
           }
           c.x += mm('dx');
           c.y += mm('dy');
@@ -1262,7 +1384,7 @@ export class Stage {
           break;
         }
         case 'circle': {
-          const a = (TAU * F.bars) / mo.p.period + ph;
+          const a = (TAU * this.clk.bars) / mo.p.period + ph;
           c.x += P('radius') * Math.cos(a);
           c.y += P('radius') * Math.sin(a);
           break;
@@ -1307,7 +1429,7 @@ export class Stage {
     const beat = F.beatPulse * F.gate[0];
     switch (sh.kind) {
       case 'dot': {
-        const r = P('r') * (1 + 0.08 * F.stem[1]);
+        const r = P('r') * (1 + 0.08 * this.resp('bass', F.stem[1]));
         E[o] = r;
         return Math.max(r, b.material.kind === 'glow' ? b.material.p.width : 0.004);
       }
@@ -1323,9 +1445,9 @@ export class Stage {
       case 'solid': {
         // Segments in the body's local frame; spin motion turns the solid in 3D.
         const solid = sh.p.solid === 5 ? ((F.sectionIndex % 4) + 4) % 4 : sh.p.solid;
-        const scale = P('size') + 0.07 * F.stem[1] + 0.02 * beat;
+        const scale = P('size') + 0.07 * this.resp('bass', F.stem[1]) + 0.02 * beat;
         const mo = b.motion;
-        const ang = mo.kind === 'spin' ? F.spin * mo.p.rate * (mo.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1) : 0;
+        const ang = mo.kind === 'spin' ? this.clk.spin * mo.p.rate * (mo.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1) : 0;
         let n = 0;
         if (solid === 4) n = polygonSegs(s, 0, sh.p.sides, scale * 0.5, ang, 1);
         else {
@@ -1500,12 +1622,14 @@ export class Stage {
         // 2 bars out of step with the others; the set turns once per `turn` bars.
         const n = d.p.count;
         const g = (k: number) => F.stem[k] * F.gate[k];
-        const drivers = [F.onset[0] * F.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * this.sig.melodic()), g(3), F.loud];
-        const spin = (TAU * F.bars) / d.p.turn;
+        const raw = [F.onset[0] * F.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * this.sig.melodic()), g(3), F.loud];
+        const drivers = raw.map((x, k) => this.resp('a' + k, x));
+        const bars = this.clk.bars;
+        const spin = (TAU * bars) / d.p.turn;
         const sway = P('sway');
         for (let k = 0; k < n; k++) {
-          const ang = spin + (k * TAU) / n + 0.45 * sway * Math.sin((TAU * F.bars) / 2 + k * 1.3);
-          const breath = 0.5 + 0.5 * Math.sin((TAU * F.bars) / (2 + (k % 5) * 0.5) + k * 2.1);
+          const ang = spin + (k * TAU) / n + 0.45 * sway * Math.sin((TAU * bars) / 2 + k * 1.3);
+          const breath = 0.5 + 0.5 * Math.sin((TAU * bars) / (2 + (k % 5) * 0.5) + k * 2.1);
           const target = 0.2 + 0.8 * drivers[k % 5] + 0.45 * breath;
           const len = (m[key('len' + k)] = approach(mm('len' + k, target), target, 2.5, sdt));
           E[o + 4 + (k < 4 ? k : 4 + k - 4)] = ang;
@@ -1513,24 +1637,24 @@ export class Stage {
         }
         E[o] = n;
         E[o + 1] = P('reach');
-        E[o + 2] = P('curl') * 0.5 * Math.sin((TAU * F.bars) / 3);
+        E[o + 2] = P('curl') * 0.5 * Math.sin((TAU * bars) / 3);
         E[o + 3] = P('width');
         break;
       }
       case 'wobble':
         E[o] = d.p.lobes;
-        E[o + 1] = P('amp') * (0.6 + 0.8 * F.stem[1] * F.gate[1]);
-        E[o + 2] = -F.spin * d.p.rate * d.p.lobes;
+        E[o + 1] = P('amp') * (0.6 + 0.8 * this.resp('bass', F.stem[1] * F.gate[1]));
+        E[o + 2] = -this.clk.spin * d.p.rate * d.p.lobes;
         break;
       case 'noise': {
         const ph = (m[key('ph')] = (mm('ph') + sdt * P('speed') * F.speed) % 4096);
-        E[o] = P('amp') * (0.6 + 0.8 * F.loud);
+        E[o] = P('amp') * (0.6 + 0.8 * this.resp('loud', F.loud));
         E[o + 1] = P('scale');
         E[o + 2] = ph;
         break;
       }
       case 'twist':
-        E[o] = P('amt') * (0.6 + 0.6 * F.loud);
+        E[o] = P('amt') * (0.6 + 0.6 * this.resp('loud', F.loud));
         break;
     }
   }

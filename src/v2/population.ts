@@ -41,15 +41,16 @@ export interface Member {
  * 2: genomes of format 2 and the per-child crossover tag; 3: descriptive,
  * inherited names (fromJSON renames every bred child of a version 1-2 file, in
  * generation order, keeping ids / votes / parents / genomes); 4: genomes of
- * format 3 (bodies made of sub-genes). Older genomes are converted on load by
+ * format 3 (bodies made of sub-genes); 5: genomes of format 4 (feel genes: a body's
+ * response curve and clock, a reaction's curve). Older genomes are converted on load by
  * repair() (legacy.ts), keeping each member's id, votes, parents and name; a
  * converted child's screening descriptor is dropped so it is measured again.
  */
-export const POPULATION_VERSION = 4;
+export const POPULATION_VERSION = 5;
 
 export interface PopulationData {
   format: 'musicvis-v2-population';
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
   seedVersion?: number;
   counter: number;
@@ -329,7 +330,7 @@ export class Population {
       if (!rg || !Array.isArray(rg.chain) || !rg.carrier || !rg.color) continue;
       const old = rg.v === 1 || rg.v === 2;
       const parts = old ? rg.emitters : rg.bodies;
-      if ((!old && rg.v !== 3) || !Array.isArray(parts) || !parts.length) continue;
+      if ((!old && rg.v !== 3 && rg.v !== 4) || !Array.isArray(parts) || !parts.length) continue;
       let g: Genome;
       try {
         g = repair(rg);

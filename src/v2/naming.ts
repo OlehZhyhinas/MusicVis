@@ -194,6 +194,7 @@ const DARTING = ['Darting', 'Lurching', 'Jolting', 'Zigzag', 'Swerving', 'Dodgin
 const STIPPLED = ['Stippled', 'Dotted', 'Pointillist', 'Speckled', 'Freckled', 'Pebbled', 'Spotted', 'Granular', 'Sequined', 'Dappled', 'Flecked', 'Beaded'];
 const MOTTLED = ['Cratered', 'Pitted', 'Mottled', 'Weathered', 'Rugged', 'Scarred', 'Pockmarked', 'Worn', 'Stony', 'Dusty', 'Etched', 'Carved'];
 const SPARKING = ['Sparking', 'Crackling', 'Fizzing', 'Spitting', 'Sputtering', 'Scintillating', 'Effervescent', 'Popping', 'Sparkling', 'Glinting', 'Twinkling', 'Spangled'];
+const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Marching', 'Pulsed', 'Chopped', 'Stuttering', 'Measured', 'Tapping', 'Syncopated'];
 const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
@@ -275,6 +276,11 @@ function traits(g: Genome): Trait[] {
     if (b.emit.kind === 'sparks') add('sparking', SPARKING, k * 0.55);
     if (b.emit.kind === 'cover') add('painted', PAINTED, k * 0.45);
     if (b.emit.kind === 'dye') add('liquid', LIQUID, k * 0.5);
+    // Feel: stepped responses, slow clocks and long releases, sharp sensitive attacks.
+    const fp = b.feel.p;
+    if (b.feel.kind === 'step') add('stepped', STEPPED, k * 0.65);
+    if (fp.rel >= 1 || fp.div >= 8) add('calm', CALM, k * clamp01(0.3 + fp.rel * 0.2 + (fp.div >= 8 ? 0.25 : 0)));
+    if (fp.atk <= 0.02 && fp.sens >= 1.5) add('surging', SURGING, k * clamp01(0.3 + (fp.sens - 1.5) * 0.4));
   }
 
   if (g.carrier.kind === 'fluid') add('liquid', LIQUID, 0.8);
@@ -335,7 +341,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   tiled: TILED, fractal: FRACTAL, liquid: LIQUID, trailing: TRAILING, surging: SURGING, calm: CALM,
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
-  sparking: SPARKING, painted: PAINTED, generic: GENERIC_ADJ,
+  sparking: SPARKING, painted: PAINTED, stepped: STEPPED, generic: GENERIC_ADJ,
 };
 
 /**

@@ -19,13 +19,13 @@
 // votes, views and ids are kept).
 
 import {
-  CARRIER_SCHEMA, COLOR_SCHEMA, DEFORM_SCHEMAS, EMIT_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
+  CARRIER_SCHEMA, COLOR_SCHEMA, DEFORM_SCHEMAS, EMIT_SCHEMAS, FEEL_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
   SHAPE_SCHEMAS, defaultParams, repair,
-  type BodyGene, type CarrierKind, type DeformKind, type EmitKind, type FlameXformGene, type Genome, type MaterialKind,
+  type BodyGene, type CarrierKind, type DeformKind, type EmitKind, type FeelKind, type FlameXformGene, type Genome, type MaterialKind,
   type MotionKind, type OpGene, type OpKind, type PlaceKind, type ReactionGene, type Scheme, type ShapeKind, type Signal,
 } from './genome';
 
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
 
 export interface Seed {
   origin: string; // V1 preset id, e.g. 'E07'
@@ -41,8 +41,8 @@ function op(kind: OpKind, p: Record<string, number> = {}, w = 1, stage: 'warp' |
 function xf(x: Partial<FlameXformGene> & Pick<FlameXformGene, 'aff' | 'weight' | 'color' | 'vars'>): FlameXformGene {
   return { spin: 0, bass: 0, drift: [0, 0], pulse: 0, ...x };
 }
-function rx(src: Signal, g: ReactionGene['g'], i: number, k: string, gain: number): ReactionGene {
-  return { src, g, i, k, gain };
+function rx(src: Signal, g: ReactionGene['g'], i: number, k: string, gain: number, curve: Partial<ReactionGene> = {}): ReactionGene {
+  return { src, g, i, k, gain, atk: 0.005, rel: 0.005, thr: 0, q: 0, div: 1, ...curve };
 }
 
 type P = Record<string, number>;
@@ -53,6 +53,7 @@ interface BodyDef {
   deform?: [DeformKind, P?];
   material: [MaterialKind, P?];
   emit?: [EmitKind, P?];
+  feel?: [FeelKind, P?];
 }
 function body(d: BodyDef): BodyGene {
   const [sk, sp = {}, xforms] = d.shape;
@@ -61,6 +62,7 @@ function body(d: BodyDef): BodyGene {
   const [dk, dp = {}] = d.deform ?? ['none'];
   const [ak, ap = {}] = d.material;
   const [ek, ep = {}] = d.emit ?? ['trail'];
+  const [fk, fp = {}] = d.feel ?? ['flow'];
   const b: BodyGene = {
     shape: { kind: sk, p: { ...defaultParams(SHAPE_SCHEMAS[sk]), ...sp } },
     place: { kind: pk, p: { ...defaultParams(PLACE_SCHEMAS[pk]), ...pp } },
@@ -68,6 +70,7 @@ function body(d: BodyDef): BodyGene {
     deform: { kind: dk, p: { ...defaultParams(DEFORM_SCHEMAS[dk]), ...dp } },
     material: { kind: ak, p: { ...defaultParams(MATERIAL_SCHEMAS[ak]), ...ap } },
     emit: { kind: ek, p: { ...defaultParams(EMIT_SCHEMAS[ek]), ...ep } },
+    feel: { kind: fk, p: { ...defaultParams(FEEL_SCHEMAS[fk]), ...fp } },
   };
   if (xforms) b.shape.xforms = xforms;
   return b;
@@ -90,7 +93,7 @@ interface Def {
 
 function build(d: Def): Seed {
   const g: Genome = {
-    v: 3,
+    v: 4,
     chain: d.chain ?? [],
     bodies: d.bodies,
     carrier: {
@@ -131,6 +134,7 @@ const DEFS: Def[] = [
       motion: ['hits', { amt: 1 }],
       material: ['fill', { gain: 2, soft: 0.6 }],
       emit: ['cover', { amt: 1, tip: 1 }],
+      feel: ['flow', { atk: 0.01, rel: 0.12 }],
     })],
     reactions: [rx('beat', 'col', 0, 'exposure', 0.875), rx('bass', 'col', 0, 'exposure', 0.625)],
   },
@@ -180,6 +184,7 @@ const DEFS: Def[] = [
       place: ['stations', { count: 4, inst: 1, xs: 1, jump: 0, wander: 0 }],
       material: ['glow', { gain: 1, width: 0.02 }],
       emit: ['dye', { force: 1 }],
+      feel: ['flow', { atk: 0.01, rel: 0.2 }],
     })],
   },
   {
@@ -268,6 +273,7 @@ const DEFS: Def[] = [
       place: ['grid', { lattice: 0, scale: 6.5, jitter: 0.6, density: 0.5, lit: 1, links: 1, twinkle: 1, lock: 0 }],
       motion: ['drift', { vx: 0.0046 }],
       material: ['glow', { gain: 0.32, width: 0.0018, base: 0.25, halo: 0.08 }],
+      feel: ['flow', { atk: 0.1, rel: 0.8 }],
     })],
   },
   {
@@ -279,6 +285,7 @@ const DEFS: Def[] = [
       shape: ['solid', { solid: 5, size: 0.2, tilt: 0.45, inner: 1 }],
       motion: ['spin', { rate: 1 }],
       material: ['line', { width: 1.3, halo: 0.12 }],
+      feel: ['flow', { atk: 0.08, rel: 0.6 }],
     })],
   },
   {
@@ -289,6 +296,7 @@ const DEFS: Def[] = [
       shape: ['dot', { r: 0.06 }],
       place: ['float', { count: 6, spread: 0.55, speed: 0.122, fuse: 0.1 }],
       material: ['chrome', { chrome: 1 }],
+      feel: ['flow', { atk: 0.02, rel: 0.25 }],
       emit: ['none'],
     })],
   },
@@ -307,6 +315,7 @@ const DEFS: Def[] = [
       shape: ['solid', { solid: 4, sides: 6, size: 0.12, inner: 0 }],
       motion: ['spin', { rate: 1 }],
       material: ['line', { gain: 1.6, width: 1.8, halo: 0.12 }],
+      feel: ['flow', { atk: 0.03, rel: 0.3 }],
     })],
     reactions: [rx('bass', 'op', 0, 'rate', 0.5), rx('beat', 'op', 0, 'rate', 0.8), rx('build', 'op', 0, 'rate', 0.5)],
   },
@@ -340,6 +349,7 @@ const DEFS: Def[] = [
       motion: ['bob', { amp: 1 }],
       deform: ['arms', { count: 5, reach: 1 }],
       material: ['textured', { tex: 0, amount: 1, halo: 0.5 }],
+      feel: ['flow', { atk: 0.05, rel: 0.5 }],
       emit: ['none'],
     })],
   },

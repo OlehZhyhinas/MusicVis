@@ -4,7 +4,7 @@
 import {
   CARRIER_KINDS, CARRIER_SCHEMA, COLOR_SCHEMA, COST_BUDGET_MS, DEFORM_KINDS, DRAW_OPS, EMIT_KINDS, FLAME_VARIATIONS,
   FOLD_OPS, FUSE_SCHEMA, LOCI, LOCUS_KINDS, MATERIAL_KINDS, MAX_CHAIN, MAX_CHILD_BODIES, MAX_DRAW, MAX_REACTIONS,
-  MAX_XFORMS, MOTION_KINDS, MOTION_OPS, OP_KINDS, OP_SCHEMAS, PLACE_KINDS, SCHEMES, SHAPE_CLASS, SHAPE_KINDS,
+  MAX_XFORMS, MOTION_KINDS, FEEL_SCHEMAS, REACTION_SCHEMA, MOTION_OPS, OP_KINDS, OP_SCHEMAS, PLACE_KINDS, SCHEMES, SHAPE_CLASS, SHAPE_KINDS,
   SHAPE_SCHEMAS, SIGNALS, UNIQUE_SHAPES, XFORM_DRIFT, XFORM_SPIN, BODY_GROUPS,
   cloneBody, cloneGenome, countKey, defaultParams, estimateCost, isDrawOp, isFoldPlace, isVarOp, locusSchema, reactable,
   repair, repairBody, repairXform, schemaFor, sdfCapable, stageFree,
@@ -256,6 +256,7 @@ export function randomBody(rng: Rng, shapeKind?: ShapeKind): BodyGene {
     deform: randomGene('deform', rng) as BodyGene['deform'],
     material: randomGene('material', rng) as BodyGene['material'],
     emit: randomGene('emit', rng) as BodyGene['emit'],
+    feel: randomGene('feel', rng) as BodyGene['feel'],
   };
   fitLoci(b);
   return repairBody(b);
@@ -269,7 +270,15 @@ function randomReaction(g: Genome, rng: Rng): ReactionGene | null {
   const i = group === 'op' ? randInt(rng, 0, g.chain.length - 1) : group === 'col' ? 0 : randInt(rng, 0, g.bodies.length - 1);
   const keys = reactable(schemaFor(g, group, i) ?? {});
   if (!keys.length) return null;
-  return { src: pick(rng, SIGNALS), g: group, i, k: pick(rng, keys), gain: (rng() < 0.75 ? 1 : -1) * (0.15 + 0.6 * rng()) };
+  return { src: pick(rng, SIGNALS), g: group, i, k: pick(rng, keys), gain: (rng() < 0.75 ? 1 : -1) * (0.15 + 0.6 * rng()), ...randomCurve(rng) };
+}
+
+/** A reaction's response curve and clock: mostly smooth (musical), sometimes raw or quantised. */
+export function randomCurve(rng: Rng): Pick<ReactionGene, 'atk' | 'rel' | 'thr' | 'q' | 'div'> {
+  const r = rng();
+  const atk = r < 0.25 ? 0.005 : 0.01 + 0.2 * rng() * rng();
+  const rel = r < 0.25 ? 0.005 : 0.08 + 1.2 * rng() * rng();
+  return { atk, rel, thr: rng() < 0.6 ? 0 : 0.3 * rng(), q: rng() < 0.15 ? 1 : 0, div: pick(rng, [1, 2, 4, 4, 8]) };
 }
 
 export function randomGenome(rng: Rng): Genome {
@@ -277,7 +286,7 @@ export function randomGenome(rng: Rng): Genome {
   const bodies: BodyGene[] = [randomBody(rng)];
   if (rng() < 0.3) bodies.push(randomBody(rng));
   const g: Genome = {
-    v: 3, chain, bodies,
+    v: 4, chain, bodies,
     carrier: { kind: pick(rng, ['warp', 'warp', 'fluid', 'flow', 'none'] as const), p: randomParams(CARRIER_SCHEMA, rng, 0.5) },
     color: { scheme: pick(rng, SCHEMES), p: randomParams(COLOR_SCHEMA, rng, 0.4) },
     reactions: [],
@@ -626,7 +635,7 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (hasFlame && flameParent && rng() < 0.75) color.p.tonemap = flameParent.color.p.tonemap;
     else if (!hasFlame) color.p.tonemap = D.color.p.tonemap;
 
-    const child: Genome = { v: 3, chain, bodies, carrier, color, reactions: [], energy: [0, 1] };
+    const child: Genome = { v: 4, chain, bodies, carrier, color, reactions: [], energy: [0, 1] };
     const t = rng();
     child.energy = [D.energy[0] + (R.energy[0] - D.energy[0]) * t, D.energy[1] + (R.energy[1] - D.energy[1]) * t];
     const seen = new Set<string>();
@@ -638,7 +647,7 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     });
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
-      reactions.unshift({ src: pick(rng, ['bass', 'drums', 'loud', 'surge'] as const), g: 'fu', i: 0, k: main.fuse.p.mode === 1 ? 't' : 'k', gain: 0.3 + 0.4 * rng() });
+      reactions.unshift({ src: pick(rng, ['bass', 'drums', 'loud', 'surge'] as const), g: 'fu', i: 0, k: main.fuse.p.mode === 1 ? 't' : 'k', gain: 0.3 + 0.4 * rng(), atk: 0.03, rel: 0.4, thr: 0, q: 0, div: 4 });
     }
     child.reactions = reactions.slice(0, MAX_REACTIONS);
     return repair(child);
@@ -740,6 +749,30 @@ const MUTATORS: [number, string, Mutator][] = [
   [1.1, 'swap-deform', swapLocus('deform')],
   [1.2, 'swap-material', swapLocus('material')],
   [1, 'swap-emit', swapLocus('emit')],
+  // Feel: how the body responds (flow / step), its clock, a reaction's source or curve.
+  [0.8, 'swap-feel', swapLocus('feel')],
+  [1.2, 'change-clock', (g, rng) => {
+    const b = pick(rng, g.bodies);
+    const divs = FEEL_SCHEMAS.flow.div.choices!;
+    if (rng() < 0.25) b.feel.p.lock = b.feel.p.lock > 0.5 ? 0 : 1;
+    else {
+      const i = divs.indexOf(b.feel.p.div);
+      b.feel.p.div = divs[Math.min(divs.length - 1, Math.max(0, i + (rng() < 0.5 ? -1 : 1)))];
+    }
+    return true;
+  }],
+  [1, 'rewire-reaction', (g, rng) => {
+    if (!g.reactions.length) return false;
+    const r = pick(rng, g.reactions);
+    r.src = pick(rng, SIGNALS.filter((x) => x !== r.src));
+    return true;
+  }],
+  [1, 'reaction-curve', (g, rng, amt) => {
+    if (!g.reactions.length) return false;
+    const r = pick(rng, g.reactions) as unknown as Params;
+    jitterParams(r, { atk: REACTION_SCHEMA.atk, rel: REACTION_SCHEMA.rel, thr: REACTION_SCHEMA.thr, q: REACTION_SCHEMA.q, div: REACTION_SCHEMA.div }, rng, amt, 0.5);
+    return true;
+  }],
   // Layering is rare: a second, separate body, never more than two.
   [0.6, 'add-layer', (g, rng) => addLayer(g, rng)],
   [1, 'remove-body', (g, rng) => {

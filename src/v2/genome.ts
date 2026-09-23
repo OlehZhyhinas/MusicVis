@@ -308,6 +308,25 @@ export const FUSE_SCHEMA: Schema = {
   rate: C([2, 4, 8, 16], 8), inside: C([0, 1], 1),
 };
 
+// ------------------------------------------------------------------- feel
+
+/**
+ * How a body feels, separate from how it looks: its response curve and its musical clock.
+ *   flow   levels follow the music through an envelope (attack / release times, threshold, sensitivity);
+ *   step   the same, but sampled and held on the clock grid (quantised, staccato).
+ * div: the clock unit in beats (half-beat .. phrase). The body's periodic motion (spins, sways, orbits,
+ * arms) runs at 4 / div of its bar rate (clamped to 0.25x..2x) and its events (walker turns, station
+ * jumps, grid refreshes, held steps) come div / 4 times as often as at the bar clock.
+ * lock 1: phases follow the song position and events land on the grid; 0: free-running (organic).
+ */
+export const FEEL_KINDS = ['flow', 'step'] as const;
+export type FeelKind = (typeof FEEL_KINDS)[number];
+const FEEL_COMMON: Schema = {
+  atk: P(0.005, 0.6, 0.005, { log: true }), rel: P(0.005, 3, 0.005, { log: true }), thr: P(0, 0.6, 0), sens: P(0.3, 2.5, 1),
+  div: C([0.5, 1, 2, 4, 8, 16], 4), lock: C([0, 1], 1),
+};
+export const FEEL_SCHEMAS: Record<FeelKind, Schema> = { flow: FEEL_COMMON, step: FEEL_COMMON };
+
 // ------------------------------------------------------------------ genes
 
 export interface Gene<K extends string = string> {
@@ -332,17 +351,20 @@ export interface BodyGene {
   deform: DeformGene;
   material: Gene<MaterialKind>;
   emit: Gene<EmitKind>;
+  feel: Gene<FeelKind>;
   fuse?: FuseGene;
 }
-/** The six loci of a body, in a fixed order (homologous slots for crossover). */
-export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit'] as const;
+/** The loci of a body, in a fixed order (homologous slots for crossover): six of look, one of feel. */
+export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit', 'feel'] as const;
 export type Locus = (typeof LOCI)[number];
 
 export const LOCUS_KINDS: Record<Locus, readonly string[]> = {
   shape: SHAPE_KINDS, place: PLACE_KINDS, motion: MOTION_KINDS, deform: DEFORM_KINDS, material: MATERIAL_KINDS, emit: EMIT_KINDS,
+  feel: FEEL_KINDS,
 };
 export const LOCUS_SCHEMAS: Record<Locus, Record<string, Schema>> = {
   shape: SHAPE_SCHEMAS, place: PLACE_SCHEMAS, motion: MOTION_SCHEMAS, deform: DEFORM_SCHEMAS, material: MATERIAL_SCHEMAS, emit: EMIT_SCHEMAS,
+  feel: FEEL_SCHEMAS,
 };
 
 // ---------------------------------------------------------------- carrier
@@ -389,41 +411,57 @@ export interface ColorGene {
 // -------------------------------------------------------------- reactions
 
 // surge: beat envelope with a fast attack and slow ease that cruises with loudness and jumps on drops.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge'] as const;
+// barpulse: a pulse on each downbeat; section: a pulse on each section change; bar: a slow wave across the bar.
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col: the carrier / colour (i = 0); body loci, i = body index:
  * sh shape, pl place, mo motion, de deform, ma material, em emit, fu fuse, fs fused shape;
  * dr: a body's deform op, i = body * MAX_DRAW + op.
  */
-export type GeneGroup = 'op' | 'car' | 'col' | 'sh' | 'pl' | 'mo' | 'de' | 'ma' | 'em' | 'fu' | 'fs' | 'dr';
-export const GENE_GROUPS: GeneGroup[] = ['op', 'car', 'col', 'sh', 'pl', 'mo', 'de', 'ma', 'em', 'fu', 'fs', 'dr'];
-export const BODY_GROUPS: Record<Locus, GeneGroup> = { shape: 'sh', place: 'pl', motion: 'mo', deform: 'de', material: 'ma', emit: 'em' };
+export type GeneGroup = 'op' | 'car' | 'col' | 'sh' | 'pl' | 'mo' | 'de' | 'ma' | 'em' | 'fe' | 'fu' | 'fs' | 'dr';
+export const GENE_GROUPS: GeneGroup[] = ['op', 'car', 'col', 'sh', 'pl', 'mo', 'de', 'ma', 'em', 'fe', 'fu', 'fs', 'dr'];
+export const BODY_GROUPS: Record<Locus, GeneGroup> = { shape: 'sh', place: 'pl', motion: 'mo', deform: 'de', material: 'ma', emit: 'em', feel: 'fe' };
+/**
+ * A reaction is a chain: signal source -> response curve (attack, release, threshold; q 1 holds the
+ * value on the clock grid, every div beats) -> gain -> target parameter.
+ */
 export interface ReactionGene {
   src: Signal;
   g: GeneGroup;
   i: number;
   k: string; // parameter name
-  gain: number; // -1..1, fraction of the parameter's half range per unit signal
+  gain: number; // -1..1, fraction of the parameter's half range per unit signal (the sensitivity)
+  atk: number; // attack time, seconds
+  rel: number; // release time, seconds
+  thr: number; // threshold (signal below it is ignored)
+  q: number; // 0 free, 1 quantised to the clock
+  div: number; // clock unit in beats (quantised reactions)
 }
+export const REACTION_SCHEMA: Schema = {
+  gain: P(-1, 1, 0.3), atk: P(0.005, 0.6, 0.005, { log: true }), rel: P(0.005, 3, 0.005, { log: true }), thr: P(0, 0.6, 0),
+  q: C([0, 1], 0), div: C([0.5, 1, 2, 4, 8, 16], 1),
+};
 export const MAX_REACTIONS = 6;
 /** Parameters reactions may not touch (structural switches, counts, clocks). */
 const NO_REACT = new Set([
   'mode', 'form', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'sides', 'ra', 'rb', 'n',
   'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
-  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse',
+  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q',
 ]);
 
 // ----------------------------------------------------------------- genome
 
 /**
  * Genome format. 1: before draw chains and merges; 2: one emitter object per light source
- * (legacy.ts); 3: bodies made of sub-genes. Older formats load through repair().
+ * (legacy.ts); 3: bodies made of sub-genes; 4: feel genes (a body's response curve and clock, a
+ * reaction's curve and clock). Older formats load through repair(); format-3 genomes get the neutral
+ * feel (instant response, bar clock, grid-locked), which is exactly how they behaved.
  */
-export const GENOME_VERSION = 3;
+export const GENOME_VERSION = 4;
 
 export interface Genome {
-  v: 3;
+  v: 4;
   chain: OpGene[];
   bodies: BodyGene[];
   carrier: CarrierGene;
@@ -507,6 +545,7 @@ export function schemaFor(g: Genome, group: GeneGroup, i: number): Schema | null
     case 'de': return DEFORM_SCHEMAS[b.deform.kind];
     case 'ma': return MATERIAL_SCHEMAS[b.material.kind];
     case 'em': return EMIT_SCHEMAS[b.emit.kind];
+    case 'fe': return FEEL_SCHEMAS[b.feel.kind];
     case 'fu': return b.fuse ? FUSE_SCHEMA : null;
     case 'fs': return b.fuse ? SHAPE_SCHEMAS[b.fuse.shape.kind] : null;
   }
@@ -615,6 +654,7 @@ export function repairBody(raw: unknown): BodyGene {
   const deform = repairGene(r.deform, DEFORM_KINDS, DEFORM_SCHEMAS, 'none') as DeformGene;
   const material = repairGene(r.material, MATERIAL_KINDS, MATERIAL_SCHEMAS, 'glow');
   const emit = repairGene(r.emit, EMIT_KINDS, EMIT_SCHEMAS, 'trail');
+  const feel = repairGene(r.feel, FEEL_KINDS, FEEL_SCHEMAS, 'flow');
   const rawOps = isObj(r.deform) && Array.isArray(r.deform.ops) ? (r.deform.ops as Partial<OpGene>[]) : [];
   const ops = rawOps.map(repairDrawOp).filter((o): o is OpGene => !!o).slice(0, MAX_DRAW);
   if (ops.length) deform.ops = ops;
@@ -638,7 +678,7 @@ export function repairBody(raw: unknown): BodyGene {
   }
   if (cls !== 'sdf' && emit.kind === 'cover' && !(cls === 'curve' && isObj(r.fuse))) setKind(emit, 'trail', EMIT_SCHEMAS, { tip: emit.p.tip });
 
-  const body: BodyGene = { shape, place, motion, deform, material, emit };
+  const body: BodyGene = { shape, place, motion, deform, material, emit, feel };
   if (isObj(r.fuse)) {
     const f = r.fuse as Record<string, unknown>;
     const fs = repairShape(f.shape, 'dot');
@@ -664,7 +704,7 @@ export function repairBody(raw: unknown): BodyGene {
  */
 export function repair(input: unknown): Genome {
   let src = (isObj(input) ? input : {}) as Record<string, unknown>;
-  if (src.v !== 3 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
+  if (src.v !== 3 && src.v !== 4 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
   const g = src as Partial<Genome>;
   const chain = (Array.isArray(g.chain) ? g.chain : []).map(repairOp).filter((o): o is OpGene => !!o).slice(0, MAX_CHAIN);
 
@@ -699,7 +739,7 @@ export function repair(input: unknown): Genome {
     lo = c - 0.075;
     hi = c + 0.075;
   }
-  const out: Genome = { v: 3, chain, bodies, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
+  const out: Genome = { v: 4, chain, bodies, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -712,9 +752,9 @@ export function repair(input: unknown): Genome {
     const keys = reactable(schemaFor(out, group, i) ?? {});
     if (!keys.length) continue;
     const k = keys.includes(r.k) ? r.k : keys.includes('gain') ? 'gain' : keys[0];
-    const gain = clamp(num(r.gain, 0.3), -1, 1);
     if (out.reactions.some((q) => q.g === group && q.i === i && q.k === k && q.src === r.src)) continue;
-    out.reactions.push({ src: r.src as Signal, g: group, i, k, gain });
+    const c = repairParams(r, REACTION_SCHEMA);
+    out.reactions.push({ src: r.src as Signal, g: group, i, k, gain: c.gain, atk: c.atk, rel: c.rel, thr: c.thr, q: c.q, div: c.div });
   }
   return out;
 }
@@ -772,7 +812,7 @@ export function validate(g: Genome): string[] {
     for (const k of Object.keys(s)) if (!inRange(p[k], s[k])) errs.push(`${where}.${k}=${p[k]} out of range`);
     for (const k of Object.keys(p)) if (!(k in s)) errs.push(`${where}.${k} unknown`);
   };
-  if (g.v !== 3) errs.push('version');
+  if (g.v !== 4) errs.push('version');
   if (!Array.isArray(g.chain) || g.chain.length > MAX_CHAIN) errs.push('chain length');
   g.chain?.forEach((o, i) => {
     if (!OP_KINDS.includes(o.op)) errs.push(`chain[${i}] op ${o.op}`);
@@ -862,7 +902,7 @@ export function validate(g: Genome): string[] {
     const s = schemaFor(g, r.g, r.i);
     if (!s || !reactable(s).includes(r.k)) errs.push(`reactions[${i}] target ${r.g}${r.i}.${r.k}`);
     if (!SIGNALS.includes(r.src)) errs.push(`reactions[${i}] src`);
-    if (!(r.gain >= -1 && r.gain <= 1)) errs.push(`reactions[${i}] gain`);
+    for (const key of Object.keys(REACTION_SCHEMA)) if (!inRange((r as unknown as Params)[key], REACTION_SCHEMA[key])) errs.push(`reactions[${i}].${key}`);
   });
   return errs;
 }
