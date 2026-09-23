@@ -789,7 +789,7 @@ export class Visualizer implements IVisualizer {
       const rt = o.rt;
       if (F.dropStart) rt.mem.mt = (rt.mem.mt ?? 0) > 0.5 ? 0 : 1;
       rt.mem.m = (rt.mem.m ?? 0) + ((rt.mem.mt ?? 0) - (rt.mem.m ?? 0)) * (1 - Math.exp(-sdt * 0.8));
-      this.flame.configure(spec, { spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: rt.mem.m, hue: 0 });
+      this.flame.configure(spec, { spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: rt.mem.m, hue: 0, bars: F.bars, beat: F.beatPulse });
       this.stats.particles += this.flame.count;
     }
 

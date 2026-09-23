@@ -167,6 +167,10 @@ export interface FlameXform {
   spin?: number;
   /** Scale added per unit of the bass stem. */
   bass?: number;
+  /** Amplitude of a slow bar-locked drift of the translation (e, f). */
+  drift?: [number, number];
+  /** Scale kick per unit of beat pulse. */
+  pulse?: number;
 }
 
 export interface FlameSpec {
@@ -178,6 +182,10 @@ export interface FlameSpec {
   offset?: [number, number];
   camSpin?: number; // camera turns per bar
   gain: number;
+  /** Continuous vars <-> alt morph cycles per 8 bars (0 or unset: drop-driven only). A drop reverses it. */
+  flow?: number;
+  /** Camera zoom added per unit of the bass stem (the flame breathes). */
+  breathe?: number;
 }
 
 /** Music inputs for one flame frame. */
@@ -187,6 +195,8 @@ export interface FlameDrive {
   vocals: number;
   morph: number; // 0 = base variations, 1 = alt variations
   hue: number;
+  bars?: number; // continuous musical time in bars (wraps at 48)
+  beat?: number; // beat pulse 0..1
 }
 
 export class Flame {
@@ -244,11 +254,18 @@ export class Flame {
     for (const x of xs) total += x.weight;
     let cum = 0;
     this.uVar.fill(0);
+    const bars = d.bars ?? 0;
+    const TAU = Math.PI * 2;
+    let morph = d.morph;
+    if (spec.flow) morph = Math.abs(0.5 - 0.5 * Math.cos((TAU * bars * spec.flow) / 8) - d.morph);
     xs.forEach((x, i) => {
       const ang = d.spin * (x.spin ?? 0);
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      const sc = 1 + (x.bass ?? 0) * d.bass;
-      const [a, b, c, dd, e, f] = x.aff;
+      const sc = 1 + (x.bass ?? 0) * d.bass + (x.pulse ?? 0) * (d.beat ?? 0);
+      const [a, b, c, dd, e0, f0] = x.aff;
+      // Periods of 16 and 12 bars divide the 48-bar wrap, so the drift is seamless.
+      const e = e0 + (x.drift ? x.drift[0] * Math.sin((TAU * bars) / 16 + i * 2.1) : 0);
+      const f = f0 + (x.drift ? x.drift[1] * Math.cos((TAU * bars) / 12 + i * 1.3) : 0);
       // Rotate the linear part: R * [a b; c d]
       this.uA[i * 4] = (ca * a - sa * c) * sc;
       this.uA[i * 4 + 1] = (ca * b - sa * dd) * sc;
@@ -262,11 +279,12 @@ export class Flame {
       FLAME_VARIATIONS.forEach((name, k) => {
         const w0 = x.vars[name] ?? 0;
         const w1 = x.alt ? x.alt[name] ?? 0 : w0;
-        this.uVar[i * 12 + k] = w0 + (w1 - w0) * d.morph;
+        this.uVar[i * 12 + k] = w0 + (w1 - w0) * morph;
       });
     });
-    const ca = Math.cos(d.spin * (spec.camSpin ?? 0)) * spec.zoom;
-    const sa = Math.sin(d.spin * (spec.camSpin ?? 0)) * spec.zoom;
+    const zoom = spec.zoom * (1 + (spec.breathe ?? 0) * d.bass);
+    const ca = Math.cos(d.spin * (spec.camSpin ?? 0)) * zoom;
+    const sa = Math.sin(d.spin * (spec.camSpin ?? 0)) * zoom;
     this.cam = [ca, sa, spec.offset?.[0] ?? 0, spec.offset?.[1] ?? 0];
     this.hue = d.hue;
   }

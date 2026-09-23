@@ -966,15 +966,17 @@ vec3 comp(vec2 uv, vec2 p) {
   // ------------------------------------------------------------ E22
   {
     id: 'E22', name: 'Silk Flame', kind: 'fractal flame', energy: [0.05, 0.5],
-    palette: 'analogous', hue: 0.55, decay: 0.9, adapt: 0.3, bloom: 0.9,
+    palette: 'analogous', hue: 0.55, decay: 0.955, adapt: 0.3, bloom: 0.9,
     warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
     comp: FLAME_COMP,
     flame: {
-      count: 262144, iters: 4, rounds: 2, zoom: 0.2, camSpin: 0.0625, gain: 1,
+      // Flows between two forms every 8 bars (a drop reverses it); the three
+      // transforms drift so it keeps unfolding; bass breathes, beats kick.
+      count: 262144, iters: 4, rounds: 2, zoom: 0.2, camSpin: 0.125, gain: 1, flow: 1, breathe: 0.12,
       xforms: [
-        { aff: [0.7, -0.3, 0.3, 0.7, 0.2, 0.1], weight: 1, color: 0, vars: { julia: 0.7, linear: 0.3 }, spin: 0.0625 },
-        { aff: [0.5, 0, 0, 0.5, -0.5, 0.2], weight: 0.6, color: 0.5, vars: { spherical: 0.5, swirl: 0.3 }, bass: 0.15 },
-        { aff: [-0.4, 0.3, -0.3, -0.4, 0.3, -0.4], weight: 0.4, color: 0.9, vars: { sinusoidal: 1 } },
+        { aff: [0.7, -0.3, 0.3, 0.7, 0.2, 0.1], weight: 1, color: 0, vars: { julia: 0.7, linear: 0.3 }, alt: { spiral: 0.6, heart: 0.4 }, spin: 0.125, drift: [0.25, 0.2] },
+        { aff: [0.5, 0, 0, 0.5, -0.5, 0.2], weight: 0.6, color: 0.5, vars: { spherical: 0.5, swirl: 0.3 }, alt: { disc: 0.6, horseshoe: 0.4 }, bass: 0.2, drift: [0.3, 0.25] },
+        { aff: [-0.4, 0.3, -0.3, -0.4, 0.3, -0.4], weight: 0.4, color: 0.9, vars: { sinusoidal: 1 }, alt: { handkerchief: 0.7, polar: 0.3 }, spin: -0.0625, pulse: 0.08, drift: [0.2, 0.3] },
       ],
     },
   },
