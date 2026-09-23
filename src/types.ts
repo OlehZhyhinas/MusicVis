@@ -112,6 +112,11 @@ export interface MusicState {
   /** True only on the frame a beat / downbeat is crossed. */
   onBeat: boolean;
   onBar: boolean;
+  /**
+   * 0..1 confidence of the beat grid. Only set in live-input mode (low before
+   * the real-time tracker has locked); precomputed songs leave it undefined.
+   */
+  beatConfidence?: number;
 
   // --- Stems, sampled from the precomputed envelopes at `time` ---
   stems: Record<StemName, number>; // 0..1

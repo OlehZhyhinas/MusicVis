@@ -35,14 +35,14 @@ export interface ComplexityFeatures {
 }
 
 // --- Fixed calibration constants -------------------------------------------
-const SILENCE_DB = -50; // mix below this is silent
-const GATE_DB = 10; // gate ramps from SILENCE_DB to SILENCE_DB + GATE_DB
-const SHARE_LO = 0.05; // stem share of the mix -> presence 0
-const SHARE_HI = 0.35; // -> presence 1
-const DRUM_HF_LO = 0.03; // HF fraction of percussive energy -> not drums
-const DRUM_HF_HI = 0.08; // -> clearly drums
-const DRUM_FLAT_LO = 0.12; // flatness of that HF percussive energy: tonal attack
-const DRUM_FLAT_HI = 0.32; // -> noise-like hits
+export const SILENCE_DB = -50; // mix below this is silent
+export const GATE_DB = 10; // gate ramps from SILENCE_DB to SILENCE_DB + GATE_DB
+export const SHARE_LO = 0.05; // stem share of the mix -> presence 0
+export const SHARE_HI = 0.35; // -> presence 1
+export const DRUM_HF_LO = 0.03; // HF fraction of percussive energy -> not drums
+export const DRUM_HF_HI = 0.08; // -> clearly drums
+export const DRUM_FLAT_LO = 0.12; // flatness of that HF percussive energy: tonal attack
+export const DRUM_FLAT_HI = 0.32; // -> noise-like hits
 const EXPAND_KNEE = 0.1;
 const EXPAND_KNEE_OUT = 0.08;
 const EXPAND_TOP = 0.65;
@@ -54,7 +54,7 @@ const SHOULDER = 0.7;
  * the components rarely all saturate, so the useful range of the sum is
  * about 0.1 (solo instrument) .. 0.65 (dense, loud, drum-heavy).
  */
-function expand(v: number): number {
+export function expand(v: number): number {
   if (v <= EXPAND_KNEE) return (v * EXPAND_KNEE_OUT) / EXPAND_KNEE;
   const y = EXPAND_KNEE_OUT + ((v - EXPAND_KNEE) * (EXPAND_TOP_OUT - EXPAND_KNEE_OUT)) / (EXPAND_TOP - EXPAND_KNEE);
   // Soft shoulder so only the very densest passages approach 1.

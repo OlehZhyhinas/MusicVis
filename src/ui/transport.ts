@@ -68,6 +68,12 @@ export class Transport {
   private dragging = false;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private loading = false;
+  private live = false;
+  private liveEl: HTMLElement | null = null;
+  private liveMeter: HTMLElement | null = null;
+  private liveSection: HTMLElement | null = null;
+  private liveBpm: HTMLElement | null = null;
+  private liveShown = { level: -1, label: '', bpm: '' };
 
   constructor(root: HTMLElement, appRoot: HTMLElement, callbacks: TransportCallbacks) {
     this.root = root;
@@ -194,6 +200,7 @@ export class Transport {
   }
 
   updatePlayback(currentTime: number, duration: number, playing: boolean): void {
+    if (this.live) return;
     this.duration = duration;
     this.playBtn.innerHTML = playing ? '&#10074;&#10074;' : '&#9658;';
     if (!this.dragging && !this.loading) {
@@ -206,8 +213,70 @@ export class Transport {
   setTrackLoading(progress: number | null): void {
     this.loading = progress !== null;
     this.seek.disabled = this.loading;
-    if (progress !== null) {
+    if (progress !== null && !this.live) {
       this.timeEl.textContent = `${Math.round(progress * 100)}%`;
+    }
+  }
+
+  /**
+   * Live-input mode: the seek bar / section strip give way to a live indicator
+   * (input level, current section, tempo) and the time readout says "Live".
+   */
+  setLive(on: boolean): void {
+    this.live = on;
+    this.root.classList.toggle('tp-live', on);
+    if (on && !this.liveEl) {
+      const el = document.createElement('div');
+      el.id = 'tp-live-info';
+      el.innerHTML =
+        '<span class="tp-live-badge">LIVE</span>' +
+        '<span class="tp-live-meter" title="Input level"><span class="tp-live-meter-fill"></span></span>' +
+        '<span class="tp-live-section" title="Section (detected live)"></span>' +
+        '<span class="tp-live-bpm" title="Tempo (detected live)"></span>';
+      this.seekWrap.appendChild(el);
+      this.liveEl = el;
+      this.liveMeter = el.querySelector('.tp-live-meter-fill');
+      this.liveSection = el.querySelector('.tp-live-section');
+      this.liveBpm = el.querySelector('.tp-live-bpm');
+    }
+    if (on) {
+      this.timeEl.textContent = 'Live';
+      this.durationEl.textContent = '';
+      this.playBtn.innerHTML = '&#9632;';
+      this.playBtn.setAttribute('aria-label', 'Stop live input');
+      this.playBtn.title = 'Stop live input';
+      this.liveShown = { level: -1, label: '', bpm: '' };
+    } else {
+      this.playBtn.setAttribute('aria-label', 'Play/Pause');
+      this.playBtn.title = '';
+      this.durationEl.textContent = formatTime(this.duration);
+      this.timeEl.textContent = formatTime(0);
+    }
+  }
+
+  get isLive(): boolean {
+    return this.live;
+  }
+
+  /** Per-frame live readout (cheap: only touches the DOM when something visible changed). */
+  updateLive(levelDb: number, section: SectionLabel, bpm: number, locked: boolean): void {
+    if (!this.live || !this.liveMeter || !this.liveSection || !this.liveBpm) return;
+    const level = Math.round(Math.max(0, Math.min(1, (levelDb + 60) / 60)) * 100);
+    if (level !== this.liveShown.level) {
+      this.liveShown.level = level;
+      this.liveMeter.style.width = `${level}%`;
+      this.liveMeter.classList.toggle('hot', levelDb > -3);
+    }
+    if (section !== this.liveShown.label) {
+      this.liveShown.label = section;
+      this.liveSection.textContent = section;
+      this.liveSection.style.background = SECTION_COLORS[section] ?? '#666';
+    }
+    const b = level <= 0 ? '' : locked ? `${Math.round(bpm)} BPM` : `~${Math.round(bpm)} BPM`;
+    if (b !== this.liveShown.bpm) {
+      this.liveShown.bpm = b;
+      this.liveBpm.textContent = b;
+      this.liveBpm.classList.toggle('tp-live-unlocked', !locked);
     }
   }
 

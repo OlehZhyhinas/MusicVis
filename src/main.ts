@@ -9,6 +9,7 @@ import { Hud } from './ui/hud';
 import { idleState } from './ui/idleState';
 import { showToast } from './ui/toast';
 import { loadSetting, saveSetting } from './ui/storage';
+import { LiveMode } from './ui/liveMode';
 
 async function main(): Promise<void> {
   const appRoot = document.getElementById('app') as HTMLElement;
@@ -119,6 +120,32 @@ async function main(): Promise<void> {
     onPlaylistToggle: () => playlistPanel.toggle(),
     onHelpToggle: () => setHelpVisible(!!helpOverlay.hidden),
   });
+  // Live input (microphone / audio interface / virtual device). Starting it
+  // pauses file playback; picking a track or pressing stop ends it.
+  const liveMode = new LiveMode(
+    {
+      ensureContext: () => {
+        if (!audioCtx) audioCtx = new AudioContext();
+        return audioCtx;
+      },
+      onStart: () => {
+        loadToken++; // cancel a track that is still loading
+        player?.pause();
+        updateMediaSessionPlaybackState();
+        transport.setTrackLoading(null);
+        transport.show();
+        liveMode.setOpen(false);
+        playlistPanel.setCollapsed(true);
+      },
+      onStop: () => {
+        if (playlist.isEmpty) transport.hide();
+      },
+      onNewSong: (cx) => visualizer?.newSong(cx),
+    },
+    transport,
+    [document.getElementById('pl-live') as HTMLElement, document.getElementById('pl-live-empty') as HTMLElement],
+  );
+
   transport.setVolumeUi(volume, muted);
   transport.setModeUi(mode);
   transport.setParticleCountUi(particleCount);
@@ -163,7 +190,7 @@ async function main(): Promise<void> {
       transport.setTrackLoading(null);
     }
     emptyStateEl.hidden = !playlist.isEmpty;
-    if (playlist.isEmpty) {
+    if (playlist.isEmpty && !liveMode.active) {
       transport.hide();
       playlistPanel.setCollapsed(false);
     }
@@ -197,6 +224,10 @@ async function main(): Promise<void> {
   }
 
   function togglePlay(): void {
+    if (liveMode.active) {
+      liveMode.stop();
+      return;
+    }
     if (!player || !songLoaded) return;
     if (player.playing) {
       player.pause();
@@ -262,6 +293,7 @@ async function main(): Promise<void> {
   }
 
   async function playTrack(track: Track): Promise<void> {
+    liveMode.stop();
     const token = ++loadToken;
     try {
       if (!audioCtx) audioCtx = new AudioContext();
@@ -458,7 +490,10 @@ async function main(): Promise<void> {
     fps = fps + (1 / Math.max(dt, 1e-6) - fps) * 0.05;
 
     let state: MusicState;
-    if (songLoaded && player && sampler && liveAnalyser) {
+    const liveState = liveMode.sample(dt);
+    if (liveState) {
+      state = liveState;
+    } else if (songLoaded && player && sampler && liveAnalyser) {
       const live = liveAnalyser.read(dt);
       state = sampler.sample(player.currentTime, dt, player.playing, live);
       transport.updatePlayback(player.currentTime, player.duration, player.playing);
