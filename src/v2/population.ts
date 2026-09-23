@@ -1,0 +1,320 @@
+// Population: members, lineage, votes, fitness, selection and culling.
+// Pure logic (no DOM, no GL) so it runs in the Node tests.
+
+import {
+  classify, cloneGenome, energyOf, genomeHash, repair, structuralKey, validate,
+  type Energy, type Genome, type Species,
+} from './genome';
+import { SEEDS } from './seeds';
+import type { Rng } from './ops';
+
+export interface Member {
+  id: string; // "G0-E07" for seeds, "G{gen}-{nnnn}" for children
+  gen: number;
+  origin?: string; // V1 preset id for seeds
+  parents: string[];
+  created: number; // ms since epoch
+  name: string;
+  genome: Genome;
+  species: Species;
+  species2: Species | null;
+  type: string; // display label, e.g. "vortex × flame"
+  energy: Energy;
+  likes: number;
+  dislikes: number;
+  softDislikes: number; // skipped within 5 s
+  weakLikes: number; // watched more than 60 s
+  views: number;
+  watch: number; // seconds watched in total
+  hidden: boolean;
+  /** Screening render descriptor: mean rgb, motion, mirror symmetry, radial symmetry, detail, coverage. */
+  descriptor?: number[];
+}
+
+export interface PopulationData {
+  format: 'musicvis-v2-population';
+  version: 1;
+  counter: number;
+  votesSinceBreed: number;
+  members: Member[];
+}
+
+export const POP_CAP = 150;
+export const BREED_EVERY = 5; // votes between automatic breeding rounds
+
+// ---------------------------------------------------------------- names
+
+const ADJ = [
+  'Velvet', 'Molten', 'Silent', 'Hollow', 'Gilded', 'Feral', 'Lunar', 'Solar', 'Tidal', 'Amber', 'Cobalt', 'Crimson',
+  'Drifting', 'Electric', 'Frozen', 'Glass', 'Hidden', 'Iron', 'Jade', 'Kinetic', 'Liquid', 'Midnight', 'Neon', 'Opal',
+  'Pale', 'Quiet', 'Radiant', 'Shattered', 'Spectral', 'Tangled', 'Ultra', 'Violet', 'Wandering', 'Woven', 'Burning', 'Cascading',
+  'Distant', 'Echoing', 'Fading', 'Glowing', 'Humming', 'Infinite', 'Lucid', 'Mirrored', 'Nocturnal', 'Orbiting', 'Prismatic', 'Restless',
+  'Smoldering', 'Trembling', 'Undying', 'Vivid', 'Whispering', 'Ashen', 'Blooming', 'Coral', 'Dusky', 'Emerald', 'Fractured', 'Golden',
+  'Haunted', 'Ivory', 'Jagged', 'Kaleid',
+];
+const NOUN = [
+  'Maelstrom', 'Lantern', 'Cathedral', 'Tide', 'Ember', 'Veil', 'Orchard', 'Comet', 'Harbor', 'Labyrinth', 'Monsoon', 'Nebula',
+  'Oracle', 'Pendulum', 'Quasar', 'Reef', 'Spire', 'Tempest', 'Undertow', 'Vortex', 'Wildfire', 'Zenith', 'Aurora', 'Bloom',
+  'Cascade', 'Delta', 'Eclipse', 'Fathom', 'Glacier', 'Horizon', 'Iris', 'Jetstream', 'Kiln', 'Lagoon', 'Mirage', 'Nimbus',
+  'Obsidian', 'Prism', 'Quarry', 'Rapids', 'Signal', 'Thicket', 'Umbra', 'Vesper', 'Whorl', 'Aether', 'Beacon', 'Cinder',
+  'Dune', 'Engine', 'Filament', 'Garden', 'Halo', 'Inferno', 'Jewel', 'Kite', 'Loom', 'Meridian', 'Nova', 'Origami',
+  'Pulse', 'Relic', 'Serpent', 'Tapestry',
+];
+
+export function nameFor(g: Genome): string {
+  const h = genomeHash(g);
+  return `${ADJ[h % ADJ.length]} ${NOUN[(h >>> 11) % NOUN.length]}`;
+}
+
+// -------------------------------------------------------------- fitness
+
+const Z = 1.28; // ~80% one-sided confidence
+
+export function wilson(pos: number, n: number): number {
+  if (n <= 0) return 0;
+  const p = pos / n;
+  const z2 = Z * Z;
+  return (p + z2 / (2 * n) - Z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n);
+}
+
+/** Wilson lower bound of liking, with implicit signals as partial votes and a 1:1 prior. */
+export function fitness(m: Member): number {
+  const pos = m.likes + 0.3 * m.weakLikes + 1;
+  const n = m.likes + m.dislikes + 0.3 * (m.weakLikes + m.softDislikes) + 2;
+  return wilson(pos, n);
+}
+
+export function descriptorDistance(a?: number[], b?: number[]): number {
+  if (!a || !b || a.length !== b.length) return 1;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) ** 2;
+  return Math.sqrt(s / a.length);
+}
+
+const DUP_DIST = 0.035;
+
+// ----------------------------------------------------------- population
+
+function describe(g: Genome): Pick<Member, 'species' | 'species2' | 'type' | 'energy'> {
+  const c = classify(g);
+  return { species: c.primary, species2: c.secondary, type: c.label, energy: energyOf(g) };
+}
+
+export class Population {
+  members = new Map<string, Member>();
+  counter = 0;
+  votesSinceBreed = 0;
+
+  static seeded(now = Date.now()): Population {
+    const p = new Population();
+    for (const s of SEEDS) {
+      const g = cloneGenome(s.genome);
+      const m: Member = {
+        id: `G0-${s.origin}`, gen: 0, origin: s.origin, parents: [], created: now, name: s.name, genome: g,
+        ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
+      };
+      p.members.set(m.id, m);
+    }
+    return p;
+  }
+
+  /** Seeds follow the current code (their votes and views are kept); missing seeds come back. */
+  refreshSeeds(now = Date.now()): void {
+    const fresh = Population.seeded(now);
+    for (const s of fresh.members.values()) {
+      const cur = this.members.get(s.id);
+      if (!cur) this.members.set(s.id, s);
+      else if (JSON.stringify(cur.genome) !== JSON.stringify(s.genome)) {
+        Object.assign(cur, { genome: s.genome, name: s.name, species: s.species, species2: s.species2, type: s.type, energy: s.energy, descriptor: undefined });
+      }
+    }
+  }
+
+  get size(): number {
+    return this.members.size;
+  }
+
+  list(): Member[] {
+    return [...this.members.values()];
+  }
+
+  visible(): Member[] {
+    return this.list().filter((m) => !m.hidden);
+  }
+
+  get(id: string): Member | undefined {
+    return this.members.get(id);
+  }
+
+  /** Add a bred child. generation = max(parent gen) + 1; id counter is per population. */
+  addChild(genome: Genome, parents: Member[], now = Date.now()): Member {
+    const g = repair(genome);
+    const gen = parents.length ? Math.max(...parents.map((p) => p.gen)) + 1 : 1;
+    const nnnn = String(++this.counter).padStart(4, '0');
+    const m: Member = {
+      id: `G${gen}-${nnnn}`, gen, parents: parents.map((p) => p.id), created: now, name: nameFor(g), genome: g,
+      ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
+    };
+    this.members.set(m.id, m);
+    return m;
+  }
+
+  /** True when an identical genome (or same structure with near-identical params) is already present. */
+  hasDuplicate(g: Genome): boolean {
+    const h = genomeHash(g);
+    for (const m of this.members.values()) if (genomeHash(m.genome) === h) return true;
+    return false;
+  }
+
+  vote(id: string, like: boolean): void {
+    const m = this.members.get(id);
+    if (!m) return;
+    if (like) m.likes++;
+    else m.dislikes++;
+    this.votesSinceBreed++;
+  }
+
+  /** Called when a preset stops showing. skipped: the user moved on manually. */
+  recordView(id: string, seconds: number, skipped: boolean): void {
+    const m = this.members.get(id);
+    if (!m) return;
+    m.watch += seconds;
+    if (skipped && seconds < 5) m.softDislikes++;
+    if (seconds > 60) m.weakLikes++;
+  }
+
+  /** Nearest-neighbour descriptor distance (novelty); 1 when unknown. */
+  novelty(m: Member): number {
+    let best = 1;
+    for (const o of this.members.values()) {
+      if (o === m || o.hidden) continue;
+      best = Math.min(best, descriptorDistance(m.descriptor, o.descriptor));
+    }
+    return best;
+  }
+
+  /**
+   * Tournament selection within a niche. The second parent is often of a
+   * different type (cross-type mating) and sometimes from the other niche;
+   * near-duplicates of the first parent are penalised.
+   */
+  pickParents(niche: Energy, rng: Rng, tournament = 3): [Member, Member] | null {
+    const pool = this.visible();
+    if (pool.length < 2) return null;
+    const inNiche = pool.filter((m) => m.energy === niche);
+    const base = inNiche.length >= 2 ? inNiche : pool;
+    const score = (m: Member, ref?: Member) => {
+      let s = fitness(m) + 0.04 * Math.min(1, this.novelty(m) / 0.2);
+      if (ref && descriptorDistance(m.descriptor, ref.descriptor) < DUP_DIST * 2) s -= 0.15;
+      if (ref && structuralKey(m.genome) === structuralKey(ref.genome)) s -= 0.05;
+      return s;
+    };
+    const tour = (cands: Member[], ref?: Member) => {
+      let best: Member | null = null;
+      let bs = -Infinity;
+      for (let i = 0; i < tournament; i++) {
+        const c = cands[Math.floor(rng() * cands.length)];
+        const s = score(c, ref);
+        if (s > bs) {
+          bs = s;
+          best = c;
+        }
+      }
+      return best!;
+    };
+    const a = tour(base);
+    const r = rng();
+    let cands = base.filter((m) => m !== a);
+    if (r < 0.15) cands = pool.filter((m) => m !== a && m.energy !== niche);
+    else if (r < 0.55) cands = base.filter((m) => m !== a && m.species !== a.species);
+    if (!cands.length) cands = pool.filter((m) => m !== a);
+    return [a, tour(cands, a)];
+  }
+
+  /** Remove the weakest non-seed members until the population fits the cap. */
+  cull(cap = POP_CAP, now = Date.now()): Member[] {
+    const removed: Member[] = [];
+    while (this.members.size > cap) {
+      const cands = this.list().filter((m) => m.gen > 0);
+      if (!cands.length) break;
+      // Unwatched children younger than 10 minutes get a grace period.
+      const graced = cands.filter((m) => !(m.views === 0 && now - m.created < 600_000));
+      const pool = graced.length ? graced : cands;
+      let worst: Member | null = null;
+      let ws = Infinity;
+      for (const m of pool) {
+        let s = fitness(m) + (m.hidden ? -0.2 : 0);
+        // A near-duplicate of a fitter member is the first to go.
+        for (const o of this.members.values()) {
+          if (o !== m && fitness(o) >= fitness(m) && descriptorDistance(m.descriptor, o.descriptor) < DUP_DIST) {
+            s -= 0.1;
+            break;
+          }
+        }
+        if (s < ws) {
+          ws = s;
+          worst = m;
+        }
+      }
+      if (!worst) break;
+      this.members.delete(worst.id);
+      removed.push(worst);
+    }
+    return removed;
+  }
+
+  // -------------------------------------------------------- serialization
+
+  toJSON(): PopulationData {
+    return {
+      format: 'musicvis-v2-population',
+      version: 1,
+      counter: this.counter,
+      votesSinceBreed: this.votesSinceBreed,
+      members: this.list().map((m) => ({ ...m, genome: cloneGenome(m.genome) })),
+    };
+  }
+
+  static fromJSON(data: unknown): Population {
+    const d = data as Partial<PopulationData>;
+    if (!d || d.format !== 'musicvis-v2-population' || !Array.isArray(d.members)) throw new Error('Not a MusicVis V2 population file.');
+    const p = new Population();
+    const n = (v: unknown, def = 0) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : def);
+    for (const raw of d.members) {
+      if (!raw || typeof raw.id !== 'string' || !/^G\d+-[A-Z0-9]+$/.test(raw.id)) continue;
+      // Structurally broken genomes are dropped; only parameter values get repaired.
+      const rg = raw.genome as Partial<Genome> | undefined;
+      if (!rg || rg.v !== 1 || !Array.isArray(rg.chain) || !Array.isArray(rg.emitters) || !rg.emitters.length || !rg.carrier || !rg.color) continue;
+      const g = repair(rg);
+      if (validate(g).length) continue;
+      const m: Member = {
+        id: raw.id,
+        gen: Math.floor(n(raw.gen)),
+        origin: typeof raw.origin === 'string' ? raw.origin : undefined,
+        parents: Array.isArray(raw.parents) ? raw.parents.filter((x) => typeof x === 'string') : [],
+        created: n(raw.created, Date.now()),
+        name: typeof raw.name === 'string' && raw.name ? raw.name.slice(0, 60) : nameFor(g),
+        genome: g,
+        ...describe(g),
+        likes: Math.floor(n(raw.likes)),
+        dislikes: Math.floor(n(raw.dislikes)),
+        softDislikes: Math.floor(n(raw.softDislikes)),
+        weakLikes: Math.floor(n(raw.weakLikes)),
+        views: Math.floor(n(raw.views)),
+        watch: n(raw.watch),
+        hidden: !!raw.hidden,
+        descriptor: Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
+      };
+      p.members.set(m.id, m);
+    }
+    if (!p.members.size) throw new Error('The file has no valid presets.');
+    let maxN = 0;
+    for (const id of p.members.keys()) {
+      const mm = /^G\d+-(\d{4,})$/.exec(id);
+      if (mm) maxN = Math.max(maxN, Number(mm[1]));
+    }
+    p.counter = Math.max(Math.floor(n(d.counter)), maxN);
+    p.votesSinceBreed = Math.floor(n(d.votesSinceBreed));
+    return p;
+  }
+}
