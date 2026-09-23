@@ -24,6 +24,7 @@ async function main(): Promise<void> {
   const presetLabel = document.getElementById('preset-label') as HTMLElement;
   const presetGoto = document.getElementById('preset-goto') as HTMLFormElement;
   const presetGotoInput = document.getElementById('preset-goto-input') as HTMLInputElement;
+  const transportPresetName = document.getElementById('tp-preset-name') as HTMLElement;
 
   let particleCount = loadSetting<number>('particleCount', 262144);
   let mode: VisualMode = loadSetting<VisualMode>('mode', 'enhanced');
@@ -475,6 +476,8 @@ async function main(): Promise<void> {
     const presetName = visualizer?.getPresetName() ?? '';
     if (presetName && presetName !== shownPreset) {
       shownPreset = presetName;
+      transportPresetName.textContent = presetName;
+      transportPresetName.title = presetName;
       presetLabel.textContent = presetName;
       presetLabel.classList.add('show');
       window.clearTimeout(presetLabelTimer);

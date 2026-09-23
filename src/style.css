@@ -338,6 +338,18 @@ select#tp-particles {
   flex: none;
 }
 
+/* Current preset shown in the transport, e.g. "E07 · Oscilloscope" */
+.tp-preset-name {
+  font-size: 12px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 /* Transport control button active state (shuffle on, repeat on/one) */
 .tp-btn.active {
   background: rgba(127, 216, 255, 0.22);
