@@ -21,6 +21,9 @@ async function main(): Promise<void> {
   const playlistPanelEl = document.getElementById('playlist-panel') as HTMLElement;
   const helpOverlay = document.getElementById('help-overlay') as HTMLElement;
   const helpClose = document.getElementById('help-close') as HTMLButtonElement;
+  const presetLabel = document.getElementById('preset-label') as HTMLElement;
+  const presetGoto = document.getElementById('preset-goto') as HTMLFormElement;
+  const presetGotoInput = document.getElementById('preset-goto-input') as HTMLInputElement;
 
   let particleCount = loadSetting<number>('particleCount', 262144);
   let mode: VisualMode = loadSetting<VisualMode>('mode', 'enhanced');
@@ -287,6 +290,7 @@ async function main(): Promise<void> {
 
       player.load(buffer);
       sampler = new TimelineSampler(result);
+      visualizer?.newSong(result.songComplexity ?? 0.5);
       applyVolume();
 
       transport.setSections(result.sections, result.duration);
@@ -318,6 +322,49 @@ async function main(): Promise<void> {
     onFiles: (files) => handleAddedFiles(files),
   });
 
+
+  // Jump to a preset by its stable ID (E07, C-3fa2): G key, or ?preset=E07 in the URL.
+  function goToPreset(id: string): boolean {
+    const v = visualizer as (IVisualizer & { selectPresetById?(id: string): boolean }) | null;
+    const ok = !!v?.selectPresetById?.(id);
+    if (!ok) showToast(`No preset "${id}" in ${mode} mode.`, 'error');
+    return ok;
+  }
+
+  function setGotoVisible(show: boolean): void {
+    presetGoto.hidden = !show;
+    if (show) {
+      presetGotoInput.value = '';
+      presetGotoInput.focus();
+    } else {
+      presetGotoInput.blur();
+    }
+  }
+
+  function submitGoto(): void {
+    const id = presetGotoInput.value.trim();
+    setGotoVisible(false);
+    if (id) goToPreset(id);
+  }
+
+  presetGoto.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    submitGoto();
+  });
+  presetGotoInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      submitGoto();
+    } else if (ev.key === 'Escape') {
+      setGotoVisible(false);
+    }
+  });
+  presetGotoInput.addEventListener('blur', () => {
+    presetGoto.hidden = true;
+  });
+
+  const urlPreset = new URLSearchParams(location.search).get('preset');
+  if (urlPreset) goToPreset(urlPreset);
 
   window.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
@@ -366,6 +413,11 @@ async function main(): Promise<void> {
       case 'N':
         visualizer?.nextPreset();
         break;
+      case 'g':
+      case 'G':
+        ev.preventDefault();
+        setGotoVisible(true);
+        break;
       case '1':
         mode = 'enhanced';
         visualizer?.setMode(mode);
@@ -396,6 +448,8 @@ async function main(): Promise<void> {
   let lastTime = performance.now();
   let fps = 60;
   let lastIdleTime = 0;
+  let shownPreset = '';
+  let presetLabelTimer = 0;
 
   function frame(now: number): void {
     const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
@@ -418,8 +472,17 @@ async function main(): Promise<void> {
       console.error('Visualizer render failed', err);
     }
 
+    const presetName = visualizer?.getPresetName() ?? '';
+    if (presetName && presetName !== shownPreset) {
+      shownPreset = presetName;
+      presetLabel.textContent = presetName;
+      presetLabel.classList.add('show');
+      window.clearTimeout(presetLabelTimer);
+      presetLabelTimer = window.setTimeout(() => presetLabel.classList.remove('show'), 3500);
+    }
+
     if (hudOn) {
-      hud.update(state, { presetName: visualizer?.getPresetName() ?? '—', fps });
+      hud.update(state, { presetName: presetName || '—', fps });
     }
 
     requestAnimationFrame(frame);

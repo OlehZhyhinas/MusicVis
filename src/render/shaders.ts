@@ -188,250 +188,197 @@ void main() {
   o = texture(uSource, coord) / (1.0 + uDissipation * uDt);
 }`;
 
-// ------------------------------------------------------------- feedback ---
+// ------------------------------------------------------ preset library ---
+// Every per-preset program (feedback, composite, curve) is built from these
+// pieces plus the preset's own GLSL functions. Coordinates handed to preset
+// code are "p space": origin at the screen centre, y in [-0.5, 0.5], x in
+// [-aspect/2, aspect/2].
 
-const WARP = /* glsl */ `
-uniform float uTime;
-// Per-preset warp functions. Each returns a sample-space offset.
-vec2 warpFn(float fn, vec2 p, float r, float a, vec3 prm) {
-  float amt = prm.x, t = uTime * prm.y, sc = prm.z;
-  if (fn < 0.5) {         // classic sine warp
-    return amt * 0.006 * vec2(sin(p.y * sc * 7.0 + t * 1.3) + sin(p.y * sc * 2.3 - t * 0.7),
-                              cos(p.x * sc * 5.0 - t * 1.1) + cos(p.x * sc * 2.9 + t * 0.9));
-  } else if (fn < 1.5) {  // spiral: angular shear decreasing with radius
-    return (rot2(amt * 0.02 / (r + 0.2)) * p - p);
-  } else if (fn < 2.5) {  // tunnel ripple
-    return p / (r + 1e-3) * sin(r * sc * 22.0 - t * 3.0) * amt * 0.004;
-  } else if (fn < 3.5) {  // petals
-    float k = sin(a * floor(sc * 3.0 + 3.0) + t * 1.5);
-    return p * (k * amt * 0.012);
-  } else if (fn < 4.5) {  // vortex twirl
-    return (rot2(amt * 0.04 * smoothstep(0.75, 0.0, r) * sin(t * 0.4 + 0.5)) * p - p);
-  } else if (fn < 5.5) {  // fractal waves
-    vec2 d = vec2(0.0);
-    float f = sc * 4.0, w = 1.0;
-    for (int i = 0; i < 4; i++) {
-      d += w * vec2(sin(p.y * f + t + float(i) * 1.7), cos(p.x * f - t * 1.3 + float(i) * 2.3));
-      f *= 2.03; w *= 0.5;
-    }
-    return d * amt * 0.0035;
-  } else if (fn < 6.5) {  // pulsing lens
-    return -p * amt * 0.02 * exp(-r * r * sc * 8.0) * (0.6 + 0.4 * sin(t * 2.0));
-  } else {                // flow noise
-    float n = fbm2(p * sc * 3.0 + vec2(t * 0.15, -t * 0.11)) * TAU * 2.0;
-    return vec2(cos(n), sin(n)) * amt * 0.004;
-  }
-}
-`;
-
-export const FEEDBACK_FS = HEAD + COMMON + WARP + FS_IN + /* glsl */ `
-uniform sampler2D uPrevA, uPrevB, uVel, uBC;
-uniform vec2 uRes, uSimTexel;
-uniform float uAspect, uDt;
-uniform float uZoom, uZoomExp, uRot, uBZoom, uBRot;
-uniform vec2 uTrans;
-uniform vec4 uWarp0;   // fn, amt, speed, scale (outgoing preset)
-uniform vec4 uWarp1;   // fn, amt, speed, scale (incoming preset)
-uniform float uWarpMix, uFluid, uCouple, uBlur, uDecaySub, uHueDrift;
-uniform vec2 uDecay;
+const LIB = /* glsl */ `
+uniform vec2 uRes;
+uniform float uAspect, uTime, uPhase, uDt, uF60, uSpeed;
+uniform float uBeat, uBar, uBars, uBeats, uBeatPulse, uBarPulse;
+uniform float uSpin, uSpinStep;
+uniform vec3 uBands;          // live bass, mid, treb (1 = song average)
+uniform vec4 uStem;           // drums, bass, vocals, other: level gated by presence
+uniform vec4 uOnset;          // same order, onsets gated by presence
+uniform vec4 uPres;           // presence gates 0..1
+uniform float uCx, uAct, uBuild, uDrop, uFlash, uLoud, uMelody, uKeyHue, uKeyPulse, uMinor;
 uniform vec3 uColA, uColB, uColC;
-uniform vec4 uRings[8];     // centre x, y, radius, strength
-uniform vec4 uBass;         // radius, sides, angle, intensity
-uniform vec4 uVocal;        // intensity, width, phase, -
+uniform vec2 uShift;          // this frame's whole-pixel scroll (p units)
+uniform float uDecay;
+uniform vec4 uV[8];           // preset-specific values from its JS hook
+uniform vec4 uSeg[48];        // preset line segments (p space)
+uniform vec4 uSegZ[12];       // 48 per-segment weights
+uniform int uSegN;
 uniform float uChroma[12];
-uniform vec4 uChromaP;      // radius, angle, intensity, sparkle
-uniform float uKeyHue, uBCMix, uBuild;
-layout(location = 0) out vec4 oA;
-layout(location = 1) out vec4 oB;
+uniform sampler2D uWave, uSpec;
 
-vec3 samp(sampler2D s, vec2 uv) {
-  vec3 c = texture(s, uv).rgb;
-  if (uBlur > 0.0) {
-    vec2 o = 0.9 / uRes;
-    vec3 b = texture(s, uv + o).rgb + texture(s, uv - o).rgb +
-             texture(s, uv + vec2(o.x, -o.y)).rgb + texture(s, uv + vec2(-o.x, o.y)).rgb;
-    c = mix(c, b * 0.25, uBlur);
-  }
-  vec2 e = min(uv, 1.0 - uv);
-  return c * smoothstep(0.0, 0.004, min(e.x, e.y));
+float waveAt(float x) { return texture(uWave, vec2(x, 0.5)).r; }
+float specAt(float x) { return texture(uSpec, vec2(clamp(x, 0.0, 1.0), 0.5)).r; }
+float chromaAt(float i) { return uChroma[int(mod(i, 12.0))]; }
+vec3 pal(float t) {
+  t = fract(t) * 3.0;
+  if (t < 1.0) return mix(uColA, uColB, t);
+  if (t < 2.0) return mix(uColB, uColC, t - 1.0);
+  return mix(uColC, uColA, t - 2.0);
 }
-
-float polySd(vec2 p, float n, float r) {
+float glow(float d, float w) { return exp(-d * d / (w * w)); }
+float sdSeg(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+float sdPoly(vec2 p, float n, float r) {
   float an = PI / n;
-  float a = atan(p.y, p.x);
-  float bn = mod(a, 2.0 * an) - an;
+  float bn = mod(atan(p.y, p.x), 2.0 * an) - an;
   return length(p) * cos(bn) - r * cos(an);
 }
+/** Secondary-layer gate: 0 below the activity threshold, 1 a little above. */
+float sec(float th) { return smoothstep(th, th + 0.25, uAct); }
+float px() { return 1.0 / uRes.y; }
+float fbm4(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = rot2(0.6) * p * 2.03 + 11.7; a *= 0.5; }
+  return s / 0.9375;
+}
+vec3 keyCol(float pc, float s, float v) { return hsv2rgb(vec3(fract(uKeyHue + pc * 7.0 / 12.0), s, v)); }
+vec3 lin(vec3 c) { return c * c; }
+`;
 
+const FS_VARY = FS_IN;
+
+export interface PresetShaderSource {
+  warp?: string;
+  draw?: string;
+  comp?: string;
+  defines?: string[];
+}
+
+const DEFAULT_WARP = /* glsl */ `vec2 warp(vec2 p) { return p + uShift; }`;
+const DEFAULT_DRAW = /* glsl */ `vec3 draw(vec2 p, vec2 uv, vec3 prev) { return vec3(0.0); }`;
+const DEFAULT_COMP = /* glsl */ `vec3 comp(vec2 uv, vec2 p) { return fb(uv); }`;
+
+function defs(list: string[] | undefined): string {
+  return (list ?? []).map((d) => `#define ${d}\n`).join('');
+}
+
+/** Feedback pass: warp previous frame, decay, then add the preset's draw layer. */
+export function feedbackFS(src: PresetShaderSource): string {
+  return HEAD + defs(src.defines) + COMMON + LIB + FS_VARY + /* glsl */ `
+uniform sampler2D uPrev, uVel, uBC;
+uniform vec2 uSimTexel;
+uniform float uFluidAmt, uBlur, uDecaySub, uBCMix, uRingW;
+uniform vec4 uRings[8];     // centre x, y, radius, strength
+out vec4 o;
+
+vec3 prevAt(vec2 uv) {
+#ifdef EDGE_WRAP
+  uv = fract(uv);
+#endif
+  vec3 c = texture(uPrev, uv).rgb;
+  if (uBlur > 0.0) {
+    vec2 q = 0.9 / uRes;
+    vec3 b = texture(uPrev, uv + q).rgb + texture(uPrev, uv - q).rgb +
+             texture(uPrev, uv + vec2(q.x, -q.y)).rgb + texture(uPrev, uv + vec2(-q.x, q.y)).rgb;
+    c = mix(c, b * 0.25, uBlur);
+  }
+#ifndef EDGE_WRAP
+  vec2 e = min(uv, 1.0 - uv);
+  c *= smoothstep(0.0, 0.002, min(e.x, e.y));
+#endif
+  return c;
+}
+` + (src.warp ?? DEFAULT_WARP) + '\n' + (src.draw ?? DEFAULT_DRAW) + /* glsl */ `
 void main() {
   vec2 asp = vec2(uAspect, 1.0);
   vec2 p = (vUv - 0.5) * asp;
-  float r = length(p);
-  float a = atan(p.y, p.x);
-
-  vec2 w = mix(warpFn(uWarp0.x, p, r, a, uWarp0.yzw), warpFn(uWarp1.x, p, r, a, uWarp1.yzw), uWarpMix);
-  float zr = pow(max(r * 2.0, 1e-3), uZoomExp);
-  float zA = 1.0 + (uZoom - 1.0) * zr;
-  float zB = 1.0 + (uZoom - 1.0) * uBZoom * zr;
-  vec2 qA = rot2(-uRot) * (p / zA) + w - uTrans;
-  vec2 qB = rot2(-uRot * uBRot) * (p / zB) - w * 0.7 + uTrans;
-
-  // Fluid displacement: ink carried by the velocity field.
-  vec2 disp = texture(uVel, vUv).xy * uSimTexel * uDt * uFluid;
-
-  // Coupling: each buffer is pushed along the other's luminance gradient.
-  vec2 px = 2.0 / uRes;
-  vec2 gA = vec2(luma(texture(uPrevA, vUv + vec2(px.x, 0)).rgb) - luma(texture(uPrevA, vUv - vec2(px.x, 0)).rgb),
-                 luma(texture(uPrevA, vUv + vec2(0, px.y)).rgb) - luma(texture(uPrevA, vUv - vec2(0, px.y)).rgb));
-  vec2 gB = vec2(luma(texture(uPrevB, vUv + vec2(px.x, 0)).rgb) - luma(texture(uPrevB, vUv - vec2(px.x, 0)).rgb),
-                 luma(texture(uPrevB, vUv + vec2(0, px.y)).rgb) - luma(texture(uPrevB, vUv - vec2(0, px.y)).rgb));
-  gA /= 1.0 + length(gA);
-  gB /= 1.0 + length(gB);
-
-  vec2 uvA = qA / asp + 0.5 - disp + gB * uCouple * 0.006;
-  vec2 uvB = qB / asp + 0.5 - disp * 0.8 - gA.yx * vec2(1.0, -1.0) * uCouple * 0.006;
-
-  vec3 A = samp(uPrevA, uvA) * uDecay.x;
-  vec3 B = samp(uPrevB, uvB) * uDecay.y;
-  if (uHueDrift != 0.0) {
-    A = max(hueRotate(A, uHueDrift), 0.0);
-    B = max(hueRotate(B, -uHueDrift * 0.7), 0.0);
-  }
-  A = max(A - uDecaySub, 0.0);
-  B = max(B - uDecaySub, 0.0);
-
-  // --- drums: shockwave rings
+  vec2 suv = warp(p) / asp + 0.5;
+#ifdef USE_FLUID
+  suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
+#endif
+  vec3 prev = max(prevAt(suv) * uDecay - uDecaySub, 0.0);
+  vec3 c = prev + draw(p, vUv, prev);
+#ifdef USE_RINGS
   for (int i = 0; i < 8; i++) {
     vec4 R = uRings[i];
     if (R.w <= 0.0) continue;
     float d = length(p - R.xy) - R.z;
-    float wd = 0.003 + R.z * 0.012;
-    float ring = R.w * exp(-d * d / (wd * wd));
-    B += uColB * ring;
-    A += uColC * ring * 0.35;
+    float wd = 0.0025 + R.z * 0.01;
+    c += mix(uColB, uColC, 0.4) * (R.w * uRingW * exp(-d * d / (wd * wd)));
   }
-
-  // --- bass: soft glowing polygon rotating one turn per bar
-  if (uBass.w > 0.0) {
-    vec2 pb = rot2(uBass.z) * p;
-    float d = polySd(pb, uBass.y, uBass.x);
-    float edge = exp(-abs(d) * 110.0) + 0.25 * exp(-abs(d) * 18.0);
-    float fill = smoothstep(0.0, -0.2, d) * 0.03;
-    A += uColA * uBass.w * (edge + fill);
-  }
-
-  // --- vocals: aurora ribbon
-  if (uVocal.x > 0.0) {
-    float ph = uVocal.z;
-    for (int k = 0; k < 2; k++) {
-      float s = k == 0 ? 1.0 : -1.0;
-      float y0 = s * (0.16 + 0.05 * sin(p.x * 1.3 + ph * 0.5)) + 0.07 * sin(p.x * 3.1 + ph) + 0.035 * sin(p.x * 7.3 - ph * 1.7);
-      float d = (p.y - y0) * s;
-      float wv = uVocal.y;
-      float core = exp(-d * d / (wv * wv));
-      float curtain = exp(-max(d, 0.0) * 9.0) * step(0.0, d) * (0.5 + 0.5 * sin(p.x * 40.0 + ph * 3.0 + d * 30.0));
-      vec3 c = mix(uColC, uColB, 0.5 + 0.5 * sin(p.x * 2.5 + ph * 0.8 + float(k) * 2.0));
-      A += c * uVocal.x * (core + curtain * 0.35);
-    }
-  }
-
-  // --- other: chroma dots around a circle + fine sparkle
-  if (uChromaP.z > 0.0) {
-    for (int i = 0; i < 12; i++) {
-      float ang = float(i) / 12.0 * TAU + uChromaP.y;
-      vec2 c = uChromaP.x * vec2(cos(ang), sin(ang));
-      vec2 d = p - c;
-      float v = uChroma[i];
-      v = v * v * v;
-      float g = exp(-dot(d, d) / (0.00012 + 0.0004 * v));
-      B += hsv2rgb(vec3(fract(uKeyHue + float(i) * 7.0 / 12.0), 0.8, 1.0)) * g * v * uChromaP.z;
-    }
-  }
-  if (uChromaP.w > 0.0) {
-    vec2 cell = floor(vUv * uRes / 2.0);
-    float h = hash12(cell + floor(uTime * 24.0) * 17.31);
-    float sp = step(1.0 - uChromaP.w, h);
-    B += uColC * sp * 3.0;
-  }
-
-  // --- hybrid: classic frame as dye where bright
+#endif
   if (uBCMix > 0.0) {
     vec3 bc = texture(uBC, vUv).rgb;
-    bc = bc * bc;
-    float l = luma(bc);
-    A += bc * smoothstep(0.08, 0.6, l) * uBCMix;
+    bc *= bc;
+    c += bc * smoothstep(0.08, 0.6, luma(bc)) * uBCMix;
   }
-
-  oA = vec4(min(A, vec3(64.0)), 1.0);
-  oB = vec4(min(B, vec3(64.0)), 1.0);
+  o = vec4(min(c, vec3(64.0)), 1.0);
 }`;
-
-// ------------------------------------------------------------- waveform ---
-
-export const WAVE_VS = HEAD + /* glsl */ `
-uniform sampler2D uWave;
-uniform float uStyle, uAmp, uThick, uAspect, uAngle, uN, uMirrorW;
-uniform vec2 uRes;
-out float vSide;
-out float vK;
-out float vInst;
-vec2 wpos(float k) {
-  if (uStyle < 0.5) {         // line
-    float w = texture(uWave, vec2(k, 0.5)).r * uAmp;
-    return vec2((k * 2.0 - 1.0) * uAspect * 0.46, w * 0.35);
-  } else if (uStyle < 1.5) {  // circle (samples run forward then back so the loop closes)
-    float s = 1.0 - abs(2.0 * k - 1.0);
-    float w = texture(uWave, vec2(s, 0.5)).r * uAmp;
-    float ang = k * TAU + uAngle;
-    float rr = 0.26 + w * 0.12;
-    return rr * vec2(cos(ang), sin(ang));
-  } else if (uStyle < 2.5) {  // spiral
-    float w = texture(uWave, vec2(k, 0.5)).r * uAmp;
-    float ang = k * TAU * 3.0 + uAngle;
-    float rr = 0.03 + k * 0.4 + w * 0.05;
-    return rr * vec2(cos(ang), sin(ang));
-  } else {                    // dual mirrored
-    float w = texture(uWave, vec2(k, 0.5)).r * uAmp;
-    return vec2((k * 2.0 - 1.0) * uAspect * 0.46, 0.2 + w * 0.22);
-  }
 }
+
+/** Composite pass: the preset's colour function, weighted for crossfades. */
+export function compositeFS(src: PresetShaderSource): string {
+  return HEAD + defs(src.defines) + COMMON + LIB + FS_VARY + /* glsl */ `
+uniform sampler2D uFb, uBC;
+uniform float uWeight, uSat, uSweep, uBCMix;
+out vec4 o;
+vec3 fb(vec2 uv) { return texture(uFb, uv).rgb; }
+` + (src.comp ?? DEFAULT_COMP) + /* glsl */ `
+void main() {
+  vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
+  vec3 c = max(comp(vUv, p), 0.0);
+#ifdef NO_FEEDBACK
+  if (uBCMix > 0.0) { vec3 bc = texture(uBC, vUv).rgb; c += bc * bc * uBCMix * 4.0; }
+#endif
+  // Key-change sweep: a soft hue front travelling outward.
+  if (uSweep > 0.001) {
+    float front = (1.0 - uSweep) * 1.2;
+    float sw = uSweep * exp(-pow((length(p) - front) * 5.0, 2.0));
+    c = max(hueRotate(c, sw * 2.4), 0.0) * (1.0 + sw * 0.8);
+  }
+  float l = luma(c);
+  c = max(mix(vec3(l), c, uSat), 0.0);
+  o = vec4(c * uWeight, 1.0);
+}`;
+}
+
+export interface CurveSource {
+  /** Defines `vec2 curve(float k, float inst)` (p space) and optionally `curveColor`. */
+  glsl: string;
+  color?: string;
+}
+
+/** Line geometry: a triangle strip along a preset-defined parametric curve. */
+export function curveVS(src: CurveSource): string {
+  return HEAD + COMMON + LIB + /* glsl */ `
+uniform float uN, uThick, uBright;
+out float vSide;
+out vec3 vCol;
+` + src.glsl + '\n' + (src.color ?? /* glsl */ `vec3 curveColor(float k, float inst) { return mix(uColA, uColC, 0.5 + 0.5 * sin(k * TAU)); }`) + /* glsl */ `
 void main() {
   int i = gl_VertexID;
+  float inst = float(gl_InstanceID);
   float k = float(i / 2) / (uN - 1.0);
   float side = (i % 2 == 0) ? -1.0 : 1.0;
   float dk = 1.0 / uN;
-  vec2 a = wpos(k);
-  vec2 b = wpos(min(k + dk, 1.0));
-  vec2 c = wpos(max(k - dk, 0.0));
-  vec2 t = b - c;
+  vec2 a = curve(k, inst);
+  vec2 t = curve(min(k + dk, 1.0), inst) - curve(max(k - dk, 0.0), inst);
   vec2 n = normalize(vec2(-t.y, t.x) + 1e-6);
   vec2 pp = a + n * side * uThick / uRes.y;
-  vInst = 1.0;
-  if (gl_InstanceID == 1) {
-    pp = uStyle > 2.5 ? vec2(pp.x, -pp.y) : -pp;
-    vInst = uMirrorW;
-  }
   vSide = side;
-  vK = k;
+  vCol = curveColor(k, inst) * uBright;
   gl_Position = vec4(pp.x / (uAspect * 0.5), pp.y / 0.5, 0.0, 1.0);
-}`.replace('uniform sampler2D uWave;', 'const float TAU = 6.28318530718;\nuniform sampler2D uWave;');
+}`;
+}
 
-export const WAVE_FS = HEAD + /* glsl */ `
-uniform vec3 uColA, uColC;
-uniform float uBright;
-uniform vec2 uRoute; // weights into A, B
+export const CURVE_FS = HEAD + /* glsl */ `
 in float vSide;
-in float vK;
-in float vInst;
-layout(location = 0) out vec4 oA;
-layout(location = 1) out vec4 oB;
+in vec3 vCol;
+out vec4 o;
 void main() {
   float s = 1.0 - vSide * vSide;
-  float core = s * s;
-  vec3 c = mix(uColA, uColC, 0.5 + 0.5 * sin(vK * 6.2831 * 2.0)) * uBright * vInst * core;
-  c += vec3(1.0) * pow(core, 6.0) * uBright * vInst * 0.25;
-  oA = vec4(c * uRoute.x, 1.0);
-  oB = vec4(c * uRoute.y, 1.0);
+  o = vec4(vCol * (s * s + pow(s, 10.0) * 0.4), 1.0);
 }`;
 
 // ------------------------------------------------------------ particles ---
@@ -441,8 +388,9 @@ uniform sampler2D uS0, uS1, uVel, uWave;
 uniform float uDt, uTime, uAspect;
 uniform vec2 uSimTexel;
 uniform float uFluidAmt, uCurl, uZoomFlow, uRotFlow, uConverge, uDrag, uLifeRate, uSpeed;
+uniform vec2 uLift;
 uniform vec3 uSpawn;      // mode (outgoing), mode (incoming), mix
-uniform vec4 uEmit;       // count, angle, radius, -
+uniform vec4 uEmit;       // count, angle, radius, spawn spread
 uniform float uBurst, uBurstSeed, uBurstSpeed;
 layout(location = 0) out vec4 o0;
 layout(location = 1) out vec4 o1;
@@ -471,9 +419,12 @@ void spawn(float mode, vec2 r, vec2 r2, out vec2 p, out vec2 v) {
   } else if (mode < 3.5) { // ring
     p = dir * (0.3 + (r2.x - 0.5) * 0.02);
     v = dir * uSpeed * (0.1 + 0.4 * r2.y);
-  } else {                 // centre burst
-    p = gauss(r2) * 0.01;
+  } else if (mode < 4.5) { // centre burst
+    p = gauss(r2) * uEmit.w;
     v = dir * uSpeed * (0.2 + 0.8 * r.y);
+  } else {                 // along the bottom edge
+    p = vec2((r.x - 0.5) * uAspect * 0.9, -0.5 + r2.x * 0.03);
+    v = vec2((r2.y - 0.5) * 0.05, 0.05 + 0.1 * r.y) * uSpeed;
   }
 }
 
@@ -487,7 +438,7 @@ void main() {
   float life = s1.x, seed = s1.y;
 
   vec2 fv = texture(uVel, s0.xy).xy * uSimTexel * asp * uFluidAmt;
-  vec2 flow = p * uZoomFlow + vec2(-p.y, p.x) * uRotFlow;
+  vec2 flow = p * uZoomFlow + vec2(-p.y, p.x) * uRotFlow + uLift;
   flow += curlNoise(p * 2.5 + seed * 0.05, uTime) * uCurl;
   flow -= p * uConverge;
   vec2 target = fv + flow;
@@ -512,80 +463,42 @@ void main() {
 export const PARTICLE_VS = HEAD + /* glsl */ `
 uniform sampler2D uS0, uS1;
 uniform int uW;
-uniform float uSize, uBright;
+uniform float uSize, uBright, uAlive, uStreak;
 uniform vec3 uColA, uColB, uColC;
 out vec3 vCol;
 void main() {
   ivec2 ij = ivec2(gl_VertexID % uW, gl_VertexID / uW);
   vec4 s0 = texelFetch(uS0, ij, 0);
   vec4 s1 = texelFetch(uS1, ij, 0);
-  gl_Position = vec4(s0.xy * 2.0 - 1.0, 0.0, 1.0);
-  gl_PointSize = uSize;
-  float sp = length(s0.zw);
   float life = s1.x, seed = s1.y;
+  float sp = length(s0.zw);
+  // Only a fraction of the pool is visible: the activity budget.
+  float on = step(seed, uAlive);
+  gl_Position = vec4(s0.xy * 2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = on * uSize * (0.55 + 0.9 * fract(seed * 13.7)) * (1.0 + uStreak * min(sp, 2.0));
   vec3 c = mix(uColA, uColB, smoothstep(0.2, 0.8, seed));
-  c = mix(c, uColC * 1.5, smoothstep(0.15, 0.6, sp));
-  vCol = c * uBright * smoothstep(0.0, 0.25, life) * smoothstep(1.0, 0.92, life) * (0.1 + min(sp * sp * 6.0, 1.5));
+  c = mix(c, uColC * 1.4, smoothstep(0.2, 0.8, sp));
+  vCol = on * c * uBright * smoothstep(0.0, 0.3, life) * smoothstep(1.0, 0.9, life) * (0.35 + min(sp * sp * 3.0, 1.2));
 }`;
 
 export const PARTICLE_FS = HEAD + /* glsl */ `
-uniform vec2 uRoute;
 in vec3 vCol;
-layout(location = 0) out vec4 oA;
-layout(location = 1) out vec4 oB;
+out vec4 o;
 void main() {
-  oA = vec4(vCol * uRoute.x, 1.0);
-  oB = vec4(vCol * uRoute.y, 1.0);
+  vec2 d = gl_PointCoord * 2.0 - 1.0;
+  float a = exp(-dot(d, d) * 3.5);
+  o = vec4(vCol * a, 1.0);
 }`;
 
 // ------------------------------------------------------------ composite ---
 
-export const SCENE_FS = HEAD + COMMON + FS_IN + /* glsl */ `
-uniform sampler2D uA, uB;
-uniform float uAspect, uBMix, uSat, uHueShift, uSweep, uLinearize;
-uniform vec3 uKal;    // segments (outgoing), segments (incoming), mix
-uniform float uKalRot, uMirror;
+/** Classic mode: butterchurn frame (sRGB) into the linear scene target. */
+export const CLASSIC_SCENE_FS = HEAD + FS_IN + /* glsl */ `
+uniform sampler2D uA;
 out vec4 o;
-
-vec2 kaleido(vec2 uv, float n) {
-  if (n < 1.5) return uv;
-  vec2 p = (uv - 0.5) * vec2(uAspect, 1.0);
-  float r = length(p);
-  float seg = TAU / n;
-  float a = mod(atan(p.y, p.x) + uKalRot, seg);
-  a = abs(a - seg * 0.5);
-  p = r * vec2(cos(a), sin(a));
-  return p / vec2(uAspect, 1.0) + 0.5;
-}
-
-vec3 fetch(vec2 uv) {
-  vec3 c = texture(uA, uv).rgb + texture(uB, uv).rgb * uBMix;
-  return c;
-}
-
 void main() {
-  vec3 c;
-  if (uLinearize > 0.5) {
-    c = texture(uA, vUv).rgb;
-    c = pow(c, vec3(2.2)) * 1.1;
-  } else {
-    vec2 uv = vUv;
-    if (uMirror > 0.5 && uv.x > 0.5) uv.x = 1.0 - uv.x;
-    if (uKal.z <= 0.001) c = fetch(kaleido(uv, uKal.x));
-    else if (uKal.z >= 0.999) c = fetch(kaleido(uv, uKal.y));
-    else c = mix(fetch(kaleido(uv, uKal.x)), fetch(kaleido(uv, uKal.y)), uKal.z);
-  }
-  // Frame-wide hue shift (vocals) and a key-change sweep travelling outward.
-  vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
-  float r = length(p);
-  float front = (1.0 - uSweep) * 1.2;
-  float sw = uSweep * exp(-pow((r - front) * 5.0, 2.0));
-  float h = uHueShift + sw * 2.4;
-  if (h != 0.0) c = max(hueRotate(c, h), 0.0);
-  c *= 1.0 + sw * 1.5;
-  float l = luma(c);
-  c = max(mix(vec3(l), c, uSat), 0.0);
-  o = vec4(c, 1.0);
+  vec3 c = texture(uA, vUv).rgb;
+  o = vec4(pow(c, vec3(2.2)) * 1.1, 1.0);
 }`;
 
 // ---------------------------------------------------------------- bloom ---

@@ -49,7 +49,12 @@ export class Program {
     vs: string,
     fs: string,
     readonly name: string,
+    linked?: WebGLProgram,
   ) {
+    if (linked) {
+      this.prog = linked;
+      return;
+    }
     const v = compile(gl, gl.VERTEX_SHADER, vs, name);
     const f = compile(gl, gl.FRAGMENT_SHADER, fs, name);
     const p = gl.createProgram();
@@ -264,5 +269,68 @@ export function canRenderTo(gl: GL, fmt: TexFormat): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+
+const COMPLETION_STATUS_KHR = 0x91b1;
+
+/**
+ * A program compiled in the background when KHR_parallel_shader_compile is
+ * available (otherwise synchronously on the first poll). poll() never blocks
+ * while the driver is still working.
+ */
+export class PendingProgram {
+  private prog: WebGLProgram | null = null;
+  private vsh: WebGLShader | null = null;
+  private fsh: WebGLShader | null = null;
+  program: Program | null = null;
+  error: string | null = null;
+
+  constructor(
+    private gl: GL,
+    private vs: string,
+    private fs: string,
+    readonly name: string,
+    private parallel: boolean,
+  ) {
+    const p = gl.createProgram();
+    const v = gl.createShader(gl.VERTEX_SHADER);
+    const f = gl.createShader(gl.FRAGMENT_SHADER);
+    if (!p || !v || !f) {
+      this.error = `[render] cannot create program ${name}`;
+      return;
+    }
+    gl.shaderSource(v, vs);
+    gl.shaderSource(f, fs);
+    gl.compileShader(v);
+    gl.compileShader(f);
+    gl.attachShader(p, v);
+    gl.attachShader(p, f);
+    gl.linkProgram(p);
+    this.prog = p;
+    this.vsh = v;
+    this.fsh = f;
+  }
+
+  /** True once the program is usable or has failed. `force` waits for the driver. */
+  poll(force = false): boolean {
+    if (this.program || this.error) return true;
+    const gl = this.gl;
+    const p = this.prog!;
+    if (this.parallel && !force && !gl.getProgramParameter(p, COMPLETION_STATUS_KHR)) return false;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      const vl = gl.getShaderParameter(this.vsh!, gl.COMPILE_STATUS) ? '' : `VS: ${gl.getShaderInfoLog(this.vsh!)}\n${numbered(this.vs)}`;
+      const fl = gl.getShaderParameter(this.fsh!, gl.COMPILE_STATUS) ? '' : `FS: ${gl.getShaderInfoLog(this.fsh!)}\n${numbered(this.fs)}`;
+      this.error = `[render] ${this.name} failed:\n${gl.getProgramInfoLog(p)}\n${vl}${fl}`;
+      gl.deleteProgram(p);
+    } else {
+      this.program = new Program(gl, '', '', this.name, p);
+    }
+    gl.deleteShader(this.vsh!);
+    gl.deleteShader(this.fsh!);
+    this.vsh = this.fsh = null;
+    this.prog = null;
+    return true;
   }
 }

@@ -29,6 +29,32 @@ const CURATED = [
   'Flexi - infused with the spiral',
 ];
 
+/** FNV-1a 32-bit hash as 8 hex chars. */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+/** Stable IDs from preset names: "C-" + 4 hex chars, 6 for names that collide. */
+export function classicIds(names: string[]): Map<string, string> {
+  const short = new Map<string, string[]>();
+  for (const n of names) {
+    const k = fnv1a(n).slice(0, 4);
+    const l = short.get(k);
+    if (l) l.push(n);
+    else short.set(k, [n]);
+  }
+  const ids = new Map<string, string>();
+  for (const [k, list] of short) {
+    for (const n of list) ids.set(n, 'C-' + (list.length > 1 ? fnv1a(n).slice(0, 6) : k));
+  }
+  return ids;
+}
+
 // Interop helper: CommonJS/UMD modules may arrive wrapped one or two levels deep.
 function unwrap<T>(mod: unknown, key: string): T {
   let m = mod as Record<string, unknown>;
@@ -43,7 +69,8 @@ export class Classic {
   private names: string[] = [];
   private curated: string[] = [];
   private current = '';
-  private lastSwitch = 0;
+  private ids = new Map<string, string>();
+  private byId = new Map<string, string>();
   private tex: WebGLTexture;
   private loading: Promise<void> | null = null;
   private w = 0;
@@ -75,6 +102,9 @@ export class Classic {
   get presetName(): string {
     return this.current;
   }
+  get presetId(): string {
+    return this.ids.get(this.current) ?? '';
+  }
 
   /** Lazily import butterchurn and its presets. Safe to call repeatedly. */
   load(w: number, h: number): Promise<void> {
@@ -87,6 +117,8 @@ export class Classic {
         this.presets = lib.getPresets();
         this.names = Object.keys(this.presets);
         this.curated = CURATED.filter((n) => n in this.presets);
+        this.ids = classicIds(this.names);
+        for (const [n, id] of this.ids) this.byId.set(id, n);
         this.w = w;
         this.h = h;
         this.canvas.width = w;
@@ -94,7 +126,7 @@ export class Classic {
         const viz = bc.createVisualizer(this.audio.context, this.canvas, { width: w, height: h, pixelRatio: 1, textureRatio: 1 });
         viz.connectAudio(this.audio.source);
         this.viz = viz;
-        this.pick(0, 0);
+        this.pick(0);
       } catch (e) {
         this.failed = true;
         console.error('[render] butterchurn failed to load', e);
@@ -113,29 +145,35 @@ export class Classic {
   }
 
   /** Load a random (preferably curated) preset. */
-  pick(blend: number, now: number): void {
+  pick(blend: number): void {
     if (!this.viz || !this.names.length) return;
     const pool = this.curated.length >= 4 && Math.random() < 0.8 ? this.curated : this.names;
     let name = pool[Math.floor(Math.random() * pool.length)];
     if (name === this.current && pool.length > 1) name = pool[(pool.indexOf(name) + 1) % pool.length];
+    this.load1(name, blend);
+  }
+
+  /** Load a preset by its stable ID ("C-xxxx"). */
+  pickById(id: string, blend: number): boolean {
+    const name = this.byId.get(id);
+    if (!name || !this.viz) return false;
+    this.load1(name, blend);
+    return true;
+  }
+
+  private load1(name: string, blend: number): void {
     this.current = name;
-    this.lastSwitch = now;
     try {
-      this.viz.loadPreset(this.presets[name], blend);
+      this.viz!.loadPreset(this.presets[name], blend);
     } catch (e) {
       console.warn('[render] butterchurn preset failed', name, e);
     }
   }
 
-  /** Section-driven switching for classic mode. */
-  autoSwitch(state: MusicState, now: number): void {
+  /** Classic-mode switching: only when a drop section starts. */
+  autoSwitch(state: MusicState): void {
     if (!this.viz) return;
-    const label = state.section?.label;
-    if (state.sectionChanged && (label === 'drop' || label === 'chorus')) {
-      this.pick(label === 'drop' ? 0.5 : 2, now);
-    } else if (now - this.lastSwitch >= 30 && (state.sectionChanged || now - this.lastSwitch >= 45)) {
-      this.pick(2.7, now);
-    }
+    if (state.sectionChanged && state.section?.label === 'drop') this.pick(0.5);
   }
 
   /** Render a butterchurn frame and upload it into the texture. */

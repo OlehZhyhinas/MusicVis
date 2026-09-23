@@ -40,6 +40,20 @@ export interface AnalysisResult {
   stems: Record<StemName, Float32Array>;
   /** Per-stem onset strength, 0..1 (transients of each stem). */
   stemOnsets: Record<StemName, Float32Array>;
+  /**
+   * Per-stem ABSOLUTE presence, 0..1: how much of the mix this stem actually is
+   * right now. Unlike `stems` (normalized per stem over the song), a stem that is
+   * absent or faint in the whole song stays near 0 here.
+   */
+  stemPresence: Record<StemName, Float32Array>;
+  /**
+   * Musical density per frame, 0..1, absolute across songs: number of stems
+   * meaningfully present, onset rate, spectral spread and absolute loudness.
+   * Solo instrument / simple melody ~0.1-0.25, full band ~0.5-0.7, dense EDM drop ~0.9.
+   */
+  complexity: Float32Array;
+  /** Mean complexity over the song, 0..1. */
+  songComplexity: number;
 
   /** Overall loudness envelope, 0..1. */
   loudness: Float32Array;
@@ -102,7 +116,13 @@ export interface MusicState {
   // --- Stems, sampled from the precomputed envelopes at `time` ---
   stems: Record<StemName, number>; // 0..1
   stemOnsets: Record<StemName, number>; // 0..1
+  /** Absolute presence per stem (see AnalysisResult.stemPresence). */
+  stemPresence: Record<StemName, number>;
   loudness: number;
+  /** Musical density now, 0..1, smoothed over ~2 s (see AnalysisResult.complexity). */
+  complexity: number;
+  /** Mean complexity of the whole song, 0..1. */
+  songComplexity: number;
 
   // --- Harmony ---
   chroma: Float32Array; // length 12
@@ -139,8 +159,14 @@ export interface IVisualizer {
   render(state: MusicState): void;
   setMode(mode: VisualMode): void;
   getMode(): VisualMode;
-  /** Switch preset now (with a blend). */
+  /** Switch preset now (with a blend). Manual switch. */
   nextPreset(): void;
+  /**
+   * A new track started playing. The visualizer picks a preset suited to the
+   * song (songComplexity) with a smooth blend. Presets otherwise only change
+   * on a detected drop or via nextPreset().
+   */
+  newSong(songComplexity: number): void;
   getPresetName(): string;
   setOptions(opts: Partial<VisualizerOptions>): void;
   dispose(): void;

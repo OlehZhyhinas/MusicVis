@@ -29,6 +29,9 @@ export interface ParticleUpdate {
   burst: number;
   burstSeed: number;
   burstSpeed: number;
+  liftX: number;
+  liftY: number;
+  spread: number;
 }
 
 export class Particles {
@@ -96,7 +99,8 @@ export class Particles {
       .f1('uLifeRate', u.lifeRate)
       .f1('uSpeed', u.speed)
       .f3('uSpawn', u.spawnFrom, u.spawnTo, u.spawnMix)
-      .f4('uEmit', u.emitCount, u.emitAngle, u.emitRadius, 0)
+      .f4('uEmit', u.emitCount, u.emitAngle, u.emitRadius, u.spread)
+      .f2('uLift', u.liftX, u.liftY)
       .f1('uBurst', u.burst)
       .f1('uBurstSeed', u.burstSeed)
       .f1('uBurstSpeed', u.burstSpeed);
@@ -104,8 +108,8 @@ export class Particles {
     this.state.swap();
   }
 
-  /** Draw into the currently bound framebuffer (additive). */
-  draw(size: number, bright: number, cols: Float32Array, routeA: number, routeB: number): void {
+  /** Draw soft point sprites into the currently bound framebuffer (additive). */
+  draw(size: number, bright: number, alive: number, cols: Float32Array): void {
     if (!this.state) return;
     const gl = this.gl;
     gl.enable(gl.BLEND);
@@ -117,13 +121,13 @@ export class Particles {
       .i1('uW', this.side)
       .f1('uSize', size)
       .f1('uBright', bright)
+      .f1('uAlive', alive)
+      .f1('uStreak', 0)
       .f3('uColA', cols[0], cols[1], cols[2])
       .f3('uColB', cols[3], cols[4], cols[5])
-      .f3('uColC', cols[6], cols[7], cols[8])
-      .f2('uRoute', routeA, routeB);
+      .f3('uColC', cols[6], cols[7], cols[8]);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.POINTS, 0, this.count);
-    gl.disable(gl.BLEND);
   }
 
   dispose(): void {

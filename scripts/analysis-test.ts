@@ -233,11 +233,13 @@ function validate(name: string, r: AnalysisResult): void {
   if (r.beats.length === 0) errs.push('no beats');
   const bs = new Set(Array.from(r.beats));
   for (const d of r.downbeats) if (!bs.has(d)) errs.push('downbeat not a beat');
-  const arrs: [string, Float32Array][] = [['loudness', r.loudness]];
+  const arrs: [string, Float32Array][] = [['loudness', r.loudness], ['complexity', r.complexity]];
   for (const s of Object.keys(r.stems) as StemName[]) {
     arrs.push([`stem ${s}`, r.stems[s]]);
     arrs.push([`onset ${s}`, r.stemOnsets[s]]);
+    arrs.push([`presence ${s}`, r.stemPresence[s]]);
   }
+  if (!(r.songComplexity >= 0 && r.songComplexity <= 1)) errs.push('songComplexity out of range');
   for (const [n, a] of arrs) {
     if (a.length !== r.numFrames) errs.push(`${n} length`);
     for (let i = 0; i < a.length; i++)
@@ -392,6 +394,24 @@ function printSummary(r: AnalysisResult): void {
   const bDrop = meanRange(r.stems.bass, fr, P[3].start + 1, P[3].end - 1);
   console.log(`  info  bass stem: intro ${bIntro.toFixed(3)}, build ${bBuild.toFixed(3)}, drop ${bDrop.toFixed(3)}; other: intro ${meanRange(r.stems.other, fr, P[0].start + 1, P[0].end - 1).toFixed(3)}, drop ${meanRange(r.stems.other, fr, P[3].start + 1, P[3].end - 1).toFixed(3)}`);
 
+  // Complexity / presence (absolute measures)
+  const cx = (k: number) => meanRange(r.complexity, fr, P[k].start + 2, P[k].end - 1);
+  const cIntro = cx(0),
+    cVerse = cx(1),
+    cBuild = cx(2),
+    cDrop = cx(3);
+  check(
+    'complexity main',
+    cIntro < 0.35 && cDrop > 0.75 && cDrop > cVerse && cVerse > cIntro,
+    `intro ${cIntro.toFixed(3)}, verse ${cVerse.toFixed(3)}, build ${cBuild.toFixed(3)}, drop ${cDrop.toFixed(3)}; song ${r.songComplexity.toFixed(3)}`,
+  );
+  const pr = (st: StemName, k: number) => meanRange(r.stemPresence[st], fr, P[k].start + 1, P[k].end - 1);
+  check(
+    'presence main',
+    pr('drums', 0) < 0.1 && pr('drums', 3) > 0.5 && pr('bass', 3) > 0.3 && pr('vocals', 0) < 0.2 && pr('vocals', 3) > 0.2,
+    `drums intro ${pr('drums', 0).toFixed(3)} verse ${pr('drums', 1).toFixed(3)} drop ${pr('drums', 3).toFixed(3)}; bass intro ${pr('bass', 0).toFixed(3)} drop ${pr('bass', 3).toFixed(3)}; vocals intro ${pr('vocals', 0).toFixed(3)} drop ${pr('vocals', 3).toFixed(3)}; other drop ${pr('other', 3).toFixed(3)}`,
+  );
+
   // Sampler
   const live: LiveAudioFrame = {
     bass: 1,
@@ -426,11 +446,83 @@ function printSummary(r: AnalysisResult): void {
   smp.reset();
   const s1 = smp.sample(60, dt, true, live);
   const s2 = smp.sample(60 + dt, dt, true, live);
+  // Complexity snaps after a seek, then follows slowly.
+  smp.reset();
+  const target = r.complexity[Math.round(((P[3].start + P[3].end) / 2) * fr)];
+  const c1 = smp.sample((P[3].start + P[3].end) / 2, dt, true, live).complexity;
+  const cIntroNow = smp.sample(P[0].start + 5, dt, true, live).complexity; // jump back = seek -> snap
+  smp.reset();
+  smp.sample(P[0].end - 1, dt, true, live);
+  let slow = 0;
+  for (let t = P[0].end - 1 + dt; t < P[1].start + 1.5; t += dt) slow = smp.sample(t, dt, true, live).complexity;
+  const fast = r.complexity[Math.round((P[1].start + 1.5) * fr)];
+  check(
+    'sampler complexity',
+    Math.abs(c1 - target) < 0.02 && cIntroNow < 0.35 && s2.songComplexity === r.songComplexity && slow <= fast + 1e-6 && Number.isFinite(s2.stemPresence.drums),
+    `after seek ${c1.toFixed(3)} (target ${target.toFixed(3)}), seek back ${cIntroNow.toFixed(3)}, smoothed ${slow.toFixed(3)} vs raw ${fast.toFixed(3)} 1.5 s into verse`,
+  );
   check(
     'sampler',
     Math.abs(beatsSeen - r.beats.length) <= 1 && Math.abs(barsSeen - r.downbeats.length) <= 1 && secChanges === r.sections.length - 1 && dropPulses >= 1 && maxBuild > 0.8 && phaseJumps === 0 && !s1.onBeat && !s1.sectionChanged && !s2.sectionChanged,
     `onBeat ${beatsSeen}/${r.beats.length}, onBar ${barsSeen}/${r.downbeats.length}, sectionChanged ${secChanges}/${r.sections.length - 1}, dropPulses ${dropPulses}, max buildIntensity ${maxBuild.toFixed(2)}, keyHue ${s2.keyHue.toFixed(3)}`,
   );
+}
+
+// ---------------------------------------------------------------- simple music: absolute measures
+function soloMelody(kind: 'sine' | 'piano', seconds: number, gain: number): Float32Array {
+  const N = Math.ceil(seconds * SR);
+  const x = new Float32Array(N);
+  const tune = [72, 74, 76, 77, 79, 77, 76, 74, 72, 76, 79, 84, 79, 76, 74, 72];
+  const step = kind === 'piano' ? 0.45 : 0.5;
+  for (let k = 0; T0 + k * step < seconds - 1; k++) {
+    const f0 = midiHz(tune[k % tune.length]);
+    const s0 = Math.round((T0 + k * step) * SR);
+    const len = Math.round((kind === 'piano' ? 1.2 : step * 0.9) * SR);
+    for (let i = 0; i < len && s0 + i < N; i++) {
+      const t = i / SR;
+      let v: number;
+      if (kind === 'piano') {
+        v = 0;
+        for (let h = 1; h <= 6; h++) v += (Math.sin(2 * Math.PI * f0 * h * t) / h) * Math.exp((-t * (1 + h)) / 0.6);
+        v *= Math.min(1, i / 40);
+      } else {
+        v = Math.sin(2 * Math.PI * f0 * t) * Math.min(1, t / 0.03) * Math.min(1, (len - i) / (0.05 * SR));
+      }
+      x[s0 + i] += gain * v;
+    }
+  }
+  return x;
+}
+for (const kind of ['sine', 'piano'] as const) {
+  const x = soloMelody(kind, 40, kind === 'piano' ? 0.35 : 0.3);
+  const r = analyzePcm(x, x, SR);
+  validate(`solo ${kind}`, r);
+  const fr = r.frameRate;
+  const i0 = Math.floor(1 * fr);
+  const i1 = Math.floor(39 * fr);
+  let cMax = 0,
+    dMax = 0,
+    bMax = 0;
+  for (let i = i0; i < i1; i++) {
+    cMax = Math.max(cMax, r.complexity[i]);
+    dMax = Math.max(dMax, r.stemPresence.drums[i]);
+    bMax = Math.max(bMax, r.stemPresence.bass[i]);
+  }
+  check(
+    `solo ${kind} simple`,
+    cMax < 0.25 && dMax < 0.1 && bMax < 0.1,
+    `complexity max ${cMax.toFixed(3)} (song ${r.songComplexity.toFixed(3)}), drums presence max ${dMax.toFixed(3)}, bass presence max ${bMax.toFixed(3)}, vocals mean ${meanRange(r.stemPresence.vocals, fr, 1, 39).toFixed(3)}, other mean ${meanRange(r.stemPresence.other, fr, 1, 39).toFixed(3)}`,
+  );
+}
+{
+  const sil = new Float32Array(10 * SR);
+  const r = analyzePcm(sil, sil, SR);
+  let m = 0;
+  for (let i = 0; i < r.numFrames; i++) {
+    m = Math.max(m, r.complexity[i]);
+    for (const st of Object.keys(r.stemPresence) as StemName[]) m = Math.max(m, r.stemPresence[st][i]);
+  }
+  check('silence complexity', m === 0 && r.songComplexity === 0, `max complexity/presence ${m}, songComplexity ${r.songComplexity}`);
 }
 
 // ---------------------------------------------------------------- 4-minute timing
@@ -455,7 +547,7 @@ function printSummary(r: AnalysisResult): void {
   printSummary(r);
   console.log('  truth: ' + song.parts.map((p) => `${p.kind}@${p.start.toFixed(1)}`).join(' '));
   validate('4-minute', r);
-  check('4-minute runtime', ms < 8000, `${(ms / 1000).toFixed(2)} s`);
+  check('4-minute runtime', ms < 4000, `${(ms / 1000).toFixed(2)} s`);
 }
 
 // ---------------------------------------------------------------- pop form (informational)

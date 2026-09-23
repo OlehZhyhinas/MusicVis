@@ -160,6 +160,64 @@ body {
   background: var(--accent);
 }
 
+/* Preset ID label, shown briefly on every preset change */
+#preset-label {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translate(-50%, -6px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(10, 12, 18, 0.55);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 13px;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 35;
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+}
+
+#preset-label.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#preset-goto {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  z-index: 40;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+#preset-goto[hidden] {
+  display: none;
+}
+
+#preset-goto-input {
+  width: 170px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: 6px 8px;
+  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* Transport */
 #transport {
   position: absolute;

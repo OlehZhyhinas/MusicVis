@@ -14,8 +14,10 @@ function transferables(r: AnalysisResult): Transferable[] {
   for (const s of STEM_NAMES) {
     add(r.stems[s]);
     add(r.stemOnsets[s]);
+    add(r.stemPresence[s]);
   }
   add(r.loudness);
+  add(r.complexity);
   add(r.chroma);
   add(r.beats);
   add(r.downbeats);

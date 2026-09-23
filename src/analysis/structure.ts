@@ -18,7 +18,19 @@ export interface StructureInput {
   drums: Float32Array; // 0..1
   bass: Float32Array; // 0..1
   drumOnsets: Float32Array; // 0..1
+  /** Absolute measures (complexity.ts). When given, they gate 'drop' labels and segmentation density. */
+  complexity?: Float32Array; // 0..1
+  drumsPresence?: Float32Array; // 0..1
+  bassPresence?: Float32Array; // 0..1
+  songComplexity?: number;
 }
+
+// A 'drop' must be dense and drum + bass heavy in absolute terms, and arrive
+// with a clear lift (after a build, or a large jump in complexity).
+const DROP_MIN_COMPLEXITY = 0.65;
+const DROP_MIN_PRESENCE = 0.4;
+const DROP_MIN_CX_JUMP = 0.15; // when the preceding section is not a build
+const DROP_MIN_CX_JUMP_AFTER_BUILD = -0.1; // a build already carries the lift (its energy jump is checked separately)
 
 interface SegStats {
   start: number;
@@ -31,6 +43,9 @@ interface SegStats {
   act: number; // activity: loudness + onset density
   e: number; // combined energy
   ramp: number; // rise of activity over the span
+  cx: number; // mean absolute complexity (0.5 when unknown)
+  pd: number; // mean drums presence
+  pb: number; // mean bass presence
   label: SectionLabel;
 }
 
@@ -40,7 +55,14 @@ function frameOf(t: number, fr: number, T: number): number {
 
 export function detectSections(inp: StructureInput): Section[] {
   const { duration, frameRate: fr, numFrames: T } = inp;
-  const whole: Section[] = [{ start: 0, end: Math.max(duration, 1e-3), label: 'verse', energy: clamp01(mean(inp.loudness)) }];
+  const whole: Section[] = [
+    {
+      start: 0,
+      end: Math.max(duration, 1e-3),
+      label: 'verse',
+      energy: clamp01(mean(inp.loudness)),
+    },
+  ];
   const beats = Array.from(inp.beats).filter((b) => b >= 0 && b < duration);
   const nB = beats.length;
   if (nB < 16 || T < 4) return whole;
@@ -172,29 +194,48 @@ export function detectSections(inp: StructureInput): Section[] {
   const nn = candNov.map((v) => Math.min(1.5, v / (ref || 1)));
 
   const totalBars = M - 1;
-  const minBars = totalBars >= 12 ? 4 : totalBars >= 4 ? 2 : 1;
-  const lambda = 0.6;
+  // Sparse songs (solo piano, ambient) change texture continuously; without
+  // the beat-driven structure of a band, the novelty curve over-segments them.
+  const songCx = inp.songComplexity ?? 0.5;
+  const sparse = clamp01((0.3 - songCx) / 0.15); // 0 at >= 0.3, 1 at <= 0.15
+  const minBars = totalBars >= 24 && sparse > 0 ? (sparse > 0.5 ? 8 : 6) : totalBars >= 12 ? 4 : totalBars >= 4 ? 2 : 1;
+  const maxSegs = Math.max(3, Math.min(10, Math.round(duration / (sparse > 0 ? 25 : 20))));
   const lenBonus = (L: number): number => (L % 8 === 0 ? 0.3 : L % 4 === 0 ? 0.18 : 0) - 0.03 * Math.max(0, L - 32);
-  const best = new Float64Array(M).fill(-Infinity);
-  const prev = new Int32Array(M).fill(-1);
-  best[0] = 0;
-  for (let j = 1; j < M; j++) {
-    const gain = j < M - 1 ? nn[j] : 0;
-    for (let i = 0; i < j; i++) {
-      if (best[i] === -Infinity) continue;
-      const L = j - i;
-      const edge = i === 0 || j === M - 1;
-      if (L < minBars && !(edge && L >= 1 && totalBars < minBars * 2)) continue;
-      const v = best[i] + gain + lenBonus(L) - lambda;
-      if (v > best[j]) {
-        best[j] = v;
-        prev[j] = i;
+  const best = new Float64Array(M);
+  const prev = new Int32Array(M);
+  const runDp = (lambda: number): number => {
+    best.fill(-Infinity);
+    prev.fill(-1);
+    best[0] = 0;
+    for (let j = 1; j < M; j++) {
+      const gain = j < M - 1 ? nn[j] : 0;
+      for (let i = 0; i < j; i++) {
+        if (best[i] === -Infinity) continue;
+        const L = j - i;
+        const edge = i === 0 || j === M - 1;
+        if (L < minBars && !(edge && L >= 1 && totalBars < minBars * 2)) continue;
+        const v = best[i] + gain + lenBonus(L) - lambda;
+        if (v > best[j]) {
+          best[j] = v;
+          prev[j] = i;
+        }
       }
     }
+    if (best[M - 1] === -Infinity) return -1;
+    let cnt = 0;
+    for (let q = M - 1; q > 0; q = prev[q]) cnt++;
+    return cnt;
+  };
+  // Raise the per-boundary cost until the section count is reasonable.
+  let lambda = 0.6 + 0.4 * sparse;
+  let segCount = runDp(lambda);
+  for (let it = 0; it < 12 && segCount > maxSegs; it++) {
+    lambda += 0.15;
+    segCount = runDp(lambda);
   }
   const bIdx: number[] = [];
   let j = M - 1;
-  if (best[j] === -Infinity) return whole;
+  if (segCount < 0 || best[j] === -Infinity) return whole;
   while (j > 0) {
     bIdx.push(j);
     j = prev[j];
@@ -217,7 +258,25 @@ export function detectSections(inp: StructureInput): Section[] {
     const ac = mean(act, a, b);
     const q = Math.max(1, Math.floor((b - a) / 4));
     const ramp = mean(act, b - q, b) - mean(act, a, a + q);
-    return { start, end, a, b, loud, drums, bass, act: ac, e: 0.6 * loud + 0.25 * drums + 0.15 * bass, ramp, label: 'verse' };
+    const cx = inp.complexity ? mean(inp.complexity, a, b) : 0.5;
+    const pd = inp.drumsPresence ? mean(inp.drumsPresence, a, b) : drums;
+    const pb = inp.bassPresence ? mean(inp.bassPresence, a, b) : bass;
+    return {
+      start,
+      end,
+      a,
+      b,
+      loud,
+      drums,
+      bass,
+      act: ac,
+      e: 0.6 * loud + 0.25 * drums + 0.15 * bass,
+      ramp,
+      cx,
+      pd,
+      pb,
+      label: 'verse',
+    };
   };
   let segs: SegStats[] = [];
   for (let k = 0; k + 1 < bounds.length; k++) segs.push(mkStats(bounds[k], bounds[k + 1]));
@@ -271,7 +330,17 @@ export function detectSections(inp: StructureInput): Section[] {
     const s = segs[k];
     const pv = merged[merged.length - 1];
     const pvBuild = mergedBuild[mergedBuild.length - 1];
-    if (isBuild[k] && pv && !pvBuild && k - 1 > 0 && pv.end - pv.start <= 8 * barLen + 1e-3 && pv.act < s.act && pv.e < s.e && pv.ramp >= 0.03 && s.end - pv.start <= 16 * barLen + 1e-3) {
+    if (
+      isBuild[k] &&
+      pv &&
+      !pvBuild &&
+      k - 1 > 0 &&
+      pv.end - pv.start <= 8 * barLen + 1e-3 &&
+      pv.act < s.act &&
+      pv.e < s.e &&
+      pv.ramp >= 0.03 &&
+      s.end - pv.start <= 16 * barLen + 1e-3
+    ) {
       merged[merged.length - 1] = mkStats(pv.start, s.end);
       mergedBuild[mergedBuild.length - 1] = true;
       continue;
@@ -283,6 +352,16 @@ export function detectSections(inp: StructureInput): Section[] {
 
   // --- Labels ---
   const n = segs.length;
+  const hasAbs = !!inp.complexity;
+  const absDrop = (k: number, afterBuild: boolean): boolean => {
+    if (!hasAbs) return true;
+    const s = segs[k];
+    const p = k > 0 ? segs[k - 1] : null;
+    if (!p) return false;
+    if (s.cx < DROP_MIN_COMPLEXITY || s.pd < DROP_MIN_PRESENCE || s.pb < DROP_MIN_PRESENCE) return false;
+    const dcx = s.cx - p.cx;
+    return afterBuild ? dcx >= DROP_MIN_CX_JUMP_AFTER_BUILD : dcx >= DROP_MIN_CX_JUMP;
+  };
   let eMin = Infinity,
     eMax = -Infinity;
   for (const s of segs) {
@@ -303,7 +382,8 @@ export function detectSections(inp: StructureInput): Section[] {
     // EDM-style drop: strong kick + bass, arriving after a lift (build), a low
     // passage, or with a very large jump. Otherwise it is a chorus.
     const afterLift = !!p && (mergedBuild[k - 1] || low[k - 1]);
-    segs[k].label = p && strongLow && ((afterLift && (jump >= 0.2 || lowJump >= 0.5)) || jump >= 0.35) ? 'drop' : 'chorus';
+    const relDrop = p && strongLow && ((afterLift && (jump >= 0.2 || lowJump >= 0.5)) || jump >= 0.35);
+    segs[k].label = relDrop && absDrop(k, mergedBuild[k - 1]) ? 'drop' : 'chorus';
   }
   for (let k = 1; k < n - 1; k++) {
     if (segs[k].label !== 'verse' || !low[k]) continue;
@@ -352,7 +432,7 @@ export function detectSections(inp: StructureInput): Section[] {
       if (segs[c].label !== 'chorus' && segs[c].label !== 'drop') continue;
       const self = blockSim(segs[c], segs[c]);
       if (blockSim(segs[k], segs[c]) >= 0.92 * self && segs[c].e - segs[k].e <= 0.15) {
-        segs[k].label = segs[c].label === 'drop' && k > 0 && segs[k - 1].label === 'build' ? 'drop' : 'chorus';
+        segs[k].label = segs[c].label === 'drop' && k > 0 && segs[k - 1].label === 'build' && absDrop(k, true) ? 'drop' : 'chorus';
         break;
       }
     }
@@ -369,7 +449,12 @@ export function detectSections(inp: StructureInput): Section[] {
       last.end = s.end;
       continue;
     }
-    out.push({ start: s.start, end: s.end, label: s.label, energy: clamp01(s.loud) });
+    out.push({
+      start: s.start,
+      end: s.end,
+      label: s.label,
+      energy: clamp01(s.loud),
+    });
   }
   out[0].start = 0;
   out[out.length - 1].end = duration;

@@ -1,20 +1,32 @@
-// Rendering engine: enhanced (fluid + coupled feedback + particles + bloom),
-// classic (butterchurn) and hybrid (butterchurn injected into the feedback).
+// Rendering engine: enhanced (per-preset GLSL feedback + composite, optional
+// fluid / particles / line geometry, bloom), classic (butterchurn) and hybrid
+// (butterchurn injected into the enhanced feedback).
+//
+// Enhanced frame: shared analysis textures -> per-preset JS hook -> fluid and
+// particle simulation (only when a live preset uses them) -> each live
+// preset's feedback pass into its own buffer -> each preset's composite,
+// crossfaded additively into the HDR scene -> top layers -> bloom, auto
+// exposure, tonemap. During a blend both presets run; otherwise only one.
 
-import type { IVisualizer, MusicState, VisualMode, VisualizerOptions } from '../types';
+import type { IVisualizer, MusicState, StemName, VisualMode, VisualizerOptions } from '../types';
 import { Bloom } from './bloom';
 import { Classic } from './classic';
-import { Fluid, SPLAT_DIR, SPLAT_RADIAL, SPLAT_SWIRL } from './fluid';
+import { Flame } from './flame';
+import { Fluid, SPLAT_RADIAL } from './fluid';
 import { Fullscreen, GL, PingPong, Program, Target, TexFormat, canRenderTo, createTexture, formats } from './gl';
 import { Particles, ParticleUpdate } from './particles';
-import { NUM_KEYS, NumParams, PRESETS, Preset, lerpParams, makeParams, paletteColors } from './presets';
-import { EXPOSURE_FS, FEEDBACK_FS, FINAL_FS, FULLSCREEN_VS, SCENE_FS, WAVE_FS, WAVE_VS } from './shaders';
+import { Effects, Frame, PRESETS, Preset, Runtime, makeRuntime, paletteColors } from './presets';
+import { PresetPrograms, ProgramCache } from './programs';
+import { CLASSIC_SCENE_FS, EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from './shaders';
 
 const TAU = Math.PI * 2;
+const SPIN_WRAP = TAU * 16; // presets scale uSpin by multiples of 1/16
 const MAX_SIDE = 2560;
-const WAVE_N = 1024;
+const WAVE_N = 512;
+const SPEC_N = 128;
 const MAX_RINGS = 8;
 const PARTICLE_STEPS = [65536, 262144, 1048576];
+const STEMS: StemName[] = ['drums', 'bass', 'vocals', 'other'];
 
 export interface RenderStats {
   frameMs: number; // smoothed interval between render() calls
@@ -32,6 +44,21 @@ function smooth01(t: number): number {
   t = Math.min(1, Math.max(0, t));
   return t * t * (3 - 2 * t);
 }
+function num(v: unknown, d: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : d;
+}
+
+interface Active {
+  preset: Preset;
+  idx: number;
+  progs: PresetPrograms;
+  buf: number; // index into the feedback pool
+  rt: Runtime;
+  rem: [number, number];
+  shift: [number, number];
+  cols: Float32Array;
+  weight: number;
+}
 
 export class Visualizer implements IVisualizer {
   private gl: GL;
@@ -42,40 +69,57 @@ export class Visualizer implements IVisualizer {
   private mode: VisualMode = 'enhanced';
   private disposed = false;
 
-  private pFeedback: Program;
-  private pWave: Program;
-  private pScene: Program;
+  private cache: ProgramCache;
+  private pClassic: Program;
   private pFinal: Program;
   private pExposure: Program;
+  private pSeed: Program;
   private avgLum: PingPong;
   private fluid: Fluid | null = null;
   private particles: Particles | null = null;
   private bloom: Bloom;
   private classic: Classic | null = null;
 
-  private fb: PingPong | null = null;
+  private pool: PingPong[] = [];
   private scene: Target | null = null;
   private waveTex: WebGLTexture;
+  private specTex: WebGLTexture;
   private black: WebGLTexture;
-  private waveVao: WebGLVertexArrayObject;
+  private lineVao: WebGLVertexArrayObject;
   private wave = new Float32Array(WAVE_N);
+  private waveTmp = new Float32Array(WAVE_N);
+  private spec = new Float32Array(SPEC_N);
+  private rms = 0.1;
 
   private width = 1;
   private height = 1;
   private css = { w: 1, h: 1, dpr: 1 };
 
   // Presets and blending
-  private fromP: Preset;
-  private toP: Preset;
-  private presetIdx = 0;
+  private from: Active | null = null;
+  private to!: Active;
   private blendT = 1;
   private blendDur = 1;
-  private lastSwitch = 0;
-  private P: NumParams = makeParams();
+  private pending: { idx: number; secs: number } | null = null;
+  private history: number[] = [];
+  private autoSwitch = true;
+  private songCx: number | null = null;
+  private warmNext = 0;
+  private warmTimer = 0;
 
-  // Per-frame scratch (no allocations in render)
-  private cols = new Float32Array(9);
-  private colTmp = new Float32Array(18);
+  // Per-frame music state shared with preset hooks
+  private F: Frame = {
+    time: 0, dt: 0, phase: 0, act: 0.5, cx: 0.5, speed: 1, spin: 0, bars: 0, beats: 0, barIndex: 0, beatIndex: 0,
+    barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, onBar: false,
+    stem: new Float32Array(4), onset: new Float32Array(4), gate: new Float32Array(4),
+    loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0, aspect: 1, hit: 0,
+    dropStart: false,
+  };
+  private spinStep = 0;
+  private live = new Float32Array(6); // bass, mid, treb, keyHue, keyChangePulse, barPulse
+  private fx: Effects;
+
+  // Rings (drum shockwaves) and particles
   private rings = new Float32Array(MAX_RINGS * 4);
   private ringAge = new Float32Array(MAX_RINGS).fill(99);
   private ringStr = new Float32Array(MAX_RINGS);
@@ -84,15 +128,17 @@ export class Visualizer implements IVisualizer {
   private ringNext = 0;
   private chroma = new Float32Array(12);
   private pu: ParticleUpdate;
+  private particleCap: number;
+  private partOwner: Active | null = null;
+  private flame: Flame | null = null;
+  private flameOwner: Active | null = null;
 
   // Timing / rhythm tracking
   private clock = 0;
   private frame = 0;
   private prevBarPhase = 0;
-  private kalAngle = 0;
   private prevDrumOnset = 0;
   private hitCooldown = 0;
-  private swirlSign = 1;
   private flash = 0;
   private lastNow = 0;
   private slowTime = 0;
@@ -120,6 +166,7 @@ export class Visualizer implements IVisualizer {
     if (!gl) throw new Error('WebGL2 is not available in this browser. The visualizer needs WebGL2 (Chrome, Safari 15+, Firefox).');
     this.gl = gl;
     this.opts = { ...DEFAULT_OPTS, ...opts };
+    this.particleCap = this.opts.particleCount;
 
     const f = formats(gl);
     const cbf = gl.getExtension('EXT_color_buffer_float');
@@ -131,41 +178,43 @@ export class Visualizer implements IVisualizer {
     this.stats.hq = this.hq;
 
     this.fs = new Fullscreen(gl);
-    this.pFeedback = new Program(gl, FULLSCREEN_VS, FEEDBACK_FS, 'feedback');
-    this.pWave = new Program(gl, WAVE_VS, WAVE_FS, 'waveform');
-    this.pScene = new Program(gl, FULLSCREEN_VS, SCENE_FS, 'scene');
+    this.cache = new ProgramCache(gl);
+    this.pClassic = new Program(gl, FULLSCREEN_VS, CLASSIC_SCENE_FS, 'classic-scene');
     this.pFinal = new Program(gl, FULLSCREEN_VS, FINAL_FS, 'final');
     this.pExposure = new Program(gl, FULLSCREEN_VS, EXPOSURE_FS, 'exposure');
+    this.pSeed = new Program(gl, FULLSCREEN_VS, SCALE_FS, 'seed');
     this.avgLum = new PingPong(gl, 1, 1, [this.hdr], gl.NEAREST);
     this.bloom = new Bloom(gl, this.fs);
     if (this.hq) {
       this.fluid = new Fluid(gl, this.fs);
       this.particles = new Particles(gl, this.fs);
-      this.particles.setCount(this.opts.particleCount);
     }
 
     this.waveTex = createTexture(gl, WAVE_N, 1, f.r16f, gl.LINEAR);
+    this.specTex = createTexture(gl, SPEC_N, 1, f.r16f, gl.LINEAR);
     this.black = createTexture(gl, 1, 1, f.rgba8, gl.NEAREST, new Uint8Array([0, 0, 0, 255]));
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('[render] cannot create VAO');
-    this.waveVao = vao;
+    this.lineVao = vao;
 
     this.timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
 
-    this.presetIdx = Math.floor(Math.random() * PRESETS.length);
-    this.fromP = PRESETS[this.presetIdx];
-    this.toP = this.fromP;
-    lerpParams(this.P, this.fromP, this.toP, 1);
-
+    this.fx = {
+      splat: (x, y, fx, fy, radius, type) => this.fluid?.splat(x, y, fx, fy, radius, type),
+    };
     this.pu = {
       dt: 0, time: 0, aspect: 1, velocity: this.black, simTexelX: 0, simTexelY: 0, wave: this.waveTex,
       fluidAmt: 0, curl: 0, zoomFlow: 0, rotFlow: 0, converge: 0, drag: 3, lifeRate: 0.3, speed: 0.5,
       spawnFrom: 0, spawnTo: 0, spawnMix: 0, emitCount: 3, emitAngle: 0, emitRadius: 0.3,
-      burst: 0, burstSeed: 0, burstSpeed: 0,
+      burst: 0, burstSeed: 0, burstSpeed: 0, liftX: 0, liftY: 0, spread: 0.01,
     };
 
     const r = canvas.getBoundingClientRect();
     this.resize(r.width || canvas.width || 1280, r.height || canvas.height || 720, window.devicePixelRatio || 1);
+
+    const first = this.pickPreset(0.5, false);
+    this.to = this.makeActive(first, this.compileNow(first), 0);
+    this.history.push(first);
   }
 
   // ------------------------------------------------------------ public API
@@ -181,15 +230,15 @@ export class Visualizer implements IVisualizer {
     // the render targets can be kept, so it never drifts from the GL viewport.
     if (this.canvas.width !== w) this.canvas.width = w;
     if (this.canvas.height !== h) this.canvas.height = h;
-    if (w === this.width && h === this.height && this.fb) return;
+    if (w === this.width && h === this.height && this.pool.length) return;
     this.width = w;
     this.height = h;
     this.stats.width = w;
     this.stats.height = h;
     const gl = this.gl;
-    this.fb?.dispose();
+    for (const p of this.pool) p.dispose();
     this.scene?.dispose();
-    this.fb = new PingPong(gl, w, h, [this.hdr, this.hdr], gl.LINEAR);
+    this.pool = [new PingPong(gl, w, h, [this.hdr], gl.LINEAR), new PingPong(gl, w, h, [this.hdr], gl.LINEAR)];
     this.scene = new Target(gl, w, h, [this.hdr], gl.LINEAR);
     this.bloom.resize(w, h, this.hdr);
     this.fluid?.resize(w / h);
@@ -214,17 +263,21 @@ export class Visualizer implements IVisualizer {
     const wantClassic = this.mode === 'classic' || this.mode === 'hybrid';
     if (wantClassic) this.ensureClassic();
     const classicReady = !!this.classic?.ready;
-    if (classicReady) this.classic!.autoSwitch(state, this.clock);
+    if (classicReady && this.autoSwitch) this.classic!.autoSwitch(state);
 
+    this.computeFrame(state, sdt);
     this.updatePresets(state, sdt);
 
     if (this.mode === 'classic' && classicReady && this.classic!.render()) {
-      this.drawScene(state, true);
+      this.scene!.bind();
+      this.gl.disable(this.gl.BLEND);
+      this.pClassic.use().tex('uA', this.classic!.texture);
+      this.fs.draw();
       this.post(state, true);
     } else {
       const hybrid = this.mode === 'hybrid' && classicReady && this.classic!.render();
       this.simulate(state, sdt, hybrid);
-      this.drawScene(state, false);
+      this.compose(state, hybrid);
       this.post(state, false);
     }
 
@@ -246,37 +299,65 @@ export class Visualizer implements IVisualizer {
 
   nextPreset(): void {
     if (this.mode === 'classic' && this.classic?.ready) {
-      this.classic.pick(2, this.clock);
+      this.classic.pick(2);
       return;
     }
-    this.switchTo((this.presetIdx + 1) % PRESETS.length, 1.5);
+    this.requestSwitch((this.target().idx + 1) % PRESETS.length, 1.5);
+  }
+
+  newSong(songComplexity: number): void {
+    this.songCx = num(songComplexity, 0.5);
+    this.requestSwitch(this.pickPreset(this.songCx, false), 1.5);
+    if (this.classic?.ready && this.mode !== 'enhanced') this.classic.pick(1.5);
   }
 
   /** Jump to a specific enhanced preset by index or name. */
   selectPreset(which: number | string, blendSeconds = 1): void {
-    const idx = typeof which === 'number' ? which : PRESETS.findIndex((p) => p.name === which);
-    if (idx >= 0 && idx < PRESETS.length) this.switchTo(idx, blendSeconds);
+    const idx = typeof which === 'number' ? which : PRESETS.findIndex((p) => p.name === which || p.id === which);
+    if (idx >= 0 && idx < PRESETS.length) this.requestSwitch(idx, blendSeconds);
+  }
+
+  /** Select by stable ID: "E07" (enhanced) or "C-3fa2" (classic / hybrid butterchurn layer). */
+  selectPresetById(id: string): boolean {
+    const key = id.trim();
+    if (/^C-/i.test(key)) {
+      if (this.mode === 'enhanced' || !this.classic?.ready) return false;
+      return this.classic.pickById('C-' + key.slice(2).toLowerCase(), 1.5);
+    }
+    if (this.mode === 'classic') return false;
+    const idx = PRESETS.findIndex((p) => p.id === key.toUpperCase());
+    if (idx < 0) return false;
+    this.requestSwitch(idx, 1.5);
+    return true;
+  }
+
+  /** Disable drop-triggered switching (dev harness preset lock). */
+  setAutoSwitch(on: boolean): void {
+    this.autoSwitch = on;
   }
 
   getPresetName(): string {
-    if (this.mode === 'classic' && this.classic?.ready) return this.classic.presetName;
-    const base = PRESETS[this.presetIdx].name;
-    return this.mode === 'hybrid' && this.classic?.ready ? `${base} + ${this.classic.presetName}` : base;
+    const c = this.classic?.ready ? `${this.classic.presetId} · ${this.classic.presetName}` : '';
+    if (this.mode === 'classic' && c) return c;
+    const p = this.target().preset;
+    const base = `${p.id} · ${p.name}`;
+    return this.mode === 'hybrid' && c ? `${base} + ${c}` : base;
   }
 
   setOptions(opts: Partial<VisualizerOptions>): void {
     const prevScale = this.opts.renderScale;
     this.opts = { ...this.opts, ...opts };
     this.opts.renderScale = Math.min(1, Math.max(0.25, this.opts.renderScale));
-    if (opts.particleCount !== undefined && this.particles) {
-      this.particles.setCount(opts.particleCount);
+    if (opts.particleCount !== undefined) {
+      this.particleCap = opts.particleCount;
+      this.applyParticleCount();
       this.slowTime = 0;
       this.stats.frameMs = 16.7;
       this.lastNow = 0;
     }
     if (opts.renderScale !== undefined && opts.renderScale !== prevScale) {
-      this.fb?.dispose();
-      this.fb = null;
+      for (const p of this.pool) p.dispose();
+      this.pool = [];
       this.resize(this.css.w, this.css.h, this.css.dpr);
     }
   }
@@ -285,25 +366,27 @@ export class Visualizer implements IVisualizer {
     if (this.disposed) return;
     this.disposed = true;
     const gl = this.gl;
-    this.fb?.dispose();
+    for (const p of this.pool) p.dispose();
+    this.pool = [];
     this.scene?.dispose();
-    this.fb = null;
     this.scene = null;
     this.bloom.dispose();
     this.fluid?.dispose();
     this.particles?.dispose();
+    this.flame?.dispose();
     this.classic?.dispose();
     this.classic = null;
-    this.pFeedback.dispose();
-    this.pWave.dispose();
-    this.pScene.dispose();
+    this.cache.dispose();
+    this.pClassic.dispose();
     this.pFinal.dispose();
     this.pExposure.dispose();
+    this.pSeed.dispose();
     this.avgLum.dispose();
     this.fs.dispose();
     gl.deleteTexture(this.waveTex);
+    gl.deleteTexture(this.specTex);
     gl.deleteTexture(this.black);
-    gl.deleteVertexArray(this.waveVao);
+    gl.deleteVertexArray(this.lineVao);
     for (const q of this.queries) gl.deleteQuery(q);
     for (const q of this.pendingQueries) gl.deleteQuery(q);
     this.queries.length = 0;
@@ -312,60 +395,278 @@ export class Visualizer implements IVisualizer {
 
   // ------------------------------------------------------------- presets
 
-  private switchTo(idx: number, seconds: number): void {
-    // Snapshot the current blended state as the new "from" preset.
-    const t = smooth01(this.blendT);
-    const dominant = t > 0.5 ? this.toP : this.fromP;
-    const snap: Preset = { ...dominant };
-    for (let i = 0; i < NUM_KEYS.length; i++) snap[NUM_KEYS[i]] = this.P[NUM_KEYS[i]];
-    this.fromP = snap;
-    this.presetIdx = idx;
-    this.toP = PRESETS[idx];
-    this.blendT = 0;
-    this.blendDur = Math.max(0.05, seconds);
-    this.lastSwitch = this.clock;
+  private compileNow(idx: number): PresetPrograms {
+    const p = this.cache.get(PRESETS[idx], true);
+    if (p) return p;
+    // A broken preset must never take the engine down: fall back to any preset that compiles.
+    for (let i = 0; i < PRESETS.length; i++) {
+      const q = this.cache.get(PRESETS[i], true);
+      if (q) return q;
+    }
+    throw new Error('[render] no enhanced preset compiled');
   }
 
-  private pickPreset(energy: 'high' | 'calm'): number {
-    const pool: number[] = [];
-    for (let i = 0; i < PRESETS.length; i++) if (PRESETS[i].energy === energy && i !== this.presetIdx) pool.push(i);
-    if (!pool.length) return (this.presetIdx + 1) % PRESETS.length;
-    return pool[Math.floor(Math.random() * pool.length)];
+  private makeActive(idx: number, progs: PresetPrograms, buf: number): Active {
+    return {
+      preset: PRESETS[idx], idx, progs, buf, rt: makeRuntime(), rem: [0, 0], shift: [0, 0],
+      cols: new Float32Array(9), weight: 1,
+    };
+  }
+
+  /** The preset we are at or blending towards. */
+  private target(): Active {
+    return this.to;
+  }
+
+  private requestSwitch(idx: number, secs: number): void {
+    this.pending = { idx, secs };
+    this.cache.request(PRESETS[idx]);
+  }
+
+  private doSwitch(idx: number, progs: PresetPrograms, secs: number): void {
+    const t = smooth01(this.blendT);
+    const keep = this.from && t < 0.5 ? this.from : this.to;
+    if (keep.idx === idx && this.blendT >= 1) return;
+    const a = this.makeActive(idx, progs, 1 - keep.buf);
+    // Seed the incoming feedback with the current picture so it morphs out of it.
+    if (a.preset.feedback !== false) {
+      const gl = this.gl;
+      const pp = this.pool[a.buf];
+      gl.disable(gl.BLEND);
+      pp.write.bind();
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      pp.read.bind();
+      if (this.scene && this.frame > 1 && secs >= 0.1) {
+        this.pSeed.use().tex('uTex', this.scene.t).f1('uValue', 0.5);
+        this.fs.draw();
+      } else {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+    }
+    this.from = keep;
+    this.to = a;
+    this.blendT = 0;
+    this.blendDur = Math.max(0.05, secs);
+    this.history.push(idx);
+    if (this.history.length > 6) this.history.shift();
+    this.applyParticleCount();
+  }
+
+  /** Random preset whose energy range suits `target`, avoiding recent ones. */
+  private pickPreset(target: number, high: boolean): number {
+    const cur = this.to ? this.to.idx : -1;
+    const suited: number[] = [];
+    let best = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i < PRESETS.length; i++) {
+      const p = PRESETS[i];
+      if (i === cur || this.cache.failed(p)) continue;
+      const [lo, hi] = p.energy;
+      const dist = target < lo ? lo - target : target > hi ? target - hi : 0;
+      const recent = this.history.includes(i);
+      if (dist === 0 && !recent && (!high || hi >= 0.8)) suited.push(i);
+      const score = dist + (recent ? 0.5 : 0) + (high && hi < 0.8 ? 0.3 : 0) + Math.random() * 0.05;
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    if (suited.length) return suited[Math.floor(Math.random() * suited.length)];
+    return best >= 0 ? best : (cur + 1) % PRESETS.length;
   }
 
   private updatePresets(state: MusicState, sdt: number): void {
-    const label = state.section?.label;
-    if (state.sectionChanged && label) {
-      if (label === 'drop' || label === 'chorus') {
-        this.switchTo(this.pickPreset('high'), label === 'drop' ? 0.3 : 0.5);
-        this.flash = 1;
-        this.bigSplat(label === 'drop' ? 1 : 0.6);
-      } else {
-        this.switchTo(this.pickPreset('calm'), 3);
+    // Switch only on drops (plus newSong() and manual requests).
+    if (state.sectionChanged && state.section?.label === 'drop') {
+      const cx = Math.max(this.songCx ?? this.F.cx, this.F.cx);
+      if (this.autoSwitch) this.requestSwitch(this.pickPreset(Math.min(1, Math.max(0.55, cx + 0.3)), true), 0.35);
+      this.flash = 0.4 + 0.6 * this.F.act;
+      this.bigSplat(0.4 + 0.6 * this.F.act);
+    }
+    if (this.pending) {
+      const p = PRESETS[this.pending.idx];
+      const progs = this.cache.get(p);
+      if (progs) {
+        this.doSwitch(this.pending.idx, progs, this.pending.secs);
+        this.pending = null;
+      } else if (this.cache.failed(p)) {
+        this.pending = null;
       }
-    } else if (this.clock - this.lastSwitch > 45) {
-      const high = label === 'drop' || label === 'chorus';
-      this.switchTo(this.pickPreset(high ? 'high' : 'calm'), 3);
     }
     this.blendT = Math.min(1, this.blendT + sdt / this.blendDur);
-    lerpParams(this.P, this.fromP, this.toP, smooth01(this.blendT));
+    if (this.blendT >= 1 && this.from) {
+      this.from = null;
+      this.applyParticleCount();
+    }
+    // Warm the cache in the background when the driver compiles in parallel.
+    this.warmTimer -= sdt;
+    if (this.warmTimer <= 0 && this.warmNext < PRESETS.length && this.blendT >= 1) {
+      this.warmTimer = 0.3;
+      const p = PRESETS[this.warmNext++];
+      if (!this.cache.has(p) && this.gl.getExtension('KHR_parallel_shader_compile')) this.cache.request(p);
+    }
+  }
+
+  // ------------------------------------------------------------ analysis
+
+  private computeFrame(state: MusicState, sdt: number): void {
+    const F = this.F;
+    const dt = sdt;
+    F.time = this.clock;
+    F.dt = dt;
+    F.aspect = this.width / this.height;
+    F.cx = num(state.complexity, 0.5);
+    const song = this.songCx ?? num(state.songComplexity, 0.5);
+    for (let i = 0; i < 4; i++) {
+      const n = STEMS[i];
+      const pres = num(state.stemPresence?.[n], 0.5);
+      const g = smooth01((pres - 0.03) / 0.25);
+      F.gate[i] = g;
+      F.stem[i] = Math.min(1, num(state.stems?.[n], 0)) * g;
+      F.onset[i] = Math.min(1, num(state.stemOnsets?.[n], 0)) * g;
+    }
+    // Activity budget: absolute musical density, leaning on the song mean.
+    const target = Math.min(1, Math.max(0, (0.75 * F.cx + 0.25 * song - 0.08) / 0.72));
+    F.act += (target - F.act) * (1 - Math.exp(-dt * 1.2));
+    F.loud = num(state.loudness, 0);
+    F.build = num(state.buildIntensity, 0);
+    F.drop = num(state.dropPulse, 0);
+    F.beatPulse = num(state.beatPulse, 0);
+    F.onBeat = !!state.onBeat;
+    F.onBar = !!state.onBar;
+    F.keyTonic = num(state.keyTonic, 0);
+    F.minor = state.keyMode === 'minor';
+    F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
+    F.dropStart = !!state.sectionChanged && state.section?.label === 'drop';
+    const L = this.live;
+    L[0] = Math.min(3, num(state.bass, 1));
+    L[1] = Math.min(3, num(state.mid, 1));
+    L[2] = Math.min(3, num(state.treb, 1));
+    L[3] = num(state.keyHue, 0);
+    L[4] = num(state.keyChangePulse, 0);
+    L[5] = num(state.barPulse, 0);
+    F.speed = (0.4 + 0.75 * F.act) * (1 + 0.5 * F.build) + 0.4 * F.drop * F.act;
+    F.phase = (F.phase + dt * F.speed) % 4096;
+
+    const bpm = num(state.bpm, 120) || 120;
+    F.barIndex = num(state.barIndex, -1);
+    F.beatIndex = num(state.beatIndex, -1);
+    F.barPhase = num(state.barPhase, 0);
+    F.beatPhase = num(state.beatPhase, 0);
+    if (F.barIndex >= 0) F.bars = (F.barIndex + F.barPhase) % 48;
+    else F.bars = (F.bars + (dt * bpm) / 240) % 48;
+    if (F.beatIndex >= 0) F.beats = (F.beatIndex + F.beatPhase) % 256;
+    else F.beats = (F.beats + (dt * bpm) / 60) % 256;
+
+    // Bar-locked spin: one turn per bar, half-time when the music is sparse.
+    let dBar = F.barPhase - this.prevBarPhase;
+    if (dBar < 0) dBar += 1;
+    if (!state.playing || dBar > 0.5) dBar = (bpm / 240) * dt * (state.playing ? 1 : 0.3);
+    this.prevBarPhase = F.barPhase;
+    const spinMul = 0.5 + 0.5 * smooth01((F.act - 0.2) / 0.3);
+    this.spinStep = TAU * dBar * spinMul;
+    F.spin = (F.spin + this.spinStep) % SPIN_WRAP;
+
+    this.processAudio(state, dt);
+
+    // Drum hits (only when a drum stem is actually present).
+    F.hit = 0;
+    this.hitCooldown -= dt;
+    const on = F.onset[0];
+    const edge = on > 0.35 && this.prevDrumOnset <= 0.35;
+    this.prevDrumOnset = on;
+    if (state.playing && this.hitCooldown <= 0 && F.gate[0] > 0.2 && (edge || (F.onBeat && F.stem[0] > 0.25))) {
+      F.hit = Math.max(on, 0.3) * (0.4 + F.stem[0]);
+      this.hitCooldown = 0.1;
+    }
+  }
+
+  private processAudio(state: MusicState, dt: number): void {
+    const gl = this.gl;
+    // Waveform: trigger on a rising zero crossing so the line holds still.
+    const wf = state.waveform;
+    if (wf && wf.length >= WAVE_N * 2) {
+      const half = wf.length - WAVE_N;
+      let start = 0;
+      for (let i = 1; i < half; i++) {
+        if (wf[i - 1] <= 0 && wf[i] > 0) {
+          start = i;
+          break;
+        }
+      }
+      let e = 0;
+      for (let j = 0; j < WAVE_N; j++) {
+        const v = wf[start + j];
+        this.waveTmp[j] = v;
+        e += v * v;
+      }
+      this.rms += (Math.sqrt(e / WAVE_N) - this.rms) * 0.05;
+      const gain = Math.pow(Math.min(4, 0.2 / Math.max(this.rms, 0.012)), 0.6);
+      for (let j = 0; j < WAVE_N; j++) {
+        const a = this.waveTmp[Math.max(0, j - 1)];
+        const b = this.waveTmp[j];
+        const c = this.waveTmp[Math.min(WAVE_N - 1, j + 1)];
+        const s = ((a + 2 * b + c) * 0.25) * gain;
+        this.wave[j] += (s - this.wave[j]) * 0.5;
+      }
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.waveTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WAVE_N, 1, gl.RED, gl.FLOAT, this.wave);
+
+    // Spectrum: log-spaced bins with a noise floor removed; also the melody height.
+    const sp = state.spectrum;
+    if (sp && sp.length >= 64) {
+      const n = sp.length;
+      const top = Math.min(n - 1, Math.round(n * 0.78));
+      for (let k = 0; k < SPEC_N; k++) {
+        const a = Math.floor(Math.pow(top, k / SPEC_N));
+        const b = Math.max(a + 1, Math.floor(Math.pow(top, (k + 1) / SPEC_N)));
+        let s = 0;
+        for (let i = a; i < b; i++) s += sp[i];
+        const v = Math.min(1, Math.max(0, (s / (b - a) - 0.28) / 0.6));
+        const cur = this.spec[k];
+        this.spec[k] = cur + (v - cur) * (v > cur ? 0.5 : 0.12);
+      }
+      const lo = Math.max(2, Math.round(n * 0.006));
+      const hi = Math.max(lo + 4, Math.round(n * 0.12));
+      let wsum = 0;
+      let lsum = 0;
+      for (let i = lo; i < hi; i++) {
+        const w = Math.max(0, sp[i] - 0.3);
+        const w2 = w * w * w;
+        wsum += w2;
+        lsum += w2 * Math.log2(i);
+      }
+      if (wsum > 1e-5) {
+        const m = (lsum / wsum - Math.log2(lo)) / (Math.log2(hi) - Math.log2(lo));
+        this.F.melody += (Math.min(1, Math.max(0, m)) - this.F.melody) * (1 - Math.exp(-dt * 5));
+      }
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.specTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SPEC_N, 1, gl.RED, gl.FLOAT, this.spec);
+
+    if (state.chroma && state.chroma.length >= 12) for (let i = 0; i < 12; i++) this.chroma[i] = num(state.chroma[i], 0);
   }
 
   // ------------------------------------------------------------ simulate
 
   private bigSplat(k: number): void {
     const fl = this.fluid;
-    if (!fl) return;
-    const n = 10;
+    if (!fl || !this.anyFluid()) return;
+    const n = 8;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + this.kalAngle;
+      const a = (i / n) * TAU + this.F.spin;
       const r = 0.06;
       const c = Math.cos(a);
       const s = Math.sin(a);
-      fl.splat(0.5 + (c * r * this.height) / this.width, 0.5 + s * r, c * 1800 * k, s * 1800 * k, 0.004, SPLAT_DIR);
+      fl.splat(0.5 + (c * r * this.height) / this.width, 0.5 + s * r, c * 1500 * k, s * 1500 * k, 0.004, 0);
     }
-    fl.splat(0.5, 0.5, 1400 * k, 0, 0.02, SPLAT_RADIAL);
-    this.spawnRing(0, 0, 1.6 * k);
+    fl.splat(0.5, 0.5, 1200 * k, 0, 0.02, SPLAT_RADIAL);
+  }
+
+  private anyFluid(): boolean {
+    return !!(this.to.preset.fluid || this.from?.preset.fluid);
   }
 
   private spawnRing(x: number, y: number, strength: number): void {
@@ -377,101 +678,31 @@ export class Visualizer implements IVisualizer {
     this.ringY[i] = y;
   }
 
-  private drumHit(state: MusicState, strength: number, barAngle: number): void {
-    const P = this.P;
-    const fl = this.fluid;
-    const aspect = this.width / this.height;
-    const F = 520 * P.splat * strength;
-    const pattern = smooth01(this.blendT) > 0.5 ? this.toP.emitter : this.fromP.emitter;
-    const count = Math.round(smooth01(this.blendT) > 0.5 ? this.toP.emitterCount : this.fromP.emitterCount);
-    let rx = 0;
-    let ry = 0;
-    if (fl) {
-      switch (pattern) {
-        case 'radial':
-          fl.splat(0.5 + (Math.random() - 0.5) * 0.05, 0.5 + (Math.random() - 0.5) * 0.05, F * 1.2, 0, 0.012, SPLAT_RADIAL);
-          break;
-        case 'swirl':
-          this.swirlSign = state.barIndex % 2 === 0 ? 1 : -1;
-          fl.splat(0.5, 0.5, F * this.swirlSign, 0, 0.02, SPLAT_SWIRL);
-          break;
-        case 'orbit':
-          for (let i = 0; i < count; i++) {
-            const a = barAngle + (i / count) * TAU;
-            const c = Math.cos(a);
-            const s = Math.sin(a);
-            const r = 0.28;
-            fl.splat(0.5 + (c * r) / aspect, 0.5 + s * r, -s * F, c * F, 0.003, SPLAT_DIR);
-          }
-          rx = Math.cos(barAngle) * 0.28;
-          ry = Math.sin(barAngle) * 0.28;
-          break;
-        case 'jets':
-          for (let i = 0; i < 2; i++) {
-            const a = barAngle + i * Math.PI;
-            const c = Math.cos(a);
-            const s = Math.sin(a);
-            const r = 0.38;
-            fl.splat(0.5 + (c * r) / aspect, 0.5 + s * r, -c * F * 1.3, -s * F * 1.3, 0.004, SPLAT_DIR);
-          }
-          break;
-        default:
-          for (let i = 0; i < 2; i++) {
-            const a = Math.random() * TAU;
-            fl.splat(0.2 + Math.random() * 0.6, 0.2 + Math.random() * 0.6, Math.cos(a) * F, Math.sin(a) * F, 0.004, SPLAT_DIR);
-          }
-      }
-    }
-    this.spawnRing(rx, ry, 0.35 + 0.9 * strength);
+  private actives(): Active[] {
+    return this.from ? [this.from, this.to] : [this.to];
+  }
+
+  private applyParticleCount(): void {
+    const parts = this.particles;
+    if (!parts) return;
+    let want = 0;
+    for (const a of this.actives()) if (a.preset.particles) want = Math.max(want, a.preset.particles.count);
+    if (!want) return;
+    const n = Math.min(want, this.particleCap);
+    if (Math.abs(parts.count - n) > n * 0.1) parts.setCount(n);
   }
 
   private simulate(state: MusicState, sdt: number, hybrid: boolean): void {
-    const gl = this.gl;
-    const P = this.P;
-    const fb = this.fb!;
-    const w = this.width;
-    const h = this.height;
-    const aspect = w / h;
+    const F = this.F;
     const f60 = sdt * 60;
-    const t = smooth01(this.blendT);
-    const stems = state.stems;
-    const bass = stems?.bass ?? 0;
-    const drums = stems?.drums ?? 0;
-    const voc = stems?.vocals ?? 0;
-    const oth = stems?.other ?? 0;
-    const build = state.buildIntensity || 0;
-    const beat = state.beatPulse || 0;
-    const drop = state.dropPulse || 0;
-
-    // Rhythm: rotation locked to bar progress.
-    let dBar = state.barPhase - this.prevBarPhase;
-    if (dBar < 0) dBar += 1;
-    if (!state.playing || dBar > 0.5) dBar = ((state.bpm || 120) / 60 / 4) * sdt * (state.playing ? 1 : 0.3);
-    this.prevBarPhase = state.barPhase;
-    const flipSrc = t > 0.5 ? this.toP : this.fromP;
-    const sign = flipSrc.rotFlip && state.barIndex % 2 === 1 ? -1 : 1;
-    const rotRad = TAU * dBar * P.rot * sign;
-    this.kalAngle = (this.kalAngle + TAU * dBar * P.kalRot) % TAU;
-    const barAngle = TAU * state.barPhase;
-
-    // Zoom: bass + beat kick + accelerating build + drop release.
-    const zoomRate = (P.zoom - 1) + P.zoomBass * bass + P.zoomBeat * beat + build * build * 0.035 + drop * 0.03;
-    const zoom = 1 + zoomRate * f60;
-    const decayA = Math.pow(P.decayA, f60);
-    const decayB = Math.pow(P.decayB, f60);
-    const acc = 1 - decayA;
-
-    // Drums: onsets and beats trigger splats and rings.
-    this.hitCooldown -= sdt;
-    const on = state.stemOnsets?.drums ?? 0;
-    const onsetEdge = on > 0.35 && this.prevDrumOnset <= 0.35;
-    this.prevDrumOnset = on;
-    if (state.playing && this.hitCooldown <= 0 && (onsetEdge || state.onBeat)) {
-      this.drumHit(state, Math.max(on, 0.3) * (0.4 + drums), barAngle);
-      this.hitCooldown = 0.1;
-    }
+    const w = smooth01(this.blendT);
+    this.to.weight = this.from ? w : 1;
+    if (this.from) this.from.weight = 1 - w;
+    const list = this.actives();
+    const dom = this.from && w < 0.5 ? this.from : this.to;
 
     // Rings
+    if (F.hit > 0) this.spawnRing(dom.rt.ringCenter[0], dom.rt.ringCenter[1], 0.35 + 0.9 * F.hit);
     for (let i = 0; i < MAX_RINGS; i++) {
       const age = (this.ringAge[i] += sdt);
       const o = i * 4;
@@ -482,195 +713,252 @@ export class Visualizer implements IVisualizer {
       this.rings[o] = this.ringX[i];
       this.rings[o + 1] = this.ringY[i];
       this.rings[o + 2] = age * (0.35 + 0.35 * this.ringStr[i]);
-      this.rings[o + 3] = this.ringStr[i] * Math.exp(-age * 3.2) * P.drumsW * 0.55 * Math.min(1, f60 * 1.2);
+      this.rings[o + 3] = this.ringStr[i] * Math.exp(-age * 3.2) * 0.55 * Math.min(1, f60 * 1.2);
     }
 
-    // Palette
-    const hue = (state.keyHue || 0) + P.hueOffset;
-    const sat = P.sat * (0.72 + 0.4 * voc) * (1 - 0.55 * build);
-    paletteColors(this.fromP.palette, hue, sat, this.colTmp, 0);
-    paletteColors(this.toP.palette, hue, sat, this.colTmp, 9);
-    for (let i = 0; i < 9; i++) this.cols[i] = this.colTmp[i] + (this.colTmp[i + 9] - this.colTmp[i]) * t;
-    const c = this.cols;
-
-    // Waveform (temporal + spatial smoothing)
-    const wf = state.waveform;
-    if (wf && wf.length) {
-      const n = Math.min(wf.length, WAVE_N);
-      let prev = wf[0];
-      for (let i = 0; i < n; i++) {
-        const cur = wf[i];
-        const nx = wf[Math.min(n - 1, i + 1)];
-        const s = (prev + cur * 2 + nx) * 0.25;
-        this.wave[i] += (s - this.wave[i]) * 0.6;
-        prev = cur;
+    // Per-preset hooks, palette and scroll
+    const hue0 = num(state.keyHue, 0);
+    for (const a of list) {
+      const p = a.preset;
+      a.rt.curveBright = 1;
+      p.js?.(F, a.rt, this.fx);
+      const sat = (p.sat ?? 1) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
+      paletteColors(p.palette, hue0 + (p.hue ?? 0), sat, a.cols, 0);
+      a.shift[0] = a.shift[1] = 0;
+      if (p.scroll) {
+        for (let k = 0; k < 2; k++) {
+          const v = -p.scroll[k] * F.speed * sdt * this.height + a.rem[k];
+          const n = Math.round(v);
+          a.rem[k] = v - n;
+          a.shift[k] = n / this.height;
+        }
       }
     }
-    gl.bindTexture(gl.TEXTURE_2D, this.waveTex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WAVE_N, 1, gl.RED, gl.FLOAT, this.wave);
 
-    // Fluid
+    // Fluid (only when a live preset uses it)
     const fl = this.fluid;
-    if (fl) {
+    const fluidP = list.find((a) => a.preset.fluid)?.preset.fluid;
+    if (fl && fluidP) {
       fl.dissipation = 0.6;
-      fl.step(sdt, this.clock, P.noise * (0.25 + 0.9 * oth) * 0.55 * f60, P.vorticity, aspect);
+      fl.step(sdt, this.clock, fluidP.noise * (0.3 + 0.7 * F.act) * (0.3 + 0.7 * F.stem[3]) * 0.5 * f60, fluidP.vorticity, F.aspect);
     }
 
-    // Particles (update)
+    // Particles (only when a live preset opts in)
+    this.partOwner = null;
+    for (const a of list) if (a.preset.particles && (!this.partOwner || a.weight > this.partOwner.weight)) this.partOwner = a;
     const parts = this.particles;
-    if (parts && fl) {
+    this.stats.particles = this.partOwner && parts ? parts.count : 0;
+    if (parts && this.partOwner) {
+      const s = this.partOwner.preset.particles!;
       const pu = this.pu;
       pu.dt = sdt;
       pu.time = this.clock;
-      pu.aspect = aspect;
-      pu.velocity = fl.velocityTex;
-      pu.simTexelX = fl.texelX;
-      pu.simTexelY = fl.texelY;
-      pu.fluidAmt = P.partFluid;
-      pu.curl = P.partCurl * (0.5 + oth);
-      pu.zoomFlow = (zoom - 1) / Math.max(sdt, 1e-3);
-      pu.rotFlow = rotRad / Math.max(sdt, 1e-3);
-      pu.converge = build * 2.2;
-      pu.drag = 2.5;
-      pu.lifeRate = P.partLife;
-      pu.speed = P.partSpeed * (0.6 + drums);
-      pu.spawnFrom = this.fromP.spawn;
-      pu.spawnTo = this.toP.spawn;
-      pu.spawnMix = t;
-      pu.emitCount = t > 0.5 ? this.toP.emitterCount : this.fromP.emitterCount;
-      pu.emitAngle = barAngle;
-      pu.emitRadius = 0.28;
-      pu.burst = state.playing && state.onBeat ? 0.03 + 0.05 * drums : 0;
-      if (state.sectionChanged && state.section?.label === 'drop') pu.burst = 0.5;
+      pu.aspect = F.aspect;
+      pu.velocity = fl && fluidP ? fl.velocityTex : this.black;
+      pu.simTexelX = fl ? fl.texelX : 0;
+      pu.simTexelY = fl ? fl.texelY : 0;
+      pu.fluidAmt = fl && fluidP ? s.fluid ?? 0 : 0;
+      pu.curl = s.curl * (0.5 + F.stem[3]);
+      pu.zoomFlow = (s.zoomFlow ?? 0) * F.speed * (1 + 0.8 * F.stem[1]);
+      pu.rotFlow = 0;
+      pu.converge = F.build * 1.5;
+      pu.drag = s.drag ?? 2.5;
+      pu.lifeRate = s.life;
+      pu.speed = s.speed * F.speed;
+      pu.spawnFrom = pu.spawnTo = s.spawn;
+      pu.spawnMix = 0;
+      pu.emitAngle = TAU * F.barPhase;
+      pu.burst = F.hit > 0 ? 0.02 * F.act : 0;
       pu.burstSeed = Math.random() * 1000;
-      pu.burstSpeed = 0.5 + drums + drop * 1.5;
+      pu.burstSpeed = 0.3 + F.stem[0] + F.drop;
+      pu.liftX = s.lift ? s.lift[0] * F.speed : 0;
+      pu.liftY = s.lift ? s.lift[1] * F.speed : 0;
+      pu.spread = s.spread ?? 0.01;
       parts.update(pu);
     }
 
-    // Feedback pass (MRT: A and B)
-    fb.write.bind();
-    const fp = this.pFeedback.use();
-    fp.f2('uTexel', 0, 0)
-      .tex('uPrevA', fb.read.tex[0])
-      .tex('uPrevB', fb.read.tex[1])
-      .tex('uVel', fl ? fl.velocityTex : this.black)
-      .tex('uBC', hybrid ? this.classic!.texture : this.black)
-      .f2('uRes', w, h)
-      .f2('uSimTexel', fl ? fl.texelX : 0, fl ? fl.texelY : 0)
-      .f1('uAspect', aspect)
+    // Fractal flame (only when a live preset is a flame)
+    this.flameOwner = null;
+    for (const a of list) if (a.preset.flame && (!this.flameOwner || a.weight > this.flameOwner.weight)) this.flameOwner = a;
+    if (this.flameOwner && this.hq) {
+      const o = this.flameOwner;
+      const spec = o.preset.flame!;
+      if (!this.flame) this.flame = new Flame(this.gl, this.fs);
+      const n = Math.min(spec.count, this.particleCap);
+      if (Math.abs(this.flame.count - n) > n * 0.1) this.flame.setCount(n);
+      const rt = o.rt;
+      if (F.dropStart) rt.mem.mt = (rt.mem.mt ?? 0) > 0.5 ? 0 : 1;
+      rt.mem.m = (rt.mem.m ?? 0) + ((rt.mem.mt ?? 0) - (rt.mem.m ?? 0)) * (1 - Math.exp(-sdt * 0.8));
+      this.flame.configure(spec, { spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: rt.mem.m, hue: 0 });
+      this.stats.particles += this.flame.count;
+    }
+
+    // Feedback passes
+    for (const a of list) if (a.progs.feedback) this.feedbackPass(a, hybrid, sdt);
+  }
+
+  /** Uniforms shared by every per-preset program (see LIB in shaders.ts). */
+  private setCommon(p: Program, a: Active, sdt: number): void {
+    const F = this.F;
+    const c = a.cols;
+    const pr = a.preset;
+    p.f2('uRes', this.width, this.height)
+      .f1('uAspect', F.aspect)
+      .f1('uTime', this.clock % 4096)
+      .f1('uPhase', F.phase)
       .f1('uDt', sdt)
-      .f1('uTime', this.clock)
-      .f1('uZoom', zoom)
-      .f1('uZoomExp', P.zoomExp)
-      .f1('uRot', rotRad)
-      .f1('uBZoom', P.bZoom)
-      .f1('uBRot', P.bRot)
-      .f2('uTrans', P.trans * 0.0015 * Math.sin(this.clock * 0.31) * f60, P.trans * 0.0015 * Math.cos(this.clock * 0.23) * f60)
-      .f4('uWarp0', this.fromP.warpFn, P.warpAmt * (1 + build * 0.6) * f60, P.warpSpeed, P.warpScale)
-      .f4('uWarp1', this.toP.warpFn, P.warpAmt * (1 + build * 0.6) * f60, P.warpSpeed, P.warpScale)
-      .f1('uWarpMix', t)
-      .f1('uFluid', fl ? P.fluid : 0)
-      .f1('uCouple', P.couple)
-      .f1('uBlur', P.blur)
-      .f1('uDecaySub', this.hq ? 0.004 * f60 : 1.5 / 255)
-      .f1('uHueDrift', P.hueDrift * f60)
-      .f2('uDecay', decayA, decayB)
+      .f1('uF60', sdt * 60)
+      .f1('uSpeed', F.speed)
+      .f1('uBeat', F.beatPhase)
+      .f1('uBar', F.barPhase)
+      .f1('uBars', F.bars)
+      .f1('uBeats', F.beats)
+      .f1('uBeatPulse', F.beatPulse)
+      .f1('uBarPulse', this.live[5])
+      .f1('uSpin', F.spin)
+      .f1('uSpinStep', this.spinStep)
+      .f3('uBands', this.live[0], this.live[1], this.live[2])
+      .f4('uStem', F.stem[0], F.stem[1], F.stem[2], F.stem[3])
+      .f4('uOnset', F.onset[0], F.onset[1], F.onset[2], F.onset[3])
+      .f4('uPres', F.gate[0], F.gate[1], F.gate[2], F.gate[3])
+      .f1('uCx', F.cx)
+      .f1('uAct', F.act)
+      .f1('uBuild', F.build)
+      .f1('uDrop', F.drop)
+      .f1('uFlash', this.flash)
+      .f1('uLoud', F.loud)
+      .f1('uMelody', F.melody)
+      .f1('uKeyHue', this.live[3])
+      .f1('uKeyPulse', this.live[4])
+      .f1('uMinor', F.minor ? 1 : 0)
       .f3('uColA', c[0], c[1], c[2])
       .f3('uColB', c[3], c[4], c[5])
       .f3('uColC', c[6], c[7], c[8])
-      .f4v('uRings', this.rings);
-    const sides = t > 0.5 ? this.toP.bassSides : this.fromP.bassSides;
-    fp.f4(
-      'uBass',
-      0.07 + 0.15 * bass * P.bassSize + 0.02 * beat,
-      sides,
-      barAngle * (state.barIndex % 2 === 1 && flipSrc.rotFlip ? -1 : 1),
-      P.bassW * (0.15 + bass * 1.2) * acc * 1.4,
-    );
-    fp.f4('uVocal', P.vocalsW * Math.pow(voc, 1.4) * acc * 2, 0.006 + 0.016 * voc, this.clock * 0.9, 0);
-    if (state.chroma && state.chroma.length >= 12) for (let i = 0; i < 12; i++) this.chroma[i] = state.chroma[i];
-    fp.f1v('uChroma', this.chroma);
-    fp.f4('uChromaP', 0.36, barAngle, P.chromaW * (0.3 + oth) * acc * 3.5, P.sparkle * oth * 0.002);
-    fp.f1('uKeyHue', state.keyHue || 0);
-    fp.f1('uBCMix', hybrid ? 0.12 * (1 + beat) : 0);
-    fp.f1('uBuild', build);
+      .f2('uShift', a.shift[0], a.shift[1])
+      .f1('uDecay', Math.pow(pr.decay ?? 0.96, sdt * 60))
+      .f4v('uV', a.rt.v)
+      .f4v('uSeg', a.rt.seg)
+      .f4v('uSegZ', a.rt.segZ)
+      .i1('uSegN', a.rt.segN)
+      .f1v('uChroma', this.chroma)
+      .tex('uWave', this.waveTex)
+      .tex('uSpec', this.specTex);
+  }
+
+  private feedbackPass(a: Active, hybrid: boolean, sdt: number): void {
+    const gl = this.gl;
+    const F = this.F;
+    const pp = this.pool[a.buf];
+    const pr = a.preset;
+    const fl = this.fluid;
+    pp.write.bind();
     gl.disable(gl.BLEND);
+    const p = a.progs.feedback!.use();
+    this.setCommon(p, a, sdt);
+    p.tex('uPrev', pp.read.t)
+      .tex('uVel', fl && pr.fluid ? fl.velocityTex : this.black)
+      .tex('uBC', hybrid ? this.classic!.texture : this.black)
+      .f2('uSimTexel', fl ? fl.texelX : 0, fl ? fl.texelY : 0)
+      .f1('uFluidAmt', pr.fluid ? pr.fluid.amount : 0)
+      .f1('uBlur', pr.blur ?? 0)
+      .f1('uDecaySub', (this.hq ? 0.0015 : 1.5 / 255) * (pr.floor ?? 1) * sdt * 60)
+      .f1('uBCMix', hybrid ? 0.12 * (1 + F.beatPulse) : 0)
+      .f1('uRingW', (pr.rings ?? 0) * F.gate[0] * (0.4 + 0.6 * F.act))
+      .f4v('uRings', this.rings);
     this.fs.draw();
 
-    // Waveform
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
-    const waveBright = P.waveW * (0.35 + 0.6 * (state.loudness || 0) + 2.5 * beat + drop * 3) * acc * 3.5;
-    const thick = P.waveThick * (h / 1080) * (1 + beat * 0.6);
-    const wp = this.pWave.use();
-    wp.tex('uWave', this.waveTex)
-      .f1('uAmp', P.waveAmp * (0.8 + 0.6 * (state.mid || 0)))
-      .f1('uThick', thick)
-      .f1('uAspect', aspect)
-      .f1('uAngle', barAngle)
-      .f1('uN', WAVE_N)
-      .f1('uMirrorW', P.waveMirror)
-      .f2('uRes', w, h)
-      .f3('uColA', c[0], c[1], c[2])
-      .f3('uColC', c[6], c[7], c[8])
-      .f2('uRoute', 1, 0.3);
-    gl.bindVertexArray(this.waveVao);
-    if (this.fromP.waveStyle === this.toP.waveStyle) {
-      wp.f1('uStyle', this.toP.waveStyle).f1('uBright', waveBright);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, WAVE_N * 2, 2);
-    } else {
-      wp.f1('uStyle', this.fromP.waveStyle).f1('uBright', waveBright * (1 - t));
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, WAVE_N * 2, 2);
-      wp.f1('uStyle', this.toP.waveStyle).f1('uBright', waveBright * t);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, WAVE_N * 2, 2);
-    }
-
-    // Particles into the feedback so they leave trails.
-    if (parts) {
-      const size = Math.max(1, P.partSize * (h / 1080));
-      const density = (parts.count * size * size) / (w * h);
-      const bright = (P.partW * 0.035 * acc * (0.6 + 0.8 * oth + 0.6 * beat)) / Math.max(density, 0.02);
-      parts.draw(size, bright, c, 0.75, 0.35);
+    if (a.progs.curve && pr.curve && pr.curve.target !== 'top') this.drawCurve(a, 1, sdt);
+    if (this.partOwner === a && pr.particles?.target === 'fb') this.drawParticles(a, 1);
+    if (this.flameOwner === a && this.flame && pr.flame) {
+      const spec = pr.flame;
+      const fill = 1 - Math.pow(pr.decay ?? 0.9, sdt * 60);
+      const w = (spec.gain * 0.06 * fill * this.width * this.height) / (this.flame.count * spec.rounds);
+      for (let i = 0; i < spec.rounds; i++) {
+        this.flame.update();
+        pp.write.bind();
+        this.flame.draw(w * (0.8 + 0.4 * F.loud), F.aspect, a.cols);
+      }
     }
     gl.disable(gl.BLEND);
-    fb.swap();
+    pp.swap();
+  }
+
+  private drawCurve(a: Active, weight: number, sdt: number): void {
+    const gl = this.gl;
+    const c = a.preset.curve!;
+    const p = a.progs.curve!.use();
+    this.setCommon(p, a, sdt);
+    p.f1('uN', c.n)
+      .f1('uThick', c.thick * (this.height / 1080))
+      .f1('uBright', c.bright * a.rt.curveBright * weight);
+    gl.bindVertexArray(this.lineVao);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, c.n * 2, c.instances ?? 1);
+  }
+
+  private drawParticles(a: Active, weight: number): void {
+    const parts = this.particles!;
+    const s = a.preset.particles!;
+    const F = this.F;
+    const size = Math.max(1, s.size * (this.height / 1080));
+    const alive = s.minAct !== undefined ? smooth01((F.act - s.minAct) / 0.3) : 0.35 + 0.65 * F.act;
+    if (alive <= 0.001) return;
+    const bright = s.bright * weight * (s.target === 'fb' ? 0.5 : 1) * (0.7 + 0.6 * F.beatPulse * F.gate[0]);
+    parts.draw(size, bright, alive, a.cols);
   }
 
   // ------------------------------------------------------------- compose
 
-  private drawScene(state: MusicState, classic: boolean): void {
-    const P = this.P;
-    const t = smooth01(this.blendT);
-    const voc = state.stems?.vocals ?? 0;
-    const build = state.buildIntensity || 0;
+  private compose(state: MusicState, hybrid: boolean): void {
+    const gl = this.gl;
+    const F = this.F;
+    const dt = this.F.dt;
     this.scene!.bind();
-    const sp = this.pScene.use();
-    if (classic) {
-      sp.tex('uA', this.classic!.texture).tex('uB', this.black).f1('uLinearize', 1).f3('uKal', 0, 0, 0).f1('uMirror', 0);
-      sp.f1('uSat', 1).f1('uHueShift', 0);
-    } else {
-      const kf = this.fromP.kaleido;
-      const kt = this.toP.kaleido;
-      sp.tex('uA', this.fb!.read.tex[0])
-        .tex('uB', this.fb!.read.tex[1])
-        .f1('uLinearize', 0)
-        .f3('uKal', kf, kt, kf === kt ? 0 : t)
-        .f1('uKalRot', this.kalAngle)
-        .f1('uMirror', (t > 0.5 ? this.toP.mirror : this.fromP.mirror) ? 1 : 0)
-        .f1('uSat', 1 + 0.2 * voc - 0.45 * build)
-        .f1('uHueShift', voc * 0.3 * Math.sin(this.clock * 0.37));
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    const sat = 1 - 0.45 * F.build;
+    for (const a of this.actives()) {
+      if (a.weight < 0.001) continue;
+      const p = a.progs.composite.use();
+      this.setCommon(p, a, dt);
+      p.tex('uFb', a.progs.feedback ? this.pool[a.buf].read.t : this.black)
+        .tex('uBC', hybrid ? this.classic!.texture : this.black)
+        .f1('uWeight', a.weight)
+        .f1('uSat', sat)
+        .f1('uSweep', num(state.keyChangePulse, 0))
+        .f1('uBCMix', hybrid ? 0.25 : 0);
+      this.fs.draw();
     }
-    sp.f1('uAspect', this.width / this.height)
-      .f1('uBMix', P.bMix).f1('uSweep', state.keyChangePulse || 0);
-    this.fs.draw();
+    // Top layers (not part of any feedback)
+    for (const a of this.actives()) {
+      if (a.weight < 0.001) continue;
+      if (a.progs.curve && a.preset.curve?.target === 'top') this.drawCurve(a, a.weight, dt);
+      if (this.partOwner === a && a.preset.particles?.target === 'top') this.drawParticles(a, a.weight);
+    }
+    gl.disable(gl.BLEND);
   }
 
   private post(state: MusicState, classic: boolean): void {
     const gl = this.gl;
-    const P = this.P;
-    const beat = state.beatPulse || 0;
-    const drop = state.dropPulse || 0;
-    const build = state.buildIntensity || 0;
+    const F = this.F;
+    const beat = F.beatPulse;
+    const drop = F.drop;
+    const build = F.build;
+    // Post parameters crossfade with the preset blend.
+    let bloomP = 0;
+    let expP = 0;
+    let vigP = 0;
+    let adaptP = 0;
+    for (const a of this.actives()) {
+      const w = this.from ? a.weight : 1;
+      bloomP += (a.preset.bloom ?? 1) * w;
+      expP += (a.preset.exposure ?? 1) * w;
+      vigP += (a.preset.vignette ?? 0.45) * w;
+      adaptP += (a.preset.adapt ?? 0.6) * w;
+    }
     this.bloom.run(this.scene!, classic ? 0.55 : 0.9 - build * 0.3, 0.5);
     this.avgLum.write.bind();
     this.pExposure
@@ -683,20 +971,21 @@ export class Visualizer implements IVisualizer {
     this.avgLum.swap();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.width, this.height);
-    const bloomStr = classic ? 0.25 : P.bloom * (0.32 + 0.3 * build + this.flash * 0.8 + drop * 0.6) / this.bloom.levels * 1.6;
-    const exposure = classic ? 1 : P.exposure * (0.72 + 0.15 * beat + 0.2 * drop + 0.15 * build + this.flash * 0.25);
+    const actB = 0.55 + 0.6 * F.act;
+    const bloomStr = classic ? 0.25 : (bloomP * actB * (0.32 + 0.3 * build + this.flash * 0.8 + drop * 0.6)) / this.bloom.levels * 1.6;
+    const exposure = classic ? 1 : expP * (0.78 + 0.12 * beat * F.act + 0.2 * drop + 0.15 * build + this.flash * 0.25);
     this.pFinal
       .use()
       .tex('uScene', this.scene!.t)
       .tex('uBloom', this.bloom.output)
       .tex('uAvg', this.avgLum.read.t)
       .f1('uKey', classic ? 1 : 0.12)
-      .f1('uAdapt', classic ? 0 : 0.75)
-      .f1('uContrast', classic ? 0 : 0.035)
+      .f1('uAdapt', classic ? 0 : adaptP)
+      .f1('uContrast', classic ? 0 : 0.03)
       .f1('uBloomStr', bloomStr)
       .f1('uExposure', exposure)
-      .f1('uCA', classic ? 0 : 0.002 + drop * 0.02 + this.flash * 0.006)
-      .f1('uVignette', classic ? 0.25 : P.vignette)
+      .f1('uCA', classic ? 0 : 0.0015 + drop * 0.015 * F.act + this.flash * 0.005)
+      .f1('uVignette', classic ? 0.25 : vigP)
       .f1('uTonemap', classic ? 0 : 1)
       .f1('uFrame', this.frame % 1024);
     this.fs.draw();
@@ -705,7 +994,7 @@ export class Visualizer implements IVisualizer {
   // ------------------------------------------------------------- helpers
 
   private ensureClassic(): void {
-    if (this.classic || !this.fb) return;
+    if (this.classic || !this.pool.length) return;
     this.classic = new Classic(this.gl, this.audio);
     const [w, h] = this.classicSize();
     void this.classic.load(w, h);
@@ -725,15 +1014,15 @@ export class Visualizer implements IVisualizer {
 
   private adaptPerformance(dt: number): void {
     const parts = this.particles;
-    if (!parts) return;
-    this.stats.particles = parts.count;
+    if (!parts || !this.partOwner) return;
     if (typeof document !== 'undefined' && document.hidden) return;
-    if (this.stats.frameMs > 20 && parts.count > 262144 && this.frame > 120) {
+    if (this.stats.frameMs > 20 && parts.count > 32768 && this.frame > 120) {
       this.slowTime += dt;
       if (this.slowTime > 3) {
-        parts.setCount(262144);
+        this.particleCap = Math.max(16384, Math.floor(parts.count / 4));
+        this.applyParticleCount();
         this.slowTime = 0;
-        console.info('[render] frame time above 20 ms, reducing particles to 262144');
+        console.info(`[render] frame time above 20 ms, reducing particles to ${parts.count}`);
       }
     } else {
       this.slowTime = Math.max(0, this.slowTime - dt);

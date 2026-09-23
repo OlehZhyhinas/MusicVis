@@ -19,6 +19,13 @@
 
       <div id="hud" hidden></div>
 
+      <div id="preset-label" aria-live="polite"></div>
+
+      <form id="preset-goto" class="panel" hidden>
+        <label for="preset-goto-input">Go to preset</label>
+        <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. E07 or C-3fa2" />
+      </form>
+
       <aside id="playlist-panel" class="panel" hidden>
         <div id="playlist-header">
           <span id="playlist-title">Playlist</span>
@@ -94,6 +101,8 @@
             <dd>Toggle HUD</dd>
             <dt>N</dt>
             <dd>Next preset</dd>
+            <dt>G</dt>
+            <dd>Go to preset by ID</dd>
             <dt>1 / 2 / 3</dt>
             <dd>Enhanced / Classic / Hybrid mode</dd>
             <dt>M</dt>

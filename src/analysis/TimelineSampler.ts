@@ -11,6 +11,7 @@ const DROP_TAU = 1.5;
 const KEY_PULSE_TAU = 0.6;
 const KEY_HUE_TAU = 0.5; // ~95% settled after 1.5 s
 const BUILD_DECAY_TAU = 0.4;
+const COMPLEXITY_TAU = 2.0; // extra smoothing of the precomputed complexity
 const SEEK_THRESHOLD = 0.5; // seconds; larger jumps are treated as seeks
 
 /** Index of the last element <= t, or -1. */
@@ -124,7 +125,10 @@ export class TimelineSampler {
       onBar: false,
       stems: zeroStems(),
       stemOnsets: zeroStems(),
+      stemPresence: zeroStems(),
       loudness: 0,
+      complexity: 0,
+      songComplexity: Number.isFinite(result.songComplexity) ? result.songComplexity : 0,
       chroma: new Float32Array(12),
       keyTonic: this.keys[0].tonic,
       keyMode: this.keys[0].mode,
@@ -250,8 +254,16 @@ export class TimelineSampler {
       const name = STEM_NAMES[k];
       const e = r.stems[name];
       const o = r.stemOnsets[name];
+      const pr = r.stemPresence?.[name];
       s.stems[name] = T > 0 ? e[i0] + (e[i1] - e[i0]) * f : 0;
       s.stemOnsets[name] = T > 0 ? o[i0] + (o[i1] - o[i0]) * f : 0;
+      s.stemPresence[name] = T > 0 && pr && pr.length >= T ? pr[i0] + (pr[i1] - pr[i0]) * f : 0;
+    }
+    {
+      const c = r.complexity;
+      const target = T > 0 && c && c.length >= T ? c[i0] + (c[i1] - c[i0]) * f : 0;
+      // Snap after seeks / on the first frame, otherwise follow over ~2 s.
+      s.complexity = jumped ? target : s.complexity + (target - s.complexity) * (1 - Math.exp(-dt / COMPLEXITY_TAU));
     }
     s.loudness = T > 0 ? r.loudness[i0] + (r.loudness[i1] - r.loudness[i0]) * f : 0;
     if (T > 0) {

@@ -18,9 +18,31 @@ export interface StemFeatures {
   snareOnset: Float32Array;
   /** T * TIMBRE_BANDS log band energies (dB) for structure analysis. */
   timbre: Float32Array;
+  /** Unnormalized per-frame features for absolute (cross-song) measures. */
+  raw: RawStemFeatures;
+}
+
+export interface RawStemFeatures {
+  /** Per-stem power per frame (same scale as the input band powers). */
+  power: Record<StemName, Float32Array>;
+  /** Per-stem power with a mild equal-loudness weighting (half of A-weighting in dB). */
+  weighted: Record<StemName, Float32Array>;
+  /** Spectral flatness of the percussive component, 2..10 kHz (noise-like hats / snares ~0.5+, tonal attacks low). */
+  percHighFlatness: Float32Array;
+  /** Total (unweighted) band power per frame of the mid signal. */
+  total: Float32Array;
+  /** Percussive power above 2 kHz (hats, snare noise) per frame. */
+  percHigh: Float32Array;
+  /** Log-magnitude spectral flux of the full mix (mean positive dB rise per band). */
+  flux: Float32Array;
+  /** Log-magnitude flux of the percussive component (same units). */
+  percFlux: Float32Array;
+  /** Spectral flatness of the mix, 100 Hz..8 kHz, 0 (tonal) .. 1 (white noise). */
+  flatness: Float32Array;
 }
 
 const TINY = 1e-20;
+const inv0 = (n: number) => (n > 0 ? 1 / n : 0);
 const MAX_RANGE_DB = 36;
 
 function toDb(p: number): number {
@@ -132,10 +154,12 @@ export function computeStems(
 
   // Band roles.
   const wA = new Float32Array(B);
+  const wHalf = new Float32Array(B);
   const timbreIdx = new Int32Array(B);
   for (let b = 0; b < B; b++) {
     const f = freq[b];
     wA[b] = aWeightPower(Math.max(f, 1));
+    wHalf[b] = Math.sqrt(wA[b]);
     const lf = Math.log(Math.max(f, 30) / 30) / Math.log(11000 / 30);
     timbreIdx[b] = Math.min(TIMBRE_BANDS - 1, Math.max(0, Math.floor(lf * TIMBRE_BANDS)));
   }
@@ -159,6 +183,21 @@ export function computeStems(
   const prevHarm = new Float32Array(B).fill(floorDb);
   const prevCenter = new Float32Array(B).fill(floorDb);
   const prevOther = new Float32Array(B).fill(floorDb);
+  const prevFull = new Float32Array(B).fill(floorDb);
+  const percHighP = new Float32Array(T);
+  const fullF = new Float32Array(T);
+  const flatness = new Float32Array(T);
+  let nFlat = 0;
+  for (let b = 0; b < B; b++) if (freq[b] >= 100 && freq[b] <= 8000) nFlat++;
+  const iFlat = inv0(nFlat);
+  const drumsW = new Float32Array(T);
+  const bassW = new Float32Array(T);
+  const vocW = new Float32Array(T);
+  const otherW = new Float32Array(T);
+  const percHiFlat = new Float32Array(T);
+  let nPF = 0;
+  for (let b = 0; b < B; b++) if (freq[b] >= 2000 && freq[b] <= 10000) nPF++;
+  const iPF = inv0(nPF);
   const center = new Float32Array(B);
 
   let nDrum = 0,
@@ -206,6 +245,16 @@ export function computeStems(
     let logSum = 0;
     let linSum = 0;
     let harmSum = 0;
+    let fFull = 0;
+    let pHi = 0;
+    let flLog = 0;
+    let flLin = 0;
+    let pfLog = 0;
+    let pfLin = 0;
+    let wDr = 0,
+      wBa = 0,
+      wOt = 0,
+      wVo = 0;
     for (let b = 0; b < B; b++) {
       const xm = X[o + b];
       const x2 = xm * xm;
@@ -219,12 +268,28 @@ export function computeStems(
       const f = freq[b];
       lo += x2 * wA[b];
       timbreAcc[timbreIdx[b]] += x2;
+      if (f >= 40 && f <= 12000) {
+        const xDb = Math.max(floorDb, toDb(x2));
+        const dx = xDb - prevFull[b];
+        prevFull[b] = xDb;
+        if (dx > 0) fFull += dx;
+        if (f >= 2000) pHi += perc;
+        if (f >= 100 && f <= 8000) {
+          flLog += xDb;
+          flLin += x2;
+        }
+      }
 
       const percDb = Math.max(floorDb, toDb(perc));
       const dPerc = percDb - prevPerc[b];
       prevPerc[b] = percDb;
       if (f >= 40 && f <= 12000) {
         dr += perc;
+        wDr += perc * wHalf[b];
+        if (f >= 2000 && f <= 10000) {
+          pfLog += percDb;
+          pfLin += perc;
+        }
         if (dPerc > 0) fDr += dPerc;
       }
       if (f < 150) {
@@ -235,6 +300,7 @@ export function computeStems(
 
       if (f < 250) {
         ba += harm;
+        wBa += harm * wHalf[b];
         const hDb = Math.max(floorDb, toDb(harm));
         const d = hDb - prevHarm[b];
         prevHarm[b] = hDb;
@@ -254,6 +320,7 @@ export function computeStems(
         }
         const oth = harm - c;
         ot += oth;
+        wOt += oth * wHalf[b];
         const oDb = Math.max(floorDb, toDb(oth));
         const d = oDb - prevOther[b];
         prevOther[b] = oDb;
@@ -285,6 +352,8 @@ export function computeStems(
       if (f < 250 || f > 4000) continue;
       const c = center[b] * tonal;
       vo += c;
+      wVo += c * wHalf[b];
+      wOt += (1 - tonal) * center[b] * wHalf[b];
       const cDb = Math.max(floorDb, toDb(c));
       const d = cDb - prevCenter[b];
       prevCenter[b] = cDb;
@@ -303,6 +372,17 @@ export function computeStems(
     vocF[t] = fVo * iVoc;
     otherF[t] = fOt * iOther;
     kickF[t] = fK * iKick;
+    percHighP[t] = pHi;
+    if (pfLin > 0 && nPF > 0) percHiFlat[t] = clamp01(Math.pow(10, (pfLog * iPF) / 10) / (pfLin * iPF));
+    drumsW[t] = wDr;
+    bassW[t] = wBa;
+    vocW[t] = wVo;
+    otherW[t] = wOt;
+    fullF[t] = fFull * iDrum;
+    if (flLin > 0 && nFlat > 0) {
+      // Geometric / arithmetic mean (dB-floored bands keep silence finite).
+      flatness[t] = clamp01(Math.pow(10, (flLog * iFlat) / 10) / (flLin * iFlat));
+    }
     snareF[t] = fS * iSnare;
     for (let k = 0; k < TIMBRE_BANDS; k++) timbre[t * TIMBRE_BANDS + k] = Math.max(floorDb, toDb(timbreAcc[k]));
     if (progress && t % reportEvery === 0) progress(0.4 + (0.6 * t) / T);
@@ -336,5 +416,15 @@ export function computeStems(
     kickOnset: silent ? zero() : normalizeOnset(kickF, 4),
     snareOnset: silent ? zero() : normalizeOnset(snareF, 4),
     timbre,
+    raw: {
+      power: { drums: drumsP, bass: bassP, vocals: vocP, other: otherP },
+      weighted: { drums: drumsW, bass: bassW, vocals: vocW, other: otherW },
+      percHighFlatness: percHiFlat,
+      total,
+      percHigh: percHighP,
+      flux: fullF,
+      percFlux: drumsF,
+      flatness,
+    },
   };
 }

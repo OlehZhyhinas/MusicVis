@@ -8,6 +8,7 @@ import { computeStems, TIMBRE_BANDS } from './stems';
 import { onsetEnvelope, estimateTempo, trackBeats, refineBeats, downbeatPhase } from './beats';
 import { computeChroma, resampleChroma, detectKeys } from './key';
 import { detectSections } from './structure';
+import { computeComplexity, type ComplexityFeatures } from './complexity';
 
 export type ProgressFn = (stage: string, progress: number) => void;
 
@@ -17,7 +18,18 @@ function pow2Near(x: number): number {
   return Math.pow(2, Math.max(5, Math.round(Math.log2(Math.max(32, x)))));
 }
 
-export function analyzePcm(left: Float32Array, right: Float32Array, sampleRate: number, onProgress?: ProgressFn): AnalysisResult {
+/** Optional diagnostics sink (tests / calibration scripts). */
+export interface AnalysisDebug {
+  complexity?: ComplexityFeatures;
+}
+
+export function analyzePcm(
+  left: Float32Array,
+  right: Float32Array,
+  sampleRate: number,
+  onProgress?: ProgressFn,
+  debug?: AnalysisDebug,
+): AnalysisResult {
   const report = (stage: string, p: number) => onProgress?.(stage, Math.max(0, Math.min(1, p)));
   const duration = sampleRate > 0 ? left.length / sampleRate : 0;
   report('Preparing audio', 0);
@@ -64,6 +76,11 @@ export function analyzePcm(left: Float32Array, right: Float32Array, sampleRate: 
   const chromaRaw = computeChroma(mid, sr, n * 2, hop * 4);
   const chroma = resampleChroma(chromaRaw, T, frameRate);
   report('Harmony', 0.62);
+
+  // --- Absolute presence / complexity ---
+  const cx = computeComplexity({ raw: st.raw, T, frameRate, fftSize: n, chroma });
+  if (debug) debug.complexity = cx;
+  report('Harmony', 0.65);
 
   // --- Beats ---
   const env = onsetEnvelope(mid, sr, n / 2, hop, T);
@@ -135,6 +152,10 @@ export function analyzePcm(left: Float32Array, right: Float32Array, sampleRate: 
     drums: st.stems.drums,
     bass: st.stems.bass,
     drumOnsets: st.stemOnsets.drums,
+    complexity: cx.complexity,
+    drumsPresence: cx.stemPresence.drums,
+    bassPresence: cx.stemPresence.bass,
+    songComplexity: cx.songComplexity,
   });
   if (sections.length === 0) sections = [{ start: 0, end: Math.max(duration, 1e-3), label: 'verse', energy: 0 }];
   report('Done', 1);
@@ -145,6 +166,9 @@ export function analyzePcm(left: Float32Array, right: Float32Array, sampleRate: 
     numFrames: T,
     stems: st.stems,
     stemOnsets: st.stemOnsets,
+    stemPresence: cx.stemPresence,
+    complexity: cx.complexity,
+    songComplexity: cx.songComplexity,
     loudness: st.loudness,
     chroma,
     bpm,

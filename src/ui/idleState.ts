@@ -54,7 +54,10 @@ export function idleState(time: number, dt: number): MusicState {
 
     stems: zeroStems(),
     stemOnsets: zeroStems(),
+    stemPresence: zeroStems(),
     loudness: 0,
+    complexity: 0.1,
+    songComplexity: 0.1,
 
     chroma: zeroChroma,
     keyTonic: 0,
