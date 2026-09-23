@@ -290,14 +290,24 @@ vec3 draw(vec2 p, vec2 uv, vec3 prev) {
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
   float base = -0.16;
-  vec3 sky = mix(uColC * 0.025, uColB * 0.002, smoothstep(base, 0.5, p.y));
+  // The whole skyline is live: each screen column is a spectrum band, so
+  // buildings stretch taller as they scroll through loud bands, jump on the
+  // beat, and their windows brighten with that band. Composite only, so the
+  // stretch never accumulates in the feedback.
+  float A = uAspect * 0.5;
+  float bin = clamp((p.x + A) / (2.0 * A), 0.0, 1.0);
+  bin = (floor(bin * 32.0) + 0.5) / 32.0; // whole strips stretch, so windows stay square
+  float lv = specAt(bin * 0.8 + 0.03);
+  float stretch = 1.0 + 0.9 * lv * (0.4 + 0.6 * uAct) + 0.18 * uBeatPulse * uPres.x;
+  float win = 0.7 + 1.4 * lv;
+  vec3 sky = mix(uColC * (0.025 + 0.05 * uStem.y * uPres.y), uColB * 0.002, smoothstep(base, 0.5, p.y));
   vec3 c;
   if (p.y >= base) {
-    c = fb(uv) + sky;
+    c = fb(vec2(uv.x, base + (p.y - base) / stretch + 0.5)) * win + sky;
   } else {
     float d = base - p.y;
     float rx = uv.x + (0.002 + d * 0.02) * sin(d * 260.0 - uPhase * 3.0);
-    c = fb(vec2(rx, base + d + 0.5)) * 0.3 * exp(-d * 4.0) + uColB * 0.004;
+    c = fb(vec2(rx, base + d / stretch + 0.5)) * win * 0.3 * exp(-d * 4.0) + uColB * 0.004;
   }
   c += uColC * glow(p.y - base, 0.0012) * 0.08;
   return c;
