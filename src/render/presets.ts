@@ -972,22 +972,49 @@ vec2 curve(float k, float inst) {
     id: 'E20', name: 'Moonrise', kind: 'dark minimal', energy: [0, 0.45],
     palette: 'analogous', hue: 0.62, sat: 0.5, feedback: false, adapt: 0.15, vignette: 0.5,
     js(f, r) {
+      // The moon is a blobby dancer: drums kick a 3-lobe wobble, vocals (or the
+      // melody) a 5-lobe ripple, the other instruments a 7-lobe shimmer, the bass makes
+      // it breathe; it sways once per bar, hops and squashes on each beat.
+      const st = (k: number) => f.stem[k] * f.gate[k];
       r.mem.halo = approach(mem(r, 'halo'), Math.max(f.loud, melodic(f)), 3, f.dt);
+      r.mem.l3 = approach(mem(r, 'l3'), 0.09 * f.onset[0] * f.gate[0] + 0.04 * st(0), 10, f.dt);
+      r.mem.l5 = approach(mem(r, 'l5'), 0.1 * Math.max(st(2), 0.7 * melodic(f)), 4, f.dt);
+      r.mem.l7 = approach(mem(r, 'l7'), 0.045 * st(3) + 0.04 * f.loud, 4, f.dt);
       r.v[0] = r.mem.halo;
       r.v[1] = 0.1 + 0.06 * Math.sin(f.phase * 0.01);
+      r.v[2] = 0.035 * Math.sin(TAU * f.barPhase);
+      r.v[3] = 0.025 * f.beatPulse;
+      r.v[4] = 0.18 * f.beatPulse;
+      r.v[5] = r.mem.l3;
+      r.v[6] = r.mem.l5;
+      r.v[7] = r.mem.l7;
+      r.v[8] = f.beats * 0.5;
+      r.v[9] = 0.12 * st(1);
     },
     comp: /* glsl */ `
+// Signed distance to the dancing moon; used for both the moon and its
+// reflection so they always match.
+float moonSd(vec2 q, vec2 c) {
+  vec2 d = (q - c) * vec2(1.0 / (1.0 + 0.5 * uV[1].x), 1.0 / (1.0 - uV[1].x));
+  float a = atan(d.y, d.x);
+  float ph = uV[2].x;
+  float R = 0.065 * (1.0 + uV[2].y
+    + uV[1].y * sin(3.0 * a + ph)
+    + uV[1].z * sin(5.0 * a - ph * 1.3)
+    + uV[1].w * sin(7.0 * a + ph * 0.7));
+  return length(d) - R;
+}
+
 vec3 comp(vec2 uv, vec2 p) {
   float hz = -0.14;
-  vec2 moon = vec2(0.3 * uAspect * 0.5, uV[0].y);
-  float R = 0.065;
+  vec2 moon = vec2(0.3 * uAspect * 0.5 + uV[0].z, uV[0].y + uV[0].w);
   vec3 mcol = mix(vec3(1.0, 0.95, 0.85), uColA, 0.3);
   vec2 q = p;
   float d = hz - p.y;
   if (d > 0.0) q = vec2(p.x + (0.002 + d * 0.02) * sin(d * 420.0 / (0.4 + d * 5.0) - uPhase * 1.5), hz + d);
-  float md = length(q - moon);
-  vec3 c = mcol * smoothstep(R, R - 0.0025, md) * (0.35 + 0.15 * fbm2((q - moon) * 28.0));
-  c += uColA * step(R, md) * (0.03 * exp(-(md - R) * 10.0) + 0.06 * uV[0].x * exp(-(md - R) * 4.0));
+  float md = moonSd(q, moon);
+  vec3 c = mcol * smoothstep(0.0, -0.0025, md) * (0.35 + 0.15 * fbm2((q - moon) * 28.0));
+  c += uColA * step(0.0, md) * (0.03 * exp(-md * 10.0) + 0.06 * uV[0].x * exp(-md * 4.0));
   c += uColB * 0.006 * smoothstep(0.5, hz, q.y);
   if (d > 0.0) {
     float row = floor(d * 160.0);
