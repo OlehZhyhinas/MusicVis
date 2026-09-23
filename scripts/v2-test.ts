@@ -10,7 +10,8 @@ import {
 import { addLayer, crossover, crossoverTagged, makeMerge, morphParams, mulberry32, mutate, randomEmitter, randomGenome, randomOp } from '../src/v2/ops';
 import { COST_BUDGET_MS, EMITTER_SCHEMAS, SDF_KINDS, BASIC_KINDS, flatEmitters, isSdfKind } from '../src/v2/genome';
 import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
-import { Population, fitness } from '../src/v2/population';
+import { Population, fitness, POPULATION_VERSION, uniqueName } from '../src/v2/population';
+import { nameFor, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 
 let failures = 0;
@@ -721,7 +722,7 @@ function fitnessOf(pop: Population, id: string): number {
   check('format.v1-structural-key', structuralKey(m.genome) === 'rotate|ink@fb,orb@top,stars@fb|warp|r0t0', structuralKey(m.genome));
   const out = pop.toJSON();
   const again = Population.fromJSON(JSON.parse(JSON.stringify(out)));
-  check('format.v2-roundtrip', out.version === 2 && JSON.stringify(again.get('G1-0001')!.genome) === JSON.stringify(m.genome), `version=${out.version}`);
+  check('format.v2-roundtrip', out.version === POPULATION_VERSION && JSON.stringify(again.get('G1-0001')!.genome) === JSON.stringify(m.genome), `version=${out.version}`);
   const child = again.addChild(crossover(seedByOrigin('E05'), seedByOrigin('E20'), mulberry32(5)), [again.get('G0-E05')!, again.get('G0-E20')!], 10, 'merged');
   const re = Population.fromJSON(JSON.parse(JSON.stringify(again.toJSON())));
   check('format.cross-tag-persisted', re.get(child.id)!.cross === 'merged', `${child.id} cross=${re.get(child.id)!.cross}`);
@@ -732,6 +733,131 @@ function fitnessOf(pop: Population, id: string): number {
     threw = true;
   }
   check('format.newer-file-rejected', threw, threw ? 'refused' : 'accepted a newer file');
+}
+
+// ------------------------------------------------------ 21. descriptive names
+
+function bodyGenome(kind: string, extra: Record<string, unknown> = {}): Genome {
+  return repair({
+    chain: [], emitters: [{ kind, p: {} }], carrier: { kind: 'warp', p: {} }, color: { scheme: 'analogous', p: {} },
+    reactions: [], energy: [0.2, 0.7], ...extra,
+  });
+}
+const nounOf = (name: string) => name.split(/\s+/).slice(1).join(' ');
+const adjOf = (name: string) => name.split(/\s+/)[0];
+
+{
+  // No fixed hue words, ever: the palette hue is a runtime offset from the
+  // song's key, so a name baked around a colour would be wrong on the next song.
+  const rng = mulberry32(4242);
+  let hueHit = '';
+  for (let i = 0; i < 500 && !hueHit; i++) {
+    const g = i % 2 === 0 ? randomGenome(rng) : mutate(randomGenome(rng), rng, 1 + rng());
+    const words = nameFor(g).split(/\s+/);
+    const bad = words.find((w) => HUE_WORDS.includes(w));
+    if (bad) hueHit = `${bad} in ${words.join(' ')}`;
+  }
+  check('naming.no-hue-words', !hueHit, hueHit || '500 random/mutated names, none hue-based');
+
+  // Body-derived nouns.
+  const inkName = nameFor(bodyGenome('ink'));
+  check('naming.ink-body-noun', NOUN_POOLS.ink.includes(nounOf(inkName)), inkName);
+  const orbName = nameFor(bodyGenome('orb'));
+  check('naming.orb-body-noun', NOUN_POOLS.orb.includes(nounOf(orbName)), orbName);
+  const wireName = nameFor(bodyGenome('wire'));
+  check('naming.wire-body-noun', NOUN_POOLS.wire.includes(nounOf(wireName)), wireName);
+
+  // Swirl-heavy: a strong swirl op should win the adjective.
+  const swirlGenome = repair({
+    chain: [{ op: 'swirl', stage: 'warp', w: 1, p: { amt: 0.03, k: 6, cx: 0, cy: 0, wander: 0 } }],
+    emitters: [{ kind: 'wave', p: {} }], carrier: { kind: 'warp', p: {} }, color: { scheme: 'analogous', p: {} },
+    reactions: [], energy: [0.2, 0.7],
+  });
+  const swirlName = nameFor(swirlGenome);
+  check('naming.swirl-heavy-adjective', ADJ_POOLS.spiral.includes(adjOf(swirlName)), swirlName);
+
+  // Deterministic: same genome (and same parent names) always names the same.
+  const detG = mutate(randomGenome(mulberry32(555)), mulberry32(556), 1);
+  const n1 = nameFor(detG, ['Rising Moon', 'Hushed Serpent']);
+  const n2 = nameFor(detG, ['Rising Moon', 'Hushed Serpent']);
+  check('naming.deterministic', n1 === n2, `${n1} / ${n2}`);
+
+  // Fused crossover: when the child's body kind is unchanged, the dominant
+  // parent's noun survives (their noun word is still valid for that kind).
+  const pA = bodyGenome('ink');
+  const pB = bodyGenome('wire');
+  const nameA = nameFor(pA);
+  const nameB = nameFor(pB);
+  let fusedOk = false;
+  let fusedDetail = 'no fused, same-kind child found in 400 tries';
+  for (let seed = 0; seed < 400 && !fusedOk; seed++) {
+    const res = crossoverTagged(pA, pB, mulberry32(seed), 0.9);
+    if (res.tag !== 'fused') continue;
+    const kind = res.genome.emitters[0].kind;
+    if (kind !== 'ink' && kind !== 'wire') continue;
+    const parentNoun = kind === 'ink' ? nounOf(nameA) : nounOf(nameB);
+    const childName = nameFor(res.genome, [nameA, nameB]);
+    if (nounOf(childName) === parentNoun) {
+      fusedOk = true;
+      fusedDetail = `seed=${seed} kind=${kind} child=${childName}`;
+    }
+  }
+  check('naming.fused-keeps-dominant-noun', fusedOk, fusedDetail);
+
+  // Duplicate resolution: same base name gets a roman numeral.
+  const used = new Set(['Calm Orb']);
+  const dup1 = uniqueName(used, 'Calm Orb');
+  check('naming.dedupe-first-numeral', dup1 === 'Calm Orb II', dup1);
+  used.add(dup1);
+  const dup2 = uniqueName(used, 'Calm Orb');
+  check('naming.dedupe-second-numeral', dup2 === 'Calm Orb III', dup2);
+  check('naming.dedupe-no-collision', uniqueName(used, 'Rising Moon') === 'Rising Moon', 'unrelated base name untouched');
+
+  // Seeds keep their hand-written V1 names exactly.
+  check('naming.seeds-unchanged', SEEDS.find((s) => s.origin === 'E01')!.name === 'Night Skyline'
+    && SEEDS.find((s) => s.origin === 'E02')!.name === 'River of Light', 'seed names untouched');
+
+  // Migration: a version-1 file's bred children get renamed (votes / ids / parents kept).
+  const seededOld = Population.seeded(1);
+  const p1 = seededOld.get('G0-E06')!; // Ink Garden
+  const p2 = seededOld.get('G0-E14')!; // Polyhedra
+  const oldChild = seededOld.addChild(crossover(p1.genome, p2.genome, mulberry32(3)), [p1, p2], 100);
+  oldChild.name = 'Random Junk'; // simulate the old scheme's unrelated name
+  oldChild.likes = 5;
+  const oldGrandchild = seededOld.addChild(crossover(oldChild.genome, p1.genome, mulberry32(4)), [oldChild, p1], 200);
+  oldGrandchild.name = 'Other Junk';
+  oldGrandchild.dislikes = 2;
+  const oldData = seededOld.toJSON();
+  (oldData as { version: number }).version = 1;
+  const migrated = Population.fromJSON(JSON.parse(JSON.stringify(oldData)));
+  const mChild = migrated.get(oldChild.id)!;
+  const mGrand = migrated.get(oldGrandchild.id)!;
+  check('naming.migration-renamed', mChild.name !== 'Random Junk' && mGrand.name !== 'Other Junk', `${mChild.name} / ${mGrand.name}`);
+  check('naming.migration-kept-votes-and-parents', mChild.likes === 5 && mGrand.dislikes === 2
+    && JSON.stringify(mChild.parents.sort()) === JSON.stringify([p1.id, p2.id].sort())
+    && JSON.stringify(mGrand.parents.sort()) === JSON.stringify([oldChild.id, p1.id].sort()), `${mChild.name}/${mGrand.name}`);
+  check('naming.migration-kept-genomes', JSON.stringify(mChild.genome) === JSON.stringify(oldChild.genome)
+    && JSON.stringify(mGrand.genome) === JSON.stringify(oldGrandchild.genome), 'genomes untouched by the rename pass');
+  // A grandchild's parent name (the renamed child) is resolved before the grandchild is named:
+  // if the child's inherited noun survived, the grandchild's inheritance check saw the *new* name.
+  const again2 = Population.fromJSON(JSON.parse(JSON.stringify(migrated.toJSON())));
+  check('naming.migration-current-version-stable', again2.get(oldChild.id)!.name === mChild.name
+    && again2.get(oldGrandchild.id)!.name === mGrand.name, 'a file already at the current version is not renamed again');
+}
+
+// -------------------------------------------------- 22. example crossovers
+
+{
+  console.log('\n--- 30 example crossover names ---');
+  const rng = mulberry32(99009);
+  for (let i = 0; i < 30; i++) {
+    const a = SEEDS[Math.floor(rng() * 24)];
+    let b = SEEDS[Math.floor(rng() * 24)];
+    if (b.origin === a.origin) b = SEEDS[(SEEDS.indexOf(b) + 1) % 24];
+    const child = crossoverTagged(a.genome, b.genome, rng, (rng() - 0.5) * 2);
+    const childName = nameFor(child.genome, [a.name, b.name]);
+    console.log(`${a.name} x ${b.name} -> ${childName}  [${child.tag}]`);
+  }
 }
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${failures} failing check(s)`);

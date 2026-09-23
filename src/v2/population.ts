@@ -5,6 +5,7 @@ import {
   classify, cloneGenome, energyOf, genomeHash, repair, structuralKey, validate,
   type Energy, type Genome, type Species,
 } from './genome';
+import { nameFor } from './naming';
 import { SEEDS, SEED_VERSION } from './seeds';
 import type { CrossTag, Rng } from './ops';
 
@@ -37,14 +38,17 @@ export interface Member {
 
 /**
  * File / storage format. 1: genomes of format 1 (no draw chains or merges);
- * 2: genomes of format 2 and the per-child crossover tag. Version 1 data loads
- * unchanged (repair() lifts every genome to format 2 without altering it).
+ * 2: genomes of format 2 and the per-child crossover tag; 3: descriptive,
+ * inherited names (fromJSON renames every bred child of an older file, in
+ * generation order, keeping ids / votes / parents / genomes). Version 1 and 2
+ * data loads unchanged apart from that rename (repair() lifts every genome to
+ * format 2 without altering it).
  */
-export const POPULATION_VERSION = 2;
+export const POPULATION_VERSION = 3;
 
 export interface PopulationData {
   format: 'musicvis-v2-population';
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
   seedVersion?: number;
   counter: number;
@@ -57,26 +61,22 @@ export const BREED_EVERY = 5; // votes between automatic breeding rounds
 
 // ---------------------------------------------------------------- names
 
-const ADJ = [
-  'Velvet', 'Molten', 'Silent', 'Hollow', 'Gilded', 'Feral', 'Lunar', 'Solar', 'Tidal', 'Amber', 'Cobalt', 'Crimson',
-  'Drifting', 'Electric', 'Frozen', 'Glass', 'Hidden', 'Iron', 'Jade', 'Kinetic', 'Liquid', 'Midnight', 'Neon', 'Opal',
-  'Pale', 'Quiet', 'Radiant', 'Shattered', 'Spectral', 'Tangled', 'Ultra', 'Violet', 'Wandering', 'Woven', 'Burning', 'Cascading',
-  'Distant', 'Echoing', 'Fading', 'Glowing', 'Humming', 'Infinite', 'Lucid', 'Mirrored', 'Nocturnal', 'Orbiting', 'Prismatic', 'Restless',
-  'Smoldering', 'Trembling', 'Undying', 'Vivid', 'Whispering', 'Ashen', 'Blooming', 'Coral', 'Dusky', 'Emerald', 'Fractured', 'Golden',
-  'Haunted', 'Ivory', 'Jagged', 'Kaleid',
+const ROMAN: [number, string][] = [
+  [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+  [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
 ];
-const NOUN = [
-  'Maelstrom', 'Lantern', 'Cathedral', 'Tide', 'Ember', 'Veil', 'Orchard', 'Comet', 'Harbor', 'Labyrinth', 'Monsoon', 'Nebula',
-  'Oracle', 'Pendulum', 'Quasar', 'Reef', 'Spire', 'Tempest', 'Undertow', 'Vortex', 'Wildfire', 'Zenith', 'Aurora', 'Bloom',
-  'Cascade', 'Delta', 'Eclipse', 'Fathom', 'Glacier', 'Horizon', 'Iris', 'Jetstream', 'Kiln', 'Lagoon', 'Mirage', 'Nimbus',
-  'Obsidian', 'Prism', 'Quarry', 'Rapids', 'Signal', 'Thicket', 'Umbra', 'Vesper', 'Whorl', 'Aether', 'Beacon', 'Cinder',
-  'Dune', 'Engine', 'Filament', 'Garden', 'Halo', 'Inferno', 'Jewel', 'Kite', 'Loom', 'Meridian', 'Nova', 'Origami',
-  'Pulse', 'Relic', 'Serpent', 'Tapestry',
-];
+function toRoman(n: number): string {
+  let s = '';
+  for (const [v, sym] of ROMAN) while (n >= v) { s += sym; n -= v; }
+  return s;
+}
 
-export function nameFor(g: Genome): string {
-  const h = genomeHash(g);
-  return `${ADJ[h % ADJ.length]} ${NOUN[(h >>> 11) % NOUN.length]}`;
+/** `base`, or `base II`, `base III`, ... the first form not already in `used`. */
+export function uniqueName(used: ReadonlySet<string>, base: string): string {
+  if (!used.has(base)) return base;
+  let i = 2;
+  while (used.has(`${base} ${toRoman(i)}`)) i++;
+  return `${base} ${toRoman(i)}`;
 }
 
 // -------------------------------------------------------------- fitness
@@ -187,8 +187,10 @@ export class Population {
     const g = repair(genome);
     const gen = parents.length ? Math.max(...parents.map((p) => p.gen)) + 1 : 1;
     const nnnn = String(++this.counter).padStart(4, '0');
+    const base = nameFor(g, parents.map((p) => p.name));
+    const used = new Set(this.list().map((x) => x.name));
     const m: Member = {
-      id: `G${gen}-${nnnn}`, gen, parents: parents.map((p) => p.id), created: now, name: nameFor(g), genome: g,
+      id: `G${gen}-${nnnn}`, gen, parents: parents.map((p) => p.id), created: now, name: uniqueName(used, base), genome: g,
       ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
     };
     if (cross) m.cross = cross;
@@ -332,7 +334,7 @@ export class Population {
         origin: typeof raw.origin === 'string' ? raw.origin : undefined,
         parents: Array.isArray(raw.parents) ? raw.parents.filter((x) => typeof x === 'string') : [],
         created: n(raw.created, Date.now()),
-        name: typeof raw.name === 'string' && raw.name ? raw.name.slice(0, 60) : nameFor(g),
+        name: typeof raw.name === 'string' && raw.name ? raw.name.slice(0, 60) : nameFor(g, []),
         genome: g,
         ...describe(g),
         likes: Math.floor(n(raw.likes)),
@@ -356,6 +358,23 @@ export class Population {
     p.counter = Math.max(Math.floor(n(d.counter)), maxN);
     p.votesSinceBreed = Math.floor(n(d.votesSinceBreed));
     p.seedVersion = Math.max(1, Math.floor(n(d.seedVersion, 1)));
+
+    // Format-3 migration: rename every bred child with the descriptive, inherited
+    // scheme (older files kept the random adjective-noun pairs). Seeds (gen 0)
+    // keep their name as loaded. Parents are renamed before children (gen order)
+    // so inheritance sees each parent's *new* name. Ids, votes and genomes are
+    // untouched. A file already at the current version is left alone.
+    const fileVersion = typeof d.version === 'number' ? d.version : 1;
+    if (fileVersion < POPULATION_VERSION) {
+      const used = new Set(p.list().filter((m) => m.gen === 0).map((m) => m.name));
+      const order = p.list().filter((m) => m.gen > 0).sort((a, b) => a.gen - b.gen || a.id.localeCompare(b.id));
+      for (const m of order) {
+        const parentNames = m.parents.map((id) => p.get(id)?.name).filter((x): x is string => !!x);
+        const base = nameFor(m.genome, parentNames);
+        m.name = uniqueName(used, base);
+        used.add(m.name);
+      }
+    }
     return p;
   }
 }
