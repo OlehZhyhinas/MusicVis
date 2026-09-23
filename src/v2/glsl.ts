@@ -4,7 +4,7 @@
 // so compiled programs are cached by structuralKey().
 
 import { FLAME_VARIATION_GLSL } from './variations';
-import type { EmitterKind, Genome, OpGene } from './genome';
+import { GEOMETRY_KINDS, flatEmitters, type EmitterGene, type EmitterKind, type Genome, type OpGene } from './genome';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -70,7 +70,10 @@ uniform float uDecay;
 uniform float uLayerK;   // 1 - decay in the feedback pass, 1 in the composite: static fields look the same on either layer
 uniform float uAccum;    // 1 in the feedback pass, ~6 in the composite: accumulating emitters look the same on either layer
 uniform vec4 uOpA[6], uOpB[6];
-uniform vec4 uEm[12];
+uniform vec4 uEm[16];   // four emitter slots (flatEmitters order), four vec4 each
+uniform vec4 uW[4];     // wave curve (see WAVE_VS); also read by the wave distance field
+uniform vec4 uDrA[3], uDrB[3]; // draw-space ops: A = amounts, B.x = op type id
+uniform int uDrN;
 uniform vec4 uInk[6], uBlob[6];
 uniform vec4 uSeg[48];
 uniform vec4 uSegZ[12];
@@ -127,6 +130,63 @@ const OP_GLSL: Record<string, string> = {
   polar: `{ float a = mod(atan(p.y, p.x) + OA.y + PI, TAU) - PI; p = vec2(a / PI * uAspect * 0.5, length(p) * 2.0 * OA.x - 0.5); }`,
   kaleido: `{ float seg = TAU / OA.x; float a = mod(atan(p.y, p.x) + OA.y, seg); a = abs(a - seg * 0.5); p = length(p) * vec2(cos(a), sin(a)); }`,
 };
+
+// ------------------------------------------------------- draw-space ops
+// One uniform-driven loop shared by every genome: the draw chain changes only
+// uniforms, never the shader source. With uDrN = 0 it returns p untouched.
+
+const DRAW_GLSL = /* glsl */ `
+vec2 varById(int i, vec2 p) {
+  if (i == 1) return V_sinusoidal(p);
+  if (i == 2) return V_spherical(p);
+  if (i == 3) return V_swirl(p);
+  if (i == 4) return V_horseshoe(p);
+  if (i == 5) return V_polar(p);
+  if (i == 6) return V_handkerchief(p);
+  if (i == 7) return V_heart(p);
+  if (i == 8) return V_disc(p);
+  if (i == 9) return V_spiral(p);
+  if (i == 10) return V_hyperbolic(p);
+  if (i == 11) return V_julia(p);
+  return p;
+}
+vec2 drawOp(int t, vec4 A, vec2 p) {
+  if (t == 1) { vec2 d = p - A.xy; float r = length(d); return A.xy + rot2(A.z / (r * A.w + 0.4)) * d; }
+  if (t == 2) { vec2 d = p - A.xy; return A.xy + rot2(A.z * length(d) * 8.0) * d; }
+  if (t == 3) {
+    if (A.w > 0.5) { float r = length(p); return p + normalize(p + 1e-5) * A.x * sin(r * A.y - A.z); }
+    return vec2(p.x, p.y + A.x * sin(p.x * A.y - A.z));
+  }
+  if (t == 4) return p + curlNoise(p * A.y + 4.0, A.z) * A.x;
+  if (t == 5) return A.xy + rot2(A.z) * (p - A.xy);
+  if (t == 6) { vec2 d = p - A.xy; float r = length(d); return A.xy + d / max(0.2, mix(A.z, 1.0 + (A.z - 1.0) * (0.5 + r * 1.2), A.w)); }
+  if (t == 7) { if (A.x < 0.5) return vec2(abs(p.x), p.y); if (A.x < 1.5) return vec2(p.x, abs(p.y)); return abs(p); }
+  if (t == 8) { float seg = TAU / A.x; float a = mod(atan(p.y, p.x) + A.y, seg); a = abs(a - seg * 0.5); return length(p) * vec2(cos(a), sin(a)); }
+  if (t >= 20) return mix(p, varById(t - 20, p * A.y) / A.y, A.x);
+  return p;
+}
+vec2 drawWarp(vec2 p) {
+  for (int i = 0; i < 3; i++) {
+    if (i >= uDrN) break;
+    p = drawOp(int(uDrB[i].x + 0.5), uDrA[i], p);
+  }
+  return p;
+}
+// Line geometry is moved forward, so only the continuous ops apply (reversed).
+vec2 drawWarpFwd(vec2 p) {
+  for (int i = 0; i < 3; i++) {
+    if (i >= uDrN) break;
+    int t = int(uDrB[i].x + 0.5);
+    if (t >= 7) continue;
+    vec4 A = uDrA[i];
+    if (t == 6) A.z = 1.0 / max(A.z, 0.2);
+    else if (t == 3 || t == 4) A.x = -A.x;
+    else A.z = -A.z;
+    p = drawOp(t, A, p);
+  }
+  return p;
+}
+`;
 
 function opCode(o: OpGene, i: number): string {
   const src = o.op.startsWith('v_') ? `{ p = mix(p, V_${o.op.slice(2)}(p * OA.y) / OA.y, OA.x); }` : OP_GLSL[o.op];
@@ -519,9 +579,7 @@ vec3 em_snake(vec2 p, vec3 c) {
 }`,
 };
 
-function emitterCode(kind: EmitterKind, slot: number): string {
-  const src = EMIT_GLSL[kind];
-  if (!src) return '';
+function slotted(src: string, slot: number): string {
   return src
     .replace(/\bEA\b/g, `uEm[${slot * 4}]`)
     .replace(/\bEB\b/g, `uEm[${slot * 4 + 1}]`)
@@ -529,12 +587,226 @@ function emitterCode(kind: EmitterKind, slot: number): string {
     .replace(/\bED\b/g, `uEm[${slot * 4 + 3}]`);
 }
 
+function emitterCode(kind: EmitterKind, slot: number): string {
+  const src = EMIT_GLSL[kind];
+  return src ? slotted(src, slot) : '';
+}
+
+// ------------------------------------------------------ distance fields
+// float sd_<kind>(vec2 p): signed distance (negative inside) to the shape the
+// emitter draws, from the same uniforms its tick fills. Line-like shapes are
+// thin bands. Merge emitters fuse two of these into one figure.
+
+const SDF_GLSL: Partial<Record<EmitterKind, string>> = {
+  orb: /* glsl */ `
+float sd_orb(vec2 p) {
+  vec2 d = p - EA.zw;
+  float md = length(d);
+  float R = EB.x;
+  if (EC.y <= 0.001) return md - R;
+  float a = atan(d.y, d.x);
+  float rel = max(md / R - 1.0, 0.0);
+  float ext = 0.0;
+  for (int k = 0; k < 5; k++) {
+    float ang = uArm[k] + uArm[10] * rel;
+    float da = atan(sin(a - ang), cos(a - ang));
+    float w = uArm[11] / (1.0 + 1.9 * rel);
+    ext += uArm[5 + k] * exp(-da * da / (w * w));
+  }
+  return (md - R * (1.0 + ext * EC.y)) * 0.6;
+}`,
+  wire: /* glsl */ `
+float sd_wire(vec2 p) {
+  float d = 1e3;
+  for (int i = 0; i < 48; i++) {
+    if (i >= uSegN) break;
+    d = min(d, sdSeg(p, uSeg[i].xy, uSeg[i].zw));
+  }
+  return d - 0.003 * EA.z;
+}`,
+  wave: /* glsl */ `
+float sd_wave(vec2 p) {
+  vec4 A = uW[0], B = uW[1], C = uW[2];
+  vec2 q = rot2(-C.y) * (p - A.zw);
+  int sh = int(A.x + 0.5);
+  float w = 0.004;
+  if (sh == 0) {
+    float hw = uAspect * 0.42;
+    float k = clamp(q.x / (2.0 * hw) + 0.5, 0.0, 1.0);
+    float env = smoothstep(0.0, 0.12, k) * smoothstep(1.0, 0.88, k);
+    float d = abs(q.y - waveAt(k) * A.y * env) * 0.7;
+    return max(d, abs(q.x) - hw) - w;
+  }
+  float r = length(q);
+  float a = atan(q.y, q.x);
+  if (sh == 2) {
+    float best = 1e3;
+    for (int n = 0; n < 7; n++) {
+      float k = (fract(a / TAU) + float(n)) / max(B.y, 1.0);
+      if (k > 1.0) break;
+      float rk = B.x * (0.12 + 0.88 * k) + waveAt(k) * A.y * 0.2 * k;
+      best = min(best, abs(r - rk));
+    }
+    return best * 0.8 - w;
+  }
+  if (sh == 4) {
+    float span = max(B.y * 0.37, 1e-3);
+    float k = a / span + 0.5;
+    float kc = clamp(k, 0.0, 1.0);
+    float rk = B.x + waveAt(kc) * A.y * 0.4;
+    float ae = (kc - 0.5) * span;
+    return (k == kc ? abs(r - rk) * 0.8 : length(q - rk * vec2(cos(ae), sin(ae)))) - w;
+  }
+  float k = fract(a / TAU);
+  return abs(r - (B.x + waveAt(abs(k * 2.0 - 1.0)) * A.y * 0.35)) * 0.8 - w;
+}`,
+  spectrum: /* glsl */ `
+float sd_spectrum(vec2 p) {
+  vec2 O = EA.zw;
+  int mode = int(EB.x + 0.5);
+  float N = EB.y;
+  if (mode == 0 || mode == 3) {
+    float hw = uAspect * 0.5;
+    float s = mode == 0 ? (p.x + hw) / (2.0 * hw) : abs(p.x - O.x) / hw;
+    float lv = specAt((floor(s * N) + 0.5) / N * 0.8 + 0.02);
+    float h = 0.008 + EB.w * lv * lv;
+    float y = mode == 0 ? p.y - O.y : abs(p.y - O.y);
+    return max(y - h, -y) * 0.8;
+  }
+  vec2 d = p - O;
+  float r = length(d);
+  float a = atan(d.y, d.x);
+  float s = mode == 1 ? abs(a / PI - 0.5) * 2.0 : abs(a / PI);
+  float lv = specAt((floor(s * N) + 0.5) / N * 0.8 + 0.02);
+  float sd = (r - (EB.z + 0.025 * uStem.y + 0.015 + EB.w * lv * lv)) * 0.8;
+  return mode == 1 ? max(sd, -d.y) : sd;
+}`,
+  snake: /* glsl */ `
+float sd_snake(vec2 p) {
+  float d = sdSeg(p, EB.zw, EB.xy) - ED.x;
+  if (EA.z > 1.5) d = min(d, sdSeg(p, EC.zw, EC.xy) - ED.z);
+  return d;
+}`,
+  aurora: /* glsl */ `
+float sd_aurora(vec2 p) {
+  float t = EA.w;
+  float y0 = EB.x + 0.09 * sin(p.x * EB.w + t) + 0.06 * (fbm2(vec2(p.x * 1.8 - t * 0.7, t)) - 0.5);
+  float hw = 0.02 + 0.03 * clamp(EA.z, 0.0, 1.5);
+  return (abs(p.y - y0 - hw) - hw) * 0.8;
+}`,
+  blobs: /* glsl */ `
+float sd_blobs(vec2 p) {
+  float F = 0.0, rs = 0.0;
+  int n = int(EA.z + 0.5);
+  for (int i = 0; i < 6; i++) {
+    if (i >= n) break;
+    vec2 d = p - uBlob[i].xy;
+    F += uBlob[i].z * uBlob[i].z / (dot(d, d) + 1e-4);
+    rs += uBlob[i].z;
+  }
+  return rs / float(max(n, 1)) * (inversesqrt(max(F, 1e-4)) - 1.0);
+}`,
+  ink: /* glsl */ `
+float sd_ink(vec2 p) {
+  float d = 1e3;
+  int n = int(EA.z + 0.5);
+  for (int i = 0; i < 6; i++) {
+    if (i >= n) break;
+    vec4 e = uInk[i];
+    d = min(d, length(p - e.xy) - e.w * (1.5 + 2.0 * e.z));
+  }
+  return d;
+}`,
+};
+
+function sdfCode(kind: EmitterKind, slot: number): string {
+  const src = SDF_GLSL[kind];
+  if (!src) throw new Error(`no distance field for ${kind}`);
+  return slotted(src, slot);
+}
+
+/**
+ * A merge emitter at flat slot s (parts at s + 1, s + 2): em_merge(p) draws
+ * one figure from the two distance fields; mode 2 lights part B up inside or
+ * along part A. Merge slot: A = (gain, hue, mode, k), B = (t, line, fill,
+ * width), C = (inside, brightness, -, -).
+ */
+function mergeCode(m: EmitterGene, s: number): string {
+  const [a, b] = m.parts!;
+  const mode = m.p.mode;
+  const M = (i: number) => `uEm[${s * 4 + i}]`;
+  const PA = `uEm[${(s + 1) * 4}]`;
+  const PB = `uEm[${(s + 2) * 4}]`;
+  let code = sdfCode(a.kind, s + 1) + '\n';
+  let consumer = 'vec3(0.0)';
+  if (mode !== 2) code += sdfCode(b.kind, s + 2) + '\n';
+  else if (b.kind === 'wave') {
+    code += sdfCode('wave', s + 2) + '\n';
+    consumer = `pal(${PB}.y + 0.4 + ${M(0)}.y) * glow(sd_wave(p), w) * 0.12 * uAccum`;
+  } else if (b.kind === 'ink') {
+    code += emitterCode('ink', s + 2) + '\n';
+  } else if (!GEOMETRY_KINDS.includes(b.kind)) {
+    code += emitterCode(b.kind, s + 2) + '\n';
+    consumer = COVER_EMITTERS.has(b.kind) ? `em_${b.kind}(p, vec3(0.0))` : `em_${b.kind}(p)`;
+  }
+  const field =
+    mode === 0
+      ? `float d2 = sd_${b.kind}(p); float k = max(${M(0)}.w, 1e-3); float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0); side = h; return mix(d2, d1, h) - k * h * (1.0 - h);`
+      : mode === 1
+        ? `float d2 = sd_${b.kind}(p); side = 1.0 - ${M(1)}.x; return mix(d1, d2, ${M(1)}.x);`
+        : `side = 1.0; return d1;`;
+  let masked = '';
+  if (mode === 2) {
+    masked =
+      b.kind === 'ink'
+        ? `  float dye = 0.0;
+  for (int i = 0; i < 6; i++) { if (float(i) >= ${PB}.z - 0.5) break; dye += uInk[i].z; }
+  c += em_ink(p) + pal(${PB}.y + 0.1 + 0.03 * uBars) * dye * m * 0.1 * uAccum;
+`
+        : `  c += (${consumer}) * (0.05 + 1.8 * m);
+`;
+  }
+  code += /* glsl */ `
+float mergeD(vec2 p, out float side) {
+  float d1 = sd_${a.kind}(p);
+  ${field}
+}
+float mergeMask(vec2 p) {
+  float side;
+  float d = mergeD(p, side);
+  float w = max(px() * 1.2, 0.0025) * ${M(1)}.w;
+  return ${M(2)}.x > 0.5 ? smoothstep(0.004, -0.004, d) : glow(d, max(w * 16.0, 0.09));
+}
+vec3 em_merge(vec2 p) {
+  float side;
+  float d = mergeD(p, side);
+  float w = max(px() * 1.2, 0.0025) * ${M(1)}.w;
+  float aa = max(fwidth(d), 1e-4);
+  float inside = smoothstep(aa, -aa, d);
+  float body = inside * (0.3 + 0.7 * exp(d * 14.0));
+  float line = glow(d, w) + 0.18 * glow(d, w * 5.0);
+  vec3 col = mix(pal(${PB}.y + 0.4 + ${M(0)}.y), pal(${PA}.y + 0.05 + ${M(0)}.y), side);
+  float fillK = ${mode === 2 ? '0.0' : `${M(1)}.z`};
+  vec3 c = col * (fillK * body * 0.45 * uLayerK + ${M(1)}.y * line * ${mode !== 2 ? '0.1' : GEOMETRY_KINDS.includes(b.kind) ? '0.02' : '0.05'} * uAccum) * ${M(2)}.y;
+${mode === 2 ? `  float m = ${M(2)}.x > 0.5 ? inside : glow(d, w * 6.0);
+${masked}` : ''}  return c * ${M(0)}.x;
+}
+`;
+  return code;
+}
+
+/** True when the genome's merge masks its feedback trail (a particle / flame consumer). */
+function masksFeedback(g: Genome): boolean {
+  const m = g.emitters.find((e) => e.kind === 'merge');
+  return !!m && m.p.mode === 2 && GEOMETRY_KINDS.includes(m.parts![1].kind);
+}
+
 /** Emitters that repaint what is under them: em_<kind>(p, c) returns the new colour. */
 const COVER_EMITTERS = new Set<EmitterKind>(['snake']);
 
 /** Emitters drawn as fullscreen fields (the rest are geometry passes). */
 export function isFieldEmitter(kind: EmitterKind): boolean {
-  return kind in EMIT_GLSL;
+  return kind in EMIT_GLSL || kind === 'merge';
 }
 
 // ------------------------------------------------------------- builders
@@ -551,7 +823,8 @@ export function buildSources(g: Genome): Sources {
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
   if (g.color.p.reflect > 0.5) defs.push('REFLECT');
   if (g.color.p.tonemap > 0.5) defs.push('LOG_TONE');
-  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + LIB + FLAME_VARIATION_GLSL;
+  if (masksFeedback(g)) defs.push('MERGE_FB_MASK');
+  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + LIB + FLAME_VARIATION_GLSL + DRAW_GLSL;
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
   const viewOps = g.chain.map((o, i) => (o.stage === 'view' ? opCode(o, i) : '')).join('');
@@ -562,19 +835,23 @@ export function buildSources(g: Genome): Sources {
   let topCover = '';
   let fbCode = '';
   let topCode = '';
-  g.emitters.forEach((e, slot) => {
-    if (!isFieldEmitter(e.kind)) return;
+  // Slots follow flatEmitters(): a merge's parts take the slots after it.
+  const flat = flatEmitters(g);
+  for (const e of g.emitters) {
+    const slot = flat.indexOf(e);
+    if (!isFieldEmitter(e.kind)) continue;
     const cover = COVER_EMITTERS.has(e.kind);
+    const code = e.kind === 'merge' ? mergeCode(e, slot) : emitterCode(e.kind, slot);
     if (e.layer === 'fb') {
-      fbCode += emitterCode(e.kind, slot) + '\n';
+      fbCode += code + '\n';
       if (cover) fbCover += `  c = em_${e.kind}(p, c);\n`;
       else fbEm.push(`em_${e.kind}(p)`);
     } else {
-      topCode += emitterCode(e.kind, slot) + '\n';
+      topCode += code + '\n';
       if (cover) topCover += `  c = em_${e.kind}(q, c);\n`;
       else topEm.push(`em_${e.kind}(q)`);
     }
-  });
+  }
 
   const feedback = pre + /* glsl */ `
 in vec2 vUv;
@@ -601,6 +878,7 @@ ${fbCode}
 void main() {
   vec2 asp = vec2(uAspect, 1.0);
   vec2 p = (vUv - 0.5) * asp;
+  vec2 pd = drawWarp(p);
   vec3 c = vec3(0.0);
 #ifndef NO_FEEDBACK
   vec2 w = warp(p);
@@ -612,7 +890,12 @@ void main() {
   suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
 #endif
   c = max(prevAt(suv) * uDecay - uDecaySub, 0.0);
+#ifdef MERGE_FB_MASK
+  // Particles / flame points fade fast outside the merge shape and linger inside it.
+  c *= mix(0.88, 1.0, mergeMask(pd));
 #endif
+#endif
+  p = pd; // emitters draw in draw space (identity without draw ops)
   c += ${fbEm.length ? fbEm.join(' + ') : 'vec3(0.0)'};
 ${fbCover}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
 }`;
@@ -638,15 +921,19 @@ void main() {
   }
 #endif
   vec2 q = view(p);
+  vec2 qd = drawWarp(q);
 #ifdef LOG_TONE
   vec2 ox = vec2(0.5 / uRes.y, 0.0), oy = vec2(0.0, 0.5 / uRes.y);
   vec3 c = (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25 * vMul + vAdd;
+  q = qd;
   c += ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
 ${topCover}  float l = max(c.r, max(c.g, c.b));
   float b = log(1.0 + l * 24.0) / log(25.0);
   c = c / max(l, 1e-5) * pow(b, 1.1) * 0.55;
 #else
-  vec3 c = fb(q) * vMul + vAdd + ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
+  vec3 c = fb(q) * vMul + vAdd;
+  q = qd;
+  c += ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
 ${topCover}#endif
   c *= att;
 #ifdef REFLECT
@@ -667,9 +954,9 @@ ${topCover}#endif
 
 // ------------------------------------------------------ line geometry
 
-export const WAVE_VS = HEAD + COMMON + LIB + /* glsl */ `
+export const WAVE_VS = HEAD + COMMON + LIB + FLAME_VARIATION_GLSL + DRAW_GLSL + /* glsl */ `
 uniform float uN, uThick, uBright;
-uniform vec4 uW[4]; // (shape, amp, x, y) (radius, turns, ra, rb) (phase, rotation, hue, -) (pendulum phases)
+// uW (in LIB): (shape, amp, x, y) (radius, turns, ra, rb) (phase, rotation, hue, -) (pendulum phases)
 // Pendulum (shape 5): uW[1] = frequencies, uW[2].x = scale, uW[2].w = second pendulum amplitude.
 out float vSide;
 out vec3 vCol;
@@ -704,7 +991,7 @@ vec2 curve(float k) {
     float y = sin(B.z * t + D.z) + C.w * sin(B.w * t + D.w);
     q = vec2(x, y) * damp * C.x;
   }
-  return rot2(C.y) * q + A.zw;
+  return drawWarpFwd(rot2(C.y) * q + A.zw);
 }
 vec3 curveColor(float k) {
   int sh = int(uW[0].x + 0.5);

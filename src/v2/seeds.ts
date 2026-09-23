@@ -54,7 +54,7 @@ interface Def {
 
 function build(d: Def): Seed {
   const g: Genome = {
-    v: 1,
+    v: 2,
     chain: d.chain ?? [],
     emitters: d.emitters,
     carrier: {

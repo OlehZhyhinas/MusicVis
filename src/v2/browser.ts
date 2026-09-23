@@ -248,7 +248,8 @@ export class PresetBrowser {
         if (!cell) return;
         cell.classList.remove('v2b-pending');
         cell.dataset.id = m.id;
-        cell.querySelector('.v2b-child-label')!.innerHTML = `<b>${esc(m.id)}</b> ${esc(m.name)}<br><span>${esc(m.type)}</span>`;
+        const tag = m.cross ? ` <em class="v2b-tag v2b-tag-${m.cross}" title="${esc(TAG_TITLE[m.cross])}">${m.cross}</em>` : '';
+        cell.querySelector('.v2b-child-label')!.innerHTML = `<b>${esc(m.id)}</b> ${esc(m.name)}${tag}<br><span>${esc(m.type)}</span>`;
         void this.evo.thumb(m.id).then((url) => {
           const box = cell.querySelector('.v2b-child-img')!;
           box.innerHTML = url ? `<img src="${url}" alt="${esc(m.name)}" width="320" height="180" />` : '<span>no image</span>';
@@ -292,6 +293,13 @@ export class PresetBrowser {
     }
   }
 }
+
+const TAG_TITLE: Record<NonNullable<Member['cross']>, string> = {
+  fused: 'One parent draws, the other shapes it (motion, colour, carrier)',
+  morph: 'Same kind in both parents: one emitter with blended parameters',
+  merged: 'Two shapes fused into one through their distance fields',
+  layered: 'Rare: a second, separate layer on top',
+};
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);

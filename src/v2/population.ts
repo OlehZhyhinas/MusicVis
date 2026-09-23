@@ -6,7 +6,9 @@ import {
   type Energy, type Genome, type Species,
 } from './genome';
 import { SEEDS, SEED_VERSION } from './seeds';
-import type { Rng } from './ops';
+import type { CrossTag, Rng } from './ops';
+
+const CROSS_TAGS: CrossTag[] = ['fused', 'morph', 'merged', 'layered'];
 
 export interface Member {
   id: string; // "G0-E07" for seeds, "G{gen}-{nnnn}" for children
@@ -29,11 +31,20 @@ export interface Member {
   hidden: boolean;
   /** Screening render descriptor: mean rgb, motion, mirror symmetry, radial symmetry, detail, coverage. */
   descriptor?: number[];
+  /** How a crossover child combined its parents (absent for seeds, mutants and older children). */
+  cross?: CrossTag;
 }
+
+/**
+ * File / storage format. 1: genomes of format 1 (no draw chains or merges);
+ * 2: genomes of format 2 and the per-child crossover tag. Version 1 data loads
+ * unchanged (repair() lifts every genome to format 2 without altering it).
+ */
+export const POPULATION_VERSION = 2;
 
 export interface PopulationData {
   format: 'musicvis-v2-population';
-  version: 1;
+  version: 1 | 2;
   /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
   seedVersion?: number;
   counter: number;
@@ -172,7 +183,7 @@ export class Population {
   }
 
   /** Add a bred child. generation = max(parent gen) + 1; id counter is per population. */
-  addChild(genome: Genome, parents: Member[], now = Date.now()): Member {
+  addChild(genome: Genome, parents: Member[], now = Date.now(), cross?: CrossTag): Member {
     const g = repair(genome);
     const gen = parents.length ? Math.max(...parents.map((p) => p.gen)) + 1 : 1;
     const nnnn = String(++this.counter).padStart(4, '0');
@@ -180,6 +191,7 @@ export class Population {
       id: `G${gen}-${nnnn}`, gen, parents: parents.map((p) => p.id), created: now, name: nameFor(g), genome: g,
       ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
     };
+    if (cross) m.cross = cross;
     this.members.set(m.id, m);
     return m;
   }
@@ -293,7 +305,7 @@ export class Population {
   toJSON(): PopulationData {
     return {
       format: 'musicvis-v2-population',
-      version: 1,
+      version: POPULATION_VERSION,
       seedVersion: this.seedVersion,
       counter: this.counter,
       votesSinceBreed: this.votesSinceBreed,
@@ -304,13 +316,14 @@ export class Population {
   static fromJSON(data: unknown): Population {
     const d = data as Partial<PopulationData>;
     if (!d || d.format !== 'musicvis-v2-population' || !Array.isArray(d.members)) throw new Error('Not a MusicVis V2 population file.');
+    if (typeof d.version === 'number' && d.version > POPULATION_VERSION) throw new Error('This population file was saved by a newer version of MusicVis.');
     const p = new Population();
     const n = (v: unknown, def = 0) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : def);
     for (const raw of d.members) {
       if (!raw || typeof raw.id !== 'string' || !/^G\d+-[A-Z0-9]+$/.test(raw.id)) continue;
       // Structurally broken genomes are dropped; only parameter values get repaired.
       const rg = raw.genome as Partial<Genome> | undefined;
-      if (!rg || rg.v !== 1 || !Array.isArray(rg.chain) || !Array.isArray(rg.emitters) || !rg.emitters.length || !rg.carrier || !rg.color) continue;
+      if (!rg || ((rg.v as number) !== 1 && rg.v !== 2) || !Array.isArray(rg.chain) || !Array.isArray(rg.emitters) || !rg.emitters.length || !rg.carrier || !rg.color) continue;
       const g = repair(rg);
       if (validate(g).length) continue;
       const m: Member = {
@@ -331,6 +344,7 @@ export class Population {
         hidden: !!raw.hidden,
         descriptor: Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
       };
+      if (CROSS_TAGS.includes(raw.cross as CrossTag)) m.cross = raw.cross;
       p.members.set(m.id, m);
     }
     if (!p.members.size) throw new Error('The file has no valid presets.');

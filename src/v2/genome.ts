@@ -5,7 +5,11 @@
 //              flame variations can run in the warp ('warp' stage) or at
 //              display time ('view' stage, applied before sampling).
 //   emitters   1-3 distinct light sources (fragment fields, line geometry,
-//              GPU particles, a fractal-flame IFS).
+//              GPU particles, a fractal-flame IFS). A 'merge' emitter fuses two
+//              parts into one shape through their signed distance fields.
+//   draw       shaping ops applied to the emitters' own coordinates at draw
+//              time (a domain warp inside the emitter shaders), so a parent's
+//              motion can bend another parent's drawing instead of only the trail.
 //   carrier    how existing light moves: feedback warp, fluid, flow field, none.
 //   color      palette around the key hue plus post settings.
 //   reactions  music signal -> parameter, with a gain.
@@ -74,6 +78,23 @@ export const OP_SCHEMAS: Record<string, Schema> = {
 };
 for (const v of VAR_OPS) OP_SCHEMAS[v] = VAR_SCHEMA;
 
+/**
+ * Ops allowed in the draw-space chain. Their per-frame rates are reinterpreted
+ * as absolute shaping amounts (see engine.ts packDraw); translate, push,
+ * stretch, tile and polar stay carrier / view-stage only.
+ */
+export const DRAW_OPS: OpKind[] = ['swirl', 'twist', 'ripple', 'noise', 'rotate', 'zoom', 'mirror', 'kaleido', ...VAR_OPS];
+export const MAX_DRAW = 3;
+/** GLSL type id of a draw op (engine uniform uDrB[i].x); variations are 20 + their index. */
+export function drawOpId(op: OpKind): number {
+  const fixed = ['', 'swirl', 'twist', 'ripple', 'noise', 'rotate', 'zoom', 'mirror', 'kaleido'].indexOf(op);
+  if (fixed > 0) return fixed;
+  return isVarOp(op) ? 20 + FLAME_VARIATIONS.indexOf(op.slice(2) as FlameVar) : 0;
+}
+export function isDrawOp(op: string): boolean {
+  return (DRAW_OPS as string[]).includes(op);
+}
+
 export function isFold(op: OpKind): boolean {
   return (FOLD_OPS as readonly string[]).includes(op);
 }
@@ -97,9 +118,20 @@ export interface OpGene {
 
 export const EMITTER_KINDS = [
   'wave', 'spectrum', 'particles', 'stars', 'ink', 'wire', 'plasma', 'aurora', 'blobs', 'flame', 'edge', 'tiles', 'horizon', 'orb',
-  'snake',
+  'snake', 'merge',
 ] as const;
 export type EmitterKind = (typeof EMITTER_KINDS)[number];
+/** Every kind a plain (non-merge) emitter can have: random picks and merge parts. */
+export const BASIC_KINDS: EmitterKind[] = EMITTER_KINDS.filter((k) => k !== 'merge');
+/**
+ * Kinds with a 2D signed distance field (glsl.ts SDF_GLSL): they can be one
+ * side of a smooth union / morph, or the region a mask merge emits inside.
+ * The others take part in merges only as the masked consumer.
+ */
+export const SDF_KINDS: EmitterKind[] = ['orb', 'wire', 'wave', 'spectrum', 'snake', 'aurora', 'blobs', 'ink'];
+/** Consumers drawn as geometry: a mask merge masks their feedback trail. */
+export const GEOMETRY_KINDS: EmitterKind[] = ['particles', 'flame'];
+export const isSdfKind = (k: EmitterKind) => SDF_KINDS.includes(k);
 export type Layer = 'fb' | 'top';
 
 const COMMON_EMIT: Schema = { gain: P(0.05, 3, 1), hue: P(0, 1, 0) };
@@ -147,6 +179,11 @@ export const EMITTER_SCHEMAS: Record<EmitterKind, Schema> = {
   // hits), curve gently between turns, bounce off the edges and move step units per beat. cover 1:
   // the newest body paints over older trail; 0: it adds light.
   snake: { ...COMMON_EMIT, count: I(1, 2, 2), step: P(0.03, 0.2, 0.11), turn: P(0, 1.5, 1), curve: P(0, 2, 0.8), width: P(0.5, 3, 1), cover: P(0, 1, 1) },
+  // Two parts fused into one shape. mode 0: smooth union (k = blend radius, grows with the bass);
+  // 1: morph mix(sdA, sdB, t); 2: mask, part B only lights up inside (inside 1) or along (0) part A.
+  // t drifts toward a music driver by depth: drive 0 none, 1 bar-locked sweep every rate bars,
+  // 2 bass, 3 melody, 4 loudness, 5 beat surge. line / fill: outline and body brightness.
+  merge: { ...COMMON_EMIT, mode: C([0, 1, 2], 0), k: P(0.02, 0.25, 0.08), t: P(0, 1, 0.5), drive: C([0, 1, 2, 3, 4, 5], 1), depth: P(0, 1, 0.6), rate: C([2, 4, 8, 16], 8), line: P(0, 1, 0.7), fill: P(0, 1, 0.5), width: P(0.5, 3, 1.2), inside: C([0, 1], 1) },
 };
 
 export interface FlameXformGene {
@@ -172,6 +209,8 @@ export interface EmitterGene {
   layer: Layer;
   p: Params;
   xforms?: FlameXformGene[]; // flame only
+  /** merge only: [shape A, shape B (or the masked consumer in mode 2)], plain kinds. */
+  parts?: EmitterGene[];
 }
 
 // ---------------------------------------------------------------- carrier
@@ -220,23 +259,30 @@ export interface ColorGene {
 // surge: beat envelope with a fast attack and slow ease that cruises with loudness and jumps on drops.
 export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge'] as const;
 export type Signal = (typeof SIGNALS)[number];
-export type GeneGroup = 'op' | 'em' | 'car' | 'col';
+// dr: the draw-space chain. em indexes flatEmitters() (a merge, then its two parts).
+export type GeneGroup = 'op' | 'em' | 'car' | 'col' | 'dr';
+export const GENE_GROUPS: GeneGroup[] = ['op', 'em', 'car', 'col', 'dr'];
 export interface ReactionGene {
   src: Signal;
   g: GeneGroup;
-  i: number; // index into chain / emitters (0 for car / col)
+  i: number; // index into chain / flat emitters / draw chain (0 for car / col)
   k: string; // parameter name
   gain: number; // -1..1, fraction of the parameter's half range per unit signal
 }
 export const MAX_REACTIONS = 6;
 /** Parameters reactions may not touch (structural switches). */
-const NO_REACT = new Set(['mode', 'shape', 'spawn', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'camSpin', 'sides', 'ra', 'rb', 'n', 'bins', 'halfLife', 'lanes', 'strips']);
+const NO_REACT = new Set(['mode', 'shape', 'spawn', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'camSpin', 'sides', 'ra', 'rb', 'n', 'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside']);
 
 // ----------------------------------------------------------------- genome
 
+/** Genome format. 1: before draw chains and merges (still loads unchanged). */
+export const GENOME_VERSION = 2;
+
 export interface Genome {
-  v: 1;
+  v: 2;
   chain: OpGene[];
+  /** Draw-space shaping ops (absent when empty, as in every format-1 genome). */
+  draw?: OpGene[];
   emitters: EmitterGene[];
   carrier: CarrierGene;
   color: ColorGene;
@@ -245,7 +291,22 @@ export interface Genome {
 }
 
 export const MAX_CHAIN = 6;
+/** Hard cap for any genome (older children may have 3). */
 export const MAX_EMITTERS = 3;
+/** Cap for newly bred children: one body, a second layer only by a rare mutation. */
+export const MAX_CHILD_EMITTERS = 2;
+/** Emitters plus merge parts: the shaders have four emitter uniform slots. */
+export const MAX_FLAT = 4;
+
+/** Emitters with each merge followed by its two parts: reaction 'em' indices and shader slots. */
+export function flatEmitters(g: Pick<Genome, 'emitters'>): EmitterGene[] {
+  const out: EmitterGene[] = [];
+  for (const e of g.emitters) {
+    out.push(e);
+    if (e.kind === 'merge' && e.parts) out.push(...e.parts);
+  }
+  return out;
+}
 
 export type Species =
   | 'terrain' | 'rain' | 'vortex' | 'ink' | 'scope' | 'plasma' | 'mirror'
@@ -296,7 +357,11 @@ export function defaultParams(schema: Schema): Params {
 
 export function schemaFor(g: Genome, group: GeneGroup, i: number): Schema | null {
   if (group === 'op') return g.chain[i] ? OP_SCHEMAS[g.chain[i].op] : null;
-  if (group === 'em') return g.emitters[i] ? EMITTER_SCHEMAS[g.emitters[i].kind] : null;
+  if (group === 'dr') return g.draw?.[i] ? OP_SCHEMAS[g.draw[i].op] : null;
+  if (group === 'em') {
+    const e = flatEmitters(g)[i];
+    return e ? EMITTER_SCHEMAS[e.kind] : null;
+  }
   if (group === 'car') return CARRIER_SCHEMA;
   return COLOR_SCHEMA;
 }
@@ -350,9 +415,37 @@ function repairOp(o: Partial<OpGene> | undefined): OpGene | null {
   return { op, stage, w: clamp(num(o.w, 1), 0, 1), p: repairParams(o.p, OP_SCHEMAS[op]) };
 }
 
+function repairDrawOp(o: Partial<OpGene> | undefined): OpGene | null {
+  if (!o || !isDrawOp(o.op as string)) return null;
+  const op = o.op as OpKind;
+  return { op, stage: 'warp', w: clamp(num(o.w, 1), 0, 1), p: repairParams(o.p, OP_SCHEMAS[op]) };
+}
+
+/** A merge whose parts break the rules degrades: parts swap roles, or it falls back to its first part. */
+function repairMerge(e: Partial<EmitterGene>): EmitterGene | null {
+  const parts = (Array.isArray(e.parts) ? e.parts : []).map((x) => (x && x.kind !== 'merge' ? repairEmitter(x) : null)).filter((x): x is EmitterGene => !!x);
+  if (parts.length < 2 || parts[0].kind === parts[1].kind) return parts[0] ?? null;
+  let [a, b] = parts;
+  const p = repairParams(e.p, EMITTER_SCHEMAS.merge);
+  if (p.mode !== 2 && !(isSdfKind(a.kind) && isSdfKind(b.kind))) p.mode = 2;
+  if (p.mode === 2 && !isSdfKind(a.kind)) {
+    if (!isSdfKind(b.kind)) return a;
+    [a, b] = [b, a];
+  }
+  for (const x of p.mode === 2 ? [a] : [a, b]) {
+    // Lissajous / pendulum curves have no distance field: a shaped wave becomes a circle.
+    if (x.kind === 'wave' && (x.p.shape === 3 || x.p.shape === 5)) x.p.shape = 1;
+  }
+  a.layer = 'fb';
+  b.layer = 'fb';
+  const geo = GEOMETRY_KINDS.includes(b.kind);
+  return { kind: 'merge', layer: geo ? 'fb' : e.layer === 'top' ? 'top' : 'fb', p, parts: [a, b] };
+}
+
 function repairEmitter(e: Partial<EmitterGene> | undefined): EmitterGene | null {
   if (!e || !EMITTER_KINDS.includes(e.kind as EmitterKind)) return null;
   const kind = e.kind as EmitterKind;
+  if (kind === 'merge') return repairMerge(e);
   // Flames and particles need accumulation; field emitters may sit on either layer.
   const layer: Layer = kind === 'flame' ? 'fb' : e.layer === 'top' ? 'top' : 'fb';
   const out: EmitterGene = { kind, layer, p: repairParams(e.p, EMITTER_SCHEMAS[kind]) };
@@ -372,13 +465,21 @@ function repairEmitter(e: Partial<EmitterGene> | undefined): EmitterGene | null 
 export function repair(input: unknown): Genome {
   const g = (input && typeof input === 'object' ? input : {}) as Partial<Genome>;
   const chain = (Array.isArray(g.chain) ? g.chain : []).map(repairOp).filter((o): o is OpGene => !!o).slice(0, MAX_CHAIN);
+  const draw = (Array.isArray(g.draw) ? g.draw : []).map(repairDrawOp).filter((o): o is OpGene => !!o).slice(0, MAX_DRAW);
+  // Kinds are unique across emitters and merge parts (they share uniform arrays); one merge at most.
   const seen = new Set<EmitterKind>();
   const emitters: EmitterGene[] = [];
+  let flat = 0;
   for (const e of Array.isArray(g.emitters) ? g.emitters : []) {
-    const r = repairEmitter(e);
-    if (!r || seen.has(r.kind)) continue;
+    let r = repairEmitter(e);
+    if (r?.kind === 'merge' && (seen.has('merge') || r.parts!.some((x) => seen.has(x.kind)) || flat + 3 > MAX_FLAT)) {
+      r = r.parts!.find((x) => !seen.has(x.kind)) ?? null;
+    }
+    if (!r || seen.has(r.kind) || flat + 1 > MAX_FLAT) continue;
     seen.add(r.kind);
+    for (const x of r.parts ?? []) seen.add(x.kind);
     emitters.push(r);
+    flat += 1 + (r.parts?.length ?? 0);
     if (emitters.length >= MAX_EMITTERS) break;
   }
   if (!emitters.length) emitters.push({ kind: 'wave', layer: 'fb', p: defaultParams(EMITTER_SCHEMAS.wave) });
@@ -395,16 +496,20 @@ export function repair(input: unknown): Genome {
     lo = c - 0.075;
     hi = c + 0.075;
   }
-  const out: Genome = { v: 1, chain, emitters, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
+  // draw only appears when non-empty, so format-1 genomes repair to the same JSON (bar the version).
+  const out: Genome = draw.length
+    ? { v: 2, chain, draw, emitters, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] }
+    : { v: 2, chain, emitters, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
+  const flatLen = flatEmitters(out).length;
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
     if (out.reactions.length >= MAX_REACTIONS) break;
     if (!r || !SIGNALS.includes(r.src as Signal)) continue;
-    const group = (['op', 'em', 'car', 'col'] as GeneGroup[]).includes(r.g) ? r.g : null;
+    const group = GENE_GROUPS.includes(r.g) ? r.g : null;
     if (!group) continue;
-    const len = group === 'op' ? chain.length : group === 'em' ? emitters.length : 1;
+    const len = group === 'op' ? chain.length : group === 'em' ? flatLen : group === 'dr' ? draw.length : 1;
     if (!len) continue;
-    const i = group === 'op' || group === 'em' ? ((Math.floor(num(r.i, 0)) % len) + len) % len : 0;
+    const i = group === 'op' || group === 'em' || group === 'dr' ? ((Math.floor(num(r.i, 0)) % len) + len) % len : 0;
     const keys = reactable(schemaFor(out, group, i)!);
     if (!keys.length) continue;
     const k = keys.includes(r.k) ? r.k : keys.includes('gain') ? 'gain' : keys[0];
@@ -426,7 +531,7 @@ export function validate(g: Genome): string[] {
     for (const k of Object.keys(s)) if (!inRange(p[k], s[k])) errs.push(`${where}.${k}=${p[k]} out of range`);
     for (const k of Object.keys(p)) if (!(k in s)) errs.push(`${where}.${k} unknown`);
   };
-  if (g.v !== 1) errs.push('version');
+  if (g.v !== 2) errs.push('version');
   if (!Array.isArray(g.chain) || g.chain.length > MAX_CHAIN) errs.push('chain length');
   g.chain?.forEach((o, i) => {
     if (!OP_KINDS.includes(o.op)) errs.push(`chain[${i}] op ${o.op}`);
@@ -434,12 +539,24 @@ export function validate(g: Genome): string[] {
     if (!(o.w >= 0 && o.w <= 1)) errs.push(`chain[${i}].w`);
     if (o.stage === 'view' && !stageFree(o.op)) errs.push(`chain[${i}] stage`);
   });
+  if (g.draw !== undefined) {
+    if (!Array.isArray(g.draw) || !g.draw.length || g.draw.length > MAX_DRAW) errs.push('draw length');
+    g.draw?.forEach?.((o, i) => {
+      if (!isDrawOp(o.op)) errs.push(`draw[${i}] op ${o.op}`);
+      else chk(o.p, OP_SCHEMAS[o.op], `draw[${i}]`);
+      if (!(o.w >= 0 && o.w <= 1)) errs.push(`draw[${i}].w`);
+      if (o.stage !== 'warp') errs.push(`draw[${i}] stage`);
+    });
+  }
   if (!Array.isArray(g.emitters) || g.emitters.length < 1 || g.emitters.length > MAX_EMITTERS) errs.push('emitter count');
   const kinds = new Set<string>();
-  g.emitters?.forEach((e, i) => {
-    if (!EMITTER_KINDS.includes(e.kind)) errs.push(`emitters[${i}] kind`);
-    else chk(e.p, EMITTER_SCHEMAS[e.kind], `emitters[${i}]`);
-    if (kinds.has(e.kind)) errs.push(`emitters[${i}] duplicate kind`);
+  const checkEmitter = (e: EmitterGene, where: string) => {
+    if (!EMITTER_KINDS.includes(e.kind)) {
+      errs.push(`${where} kind`);
+      return;
+    }
+    chk(e.p, EMITTER_SCHEMAS[e.kind], where);
+    if (kinds.has(e.kind)) errs.push(`${where} duplicate kind`);
     kinds.add(e.kind);
     if (e.kind === 'flame') {
       if (!e.xforms || e.xforms.length < 1 || e.xforms.length > MAX_XFORMS) errs.push('flame xforms count');
@@ -456,8 +573,27 @@ export function validate(g: Genome): string[] {
         if (x.alt && Object.entries(x.alt).some(([k, w]) => !FLAME_VARIATIONS.includes(k as FlameVar) || !(w! >= 0 && w! <= 1))) errs.push(`xform[${j}].alt`);
       });
       if (e.layer !== 'fb') errs.push('flame layer');
-    } else if (e.xforms) errs.push(`emitters[${i}] stray xforms`);
-  });
+    } else if (e.xforms) errs.push(`${where} stray xforms`);
+    if (e.kind === 'merge') {
+      const ps = e.parts;
+      if (!Array.isArray(ps) || ps.length !== 2) {
+        errs.push(`${where} parts`);
+        return;
+      }
+      ps.forEach((x, j) => {
+        if (x.kind === 'merge') errs.push(`${where}.parts[${j}] nested merge`);
+        else checkEmitter(x, `${where}.parts[${j}]`);
+        if (x.layer !== 'fb') errs.push(`${where}.parts[${j}] layer`);
+      });
+      if (!isSdfKind(ps[0].kind)) errs.push(`${where} part A has no distance field`);
+      if (e.p.mode !== 2 && !isSdfKind(ps[1].kind)) errs.push(`${where} part B has no distance field`);
+      for (const x of e.p.mode === 2 ? [ps[0]] : ps) if (x.kind === 'wave' && (x.p.shape === 3 || x.p.shape === 5)) errs.push(`${where} wave shape`);
+      if (GEOMETRY_KINDS.includes(ps[1].kind) && e.layer !== 'fb') errs.push(`${where} layer`);
+    } else if (e.parts) errs.push(`${where} stray parts`);
+  };
+  g.emitters?.forEach((e, i) => checkEmitter(e, `emitters[${i}]`));
+  if (g.emitters?.filter((e) => e.kind === 'merge').length > 1) errs.push('more than one merge');
+  if (g.emitters && flatEmitters(g).length > MAX_FLAT) errs.push('too many emitter slots');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
   if (!SCHEMES.includes(g.color?.scheme)) errs.push('scheme');
@@ -486,8 +622,9 @@ export function fnv1a(s: string): number {
 
 /** Everything that changes the compiled shaders (numeric params are uniforms). */
 export function structuralKey(g: Genome): string {
+  // Draw ops are uniform driven (one shared loop in the shaders), so they are not structural.
   const ops = g.chain.map((o) => `${o.op}${o.stage === 'view' ? '@v' : ''}`).join(',');
-  const em = g.emitters.map((e) => `${e.kind}@${e.layer}`).sort().join(',');
+  const em = g.emitters.map((e) => `${e.kind}${e.parts ? `[${e.p.mode}:${e.parts.map((x) => x.kind).join('+')}]` : ''}@${e.layer}`).sort().join(',');
   return `${ops}|${em}|${g.carrier.kind}|r${g.color.p.reflect}t${g.color.p.tonemap}`;
 }
 
@@ -503,7 +640,7 @@ export function cloneGenome(g: Genome): Genome {
 
 export function speciesScores(g: Genome): Record<Species, number> {
   const s = Object.fromEntries(SPECIES.map((k) => [k, 0])) as Record<Species, number>;
-  for (const e of g.emitters) {
+  for (const e of flatEmitters(g)) {
     const p = e.p;
     const w = 0.6 + 0.4 * Math.min(1, p.gain);
     switch (e.kind) {
@@ -530,6 +667,12 @@ export function speciesScores(g: Genome): Record<Species, number> {
   }
   if (g.carrier.kind === 'fluid') s.ink += 2.6;
   if (g.carrier.kind === 'flow') s.rain += 0.4;
+  for (const o of g.draw ?? []) {
+    // Shaping ops bend the drawing: they read as a (weaker) trait of their kind.
+    if (o.op === 'swirl' || o.op === 'twist' || o.op === 'rotate') s.vortex += 0.6;
+    else if (o.op === 'mirror' || o.op === 'kaleido') s.mirror += 1.2;
+    else if (isVarOp(o.op)) s.flame += 0.4;
+  }
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -580,20 +723,38 @@ export function energyOf(g: Genome): Energy {
 export function estimateCost(g: Genome): number {
   let ms = 1.3; // feedback + composite + bloom + exposure + final
   for (const o of g.chain) ms += o.op === 'noise' ? 0.35 : isVarOp(o.op) ? 0.12 : o.op === 'stretch' ? 0.08 : 0.05;
+  // Draw ops run once per fullscreen pass (feedback and composite) before the fields.
+  for (const o of g.draw ?? []) ms += o.op === 'noise' ? 0.4 : isVarOp(o.op) ? 0.12 : 0.06;
   if (g.carrier.kind === 'fluid') ms += 1.1;
   if (g.carrier.kind === 'flow') ms += 0.35;
   if (g.carrier.p.blur > 0) ms += 0.2;
-  const field: Partial<Record<EmitterKind, number>> = {
-    spectrum: 0.25, stars: 1.1, ink: 0.25, wire: 1.5, plasma: 1.8, aurora: 0.9, blobs: 0.5, edge: 0.2, tiles: 0.5, horizon: 0.4, orb: 0.3, wave: 0.15,
-    snake: 0.2,
-  };
-  for (const e of g.emitters) {
-    if (e.kind === 'particles') ms += 0.25 + (e.p.count / 65536) * 0.6;
-    else if (e.kind === 'horizon') ms += 0.4 + (e.p.terrain > 0.001 ? 1.6 : 0);
-    else if (e.kind === 'orb') ms += 0.3 + (e.p.arms > 0.001 ? 0.25 : 0);
-    else if (e.kind === 'flame') ms += (e.p.count / 262144) * e.p.rounds * 1.3;
-    else ms += field[e.kind] ?? 0.3;
-  }
+  for (const e of g.emitters) ms += emitterCost(e);
   return ms;
+}
+
+const FIELD_COST: Partial<Record<EmitterKind, number>> = {
+  spectrum: 0.25, stars: 1.1, ink: 0.25, wire: 1.5, plasma: 1.8, aurora: 0.9, blobs: 0.5, edge: 0.2, tiles: 0.5, horizon: 0.4, orb: 0.3, wave: 0.15,
+  snake: 0.2,
+};
+/** Distance-field evaluation per pixel (merge sides); the spiral wave walks its windings. */
+const SDF_COST: Partial<Record<EmitterKind, number>> = {
+  orb: 0.3, wire: 1.3, wave: 0.35, spectrum: 0.2, snake: 0.1, aurora: 0.45, blobs: 0.4, ink: 0.2,
+};
+
+function emitterCost(e: EmitterGene): number {
+  if (e.kind === 'particles') return 0.25 + (e.p.count / 65536) * 0.6;
+  if (e.kind === 'horizon') return 0.4 + (e.p.terrain > 0.001 ? 1.6 : 0);
+  if (e.kind === 'orb') return 0.3 + (e.p.arms > 0.001 ? 0.25 : 0);
+  if (e.kind === 'flame') return (e.p.count / 262144) * e.p.rounds * 1.3;
+  if (e.kind === 'merge' && e.parts) {
+    const [a, b] = e.parts;
+    const sdf = (x: EmitterGene) => (SDF_COST[x.kind] ?? 0.3) + (x.kind === 'orb' && x.p.arms > 0.001 ? 0.25 : 0);
+    // Shading plus both fields; a mask merge evaluates the consumer as usual (plus the feedback mask).
+    let ms = 0.2 + sdf(a);
+    if (e.p.mode === 2) ms += emitterCost(b) + (GEOMETRY_KINDS.includes(b.kind) ? 0.1 + sdf(a) : 0);
+    else ms += sdf(b);
+    return ms;
+  }
+  return FIELD_COST[e.kind] ?? 0.3;
 }
 export const COST_BUDGET_MS = 8;

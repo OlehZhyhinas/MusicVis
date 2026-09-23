@@ -2,7 +2,7 @@
 // children, chooses what to show next, and tracks votes / views.
 
 import { cloneGenome, energyOf, type Energy, type Genome } from './genome';
-import { crossover, mulberry32, mutate, sameGenome, type Rng } from './ops';
+import { crossoverTagged, mulberry32, mutate, sameGenome, type CrossTag, type Rng } from './ops';
 import { BREED_EVERY, POP_CAP, Population, fitness, type Member } from './population';
 import type { ScreenResult, Screener } from './screen';
 import type { Store } from './store';
@@ -132,11 +132,22 @@ export class Evolution {
       while (out.length < n && tried < n * MAX_TRIES_PER_CHILD) {
         tried++;
         let g: Genome;
+        let tag: CrossTag | undefined;
         if (mode === 'cross' && parents.length >= 2) {
-          g = crossover(parents[0].genome, parents[1].genome, this.rng);
-          if (this.rng() < 0.35) g = mutate(g, this.rng, 0.4);
+          // The fitter parent is likelier to supply the drawing; the other shapes it.
+          const res = crossoverTagged(parents[0].genome, parents[1].genome, this.rng, (fitness(parents[0]) - fitness(parents[1])) * 3);
+          g = res.genome;
+          tag = res.tag;
+          if (this.rng() < 0.35) {
+            const n = g.emitters.length;
+            g = mutate(g, this.rng, 0.4, undefined, true);
+            if (g.emitters.length > n) tag = 'layered';
+            else if (tag === 'merged' && !g.emitters.some((e) => e.kind === 'merge')) tag = 'fused';
+          }
         } else {
+          const n = parents[0].genome.emitters.length;
           g = mutate(parents[0].genome, this.rng, 1 + Math.min(2, tried * 0.12));
+          if (g.emitters.length > n) tag = 'layered';
         }
         if (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g))) continue;
         const res: ScreenResult = await this.screener.screen(g);
@@ -145,7 +156,7 @@ export class Evolution {
           onEvent?.({ kind: 'reject', reason: res.reason, tried });
           continue;
         }
-        const child = this.pop.addChild(cloneGenome(g), parents);
+        const child = this.pop.addChild(cloneGenome(g), parents, Date.now(), tag);
         child.descriptor = res.descriptor;
         out.push(child);
         onEvent?.({ kind: 'child', member: child, tried });

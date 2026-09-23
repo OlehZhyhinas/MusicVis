@@ -13,7 +13,7 @@ import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, c
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import {
-  CARRIER_SCHEMA, COLOR_SCHEMA, EMITTER_SCHEMAS, OP_SCHEMAS, clampParam, structuralKey,
+  CARRIER_SCHEMA, COLOR_SCHEMA, EMITTER_SCHEMAS, OP_SCHEMAS, clampParam, drawOpId, flatEmitters, structuralKey,
   type EmitterGene, type FlameVar, type Genome, type Params, type Scheme, type Schema, type Signal,
 } from './genome';
 import { WAVE_FS, WAVE_VS, buildSources } from './glsl';
@@ -382,7 +382,12 @@ export class Slot {
   readonly cols = new Float32Array(9);
   readonly opA = new Float32Array(24);
   readonly opB = new Float32Array(24);
-  readonly em = new Float32Array(48);
+  readonly em = new Float32Array(64);
+  readonly drA = new Float32Array(12);
+  readonly drB = new Float32Array(12);
+  drN = 0;
+  /** flatEmitters(genome): merges followed by their parts (shader slot order). */
+  readonly flat: EmitterGene[];
   readonly ink = new Float32Array(24);
   readonly blob = new Float32Array(24);
   readonly seg = new Float32Array(48 * 4);
@@ -404,10 +409,12 @@ export class Slot {
     readonly genome: Genome,
     readonly progs: GenomePrograms,
     readonly fb: PingPong,
-  ) {}
+  ) {
+    this.flat = flatEmitters(genome);
+  }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
-  P(group: 'op' | 'em' | 'car' | 'col', i: number, p: Params, k: string, schema: Schema): number {
+  P(group: 'op' | 'em' | 'car' | 'col' | 'dr', i: number, p: Params, k: string, schema: Schema): number {
     const base = p[k];
     const d = this.delta.get(`${group}${i}.${k}`);
     if (d === undefined) return base;
@@ -606,7 +613,7 @@ export class Stage {
       this.fluid.dissipation = 0.6;
       this.fluid.step(sdt, this.sig.clock, cp.fnoise * (0.3 + 0.7 * F.act) * (0.3 + 0.7 * F.stem[3]) * 0.5 * sdt * 60, cp.vort, F.aspect);
     }
-    const partSlot = slots.filter((s) => s.genome.emitters.some((e) => e.kind === 'particles')).sort((a, b) => b.weight - a.weight)[0] ?? null;
+    const partSlot = slots.filter((s) => s.flat.some((e) => e.kind === 'particles')).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (partSlot && eng.hq) this.updateParticles(partSlot, sdt, !!fluidSlot);
     const flameSlot = slots.filter((s) => s.flameSpec).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flameSlot && eng.hq) {
@@ -614,7 +621,7 @@ export class Stage {
       const spec = flameSlot.flameSpec!;
       const n = Math.min(spec.count, this.opts.flameCap);
       if (Math.abs(this.flame.count - n) > n * 0.1) this.flame.setCount(n);
-      const fe = flameSlot.genome.emitters.find((e) => e.kind === 'flame')!;
+      const fe = flameSlot.flat.find((e) => e.kind === 'flame')!;
       this.flame.configure(spec, {
         spin: F.spin, bass: F.stem[1], vocals: F.stem[2], morph: flameSlot.flameMorph, hue: fe.p.hue, bars: F.bars, beat: F.beatPulse,
       });
@@ -794,10 +801,87 @@ export class Stage {
       }
     });
 
-    // Emitters
+    this.packDraw(s, sdt);
+
+    // Emitters (merge parts tick in their own slots after the merge).
     s.flameSpec = null;
     s.waveBright = 0;
-    g.emitters.forEach((e, slot) => this.tickEmitter(s, e, slot, sdt));
+    s.flat.forEach((e, slot) => this.tickEmitter(s, e, slot, sdt));
+  }
+
+  /**
+   * Draw-space ops: the chain's per-frame rates become absolute shaping
+   * amounts applied to the emitters' own coordinates, breathing with the
+   * music (loudness, beat, bass). Folds and variations keep their meaning.
+   */
+  private packDraw(s: Slot, sdt: number): void {
+    const F = this.sig.F;
+    const A = F.aspect * 0.5;
+    const draw = s.genome.draw ?? [];
+    s.drN = draw.length;
+    const beat = F.beatPulse * F.gate[0];
+    const mod = 0.55 + 0.6 * F.loud + 0.3 * beat;
+    draw.forEach((o, i) => {
+      const P = (k: string) => s.P('dr', i, o.p, k, OP_SCHEMAS[o.op]);
+      const a = s.drA;
+      const j = i * 4;
+      a[j] = a[j + 1] = a[j + 2] = a[j + 3] = 0;
+      s.drB[j] = drawOpId(o.op);
+      const key = (k: string) => `dr${i}.${k}`;
+      const center = (w: number) => {
+        a[j] = (o.p.cx ?? 0) + w * A * 0.64 * Math.sin((TAU * F.bars) / 8);
+        a[j + 1] = (o.p.cy ?? 0) + w * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
+      };
+      switch (o.op) {
+        case 'swirl':
+          center(P('wander'));
+          a[j + 2] = P('amt') * 60 * o.w * mod;
+          a[j + 3] = P('k');
+          break;
+        case 'twist':
+          center(0);
+          a[j + 2] = P('amt') * 60 * o.w * mod;
+          break;
+        case 'ripple': {
+          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed * TAU) % 4096);
+          a[j] = P('amp') * 20 * o.w * (0.6 + 0.8 * F.stem[1]);
+          a[j + 1] = P('freq');
+          a[j + 2] = ph;
+          a[j + 3] = o.p.radial;
+          break;
+        }
+        case 'noise': {
+          const ph = (s.mem[key('ph')] = ((s.mem[key('ph')] ?? 0) + sdt * P('speed') * F.speed) % 4096);
+          a[j] = P('amp') * 25 * o.w * mod;
+          a[j + 1] = P('scale');
+          a[j + 2] = ph;
+          break;
+        }
+        case 'rotate': {
+          center(P('wander'));
+          const sign = o.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
+          const ang = (s.mem[key('ang')] = ((s.mem[key('ang')] ?? 0) - (o.p.lock * this.sig.spinStep + P('rate') * o.w * sdt * 60 * F.speed) * sign) % (TAU * 64));
+          a[j + 2] = ang;
+          break;
+        }
+        case 'zoom':
+          center(P('wander'));
+          // A breathing scale: outward-flying zooms swell on the beat, inward ones contract.
+          a[j + 2] = 1 + P('rate') * 12 * o.w * (0.3 + 1.2 * beat + 0.5 * F.stem[1]);
+          a[j + 3] = o.p.radial;
+          break;
+        case 'mirror':
+          a[j] = o.p.axis;
+          break;
+        case 'kaleido':
+          a[j] = o.p.n;
+          a[j + 1] = F.spin * o.p.lock;
+          break;
+        default: // flame variations
+          a[j] = Math.min(1, o.w * (0.7 + 0.3 * mod));
+          a[j + 1] = P('s');
+      }
+    });
   }
 
   private tickEmitter(s: Slot, e: EmitterGene, slot: number, sdt: number): void {
@@ -817,6 +901,23 @@ export class Stage {
     const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
 
     switch (e.kind) {
+      case 'merge': {
+        // t follows its driver; the blend radius and line width swell with the bass.
+        const bars = F.bars / Math.max(1, e.p.rate);
+        const drv = [P('t'), 0.5 - 0.5 * Math.cos(TAU * bars), F.stem[1] * F.gate[1], F.melody, F.loud, Math.min(1, F.surge * 0.8)][e.p.drive] ?? P('t');
+        const tt = mm('t', P('t'));
+        m[key('t')] = approach(tt, P('t') + (drv - P('t')) * P('depth'), e.p.drive >= 2 ? 3 : 20, sdt);
+        const bass = (m[key('bs')] = approach(mm('bs'), F.stem[1] * F.gate[1], 4, sdt));
+        E[o + 2] = e.p.mode;
+        E[o + 3] = P('k') * (0.6 + 0.9 * bass);
+        E[o + 4] = clamp01(m[key('t')]);
+        E[o + 5] = P('line');
+        E[o + 6] = P('fill');
+        E[o + 7] = P('width') * (1 + 1.2 * bass);
+        E[o + 8] = e.p.inside;
+        E[o + 9] = 0.45 + 0.8 * F.loud + 0.35 * F.beatPulse * F.gate[0];
+        break;
+      }
       case 'spectrum':
         E[o + 2] = P('x'); E[o + 3] = P('y');
         E[o + 4] = e.p.mode; E[o + 5] = e.p.bins; E[o + 6] = P('radius'); E[o + 7] = P('len');
@@ -1221,8 +1322,8 @@ export class Stage {
   private updateParticles(s: Slot, sdt: number, fluid: boolean): void {
     const eng = this.eng;
     if (!this.particles) this.particles = new Particles(eng.gl, eng.fs);
-    const slot = s.genome.emitters.findIndex((e) => e.kind === 'particles');
-    const e = s.genome.emitters[slot];
+    const slot = s.flat.findIndex((e) => e.kind === 'particles');
+    const e = s.flat[slot];
     const sch = EMITTER_SCHEMAS.particles;
     const P = (k: string) => s.P('em', slot, e.p, k, sch);
     const n = Math.min(e.p.count, this.opts.particleCap);
@@ -1262,13 +1363,69 @@ export class Stage {
     pu.liftX = 0;
     pu.liftY = P('lift') * F.speed;
     pu.spread = P('spread');
+    pu.emitCount = 3;
+    pu.emitRadius = 0.3;
+    const mg = s.genome.emitters.find((x) => x.kind === 'merge' && x.parts![1] === e);
+    if (mg) this.mergeSpawn(s, mg.parts![0]);
     this.particles.update(pu);
+  }
+
+  /**
+   * Particles consuming a merge are born on its shape: along a waveform line,
+   * or from emitters on the shape's rim (orb arm tips, polygon corners, the ink
+   * sources, a ring), the rest anywhere (the feedback mask shapes them).
+   */
+  private mergeSpawn(s: Slot, shape: EmitterGene): void {
+    const pu = this.pu;
+    const F = this.sig.F;
+    const o = s.flat.indexOf(shape) * 16;
+    const E = s.em;
+    let mode = 0;
+    switch (shape.kind) {
+      case 'wave':
+        if (shape.p.shape === 0) mode = 1;
+        else {
+          mode = 2;
+          pu.emitCount = 6;
+          pu.emitRadius = s.waveU[4];
+          pu.emitAngle = F.spin * 0.25;
+        }
+        break;
+      case 'orb':
+        mode = 2;
+        pu.emitCount = E[o + 9] > 0.001 ? 5 : 8;
+        pu.emitRadius = E[o + 4] * (1 + 0.8 * E[o + 9]);
+        pu.emitAngle = E[o + 9] > 0.001 ? s.arm[0] : F.spin * 0.25;
+        break;
+      case 'wire': {
+        mode = 2;
+        pu.emitCount = shape.p.solid === 4 ? shape.p.sides : 4;
+        pu.emitRadius = (shape.p.scale + 0.07 * F.stem[1]) * 0.5;
+        pu.emitAngle = F.spin * shape.p.lock * 4;
+        break;
+      }
+      case 'ink':
+        mode = 2;
+        pu.emitCount = shape.p.count;
+        pu.emitRadius = shape.p.radius;
+        pu.emitAngle = F.spin * 0.5;
+        break;
+      case 'spectrum':
+        if (shape.p.mode === 1 || shape.p.mode === 2) {
+          mode = 3;
+        } else mode = 5;
+        break;
+      case 'blobs':
+        mode = 4;
+        break;
+    }
+    pu.spawnFrom = pu.spawnTo = mode;
   }
 
   private drawParticles(s: Slot, e: EmitterGene, weight: number): void {
     if (!this.particles) return;
     const F = this.sig.F;
-    const slot = s.genome.emitters.indexOf(e);
+    const slot = s.flat.indexOf(e);
     const sch = EMITTER_SCHEMAS.particles;
     const size = Math.max(1, s.P('em', slot, e.p, 'size', sch) * (this.h / 1080));
     const alive = 0.35 + 0.65 * F.act;
@@ -1318,6 +1475,8 @@ export class Stage {
       if (e.layer !== 'fb') continue;
       if (e.kind === 'wave') this.drawWave(s, 1, sdt, true);
       if (e.kind === 'particles' && partOwner) this.drawParticles(s, e, 1);
+      // A merge's particle consumer draws into the feedback, masked by the merge shape.
+      if (e.kind === 'merge' && e.parts![1].kind === 'particles' && partOwner) this.drawParticles(s, e.parts![1], 1);
     }
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;
@@ -1368,6 +1527,10 @@ export class Stage {
       .f4v('uOpA', s.opA)
       .f4v('uOpB', s.opB)
       .f4v('uEm', s.em)
+      .f4v('uDrA', s.drA)
+      .f4v('uDrB', s.drB)
+      .i1('uDrN', s.drN)
+      .f4v('uW', s.waveU)
       .f4v('uInk', s.ink)
       .f4v('uBlob', s.blob)
       .f4v('uSeg', s.seg)

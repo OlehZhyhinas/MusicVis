@@ -237,6 +237,27 @@
 .v2b-child-label span {
   color: var(--fg-dim);
 }
+.v2b-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-style: normal;
+  font-size: 10px;
+  line-height: 15px;
+  color: #0b0d12;
+  background: rgba(127, 216, 255, 0.85);
+  vertical-align: 1px;
+}
+.v2b-tag-morph {
+  background: rgba(180, 150, 255, 0.9);
+}
+.v2b-tag-merged {
+  background: rgba(255, 190, 110, 0.9);
+}
+.v2b-tag-layered {
+  background: rgba(200, 200, 200, 0.55);
+}
 .v2b-pending .v2b-child-img {
   animation: v2-shimmer 1.2s ease-in-out infinite alternate;
 }
