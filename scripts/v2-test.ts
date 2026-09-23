@@ -7,7 +7,8 @@ import {
   EMITTER_KINDS, FLAME_VARIATIONS,
   type Genome,
 } from '../src/v2/genome';
-import { crossover, mulberry32, mutate, randomEmitter, randomGenome, randomOp } from '../src/v2/ops';
+import { addLayer, crossover, crossoverTagged, makeMerge, morphParams, mulberry32, mutate, randomEmitter, randomGenome, randomOp } from '../src/v2/ops';
+import { COST_BUDGET_MS, EMITTER_SCHEMAS, SDF_KINDS, BASIC_KINDS, flatEmitters, isSdfKind } from '../src/v2/genome';
 import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
 import { Population, fitness } from '../src/v2/population';
 import { buildSources } from '../src/v2/glsl';
@@ -544,6 +545,193 @@ function fitnessOf(pop: Population, id: string): number {
   check('migration.missing-seed-restored', !!missing.get('G0-E20'), 'G0-E20 restored');
   const future = Population.fromJSON({ ...json, seedVersion: SEED_VERSION + 1 });
   check('migration.newer-left-alone', future.upgradeSeeds().length === 0 && future.seedVersion === SEED_VERSION + 1, 'newer seed version untouched');
+}
+
+
+// ------------------------------------------------ 16. fused crossover
+
+{
+  // Every ordered pair of seed species: valid, at most two emitters, normally one.
+  const rng = mulberry32(6006);
+  const bad: string[] = [];
+  const tags: Record<string, number> = {};
+  let one = 0, n = 0;
+  for (const a of SEEDS) for (const b of SEEDS) {
+    if (a === b) continue;
+    for (let k = 0; k < 3; k++) {
+      const { genome: g, tag } = crossoverTagged(a.genome, b.genome, rng);
+      n++;
+      tags[tag] = (tags[tag] ?? 0) + 1;
+      const errs = validate(g);
+      if (errs.length) bad.push(`${a.origin}x${b.origin}:${errs.join(';')}`);
+      if (g.emitters.length > 2) bad.push(`${a.origin}x${b.origin}:${g.emitters.length} emitters`);
+      if (g.emitters.length === 1) one++;
+      if (tag === 'merged' && !g.emitters.some((e) => e.kind === 'merge')) bad.push(`${a.origin}x${b.origin}:merged without merge`);
+      if (tag === 'layered' && g.emitters.length !== 2) bad.push(`${a.origin}x${b.origin}:layered with ${g.emitters.length}`);
+      if (!(estimateCost(g) < COST_BUDGET_MS)) bad.push(`${a.origin}x${b.origin}:cost ${estimateCost(g).toFixed(2)}`);
+    }
+  }
+  check('fuse.all-seed-pairs-valid', bad.length === 0, bad.slice(0, 5).join(' | ') || `${n} children valid, <= 2 emitters, under budget`);
+  check('fuse.normally-one-emitter', one / n > 0.85, `${one}/${n} single-emitter children; tags ${JSON.stringify(tags)}`);
+  check('fuse.layering-rare', (tags.layered ?? 0) / n < 0.08, `${tags.layered ?? 0}/${n} layered`);
+  check('fuse.all-operators-used', ['fused', 'morph', 'merged', 'layered'].every((t) => (tags[t] ?? 0) > 0), JSON.stringify(tags));
+
+  // Recessive shaping: vortex x moon children bend the moon with the vortex (draw chain) or fuse with it.
+  let shaped = 0;
+  for (let i = 0; i < 200; i++) {
+    const { genome: g } = crossoverTagged(seedByOrigin('E20'), seedByOrigin('E05'), mulberry32(7000 + i), 1);
+    if (g.draw?.some((o) => o.op === 'swirl' || o.op === 'rotate' || o.op === 'zoom') || g.emitters.some((e) => e.kind === 'merge')) shaped++;
+  }
+  check('fuse.recessive-shapes-body', shaped > 150, `${shaped}/200 moon-dominant children shaped by the vortex or merged with it`);
+}
+
+// ------------------------------------------------ 17. same-kind morph
+
+{
+  const rng = mulberry32(8008);
+  const bad: string[] = [];
+  for (let i = 0; i < 300; i++) {
+    const kind = BASIC_KINDS[i % BASIC_KINDS.length];
+    const a = randomEmitter(rng, kind);
+    const b = randomEmitter(rng, kind);
+    const sch = EMITTER_SCHEMAS[kind];
+    const m = morphParams(a.p, b.p, sch, rng);
+    for (const k of Object.keys(sch)) {
+      const s = sch[k];
+      const v = m[k];
+      if (s.choices) {
+        if (v !== a.p[k] && v !== b.p[k]) bad.push(`${kind}.${k} not from a parent`);
+      } else if (v < Math.min(a.p[k], b.p[k]) - (s.int ? 1 : 1e-9) || v > Math.max(a.p[k], b.p[k]) + (s.int ? 1 : 1e-9)) bad.push(`${kind}.${k}=${v} outside parents`);
+      if (v < s.min || v > s.max) bad.push(`${kind}.${k}=${v} out of range`);
+    }
+  }
+  check('morph.params-between-parents', bad.length === 0, bad.slice(0, 5).join(' | ') || '300 morphs interpolate within the parents and the spec');
+
+  // Flame x flame: one flame whose transforms blend both parents.
+  let morphs = 0, oneFlame = 0, blended = 0;
+  const e22 = seedByOrigin('E22').emitters[0], e23 = seedByOrigin('E23').emitters[0];
+  for (let i = 0; i < 100; i++) {
+    const { genome: g, tag } = crossoverTagged(seedByOrigin('E22'), seedByOrigin('E23'), mulberry32(9000 + i));
+    const flames = flatEmitters(g).filter((e) => e.kind === 'flame');
+    if (flames.length === 1 && g.emitters.length === 1) oneFlame++;
+    if (tag !== 'morph') continue;
+    morphs++;
+    const f = flames[0];
+    const z = f.p.zoom;
+    const x0 = f.xforms![0];
+    const vars = Object.keys(x0.vars);
+    if (z >= Math.min(e22.p.zoom, e23.p.zoom) && z <= Math.max(e22.p.zoom, e23.p.zoom) && vars.length >= 2 && validate(g).length === 0) blended++;
+  }
+  check('morph.flame-x-flame', morphs > 70 && oneFlame > 85 && blended === morphs, `${morphs} morphs, ${oneFlame}/100 single flame, ${blended} blended in range`);
+}
+
+// ------------------------------------------------ 18. merged emitters
+
+{
+  const rng = mulberry32(10010);
+  const bad: string[] = [];
+  let n = 0;
+  for (const a of SDF_KINDS) for (const b of BASIC_KINDS) {
+    if (a === b) continue;
+    for (const mode of [0, 1, 2]) {
+      if (mode < 2 && !isSdfKind(b)) continue;
+      const m = makeMerge(randomEmitter(rng, a), randomEmitter(rng, b), rng, mode);
+      if (!m) {
+        bad.push(`${a}+${b}:null`);
+        continue;
+      }
+      const g = repair({ v: 2, chain: [randomOp(rng, 'swirl')], draw: [randomOp(rng, 'twist')], emitters: [m], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [{ src: 'bass', g: 'em', i: 0, k: 'k', gain: 0.5 }, { src: 'beat', g: 'dr', i: 0, k: 'amt', gain: 0.4 }], energy: [0.2, 0.8] });
+      n++;
+      const errs = validate(g);
+      if (errs.length) bad.push(`${a}+${b}/${mode}:${errs.join(';')}`);
+      if (!g.emitters.some((e) => e.kind === 'merge')) bad.push(`${a}+${b}/${mode}:merge lost`);
+      const back = repair(JSON.parse(JSON.stringify(g)));
+      if (JSON.stringify(back) !== JSON.stringify(g)) bad.push(`${a}+${b}/${mode}:roundtrip`);
+      if (!(estimateCost(g) < COST_BUDGET_MS)) bad.push(`${a}+${b}/${mode}:cost ${estimateCost(g).toFixed(2)}`);
+      const src = buildSources(g);
+      if (!src.feedback.includes('em_merge') && !src.composite.includes('em_merge')) bad.push(`${a}+${b}/${mode}:no em_merge`);
+      if (g.reactions.length !== 2) bad.push(`${a}+${b}/${mode}:reactions ${g.reactions.length}`);
+    }
+  }
+  check('merge.valid-roundtrip-budget', bad.length === 0, bad.slice(0, 5).join(' | ') || `${n} merges valid, round-trip, under budget, build shaders`);
+
+  // Merges breed: mutation and crossover keep them valid.
+  const mbad: string[] = [];
+  let kept = 0;
+  const E20 = seedByOrigin('E20'), E14 = seedByOrigin('E14');
+  for (let i = 0; i < 1000; i++) {
+    let g = crossover(E20, E14, rng);
+    if (!g.emitters.some((e) => e.kind === 'merge')) continue;
+    g = mutate(g, rng, 0.5 + 2 * rng());
+    const c = crossover(g, rng() < 0.5 ? E20 : g, rng);
+    for (const x of [g, c]) {
+      const errs = validate(x);
+      if (errs.length) mbad.push(errs.join(';'));
+      if (x.emitters.some((e) => e.kind === 'merge')) kept++;
+    }
+  }
+  check('merge.breedable', mbad.length === 0 && kept > 200, mbad.slice(0, 3).join(' | ') || `${kept} merges survived mutation / crossover, all valid`);
+
+  // Broken merges repair into valid genomes (degrade rather than fail).
+  const broken = repair({ emitters: [{ kind: 'merge', layer: 'top', p: { mode: 0 }, parts: [{ kind: 'plasma', p: {} }, { kind: 'flame', p: {} }] }] });
+  check('merge.repair-broken', validate(broken).length === 0, `${broken.emitters.map((e) => e.kind).join(',')}`);
+}
+
+// ------------------------------------------------ 19. add-layer cap
+
+{
+  const rng = mulberry32(11011);
+  const g1 = cloneGenome(seedByOrigin('E07'));
+  const ok1 = addLayer(g1, rng, seedByOrigin('E13').emitters);
+  const ok2 = addLayer(g1, rng);
+  check('layer.cap-two', ok1 && !ok2 && g1.emitters.length === 2 && g1.emitters[1].kind === 'stars', `first=${ok1} second=${ok2} kinds=${g1.emitters.map((e) => e.kind)}`);
+  let over = 0;
+  for (let i = 0; i < 2000; i++) {
+    let g = crossover(SEEDS[i % 24].genome, SEEDS[(i * 7 + 3) % 24].genome, rng);
+    for (let k = 0; k < 4; k++) g = mutate(g, rng, 1 + rng());
+    if (g.emitters.length > 2) over++;
+  }
+  check('layer.mutation-respects-cap', over === 0, `${over}/2000 mutated children above two emitters`);
+}
+
+// ------------------------------------------------ 20. old formats load
+
+{
+  // A format-1 file (population version 1, genome v 1) with a three-emitter union child.
+  const oldGenome = {
+    v: 1,
+    chain: [{ op: 'rotate', stage: 'warp', w: 1, p: { lock: 0.25, rate: 0, cx: 0, cy: 0, alt: 0, wander: 0 } }],
+    emitters: [
+      { kind: 'ink', layer: 'fb', p: { ...Object.fromEntries(Object.entries(EMITTER_SCHEMAS.ink).map(([k, s]) => [k, s.def])) } },
+      { kind: 'orb', layer: 'top', p: { ...Object.fromEntries(Object.entries(EMITTER_SCHEMAS.orb).map(([k, s]) => [k, s.def])), arms: 1 } },
+      { kind: 'stars', layer: 'fb', p: { ...Object.fromEntries(Object.entries(EMITTER_SCHEMAS.stars).map(([k, s]) => [k, s.def])) } },
+    ],
+    carrier: { kind: 'warp', p: { halfLife: 0.5, floor: 1, blur: 0, amount: 1, vort: 28, fnoise: 0.35, fscale: 2, famt: 0.0012 } },
+    color: { scheme: 'triad', p: { hue: 0.5, sat: 0.9, exposure: 1, contrast: 0.03, bloom: 1, adapt: 0.3, vignette: 0.45, ca: 0.0015, reflect: 0, reflectY: -0.16, tonemap: 0 } },
+    reactions: [{ src: 'bass', g: 'em', i: 2, k: 'density', gain: 0.4 }],
+    energy: [0.2, 0.7],
+  };
+  const file = { format: 'musicvis-v2-population', version: 1, seedVersion: SEED_VERSION, counter: 1, votesSinceBreed: 0, members: [...Population.seeded(1).toJSON().members, { id: 'G1-0001', gen: 1, parents: ['G0-E05', 'G0-E20'], created: 5, name: 'Old Union', genome: oldGenome, likes: 2, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 1, watch: 10, hidden: false }] };
+  const pop = Population.fromJSON(JSON.parse(JSON.stringify(file)));
+  const m = pop.get('G1-0001')!;
+  const { v: _v1, ...oldRest } = oldGenome;
+  const { v: _v2, ...newRest } = m.genome;
+  check('format.v1-child-loads', !!m && validate(m.genome).length === 0 && m.genome.emitters.length === 3 && m.likes === 2, validate(m.genome).join(';') || 'three-emitter union child kept');
+  check('format.v1-child-unchanged', JSON.stringify(newRest) === JSON.stringify(oldRest) && m.genome.draw === undefined && m.genome.v === 2, 'genome identical apart from the version number');
+  check('format.v1-structural-key', structuralKey(m.genome) === 'rotate|ink@fb,orb@top,stars@fb|warp|r0t0', structuralKey(m.genome));
+  const out = pop.toJSON();
+  const again = Population.fromJSON(JSON.parse(JSON.stringify(out)));
+  check('format.v2-roundtrip', out.version === 2 && JSON.stringify(again.get('G1-0001')!.genome) === JSON.stringify(m.genome), `version=${out.version}`);
+  const child = again.addChild(crossover(seedByOrigin('E05'), seedByOrigin('E20'), mulberry32(5)), [again.get('G0-E05')!, again.get('G0-E20')!], 10, 'merged');
+  const re = Population.fromJSON(JSON.parse(JSON.stringify(again.toJSON())));
+  check('format.cross-tag-persisted', re.get(child.id)!.cross === 'merged', `${child.id} cross=${re.get(child.id)!.cross}`);
+  let threw = false;
+  try {
+    Population.fromJSON({ ...file, version: 99 });
+  } catch {
+    threw = true;
+  }
+  check('format.newer-file-rejected', threw, threw ? 'refused' : 'accepted a newer file');
 }
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${failures} failing check(s)`);
