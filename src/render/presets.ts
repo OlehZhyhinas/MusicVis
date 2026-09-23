@@ -622,10 +622,23 @@ vec3 curveColor(float k, float inst) {
     id: 'E08', name: 'Contour Plasma', kind: 'noise field', energy: [0.3, 0.85],
     palette: 'split', hue: 0.6, feedback: false, bloom: 0.9, adapt: 0.4,
     js(f, r) {
-      r.mem.b = mem(r, 'b') + f.dt * f.stem[1] * 0.25;
-      r.mem.ph = mem(r, 'ph') + f.dt * (0.15 + 1.6 * f.beatPulse * f.gate[0]) * f.speed;
-      r.v[0] = r.mem.b % 64;
-      r.v[1] = r.mem.ph % 256;
+      // Everything moves smoothly: contours flow a quarter band per beat (so
+      // the speed follows the tempo but never bursts, which aliased into
+      // jumps), the bass is smoothed before it swells the warp, and the beat
+      // shows as a brightness pulse rather than a lurch.
+      const prevBeats = mem(r, 'lastBeats', f.beats);
+      let db = f.beats - prevBeats;
+      if (db < 0) db += 256;
+      if (db > 1) db = 0;
+      r.mem.lastBeats = f.beats;
+      r.mem.bs = approach(mem(r, 'bs'), f.stem[1] * f.gate[1], 1.5, f.dt);
+      r.mem.b = mem(r, 'b') + f.dt * r.mem.bs * 0.25;
+      r.mem.ph = (mem(r, 'ph') + db * 0.25 + f.dt * 0.04 * f.speed) % 256;
+      r.mem.mel = approach(mem(r, 'mel', 0.5), f.melody, 1.2, f.dt);
+      r.v[0] = r.mem.b;
+      r.v[1] = r.mem.ph;
+      r.v[2] = r.mem.bs;
+      r.v[4] = r.mem.mel;
     },
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
@@ -633,13 +646,14 @@ vec3 comp(vec2 uv, vec2 p) {
   vec2 q = p * 1.7;
   vec2 w1 = vec2(fbm4(q + vec2(0.0, t)), fbm4(q + vec2(5.2, -t * 0.8)));
   vec2 w2 = vec2(fbm4(q + 3.0 * w1 + vec2(1.7, 9.2) + uV[0].x), fbm4(q + 3.0 * w1 + vec2(8.3, 2.8)));
-  float f = fbm4(q + (2.0 + 0.8 * uStem.y) * w2);
+  float f = fbm4(q + (2.0 + 0.8 * uV[0].z) * w2);
   float bands = f * 8.0 - uV[0].y;
   float line = 1.0 - abs(fract(bands) - 0.5) * 2.0;
   float fw = fwidth(bands) * 2.0;
-  float ln = smoothstep(1.0 - fw - 0.06, 1.0, line);
-  vec3 base = pal(f * 1.2 + uPhase * 0.015) * pow(f, 3.0) * 0.08;
-  return base + pal(f + 0.33) * ln * (0.15 + 0.45 * uLoud) * (0.6 + 0.4 * f);
+  float ln = smoothstep(1.0 - fw - 0.06 - 0.06 * uV[0].z, 1.0, line);
+  float hue = uV[1].x * 0.3;
+  vec3 base = pal(f * 1.2 + uPhase * 0.015 + hue) * pow(f, 3.0) * 0.08;
+  return base + pal(f + 0.33 + hue) * ln * (0.15 + 0.35 * uLoud) * (0.55 + 0.9 * uBeatPulse) * (0.6 + 0.4 * f);
 }`,
   },
   // ------------------------------------------------------------ E09
