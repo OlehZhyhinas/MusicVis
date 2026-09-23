@@ -318,9 +318,10 @@ vec3 comp(vec2 uv, vec2 p) {
     id: 'E02', name: 'River of Light', kind: 'wandering trails', energy: [0, 0.45],
     palette: 'analogous', hue: 0.55, decay: 0.998, floor: 0.4, adapt: 0.25, bloom: 1.2,
     js(f, r) {
-      // Two independent snakes roam the screen snake-game style. The melody
-      // snake turns 90 degrees every second beat and on heavy drum hits; the
-      // bass snake turns on each downbeat and on strong bass hits. Both move a
+      // Two independent snakes roam the screen. The melody snake turns every
+      // second beat and sharply on heavy drum hits; the bass snake turns on
+      // each downbeat and sharply on strong bass hits. Turns are at any angle,
+      // they curve gently in between and bounce off the edges. Both move a
       // fixed distance per beat, so their speed follows the tempo.
       const A = f.aspect * 0.5;
       const M = 0.07;
@@ -329,42 +330,39 @@ vec3 comp(vec2 uv, vec2 p) {
       if (db < 0) db += 256;
       if (db > 2) db = f.dt * 2;
       r.mem.lastBeats = f.beats;
-      const DX = [1, 0, -1, 0];
-      const DY = [0, 1, 0, -1];
       const hitRise = f.hit > 0.7 && mem(r, 'hitPrev') <= 0.7;
       r.mem.hitPrev = f.hit;
       const bassRise = f.onset[1] > 0.6 && mem(r, 'bassPrev') <= 0.6;
       r.mem.bassPrev = f.onset[1];
-      const snakes: [string, boolean, number, number, number][] = [
-        // key, turn now, start x, start y, distance per beat
-        ['m', (f.onBeat && f.beatIndex % 2 === 0) || hitRise, -0.3 * A, 0.15, 0.13 * (0.7 + 0.5 * f.act)],
-        ['b', f.onBar || bassRise, 0.3 * A, -0.2, 0.09 * (0.7 + 0.5 * f.act)],
+      const snakes: [string, boolean, boolean, number, number, number][] = [
+        // key, turn now, heavy turn, start x, start y, distance per beat
+        ['m', f.onBeat && f.beatIndex % 2 === 0, hitRise, -0.3 * A, 0.15, 0.13 * (0.7 + 0.5 * f.act)],
+        ['b', f.onBar, bassRise, 0.3 * A, -0.2, 0.09 * (0.7 + 0.5 * f.act)],
       ];
-      for (const [k, turnNow, sx, sy, perBeat] of snakes) {
+      for (const [k, turnNow, heavy, sx, sy, perBeat] of snakes) {
         const x = mem(r, k + 'x', sx);
         const y = mem(r, k + 'y', sy);
-        let dir = mem(r, k + 'd', k === 'm' ? 0 : 2);
+        let ang = mem(r, k + 'a', k === 'm' ? 0.3 : 2.6);
         r.mem[k + 'px'] = x;
         r.mem[k + 'py'] = y;
-        if (turnNow) {
-          r.mem[k + 'n'] = mem(r, k + 'n') + 1;
-          dir = (dir + (h11(r.mem[k + 'n'] * 7.3 + (k === 'm' ? 0 : 50)) < 0.5 ? 1 : 3)) % 4;
+        if (turnNow || heavy) {
+          const n = (r.mem[k + 'n'] = mem(r, k + 'n') + 1);
+          const side = h11(n * 7.3 + (k === 'm' ? 0 : 50)) < 0.5 ? -1 : 1;
+          // Any angle; heavy hits turn sharper.
+          const amt = (heavy ? 1.3 : 0.45) + (heavy ? 1.2 : 0.9) * h11(n * 3.7 + (k === 'm' ? 1 : 60));
+          ang += side * amt;
         }
+        // Gentle curving between turns, steered by the melody (or the bass).
+        ang += ((k === 'm' ? f.melody : f.stem[1]) - 0.5) * 0.8 * f.dt;
         const step = db * perBeat;
-        const inside = (d: number) => {
-          const nx = x + DX[d] * Math.max(step, 0.02);
-          const ny = y + DY[d] * Math.max(step, 0.02);
-          return nx > -A + M && nx < A - M && ny > -0.5 + M && ny < 0.5 - M;
-        };
-        if (!inside(dir)) {
-          const left = (dir + 1) % 4, right = (dir + 3) % 4;
-          const first = h11(f.beatIndex * 3.1 + (k === 'm' ? 0 : 9)) < 0.5 ? left : right;
-          const second = first === left ? right : left;
-          dir = inside(first) ? first : inside(second) ? second : (dir + 2) % 4;
-        }
-        r.mem[k + 'd'] = dir;
-        r.mem[k + 'x'] = Math.min(A - M, Math.max(-A + M, x + DX[dir] * step));
-        r.mem[k + 'y'] = Math.min(0.5 - M, Math.max(-0.5 + M, y + DY[dir] * step));
+        let nx = x + Math.cos(ang) * step;
+        let ny = y + Math.sin(ang) * step;
+        // Bounce off the edges.
+        if (nx < -A + M || nx > A - M) { ang = Math.PI - ang; nx = Math.min(A - M, Math.max(-A + M, nx)); }
+        if (ny < -0.5 + M || ny > 0.5 - M) { ang = -ang; ny = Math.min(0.5 - M, Math.max(-0.5 + M, ny)); }
+        r.mem[k + 'a'] = ang;
+        r.mem[k + 'x'] = nx;
+        r.mem[k + 'y'] = ny;
       }
       r.v[0] = r.mem.mx;
       r.v[1] = r.mem.my;
@@ -379,18 +377,23 @@ vec3 comp(vec2 uv, vec2 p) {
       r.v[10] = 0.011 + 0.02 * f.stem[1];
       r.v[11] = 0.25 + 0.6 * f.stem[1] * (0.3 + 0.7 * f.act);
     },
-    warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
+    warp: /* glsl */ `
+vec2 warp(vec2 p) {
+  // The whole trail drifts slowly like smoke on a current.
+  vec2 c = curlNoise(p * 1.6, uPhase * 0.15);
+  return p + c * (0.0006 + 0.0012 * uAct) * uF60;
+}`,
     draw: /* glsl */ `
 vec3 draw(vec2 p, vec2 uv, vec3 prev) {
   // Each snake's newest stretch of body replaces whatever older trail it
   // crosses (the melody snake draws last, so it lies on top).
   vec3 base = prev;
   float wb = uV[2].z;
-  vec3 cb = uColB * uV[2].w;
+  vec3 cb = pal(0.5 + 0.4 * uStem.y + 0.15 * uBarPulse) * uV[2].w;
   float kb = smoothstep(wb, wb * 0.4, sdSeg(p, uV[2].xy, uV[1].zw));
   base = mix(base, cb, kb);
   float wm = uV[1].x;
-  vec3 cm = mix(uColA, uColC, uMelody) * uV[1].y;
+  vec3 cm = pal(uMelody * 0.7 + 0.2 * uBeatPulse) * uV[1].y;
   float km = smoothstep(wm, wm * 0.4, sdSeg(p, uV[0].zw, uV[0].xy));
   base = mix(base, cm, km);
   base += vec3(1.0) * glow(length(p - uV[0].xy), wm * 1.3) * uV[1].y * 0.25;
@@ -400,7 +403,9 @@ vec3 draw(vec2 p, vec2 uv, vec3 prev) {
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
   vec3 bg = uColB * 0.003 * (1.0 - abs(p.y) * 1.6);
-  return fb(uv) + max(bg, 0.0);
+  // The trail pulses with the beat and the bass.
+  float pulse = 0.85 + 0.35 * uBeatPulse + 0.25 * uStem.y * uPres.y;
+  return fb(uv) * pulse + max(bg, 0.0);
 }`,
   },
   // ------------------------------------------------------------ E03
@@ -922,22 +927,29 @@ vec3 comp(vec2 uv, vec2 p) {
     id: 'E19', name: 'Harmonograph', kind: 'minimal figure', energy: [0.05, 0.5],
     palette: 'analogous', hue: 0.1, decay: 0.86, adapt: 0.15, vignette: 0.55,
     js(f, r) {
-      const [a, b] = RATIOS[((f.keyTonic % RATIOS.length) + RATIOS.length) % RATIOS.length];
-      const fx = approach(mem(r, 'fx', a), a, 0.5, f.dt);
-      const fy = approach(mem(r, 'fy', b), b, 0.5, f.dt);
+      // The figure changes every 2 bars, stepping through the ratio table in
+      // circle-of-fifths order from the song's key, and glides between shapes.
+      // Phases advance with the beat, each downbeat pushes the pendulums, the
+      // melody detunes the figure and drum hits widen the second pendulum.
+      const L = RATIOS.length;
+      const stepN = Math.floor(Math.max(0, f.barIndex) / 2);
+      const [a, b] = RATIOS[(((f.keyTonic + stepN * 5) % L) + L) % L];
+      const fx = approach(mem(r, 'fx', a), a, 1.2, f.dt);
+      const fy = approach(mem(r, 'fy', b), b, 1.2, f.dt);
       r.mem.fx = fx;
       r.mem.fy = fy;
-      const det = 0.004 * Math.sin(f.phase * 0.05);
+      r.mem.swing = f.onBar ? 1 : mem(r, 'swing') * Math.exp(-f.dt * 1.2);
+      const det = 0.012 * (f.melody - 0.5) + 0.004 * Math.sin(f.phase * 0.05);
       r.v[0] = fx;
       r.v[1] = fx * 2 + 0.01 + det;
       r.v[2] = fy;
       r.v[3] = fy * (f.minor ? 1.5 : 2) - 0.01;
-      r.v[4] = f.spin * 0.0625;
-      r.v[5] = f.phase * 0.07;
-      r.v[6] = 1.3 + f.phase * 0.05;
-      r.v[7] = 0.5 - f.phase * 0.04;
-      r.v[8] = 0.85 + 0.25 * f.loud;
-      r.v[9] = 0.35 + 0.4 * melodic(f);
+      r.v[4] = f.spin * 0.25;
+      r.v[5] = f.phase * 0.07 + f.beats * 0.25;
+      r.v[6] = 1.3 + f.phase * 0.05 - f.beats * 0.18;
+      r.v[7] = 0.5 - f.phase * 0.04 + f.beats * 0.11;
+      r.v[8] = 0.75 + 0.2 * f.loud + 0.3 * r.mem.swing;
+      r.v[9] = 0.3 + 0.35 * melodic(f) + 0.35 * f.onset[0];
       r.curveBright = 0.3 + 0.9 * Math.max(f.loud, melodic(f));
     },
     warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
