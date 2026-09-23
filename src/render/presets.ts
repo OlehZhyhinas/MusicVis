@@ -11,7 +11,7 @@
 //
 //   ID   Name               Archetype                         Energy (complexity range)
 //   E01  Night Skyline      horizontal scroll (city skyline)   0.30-0.80
-//   E02  River of Light     horizontal scroll (melody ribbon)  0.00-0.45
+//   E02  River of Light     two wandering snakes (melody, bass) 0.00-0.45
 //   E03  Rain Curtains      vertical fall (spectral rain)      0.40-0.95
 //   E04  Rising Smoke       vertical rise (smoke plumes)       0.10-0.60
 //   E05  Wandering Vortex   off-centre vortex (Lissajous)      0.50-1.00
@@ -315,38 +315,87 @@ vec3 comp(vec2 uv, vec2 p) {
   },
   // ------------------------------------------------------------ E02
   {
-    id: 'E02', name: 'River of Light', kind: 'horizontal scroll', energy: [0, 0.45],
-    palette: 'analogous', hue: 0.55, decay: 0.996, floor: 0.4, scroll: [-0.12, 0], adapt: 0.25, bloom: 1.2,
+    id: 'E02', name: 'River of Light', kind: 'wandering trails', energy: [0, 0.45],
+    palette: 'analogous', hue: 0.55, decay: 0.998, floor: 0.4, adapt: 0.25, bloom: 1.2,
     js(f, r) {
-      const y = (f.melody - 0.5) * 0.62;
-      const prev = mem(r, 'y', y);
-      const yy = approach(prev, y, 6, f.dt);
-      r.mem.y = yy;
-      const by = -0.3 + 0.08 * f.stem[1];
-      const bprev = mem(r, 'by', by);
-      r.mem.by = approach(bprev, by, 3, f.dt);
-      r.v[0] = f.aspect * 0.5 - 0.14;
-      r.v[1] = yy;
-      r.v[2] = prev;
-      r.v[3] = 0.004 + 0.008 * f.loud;
-      r.v[4] = melodic(f) * 1.2;
-      r.v[5] = r.mem.by;
-      r.v[6] = bprev;
-      r.v[7] = f.stem[1] * (0.3 + 0.7 * f.act);
+      // Two independent snakes roam the screen snake-game style. The melody
+      // snake turns 90 degrees every second beat and on heavy drum hits; the
+      // bass snake turns on each downbeat and on strong bass hits. Both move a
+      // fixed distance per beat, so their speed follows the tempo.
+      const A = f.aspect * 0.5;
+      const M = 0.07;
+      const prevBeats = mem(r, 'lastBeats', f.beats);
+      let db = f.beats - prevBeats;
+      if (db < 0) db += 256;
+      if (db > 2) db = f.dt * 2;
+      r.mem.lastBeats = f.beats;
+      const DX = [1, 0, -1, 0];
+      const DY = [0, 1, 0, -1];
+      const hitRise = f.hit > 0.7 && mem(r, 'hitPrev') <= 0.7;
+      r.mem.hitPrev = f.hit;
+      const bassRise = f.onset[1] > 0.6 && mem(r, 'bassPrev') <= 0.6;
+      r.mem.bassPrev = f.onset[1];
+      const snakes: [string, boolean, number, number, number][] = [
+        // key, turn now, start x, start y, distance per beat
+        ['m', (f.onBeat && f.beatIndex % 2 === 0) || hitRise, -0.3 * A, 0.15, 0.13 * (0.7 + 0.5 * f.act)],
+        ['b', f.onBar || bassRise, 0.3 * A, -0.2, 0.09 * (0.7 + 0.5 * f.act)],
+      ];
+      for (const [k, turnNow, sx, sy, perBeat] of snakes) {
+        const x = mem(r, k + 'x', sx);
+        const y = mem(r, k + 'y', sy);
+        let dir = mem(r, k + 'd', k === 'm' ? 0 : 2);
+        r.mem[k + 'px'] = x;
+        r.mem[k + 'py'] = y;
+        if (turnNow) {
+          r.mem[k + 'n'] = mem(r, k + 'n') + 1;
+          dir = (dir + (h11(r.mem[k + 'n'] * 7.3 + (k === 'm' ? 0 : 50)) < 0.5 ? 1 : 3)) % 4;
+        }
+        const step = db * perBeat;
+        const inside = (d: number) => {
+          const nx = x + DX[d] * Math.max(step, 0.02);
+          const ny = y + DY[d] * Math.max(step, 0.02);
+          return nx > -A + M && nx < A - M && ny > -0.5 + M && ny < 0.5 - M;
+        };
+        if (!inside(dir)) {
+          const left = (dir + 1) % 4, right = (dir + 3) % 4;
+          const first = h11(f.beatIndex * 3.1 + (k === 'm' ? 0 : 9)) < 0.5 ? left : right;
+          const second = first === left ? right : left;
+          dir = inside(first) ? first : inside(second) ? second : (dir + 2) % 4;
+        }
+        r.mem[k + 'd'] = dir;
+        r.mem[k + 'x'] = Math.min(A - M, Math.max(-A + M, x + DX[dir] * step));
+        r.mem[k + 'y'] = Math.min(0.5 - M, Math.max(-0.5 + M, y + DY[dir] * step));
+      }
+      r.v[0] = r.mem.mx;
+      r.v[1] = r.mem.my;
+      r.v[2] = r.mem.mpx;
+      r.v[3] = r.mem.mpy;
+      r.v[4] = 0.006 + 0.008 * f.loud;
+      r.v[5] = 0.25 + melodic(f) * 0.55;
+      r.v[6] = r.mem.bx;
+      r.v[7] = r.mem.by;
+      r.v[8] = r.mem.bpx;
+      r.v[9] = r.mem.bpy;
+      r.v[10] = 0.011 + 0.02 * f.stem[1];
+      r.v[11] = 0.25 + 0.6 * f.stem[1] * (0.3 + 0.7 * f.act);
     },
-    warp: /* glsl */ `vec2 warp(vec2 p) { return p + uShift + vec2(0.0, 0.00025 * sin(p.x * 2.0 + uPhase * 0.7) * uF60); }`,
+    warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
     draw: /* glsl */ `
 vec3 draw(vec2 p, vec2 uv, vec3 prev) {
-  float x0 = uV[0].x;
-  float dx = abs(uShift.x) + px();
-  vec2 b = vec2(x0, uV[0].y);
-  float d = sdSeg(p, vec2(x0 + dx, uV[0].z), b);
-  float w = uV[0].w;
-  vec3 c = mix(uColA, uColC, uMelody) * uV[1].x * (glow(d, w) + 0.2 * glow(d, w * 4.0));
-  c += vec3(1.0) * glow(length(p - b), w * 0.9) * uV[1].x * 0.6;
-  float d2 = sdSeg(p, vec2(x0 + dx, uV[1].z), vec2(x0, uV[1].y));
-  c += uColB * uV[1].w * glow(d2, 0.018) * 0.25;
-  return c * 0.3;
+  // Each snake's newest stretch of body replaces whatever older trail it
+  // crosses (the melody snake draws last, so it lies on top).
+  vec3 base = prev;
+  float wb = uV[2].z;
+  vec3 cb = uColB * uV[2].w;
+  float kb = smoothstep(wb, wb * 0.4, sdSeg(p, uV[2].xy, uV[1].zw));
+  base = mix(base, cb, kb);
+  float wm = uV[1].x;
+  vec3 cm = mix(uColA, uColC, uMelody) * uV[1].y;
+  float km = smoothstep(wm, wm * 0.4, sdSeg(p, uV[0].zw, uV[0].xy));
+  base = mix(base, cm, km);
+  base += vec3(1.0) * glow(length(p - uV[0].xy), wm * 1.3) * uV[1].y * 0.25;
+  base += cb * glow(length(p - uV[1].zw), wb * 1.3) * 0.3;
+  return base - prev;
 }`,
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
