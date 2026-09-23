@@ -86,6 +86,7 @@ export interface Runtime {
   ringCenter: [number, number];
   mem: Record<string, number>;
   curveBright: number; // multiplier on the curve layer this frame
+  particleFlow: number; // multiplier on particle speed and zoom flow this frame
 }
 
 export interface Effects {
@@ -770,15 +771,25 @@ vec3 comp(vec2 uv, vec2 p) {
   // ------------------------------------------------------------ E12
   {
     id: 'E12', name: 'Warp Speed', kind: 'starfield', energy: [0.55, 1],
-    palette: 'analogous', hue: 0.58, sat: 0.35, decay: 0.8, bloom: 1.1,
+    palette: 'analogous', hue: 0.58, sat: 0.35, decay: 0.86, bloom: 1.1,
     particles: {
-      count: 16384, size: 2.6, bright: 1.6, spawn: SPAWN.center, target: 'fb', speed: 0.1, curl: 0, life: 0.2,
+      count: 5120, size: 3.4, bright: 2.2, spawn: SPAWN.center, target: 'fb', speed: 0.1, curl: 0, life: 0.2,
       zoomFlow: 1.1, drag: 4, spread: 0.12,
     },
-    warp: /* glsl */ `vec2 warp(vec2 p) { return rot2(-uSpinStep * 0.0625) * p / (1.0 + 0.012 * uF60 * uSpeed); }`,
+    js(f, r) {
+      // Warp speed surges on every beat (fast attack, slow ease), cruises
+      // with the loudness and jumps to hyperspace on a drop; the tunnel zoom
+      // follows the same surges so stars streak on beats.
+      const target = 0.35 + 1.3 * f.beatPulse * f.gate[0] + 0.6 * f.loud + 2.5 * f.drop;
+      const cur = mem(r, 'flow', 0.6);
+      r.mem.flow = approach(cur, target, target > cur ? 18 : 3, f.dt);
+      r.particleFlow = r.mem.flow;
+      r.v[0] = r.mem.flow;
+    },
+    warp: /* glsl */ `vec2 warp(vec2 p) { return rot2(-uSpinStep * 0.0625) * p / (1.0 + (0.004 + 0.012 * uV[0].x) * uF60 * uSpeed); }`,
     draw: /* glsl */ `
 vec3 draw(vec2 p, vec2 uv, vec3 prev) {
-  return uColC * glow(length(p), 0.06) * (0.002 + 0.01 * uStem.y);
+  return uColC * glow(length(p), 0.06) * (0.002 + 0.01 * uStem.y + 0.012 * uBeatPulse);
 }`,
   },
   // ------------------------------------------------------------ E13
@@ -1276,5 +1287,6 @@ export function makeRuntime(): Runtime {
     ringCenter: [0, 0],
     mem: {},
     curveBright: 1,
+    particleFlow: 1,
   };
 }

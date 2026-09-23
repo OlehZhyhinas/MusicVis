@@ -26,6 +26,16 @@
   opacity: 0.18;
 }
 
+/* The V2 bar sits top-right, so start the playlist panel below it. */
+#playlist-panel {
+  top: 64px;
+}
+@media (max-width: 640px) {
+  #playlist-panel {
+    top: 60px;
+  }
+}
+
 #v2-back {
   color: var(--fg-dim);
   text-decoration: none;

@@ -721,6 +721,7 @@ export class Visualizer implements IVisualizer {
     for (const a of list) {
       const p = a.preset;
       a.rt.curveBright = 1;
+      a.rt.particleFlow = 1;
       p.js?.(F, a.rt, this.fx);
       const sat = (p.sat ?? 1) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
       paletteColors(p.palette, hue0 + (p.hue ?? 0), sat, a.cols, 0);
@@ -759,12 +760,13 @@ export class Visualizer implements IVisualizer {
       pu.simTexelY = fl ? fl.texelY : 0;
       pu.fluidAmt = fl && fluidP ? s.fluid ?? 0 : 0;
       pu.curl = s.curl * (0.5 + F.stem[3]);
-      pu.zoomFlow = (s.zoomFlow ?? 0) * F.speed * (1 + 0.8 * F.stem[1]);
+      const flow = this.partOwner.rt.particleFlow;
+      pu.zoomFlow = (s.zoomFlow ?? 0) * F.speed * (1 + 0.8 * F.stem[1]) * flow;
       pu.rotFlow = 0;
       pu.converge = F.build * 1.5;
       pu.drag = s.drag ?? 2.5;
       pu.lifeRate = s.life;
-      pu.speed = s.speed * F.speed;
+      pu.speed = s.speed * F.speed * flow;
       pu.spawnFrom = pu.spawnTo = s.spawn;
       pu.spawnMix = 0;
       pu.emitAngle = TAU * F.barPhase;
