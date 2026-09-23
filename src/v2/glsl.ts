@@ -188,16 +188,14 @@ vec2 drawOp(int t, vec4 A, vec2 p) {
   return p;
 }
 vec2 drawWarp(vec2 p, int base, int n) {
-  for (int i = 0; i < 3; i++) {
-    if (i >= n) break;
+  for (int i = 0; i < min(n, 3); i++) {
     p = drawOp(int(uDrB[base + i].x + 0.5), uDrA[base + i], p);
   }
   return p;
 }
 // Line geometry is moved forward, so only the continuous ops apply (reversed).
 vec2 drawWarpFwd(vec2 p, int base, int n) {
-  for (int i = 0; i < 3; i++) {
-    if (i >= n) break;
+  for (int i = 0; i < min(n, 3); i++) {
     int t = int(uDrB[base + i].x + 0.5);
     if (t >= 7) continue;
     vec4 A = uDrA[base + i];
@@ -257,8 +255,8 @@ const SHAPE_SDF: Partial<Record<ShapeKind, string>> = {
   segment: `vec3 SHP(vec2 q) { return vec3(sdSeg(q, vec2(-SA.x * 0.5, 0.0), vec2(SA.x * 0.5, 0.0)) - SA.y, 0.0, 1.0); }`,
   solid: `vec3 SHP(vec2 q) {
   float d = 1e3, z = 0.0;
-  for (int i = 0; i < 48; i++) {
-    if (i >= uSegN) break;
+  // Dynamic bounds keep the compiler from unrolling (and predicating) every iteration.
+  for (int i = 0; i < min(uSegN, 48); i++) {
     vec4 s = uSeg[i];
     float di = sdSeg(q, s.xy, s.zw);
     if (di < d) { d = di; z = segZ(i); }
@@ -515,9 +513,8 @@ vec2 DFM(vec2 q, out float k) {
   float a = atan(q.y, q.x);
   float rel = max(md / R - 1.0, 0.0);
   float ext = 0.0;
-  int n = int(D.x + 0.5);
-  for (int j = 0; j < 7; j++) {
-    if (j >= n) break;
+  int n = min(int(D.x + 0.5), 7);
+  for (int j = 0; j < n; j++) {
     float ang = armA(j) + D.z * rel;
     float da = atan(sin(a - ang), cos(a - ang));
     float w = D.w / (1.0 + 1.9 * rel);
@@ -593,7 +590,8 @@ const MATERIAL_GLSL: Record<string, string> = {
   float w = max(BD(0).z * (0.7 + 0.8 * Q.x), px() * (1.5 + 2.0 * Q.x));
   float dd = max(s.x, 0.0);
   float cov = glow(dd, w) + BD(1).x * glow(dd, w * 6.0);
-  vec3 col = COL(Q, s.y, 0.3, p) * s.z * (BD(0).w * gTw + Q.x) * 0.4;
+  // A glow is tuned for small sources: a large body glows dimmer, so its trail does not flood the screen.
+  vec3 col = COL(Q, s.y, 0.3, p) * s.z * (BD(0).w * gTw + Q.x) * 0.4 * min(1.0, pow(max(BD(0).z, 0.012) / max(R, 1e-3), 2.0));
   return vec4(col, cov);
 }`,
   // M0 = (gain, hue, spacing, size)
@@ -749,12 +747,14 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
       s += `    vec3 col = m.rgb * gain;
     c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
     c += ex * gain * ${layerK};
-    c += mix(vec3(${Q}.x), col, 0.6) * glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * 0.3 * BD(12).y * uAccum;
+    // The bright tip marks where a moving copy paints now (a still copy would pile it up in one spot).
+    float tipW = clamp(length(${T}.xy - ${Q}.zw) / (max(BD(4).w, 1e-3) * sc * 0.15), 0.0, 1.0);
+    c += mix(vec3(${Q}.x), col, 0.6) * glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * 0.3 * BD(12).y * uAccum * tipW;
   }
 `;
     } else {
       s += `    acc += m.rgb * m.a + ex;
-    tip += glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * ${Q}.x;
+    tip += glow(length(p - ${T}.xy), max(BD(4).w, 1e-3) * sc * 1.3) * ${Q}.x * clamp(length(${T}.xy - ${Q}.zw) / (max(BD(4).w, 1e-3) * sc * 0.15), 0.0, 1.0);
   }
 `;
     }
@@ -786,8 +786,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
   float F = 0.0, rs = 0.0;
   vec2 g = vec2(0.0);
   vec4 Qm = vec4(0.0);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
+  for (int i = 0; i < min(n, 6); i++) {
     vec4 T = uCp[${C0} + i];
     vec2 d = p - T.xy;
     float r = max(BD(2).x * T.w, 1e-3);
@@ -820,8 +819,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
   if (lat == 0) {
     vec2 cell = floor(g0);
     int K = jit > 0.25 ? 1 : 0;
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-      if (abs(i) > K || abs(j) > K) continue;
+    for (int j = -K; j <= K; j++) for (int i = -K; i <= K; i++) {
       vec2 cc = cell + vec2(i, j);
       if (hash12(cc * 1.3 + 7.1) >= dens) continue;
       vec2 sp = cc + 0.5 + jit * (hash22(cc * 1.7 + 0.3) - 0.5);
@@ -829,7 +827,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
       float e = pow(chromaAt(pc), 2.5) * lvl;
       float gate = lit < 0.99 ? step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse) : 1.0;
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
-      vec4 Qc = vec4(e * gate, CHUE(cc, pc), 0.0, 0.0);
+      vec4 Qc = vec4(e * gate, CHUE(cc, pc), T0.xy);
 ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(g0 - sp) / S')}
       if (links > 0.01) {
         for (int kk = 0; kk < 2; kk++) {
@@ -852,7 +850,7 @@ ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length
       float gate = 1.0;
       if (lit < 0.99) { gate = step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse); e *= e; }
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
-      vec4 Qc = vec4(e * gate, CHUE(cc, pc), 0.0, 0.0);
+      vec4 Qc = vec4(e * gate, CHUE(cc, pc), T0.xy);
 ${evalCopy('h.xy / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(h.xy) / S')}
     }
   }
@@ -878,8 +876,7 @@ ${evalCopy('rot2(-T0.z) * (mp - T0.xy)', 'Qc', 'T0').replace(/length\(p - T0\.xy
   vec3 sF = vec3(1e3, 0.0, 1.0);
   vec4 QF = vec4(0.0);
   float wsum = 0.0;
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
+  for (int i = 0; i < min(n, 6); i++) {
     vec4 T = uCp[${C0} + i];
     vec4 Q = uCq[${C0} + i];
     vec2 qq = rot2(-T.z) * (p - T.xy);
@@ -910,8 +907,7 @@ ${evalCopy('rot2(-T0.z) * (mp - T0.xy)', 'Qc', 'T0').replace(/length\(p - T0\.xy
     } else {
       // Explicit copies; each sweeps from its previous position (a continuous stroke at any frame rate).
       placeCode = `  int n = int(BD(4).x + 0.5);
-  for (int i = 0; i < 6; i++) {
-    if (i >= n) break;
+  for (int i = 0; i < min(n, 6); i++) {
     vec4 T = uCp[${C0} + i];
     vec4 Q = uCq[${C0} + i];
     vec2 pv = Q.zw;
@@ -1115,9 +1111,8 @@ vec2 deformFwd(vec2 q) {
   if (uDk == 1) {
     float a = atan(q.y, q.x);
     float ext = 0.0;
-    int n = int(uDp.x + 0.5);
-    for (int j = 0; j < 7; j++) {
-      if (j >= n) break;
+    int n = min(int(uDp.x + 0.5), 7);
+    for (int j = 0; j < n; j++) {
       float ang = (j < 4 ? uArmA0[j] : uArmA1[j - 4]);
       float da = atan(sin(a - ang), cos(a - ang));
       ext += (j < 4 ? uArmL0[j] : uArmL1[j - 4]) * exp(-da * da / (uDp.w * uDp.w));

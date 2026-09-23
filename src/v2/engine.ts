@@ -1493,7 +1493,7 @@ export class Stage {
       case 'dot': {
         const r = P('r') * (1 + 0.08 * this.resp('bass', F.stem[1]));
         E[o] = r;
-        return Math.max(r, b.material.kind === 'glow' ? b.material.p.width : 0.004);
+        return Math.max(r, 0.004);
       }
       case 'polygon':
         E[o] = sh.p.n; E[o + 1] = P('r'); E[o + 2] = P('round');

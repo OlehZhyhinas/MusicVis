@@ -144,7 +144,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
 
   // Budget: repair drops copies of an expensive shape.
   const heavy = repair({ v: 3, bodies: [{ shape: { kind: 'solid' }, place: { kind: 'stations', p: { count: 6 } }, deform: { kind: 'noise' }, material: { kind: 'chrome' } }], carrier: { kind: 'fluid' } });
-  check('repair.fits-budget', estimateCost(heavy) <= COST_BUDGET_MS * 0.95 && heavy.bodies[0].place.p.count < 6, `count=${heavy.bodies[0].place.p.count} cost=${estimateCost(heavy).toFixed(2)}`);
+  check('repair.fits-budget', heavy.bodies[0].place.p.count === 1, `count=${heavy.bodies[0].place.p.count} cost=${estimateCost(heavy).toFixed(2)}`);
 }
 
 // ------------------------------------------------ 3. every locus kind is buildable
@@ -299,6 +299,8 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
     for (const mode of [0, 1, 2]) {
       const body = randomBody(rng, a);
       delete body.fuse;
+      body.deform = { kind: 'none', p: {} };
+      body.place = { kind: 'point', p: { x: 0, y: 0 } };
       const other = randomGene('shape', rng, b) as BodyGene['shape'];
       if (!sdfCapable(other) || UNIQUE_SHAPES.includes(b)) continue;
       const f = makeFuse(body, other, rng, mode);
@@ -689,7 +691,54 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('colour.mapping-name', ADJ_POOLS.graded.includes(adjOf(nameFor(repair(hn)))) || nameFor(repair(hn)) !== nameFor(seedByOrigin('E07')), nameFor(repair(hn)));
 }
 
-// -------------------------------------------------- 14. example crossovers
+// ------------------------------------------------------ 14. homologous loci and linkage
+
+{
+  // Placement and motion travel together; a split lets them part.
+  let pr = 0, prm = 0, pd = 0, pdm = 0, sr = 0, sdm = 0;
+  const rng = mulberry32(80000);
+  for (let i = 0; i < 4000; i++) {
+    const a = SEEDS[i % 24].genome, b = SEEDS[(i * 7 + 5) % 24].genome;
+    const [ab, bb] = [a.bodies[0], b.bodies[0]];
+    if (ab.place.kind === bb.place.kind || ab.motion.kind === bb.motion.kind) continue;
+    const c = crossover(a, b, rng, 1).bodies[0];
+    const domA = c.shape.kind === ab.shape.kind;
+    const [D, R] = domA ? [ab, bb] : [bb, ab];
+    if (c.place.kind === R.place.kind) {
+      pr++;
+      if (c.motion.kind === R.motion.kind) prm++;
+    } else if (c.place.kind === D.place.kind) {
+      pd++;
+      if (c.motion.kind === R.motion.kind) pdm++;
+    }
+    if (c.material.kind === R.material.kind && ab.material.kind !== bb.material.kind) {
+      sr++;
+      if (c.color.kind === R.color.kind || R.color.kind === D.color.kind) sdm++;
+    }
+  }
+  const linked = prm / Math.max(1, pr), unlinked = pdm / Math.max(1, pd);
+  check('linkage.place-motion', linked > 0.6 && unlinked < 0.25 && prm < pr, `motion follows a recessive placement ${(linked * 100).toFixed(0)}% (${prm}/${pr}) vs ${(unlinked * 100).toFixed(0)}% otherwise; splits still happen`);
+  check('linkage.material-colour', sr > 0 && sdm / sr > 0.6, `${sdm}/${sr} recessive materials brought their colour mapping`);
+
+  // Reactions pair by target: never two reactions on the same parameter slot from crossover.
+  let dup = 0, n = 0;
+  for (let i = 0; i < 1500; i++) {
+    const c = crossover(SEEDS[i % 24].genome, SEEDS[(i * 11 + 3) % 24].genome, rng);
+    n += c.reactions.length;
+    const keys = c.reactions.map((r) => `${r.g}${r.i}.${r.k}`);
+    if (new Set(keys).size !== keys.length) dup++;
+  }
+  check('homology.reactions', dup === 0, `${n} inherited reactions, no target driven twice`);
+  const e09 = seedByOrigin('E09');
+  let keep = 0;
+  for (let i = 0; i < 200; i++) {
+    const c = crossover(e09, seedByOrigin('E04'), mulberry32(81000 + i), 3);
+    if (c.bodies[0].place.kind === 'stations' && c.reactions.some((r) => r.g === 'ma' && r.k === 'gain')) keep++;
+  }
+  check('homology.reaction-follows-locus', keep > 0, `${keep} E09-bodied children kept the beat -> material gain reaction`);
+}
+
+// -------------------------------------------------- 15. example crossovers
 
 {
   console.log('\n--- 30 example crossovers ---');

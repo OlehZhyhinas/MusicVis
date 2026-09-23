@@ -874,6 +874,15 @@ function fitBudget(g: Genome): void {
     if (!best) break;
     best.place.p[countKey(best.place.kind)!] -= 1;
   }
+  // Still over: a grid evaluates one cell instead of its 3x3 neighbourhood, then fused shapes go.
+  for (const b of g.bodies) {
+    if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
+    if (b.place.kind === 'grid' && evalCount(b) > 1) b.place.p.jitter = 0.25;
+  }
+  for (const b of g.bodies) {
+    if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
+    if (b.fuse) delete b.fuse;
+  }
 }
 
 function round4(x: number): number {
@@ -1139,11 +1148,16 @@ export function energyOf(g: Genome): Energy {
 
 // -------------------------------------------------------------- cost
 
-/** Estimated GPU milliseconds per frame at 2560x1440 on Apple Silicon (rough model). */
+/**
+ * Estimated GPU milliseconds per frame at 2560x1440 on Apple Silicon, calibrated against timer-query
+ * measurements of isolated parts (seeds and single-part genomes, median of 30-40 frames): e.g. the
+ * frame's fixed passes ~0.45 ms, a distance-field body ~0.9 ms plus its evaluations (a dot 0.3, a
+ * wireframe solid ~4 ms), a 3x3 star grid ~3.5 ms, plasma ~5 ms, a 262k-point flame round ~1.35 ms.
+ */
 export function estimateCost(g: Genome): number {
-  let ms = 1.3; // feedback + composite + bloom + exposure + final
-  for (const o of g.chain) ms += o.op === 'noise' ? 0.35 : isVarOp(o.op) ? 0.12 : o.op === 'stretch' ? 0.08 : 0.05;
-  if (g.carrier.kind === 'fluid') ms += 1.1;
+  let ms = 0.45; // feedback + composite + bloom + exposure + final
+  for (const o of g.chain) ms += o.op === 'noise' ? 1.1 : isVarOp(o.op) ? 0.15 : o.op === 'stretch' ? 0.1 : 0.03;
+  if (g.carrier.kind === 'fluid') ms += 0.5;
   if (g.carrier.kind === 'flow') ms += 0.35;
   if (g.carrier.p.blur > 0) ms += 0.2;
   for (const b of g.bodies) ms += bodyCost(b);
@@ -1152,21 +1166,29 @@ export function estimateCost(g: Genome): number {
 
 /** One distance-field evaluation of a shape, per full-screen pass. */
 const SDF_COST: Record<ShapeKind, number> = {
-  dot: 0.03, polygon: 0.06, star: 0.07, segment: 0.03, solid: 1.3, bars: 0.2, curve: 0.35, aurora: 0.45,
+  dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3,
 };
-const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 1.8, aurora: 0.9, edge: 0.2 };
-const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.04, fill: 0.04, glow: 0.03, dots: 0.08, textured: 0.22, chrome: 0.3 };
+const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05 };
+const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
+/** One evaluation of a shape; a wireframe costs by its segment count (plus the inner solid). */
+function shapeEvalCost(sh: ShapeGene): number {
+  if (sh.kind !== 'solid') return SDF_COST[sh.kind];
+  const segs = sh.p.solid === 4 ? sh.p.sides : [6, 12, 12, 30, 0, 30][sh.p.solid] + (sh.p.inner > 0.01 ? 12 : 0);
+  return 0.4 + 0.11 * segs;
+}
+/** A distance-field body's fixed cost (its pass, loop, material and tip), before its evaluations. */
+const BODY_OVERHEAD = 0.9;
 
 function deformCost(b: BodyGene): number {
   let ms = 0;
   switch (b.deform.kind) {
-    case 'arms': ms += 0.04 * b.deform.p.count; break;
-    case 'wobble': ms += 0.03; break;
-    case 'noise': ms += 0.32; break;
-    case 'twist': ms += 0.02; break;
+    case 'arms': ms += 0.15 * b.deform.p.count; break;
+    case 'wobble': ms += 0.1; break;
+    case 'noise': ms += 1.5; break;
+    case 'twist': ms += 0.05; break;
   }
-  for (const o of b.deform.ops ?? []) ms += o.op === 'noise' ? 0.4 : isVarOp(o.op) ? 0.12 : 0.06;
+  for (const o of b.deform.ops ?? []) ms += o.op === 'noise' ? 1.2 : isVarOp(o.op) ? 0.2 : 0.1;
   return ms;
 }
 
@@ -1182,23 +1204,23 @@ export function bodyCost(b: BodyGene): number {
   let ms = 0;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (cls === 'flame') {
-    ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.3;
-    if (b.fuse) ms += 0.2 + SDF_COST[b.fuse.shape.kind];
+    ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.35;
+    if (b.fuse || b.deform.kind !== 'none') ms += 0.3 + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] : 0);
     return ms;
   }
   if (cls === 'field') {
-    const base = b.shape.kind === 'terrain' ? 0.4 + (b.shape.p.terrain > 0.001 ? 1.6 : 0) : FIELD_COST[b.shape.kind] ?? 0.3;
+    const base = b.shape.kind === 'terrain' ? 0.25 + (b.shape.p.terrain > 0.001 ? 0.3 : 0) : FIELD_COST[b.shape.kind] ?? 0.3;
     ms += base + deformCost(b) + (b.fuse ? 0.2 + SDF_COST[b.fuse.shape.kind] : 0);
     return ms;
   }
   if (cls === 'curve' && !b.fuse) {
     const draws = b.place.kind === 'ring' ? b.place.p.n : b.place.kind === 'mirror' ? 2 : copyCount(b.place);
-    return ms + 0.15 * draws;
+    return ms + 0.05 + 0.03 * draws + (b.deform.kind === 'noise' ? 0.1 : 0);
   }
   const n = evalCount(b);
-  let per = SDF_COST[b.shape.kind] + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;
-  if (b.place.kind === 'grid' && b.place.p.links > 0.01) per += 0.06;
-  ms += n * per + MATERIAL_COST[b.material.kind] * (b.place.p.fuse > 0 ? 1 : Math.min(n, 3)) + (b.emit.kind === 'cover' ? 0.03 : 0);
+  let per = shapeEvalCost(b.shape) + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;
+  if (b.place.kind === 'grid' && b.place.p.links > 0.01) per += 0.1;
+  ms += BODY_OVERHEAD + n * per + MATERIAL_COST[b.material.kind] * (b.place.p.fuse > 0 ? 1 : Math.min(n, 3)) + (b.emit.kind === 'cover' ? 0.03 : 0);
   return ms;
 }
 export const COST_BUDGET_MS = 8;

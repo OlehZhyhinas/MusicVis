@@ -207,6 +207,8 @@ export function fitLoci(b: BodyGene): void {
   const solidMat = b.material.kind !== 'glow';
   if (sh.kind === 'dot' && solidMat && sh.p.r < 0.012) sh.p.r = b.place.kind === 'grid' ? 0.3 / b.place.p.scale : 0.04;
   if (sh.kind === 'dot' && !solidMat && b.material.p.width < 0.004 && b.place.kind !== 'grid') b.material.p.width = 0.015;
+  // A glow is a point source: a large disc glowing into a trail floods the screen.
+  if (sh.kind === 'dot' && !solidMat && sh.p.r > 0.012) sh.p.r = 0.006;
   if (b.place.kind === 'grid') {
     const cell = 1 / b.place.p.scale;
     if (size > cell * 0.48) setShapeSize(sh, cell * 0.45);
@@ -431,8 +433,16 @@ export interface CrossResult {
 }
 /** Chance that a crossover child gets a second body as a separate layer. */
 export const LAYER_CHANCE = 0.08;
-/** Chance per locus that the recessive parent's gene is taken (when it fits the child's shape). */
+/** Chance per linkage group that the recessive parent's genes are taken (when they fit the child's shape). */
 export const LOCUS_SWAP = 0.45;
+/**
+ * Linkage groups: loci that usually travel together (a shape and the way it is bent, a placement and
+ * the motion of its copies, a material and its colour mapping); with LINK_SPLIT a group splits and
+ * each of its loci is inherited on its own. The dominant parent's shape is the body, so the recessive
+ * deformation crosses mostly when its group splits (the moon's arms on a flame).
+ */
+export const LINKAGE: Locus[][] = [['shape', 'deform'], ['place', 'motion'], ['material', 'color'], ['emit'], ['feel']];
+export const LINK_SPLIT = 0.2;
 
 /** Can this shape fuse the other one in? */
 export function canFuse(a: BodyGene, s: ShapeGene): boolean {
@@ -500,25 +510,30 @@ function recombineBody(d: BodyGene, r: BodyGene, rng: Rng): { body: BodyGene; mo
   const body = cloneBody(d);
   let morph = false;
   const took: Locus[] = [];
-  for (const locus of LOCI) {
-    const dg = body[locus] as Gene;
-    const rg = r[locus] as Gene;
-    if (dg.kind === rg.kind) {
-      // Same idea in both parents: blend (the shape nearly always, other loci half the time).
-      if (rng() < (locus === 'shape' ? 0.9 : 0.5)) {
-        (body as unknown as Record<string, Gene>)[locus] = morphGene(locus, dg, rg, rng);
-        if (locus === 'shape') morph = true;
-      } else if (rng() < 0.5) (body as unknown as Record<string, Gene>)[locus] = cloneGene(rg);
-      continue;
+  for (const group of LINKAGE) {
+    const withShape = group.includes('shape');
+    const groupTake = rng() < (withShape ? LOCUS_SWAP * 0.3 : LOCUS_SWAP);
+    const split = rng() < LINK_SPLIT;
+    for (const locus of group) {
+      const dg = body[locus] as Gene;
+      const rg = r[locus] as Gene;
+      if (dg.kind === rg.kind) {
+        // Same idea in both parents: blend (the shape nearly always, other loci half the time).
+        if (rng() < (locus === 'shape' ? 0.9 : 0.5)) {
+          (body as unknown as Record<string, Gene>)[locus] = morphGene(locus, dg, rg, rng);
+          if (locus === 'shape') morph = true;
+        } else if ((split ? rng() < 0.5 : groupTake) && locus !== 'shape') (body as unknown as Record<string, Gene>)[locus] = cloneGene(rg);
+        continue;
+      }
+      if (locus === 'shape') continue; // the dominant parent's shape is the body
+      if (!(split ? rng() < LOCUS_SWAP : groupTake)) continue;
+      const trial = cloneBody(body);
+      (trial as unknown as Record<string, Gene>)[locus] = cloneGene(rg);
+      if (locus === 'deform' && d.deform.ops && !trial.deform.ops) trial.deform.ops = d.deform.ops.map((o) => ({ ...o, p: { ...o.p } }));
+      if (!keeps(trial, locus, rg.kind)) continue;
+      Object.assign(body, trial);
+      took.push(locus);
     }
-    if (locus === 'shape') continue; // the dominant parent's shape is the body
-    if (rng() >= LOCUS_SWAP) continue;
-    const trial = cloneBody(body);
-    (trial as unknown as Record<string, Gene>)[locus] = cloneGene(rg);
-    if (locus === 'deform' && d.deform.ops && !trial.deform.ops) trial.deform.ops = d.deform.ops.map((o) => ({ ...o, p: { ...o.p } }));
-    if (!keeps(trial, locus, rg.kind)) continue;
-    Object.assign(body, trial);
-    took.push(locus);
   }
   // A moving parent should not give a frozen child: when the recombined body would sit still (a fixed
   // placement, no motion, no deformation), it keeps the dominant parent's placement and motion.
@@ -570,6 +585,36 @@ function remapReactions(parent: Genome, child: Genome, pBody: number, cBody: num
     }
   }
   return out;
+}
+
+/**
+ * Reactions paired by their target (the homologous slot: the same parameter of the same locus). A
+ * target both parents drive takes one parent's reaction (blended when both use the same source); a
+ * target only one parent drives is kept most of the time from the dominant parent, about half the time
+ * from the recessive one.
+ */
+function homologousReactions(dr: ReactionGene[], rr: ReactionGene[], rng: Rng): ReactionGene[] {
+  const slots = new Map<string, { d?: ReactionGene; r?: ReactionGene }>();
+  for (const [list, side] of [[dr, 'd'], [rr, 'r']] as const) {
+    for (const x of list) {
+      const k = `${x.g}${x.i}.${x.k}`;
+      const e = slots.get(k) ?? {};
+      if (!e[side]) e[side] = x;
+      slots.set(k, e);
+    }
+  }
+  const out: ReactionGene[] = [];
+  for (const { d, r } of slots.values()) {
+    if (d && r) {
+      if (d.src === r.src && rng() < 0.6) {
+        const t = midT(rng);
+        const L = (a: number, b: number) => a + (b - a) * t;
+        out.push({ ...d, gain: L(d.gain, r.gain), atk: L(d.atk, r.atk), rel: L(d.rel, r.rel), thr: L(d.thr, r.thr), q: rng() < 0.5 ? d.q : r.q, div: rng() < 0.5 ? d.div : r.div });
+      } else out.push({ ...(rng() < 0.6 ? d : r) });
+    } else if (d && rng() < 0.9) out.push({ ...d });
+    else if (r && rng() < 0.55) out.push({ ...r });
+  }
+  return out.sort(() => rng() - 0.5);
 }
 
 /**
@@ -653,25 +698,33 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     const child: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [0, 1] };
     const t = rng();
     child.energy = [D.energy[0] + (R.energy[0] - D.energy[0]) * t, D.energy[1] + (R.energy[1] - D.energy[1]) * t];
-    const seen = new Set<string>();
-    const reactions = [...remapReactions(D, child, di, 0), ...remapReactions(R, child, R.bodies.indexOf(rb), 0)].sort(() => rng() - 0.5).filter((r) => {
-      const k = `${r.g}${r.i}.${r.k}.${r.src}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
       reactions.unshift({ src: pick(rng, ['bass', 'drums', 'loud', 'surge'] as const), g: 'fu', i: 0, k: main.fuse.p.mode === 1 ? 't' : 'k', gain: 0.3 + 0.4 * rng(), atk: 0.03, rel: 0.4, thr: 0, q: 0, div: 4 });
     }
     child.reactions = reactions.slice(0, MAX_REACTIONS);
-    return repair(child);
+    let out = repair(child);
+    // Over the GPU budget: the ops the recessive parent added to the chain go first (costliest first).
+    while (estimateCost(out) > COST_BUDGET_MS * 0.95) {
+      const added = out.chain.map((o, i) => ({ o, i })).filter(({ o }) => !D.chain.some((x) => x.op === o.op));
+      if (!added.length) break;
+      added.sort((x, y) => (y.o.op === 'noise' ? 1 : 0) - (x.o.op === 'noise' ? 1 : 0));
+      out.chain.splice(added[0].i, 1);
+      out = repair(out);
+    }
+    return out;
   };
 
   let child = build(body);
   if (tag === 'merged' && (estimateCost(child) > COST_BUDGET_MS * 0.95 || !child.bodies[0].fuse)) {
     tag = rec.morph ? 'morph' : 'fused';
     child = build(plain);
+  }
+  if (estimateCost(child) > COST_BUDGET_MS * 0.95) {
+    // Still over the budget: the dominant body keeps its own (affordable) loci.
+    tag = 'fused';
+    child = build(repairBody(cloneBody(D.bodies[di])));
   }
   // Rare: the other parent's body as a separate second layer.
   if (rng() < LAYER_CHANCE && addLayer(child, rng, R.bodies, true)) {
