@@ -101,11 +101,16 @@ export class Evolution {
       const fresh = pool.filter((m) => m.views === 0 && dist(m) < 0.25).sort((a, b) => b.created - a.created);
       if (fresh.length) return fresh[Math.floor(this.rng() * Math.min(4, fresh.length))];
     }
-    let cands = pool.filter((m) => dist(m) === 0 && !recent.has(m.id) && (reason !== 'drop' || m.genome.energy[1] >= 0.8));
-    if (cands.length < 3) cands = pool.filter((m) => dist(m) < 0.2 && !recent.has(m.id));
+    let cands = pool.filter((m) => dist(m) < 0.1 && !recent.has(m.id) && (reason !== 'drop' || m.genome.energy[1] >= 0.8));
+    if (cands.length < 6) cands = pool.filter((m) => dist(m) < 0.25 && !recent.has(m.id));
     if (!cands.length) cands = pool;
-    // Fitness-weighted pick among the best dozen.
-    const ranked = cands.map((m) => ({ m, f: fitness(m) })).sort((a, b) => b.f - a.f).slice(0, reason === 'evolve' ? 10 : 14);
+    // Score = fitness plus an exploration bonus for rarely seen presets (so
+    // unvoted children get airtime until votes decide), with random
+    // tie-breaking so the seeds at the front of the list don't win every tie.
+    const totalViews = pool.reduce((s, m) => s + m.views, 0) + 1;
+    const score = (m: Member) => fitness(m) + 0.15 * Math.sqrt(Math.log(totalViews + 1) / (m.views + 1)) + 0.02 * this.rng();
+    // Weighted pick among the best dozen.
+    const ranked = cands.map((m) => ({ m, f: score(m) })).sort((a, b) => b.f - a.f).slice(0, reason === 'evolve' ? 10 : 14);
     let total = 0;
     for (const r of ranked) total += r.f * r.f + 0.01;
     let x = this.rng() * total;
