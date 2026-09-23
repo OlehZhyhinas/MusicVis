@@ -506,7 +506,44 @@ export function crossover(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): Genome 
 }
 
 /** A body's loci recombined with a homologous body of the other parent. */
-function recombineBody(d: BodyGene, r: BodyGene, rng: Rng): { body: BodyGene; morph: boolean; took: Locus[] } {
+/** Chance that a parent's silent allele is expressed in the child (when the child's shape can show it). */
+export const RESURFACE = 0.12;
+/** Chance that a child carries a silent allele for a locus where one is available. */
+export const CARRY = 0.35;
+
+/** A parent body with, sometimes, a silent allele expressed in place of its gene (which goes silent). */
+function resurface(b: BodyGene, rng: Rng): BodyGene {
+  if (!b.alt) return b;
+  const out = cloneBody(b);
+  for (const locus of Object.keys(b.alt) as Locus[]) {
+    if (locus === 'shape' || rng() >= RESURFACE) continue;
+    const trial = cloneBody(out);
+    const silent = trial.alt![locus]!;
+    trial.alt![locus] = (out as unknown as Record<string, Gene>)[locus];
+    (trial as unknown as Record<string, Gene>)[locus] = silent;
+    if (keeps(trial, locus, silent.kind)) Object.assign(out, trial);
+  }
+  return out;
+}
+
+/**
+ * The child's silent alleles: per locus, the gene of the other parent that was not expressed, or a
+ * parent's own silent allele, each carried with CARRY (only when it differs from the expressed kind).
+ */
+function silentAlleles(child: BodyGene, d: BodyGene, r: BodyGene, rng: Rng): Partial<Record<Locus, Gene>> | undefined {
+  const alt: Partial<Record<Locus, Gene>> = {};
+  for (const locus of LOCI) {
+    const shown = (child[locus] as Gene).kind;
+    const pool = [d[locus] as Gene, r[locus] as Gene, d.alt?.[locus], r.alt?.[locus]].filter((g): g is Gene => !!g && g.kind !== shown && g.kind !== 'flame');
+    if (!pool.length || rng() >= CARRY) continue;
+    alt[locus] = cloneGene(pick(rng, pool));
+  }
+  return Object.keys(alt).length ? alt : undefined;
+}
+
+function recombineBody(d0: BodyGene, r0: BodyGene, rng: Rng): { body: BodyGene; morph: boolean; took: Locus[] } {
+  const d = resurface(d0, rng);
+  const r = resurface(r0, rng);
   const body = cloneBody(d);
   let morph = false;
   const took: Locus[] = [];
@@ -545,6 +582,9 @@ function recombineBody(d: BodyGene, r: BodyGene, rng: Rng): { body: BodyGene; mo
       if (i >= 0) took.splice(i, 1);
     }
   }
+  const alt = silentAlleles(body, d, r, rng);
+  if (alt) body.alt = alt;
+  else delete body.alt;
   fitLoci(body);
   return { body: repairBody(body), morph, took };
 }
@@ -713,6 +753,12 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
       out.chain.splice(added[0].i, 1);
       out = repair(out);
     }
+    // Then the carrier blur and any remaining noise op.
+    if (estimateCost(out) > COST_BUDGET_MS * 0.95) out.carrier.p.blur = 0;
+    while (estimateCost(out) > COST_BUDGET_MS * 0.95 && out.chain.some((o) => o.op === 'noise')) {
+      out.chain.splice(out.chain.findIndex((o) => o.op === 'noise'), 1);
+      out = repair(out);
+    }
     return out;
   };
 
@@ -821,6 +867,29 @@ const MUTATORS: [number, string, Mutator][] = [
   [1, 'swap-emit', swapLocus('emit')],
   // Feel: how the body responds (flow / step), its clock, a reaction's source or curve.
   [0.8, 'swap-feel', swapLocus('feel')],
+  // Silent alleles: one is expressed (the other goes silent), or forgotten.
+  [0.5, 'express-allele', (g, rng) => {
+    const b = pick(rng, g.bodies);
+    const keys = Object.keys(b.alt ?? {}).filter((k) => k !== 'shape') as Locus[];
+    if (!keys.length) return false;
+    const locus = pick(rng, keys);
+    const trial = cloneBody(b);
+    const silent = trial.alt![locus]!;
+    trial.alt![locus] = (b as unknown as Record<string, Gene>)[locus];
+    (trial as unknown as Record<string, Gene>)[locus] = silent;
+    if (!keeps(trial, locus, silent.kind)) return false;
+    fitLoci(trial);
+    Object.assign(b, repairBody(trial));
+    return true;
+  }],
+  [0.3, 'drop-allele', (g, rng) => {
+    const b = pick(rng, g.bodies);
+    const keys = Object.keys(b.alt ?? {}) as Locus[];
+    if (!keys.length) return false;
+    delete b.alt![pick(rng, keys)];
+    if (!Object.keys(b.alt!).length) delete b.alt;
+    return true;
+  }],
   [1.2, 'change-clock', (g, rng) => {
     const b = pick(rng, g.bodies);
     const divs = FEEL_SCHEMAS.flow.div.choices!;

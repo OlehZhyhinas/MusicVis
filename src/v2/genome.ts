@@ -409,6 +409,11 @@ export interface BodyGene {
   feel: Gene<FeelKind>;
   color: Gene<MappingKind>;
   fuse?: FuseGene;
+  /**
+   * Silent (recessive) alleles: a second gene some loci carry from an ancestor. It is not drawn; a
+   * crossover may express it again in a later generation. Absent when the body carries none.
+   */
+  alt?: Partial<Record<Locus, Gene>>;
 }
 /** The loci of a body, in a fixed order (homologous slots for crossover): six of look, one of feel. */
 export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit', 'feel', 'color'] as const;
@@ -734,6 +739,18 @@ export function repairBody(raw: unknown): BodyGene {
     }
   }
   if (cls === 'curve' && !body.fuse && emit.kind === 'cover') setKind(emit, 'trail', EMIT_SCHEMAS, { tip: emit.p.tip });
+  // Silent alleles: valid genes of a different kind than the expressed one (flames never go silent).
+  if (isObj(r.alt)) {
+    const alt: Partial<Record<Locus, Gene>> = {};
+    for (const locus of LOCI) {
+      const a = (r.alt as Record<string, unknown>)[locus];
+      if (!isObj(a) || !LOCUS_KINDS[locus].includes(a.kind as string)) continue;
+      const g = locus === 'shape' ? repairShape(a) : repairGene(a, LOCUS_KINDS[locus] as readonly string[], LOCUS_SCHEMAS[locus], a.kind as string);
+      if (g.kind === (body[locus] as Gene).kind || g.kind === 'flame') continue;
+      alt[locus] = g;
+    }
+    if (Object.keys(alt).length) body.alt = alt;
+  }
   return body;
 }
 
@@ -801,6 +818,10 @@ export function repair(input: unknown): Genome {
     }
     used.add(b.shape.kind);
     if (b.fuse) used.add(b.fuse.shape.kind);
+    if (b.alt) {
+      for (const k of Object.keys(b.alt) as Locus[]) if (b.alt[k]!.kind === (b[k] as Gene).kind) delete b.alt[k];
+      if (!Object.keys(b.alt).length) delete b.alt;
+    }
     bodies.push(b);
   }
   if (!bodies.length) bodies.push(repairBody({ shape: { kind: 'curve' }, place: { kind: 'point' }, material: { kind: 'line' }, emit: { kind: 'trail' } }));
@@ -977,6 +998,21 @@ export function validate(g: Genome): string[] {
       chk(f.p, FUSE_SCHEMA, `${w}.fuse`);
       if (f.p.mode !== 2 && !sdfCapable(b.shape)) errs.push(`${w}.fuse needs a distance field`);
       if (b.shape.kind === 'curve' && (b.shape.p.form === 3 || b.shape.p.form === 5)) errs.push(`${w}.fuse curve form`);
+    }
+  });
+  g.bodies?.forEach((b, i) => {
+    if (b.alt === undefined) return;
+    const keys = Object.keys(b.alt);
+    if (!keys.length) errs.push(`bodies[${i}].alt empty`);
+    for (const k of keys) {
+      const locus = k as Locus;
+      const a = b.alt[locus];
+      if (!LOCI.includes(locus) || !a || !LOCUS_KINDS[locus].includes(a.kind)) {
+        errs.push(`bodies[${i}].alt.${k} kind`);
+        continue;
+      }
+      chk(a.p, locusSchema(locus, a.kind), `bodies[${i}].alt.${k}`);
+      if (a.kind === (b[locus] as Gene).kind || a.kind === 'flame') errs.push(`bodies[${i}].alt.${k} not silent`);
     }
   });
   if (sparks > 1) errs.push('more than one sparks emission');

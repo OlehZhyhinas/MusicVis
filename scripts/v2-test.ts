@@ -738,7 +738,67 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('homology.reaction-follows-locus', keep > 0, `${keep} E09-bodied children kept the beat -> material gain reaction`);
 }
 
-// -------------------------------------------------- 15. example crossovers
+// ------------------------------------------------------ 15. silent (recessive) alleles
+
+{
+  // Many generations stay valid; alleles are carried but stay compact.
+  const rng = mulberry32(90000);
+  let pop: Genome[] = SEEDS.map((s) => s.genome);
+  const bad: string[] = [];
+  let carriers = 0, alleles = 0, bodies = 0, bytesAlt = 0, bytes = 0;
+  for (let gen = 0; gen < 6; gen++) {
+    const next: Genome[] = [];
+    for (let i = 0; i < 60; i++) {
+      let c = crossover(pop[Math.floor(rng() * pop.length)], pop[Math.floor(rng() * pop.length)], rng);
+      if (rng() < 0.3) c = mutate(c, rng, 0.6);
+      if (validate(c).length) bad.push(validate(c).join(';'));
+      for (const b of c.bodies) {
+        bodies++;
+        if (b.alt) {
+          carriers++;
+          alleles += Object.keys(b.alt).length;
+          bytesAlt += JSON.stringify(b.alt).length;
+        }
+      }
+      bytes += JSON.stringify(c).length;
+      next.push(c);
+    }
+    pop = next;
+  }
+  check('allele.generations-valid', !bad.length, bad[0] ?? '6 generations x 60 children valid');
+  check('allele.compact', carriers > bodies * 0.3 && bytesAlt / bytes < 0.35, `${carriers}/${bodies} bodies carry ${alleles} silent alleles, ${(100 * bytesAlt / bytes).toFixed(0)}% of the serialized size`);
+  const mseen = new Set<string>();
+  const mbad: string[] = [];
+  for (let i = 0; i < 1500; i++) {
+    const log: string[] = [];
+    const m = mutate(pop[i % pop.length], rng, 1.5, log);
+    log.forEach((x) => mseen.add(x));
+    if (validate(m).length) mbad.push(validate(m).join(';'));
+  }
+  check('allele.mutations', !mbad.length && mseen.has('express-allele') && mseen.has('drop-allele'), mbad[0] ?? 'express-allele / drop-allele keep carriers valid');
+  const rt = pop.find((g) => g.bodies[0].alt)!;
+  check('allele.roundtrip', JSON.stringify(repair(JSON.parse(JSON.stringify(rt)))) === JSON.stringify(rt) && structuralKey(rt) === structuralKey({ ...rt, bodies: rt.bodies.map((b) => ({ ...b, alt: undefined })) } as Genome), 'alleles survive JSON + repair and never change the shaders');
+  const same = repair({ ...cloneGenome(seedByOrigin('E02')), bodies: [{ ...cloneGenome(seedByOrigin('E02')).bodies[0], alt: { place: { kind: 'walker', p: {} }, motion: { kind: 'spin', p: { rate: 9 } }, shape: { kind: 'flame', p: {} } } }] });
+  check('allele.repair', JSON.stringify(Object.keys(same.bodies[0].alt ?? {})) === '["motion"]' && same.bodies[0].alt!.motion!.p.rate === 1, JSON.stringify(same.bodies[0].alt));
+
+  // A trait silent in both parents resurfaces in grandchildren: a still polyhedron child that carries
+  // the walk, crossed back with polyhedra, sometimes walks again.
+  let carrier: Genome | null = null;
+  for (let i = 0; i < 2000 && !carrier; i++) {
+    const c = crossover(seedByOrigin('E14'), seedByOrigin('E02'), mulberry32(91000 + i), 3);
+    if (c.bodies[0].place.kind !== 'walker' && c.bodies[0].alt?.place?.kind === 'walker') carrier = c;
+  }
+  let back = 0;
+  if (carrier) {
+    for (let i = 0; i < 600; i++) {
+      const gc = crossover(carrier, seedByOrigin('E14'), mulberry32(92000 + i), 0);
+      if (gc.bodies[0].place.kind === 'walker') back++;
+    }
+  }
+  check('allele.resurfaces', !!carrier && back > 0, carrier ? `${back}/600 grandchildren walk again (neither parent shows the walk)` : 'no carrier found');
+}
+
+// -------------------------------------------------- 16. example crossovers
 
 {
   console.log('\n--- 30 example crossovers ---');

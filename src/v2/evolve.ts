@@ -32,8 +32,9 @@ export class Evolution {
   constructor(private store: Store, readonly screener: Screener) {}
 
   async load(): Promise<void> {
+    let data: unknown;
     try {
-      const data = await this.store.get<unknown>('population');
+      data = await this.store.get<unknown>('population');
       if (data) {
         this.pop = Population.fromJSON(data);
         // Seeds re-encoded since this population was saved get the new genomes
@@ -45,7 +46,9 @@ export class Evolution {
         }
       }
     } catch (err) {
-      console.warn('[v2] stored population unreadable, starting from the seeds', err);
+      console.warn('[v2] stored population unreadable, starting from the seeds (the old data is kept as population-unreadable)', err);
+      // Keep the unreadable data so a later version (or an export by hand) can still recover it.
+      if (data) void this.store.set('population-unreadable', data);
       this.pop = Population.seeded();
     }
   }
