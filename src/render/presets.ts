@@ -163,6 +163,11 @@ function mem(r: Runtime, k: string, init = 0): number {
   return v === undefined ? (r.mem[k] = init) : v;
 }
 /** Melodic level: vocals, else "other", with a little loudness so solo pieces still draw. */
+/** Per-frame amount scaled so continuous effects are frame-rate independent. */
+function f60(f: Frame): number {
+  return Math.min(3, f.dt * 60);
+}
+
 function melodic(f: Frame): number {
   return Math.max(f.stem[2], f.stem[3] * 0.85, f.loud * 0.35);
 }
@@ -529,21 +534,55 @@ vec3 draw(vec2 p, vec2 uv, vec3 prev) {
     palette: 'triad', hue: 0.15, decay: 0.993, floor: 1.5, fluid: { amount: 1, vorticity: 28, noise: 0.35 }, adapt: 0.35,
     warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
     js(f, r, fx) {
+      // The fluid itself is untouched; only where, which way and how hard ink
+      // is pushed follows the music. Sources move with their instruments,
+      // each source's aim steps round on its instrument's hits, and ink goes
+      // out in beat pulses whose speed follows the tempo, plus a gentle flow.
       const A = f.aspect * 0.5;
-      const base = [[-0.55 * A, -0.2], [0, -0.28], [0, 0.18], [0.55 * A, -0.05]];
+      const prevBeats = mem(r, 'lastBeats', f.beats);
+      let db = f.beats - prevBeats;
+      if (db < 0) db += 256;
+      r.mem.lastBeats = f.beats;
+      if (f.dt > 0 && db < 1) {
+        const bpm = (db / f.dt) * 60;
+        if (bpm > 40 && bpm < 220) r.mem.bpm = approach(mem(r, 'bpm', 120), bpm, 1, f.dt);
+      }
+      const tf = Math.min(1.6, Math.max(0.5, mem(r, 'bpm', 120) / 120));
+      if (f.onBar) {
+        const n = (r.mem.bars = mem(r, 'bars') + 1);
+        r.mem.dtx = (h11(n * 1.7) - 0.5) * 1.2 * A;
+        r.mem.dty = (h11(n * 2.9) - 0.5) * 0.6;
+      }
+      const targets = [
+        [mem(r, 'dtx', -0.55 * A), mem(r, 'dty', -0.2)],
+        [Math.cos(f.phase * 0.2) * (0.1 + 0.45 * f.stem[1]) * A, -0.28 + 0.2 * f.stem[1]],
+        [0.25 * A * Math.sin(f.phase * 0.15), (f.melody - 0.5) * 0.7],
+        [0.55 * A * Math.cos(f.phase * 0.11 + 1), 0.25 * Math.sin(f.phase * 0.13)],
+      ];
+      const hits = [f.hit > 0.5 && mem(r, 'h0') <= 0.5, f.onset[1] > 0.5 && mem(r, 'h1') <= 0.5,
+        f.onset[2] > 0.5 && mem(r, 'h2') <= 0.5, f.onset[3] > 0.5 && mem(r, 'h3') <= 0.5];
+      r.mem.h0 = f.hit;
+      r.mem.h1 = f.onset[1];
+      r.mem.h2 = f.onset[2];
+      r.mem.h3 = f.onset[3];
       for (let i = 0; i < 4; i++) {
-        const x = base[i][0] + 0.1 * Math.sin(f.phase * 0.23 + i * 1.9);
-        const y = base[i][1] + 0.07 * Math.sin(f.phase * 0.31 + i * 2.7);
+        const x = (r.mem['x' + i] = approach(mem(r, 'x' + i, targets[i][0]), targets[i][0], i === 0 ? 3 : 1.5, f.dt));
+        const y = (r.mem['y' + i] = approach(mem(r, 'y' + i, targets[i][1]), targets[i][1], i === 0 ? 3 : 1.5, f.dt));
         const s = i === 0 ? f.onset[0] : f.stem[i];
+        if (hits[i]) r.mem['a' + i] = mem(r, 'a' + i, i * (TAU / 4)) + (0.35 + 0.5 * h11(f.beatIndex * 3.1 + i)) * (i % 2 ? -1 : 1);
+        const a = mem(r, 'a' + i, i * (TAU / 4));
         r.v[i * 4] = x;
         r.v[i * 4 + 1] = y;
         r.v[i * 4 + 2] = s;
         r.v[i * 4 + 3] = 0.014 + 0.016 * s;
-        if (s > 0.04 && (i > 0 || f.hit > 0)) {
-          const a = f.spin * 0.5 + i * (TAU / 4);
-          const F = (i === 0 ? 1400 * f.hit : 420 * s) * (0.4 + 0.6 * f.act);
-          fx.splat(x / f.aspect + 0.5, y + 0.5, Math.cos(a) * F, Math.sin(a) * F, 0.002, 0);
+        let F = 0;
+        if (i === 0) {
+          if (hits[0]) F = 650 * f.hit * tf;
+        } else if (s > 0.04) {
+          F = 45 * s * tf * f60(f);
+          if (f.onBeat) F += 260 * s * tf;
         }
+        if (F > 0) fx.splat(x / f.aspect + 0.5, y + 0.5, Math.cos(a) * F * (0.4 + 0.6 * f.act), Math.sin(a) * F * (0.4 + 0.6 * f.act), 0.002, 0);
       }
     },
     draw: /* glsl */ `
