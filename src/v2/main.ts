@@ -12,6 +12,7 @@ import { Hud } from '../ui/hud';
 import { idleState } from '../ui/idleState';
 import { showToast } from '../ui/toast';
 import { loadSetting, saveSetting } from '../ui/storage';
+import { LiveMode } from '../ui/liveMode';
 import { Engine } from './engine';
 import { Screener } from './screen';
 import { Store } from './store';
@@ -214,6 +215,34 @@ async function main(): Promise<void> {
     onPlaylistToggle: () => playlistPanel.toggle(),
     onHelpToggle: () => setHelpVisible(!!helpOverlay.hidden),
   });
+  // Live input: same flow as V1 (starting it pauses the file; a track or stop ends it).
+  const liveMode = new LiveMode(
+    {
+      ensureContext: () => {
+        if (!audioCtx) audioCtx = new AudioContext();
+        return audioCtx;
+      },
+      onStart: () => {
+        loadToken++;
+        player?.pause();
+        transport.setTrackLoading(null);
+        transport.show();
+        liveMode.setOpen(false);
+        playlistPanel.setCollapsed(true);
+      },
+      onStop: () => {
+        if (playlist.isEmpty) transport.hide();
+      },
+      onNewSong: (cx) => {
+        songCx = cx;
+        eng.setSongComplexity(songCx);
+        if (!evolveOn) choose('new', 1.5);
+      },
+    },
+    transport,
+    [$<HTMLElement>('pl-live'), $<HTMLElement>('pl-live-empty')],
+  );
+
   transport.setVolumeUi(volume, muted);
   transport.setShuffleUi(shuffle);
   transport.setRepeatUi(repeat);
@@ -252,7 +281,7 @@ async function main(): Promise<void> {
     if (cur && cur.status === 'analyzing') transport.setTrackLoading(cur.progress);
     else if (cur && (cur.status === 'ready' || cur.status === 'error')) transport.setTrackLoading(null);
     emptyStateEl.hidden = !playlist.isEmpty;
-    if (playlist.isEmpty) {
+    if (playlist.isEmpty && !liveMode.active) {
       transport.hide();
       playlistPanel.setCollapsed(false);
     }
@@ -279,6 +308,10 @@ async function main(): Promise<void> {
     else document.exitFullscreen?.().catch(() => {});
   }
   function togglePlay(): void {
+    if (liveMode.active) {
+      liveMode.stop();
+      return;
+    }
     if (!player || !songLoaded) return;
     if (player.playing) player.pause();
     else {
@@ -312,6 +345,7 @@ async function main(): Promise<void> {
   }
 
   async function playTrack(track: Track): Promise<void> {
+    liveMode.stop();
     const token = ++loadToken;
     try {
       if (!audioCtx) audioCtx = new AudioContext();
@@ -465,7 +499,10 @@ async function main(): Promise<void> {
     fps += (1 / Math.max(dt, 1e-6) - fps) * 0.05;
 
     let state: MusicState;
-    if (songLoaded && player && sampler && liveAnalyser) {
+    const liveState = liveMode.sample(dt);
+    if (liveState) {
+      state = liveState;
+    } else if (songLoaded && player && sampler && liveAnalyser) {
       state = sampler.sample(player.currentTime, dt, player.playing, liveAnalyser.read(dt));
       transport.updatePlayback(player.currentTime, player.duration, player.playing);
     } else {
@@ -475,7 +512,7 @@ async function main(): Promise<void> {
 
     // Switching policy.
     if (evolveOn) {
-      if (state.playing || !songLoaded) evolveTimer += dt;
+      if (state.playing || !songLoaded || liveMode.active) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
     } else if (state.sectionChanged && state.section?.label === 'drop') {
       choose('drop', 0.35);
