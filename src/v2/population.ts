@@ -5,7 +5,7 @@ import {
   classify, cloneGenome, energyOf, genomeHash, repair, structuralKey, validate,
   type Energy, type Genome, type Species,
 } from './genome';
-import { SEEDS } from './seeds';
+import { SEEDS, SEED_VERSION } from './seeds';
 import type { Rng } from './ops';
 
 export interface Member {
@@ -34,6 +34,8 @@ export interface Member {
 export interface PopulationData {
   format: 'musicvis-v2-population';
   version: 1;
+  /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
+  seedVersion?: number;
   counter: number;
   votesSinceBreed: number;
   members: Member[];
@@ -100,34 +102,57 @@ function describe(g: Genome): Pick<Member, 'species' | 'species2' | 'type' | 'en
   return { species: c.primary, species2: c.secondary, type: c.label, energy: energyOf(g) };
 }
 
+function seedMember(s: (typeof SEEDS)[number], now: number): Member {
+  const g = cloneGenome(s.genome);
+  return {
+    id: `G0-${s.origin}`, gen: 0, origin: s.origin, parents: [], created: now, name: s.name, genome: g,
+    ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
+  };
+}
+
 export class Population {
   members = new Map<string, Member>();
   counter = 0;
   votesSinceBreed = 0;
+  seedVersion = SEED_VERSION;
 
   static seeded(now = Date.now()): Population {
     const p = new Population();
     for (const s of SEEDS) {
-      const g = cloneGenome(s.genome);
-      const m: Member = {
-        id: `G0-${s.origin}`, gen: 0, origin: s.origin, parents: [], created: now, name: s.name, genome: g,
-        ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
-      };
+      const m = seedMember(s, now);
       p.members.set(m.id, m);
     }
     return p;
   }
 
-  /** Seeds follow the current code (their votes and views are kept); missing seeds come back. */
-  refreshSeeds(now = Date.now()): void {
-    const fresh = Population.seeded(now);
-    for (const s of fresh.members.values()) {
-      const cur = this.members.get(s.id);
-      if (!cur) this.members.set(s.id, s);
-      else if (JSON.stringify(cur.genome) !== JSON.stringify(s.genome)) {
-        Object.assign(cur, { genome: s.genome, name: s.name, species: s.species, species2: s.species2, type: s.type, energy: s.energy, descriptor: undefined });
+  /**
+   * Seed migration. When the population's seed version is older than the
+   * code's (or a seed genome differs from the current encoding), every G0 seed
+   * gets the current genome while keeping its id, votes, views, watch time and
+   * hidden flag; missing seeds come back. Bred children (G1+) are never touched,
+   * so their parent links stay valid. A population from a newer seed version is
+   * left alone. Returns the ids of the seeds that changed.
+   */
+  upgradeSeeds(now = Date.now()): string[] {
+    if (this.seedVersion > SEED_VERSION) return [];
+    const older = this.seedVersion < SEED_VERSION;
+    const changed: string[] = [];
+    for (const s of SEEDS) {
+      const fresh = seedMember(s, now);
+      const cur = this.members.get(fresh.id);
+      if (!cur) {
+        this.members.set(fresh.id, fresh);
+        changed.push(fresh.id);
+      } else if (older || JSON.stringify(cur.genome) !== JSON.stringify(fresh.genome)) {
+        Object.assign(cur, {
+          gen: 0, origin: s.origin, parents: [], genome: fresh.genome, name: s.name,
+          species: fresh.species, species2: fresh.species2, type: fresh.type, energy: fresh.energy, descriptor: undefined,
+        });
+        changed.push(cur.id);
       }
     }
+    this.seedVersion = SEED_VERSION;
+    return changed;
   }
 
   get size(): number {
@@ -269,6 +294,7 @@ export class Population {
     return {
       format: 'musicvis-v2-population',
       version: 1,
+      seedVersion: this.seedVersion,
       counter: this.counter,
       votesSinceBreed: this.votesSinceBreed,
       members: this.list().map((m) => ({ ...m, genome: cloneGenome(m.genome) })),
@@ -315,6 +341,7 @@ export class Population {
     }
     p.counter = Math.max(Math.floor(n(d.counter)), maxN);
     p.votesSinceBreed = Math.floor(n(d.votesSinceBreed));
+    p.seedVersion = Math.max(1, Math.floor(n(d.seedVersion, 1)));
     return p;
   }
 }

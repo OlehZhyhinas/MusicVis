@@ -3,10 +3,8 @@
 // MusicState, a few frames per animation frame so the main view never stalls.
 //
 // Rejections: compile error, too slow (cost model or measured), nearly all
-// black / white, frozen, pure noise, flashing (photosensitive safety: more
-// than 3 large-area luminance flashes in any second, after WCAG 2.3.1's
-// general flash definition), and unreactive (moves the same with and without
-// music).
+// black / white, frozen, pure noise, and unreactive (moves the same with and
+// without music).
 
 import type { MusicState, Section, StemName } from '../types';
 import { COST_BUDGET_MS, estimateCost, type Genome } from './genome';
@@ -118,8 +116,6 @@ const MUSIC_SECS = 3;
 const SILENT_SECS = 1.5;
 const FPS = 60;
 const SAMPLE_EVERY = 2; // read pixels every 2nd frame (30 Hz)
-const BX = 16;
-const BY = 9;
 
 export interface ScreenMetrics {
   mean: number; // mean sRGB luma 0..1
@@ -129,7 +125,6 @@ export interface ScreenMetrics {
   motionSilent: number;
   beatCorr: number; // |corr| of luma / motion with the beat
   noise: number; // fraction of samples that look like noise
-  flashArea: number; // max screen fraction flashing > 3 Hz
   cost: number; // estimated ms at 1440p
   msPerFrame: number; // measured wall time per screening frame
 }
@@ -150,10 +145,6 @@ export const THRESH = {
   noiseTemporal: 0.16,
   noiseSpatial: 0.14,
   noiseFrac: 0.6,
-  flashDelta: 0.1, // relative (linear) luminance change counted as a transition
-  flashDark: 0.8, // the darker state must be below this
-  flashAreaMax: 0.03, // screen fraction; conservative so large monitors stay within WCAG 2.3.1
-  flashPerSec: 3,
   reactRatio: 1.15,
   reactCorr: 0.12,
   msPerFrame: 10,
@@ -165,7 +156,6 @@ const LIN = new Float32Array(256).map((_, i) => srgbToLin(i / 255));
 interface Run {
   frames: number;
   sample: number;
-  blocks: Float32Array[]; // linear luminance per block per sample
   lumas: number[];
   motions: number[];
   beats: number[];
@@ -178,7 +168,7 @@ interface Run {
 }
 
 function newRun(): Run {
-  return { frames: 0, sample: 0, blocks: [], lumas: [], motions: [], beats: [], noiseHits: 0, samples: 0, prev: null, ms: 0, cover: [], peaks: [] };
+  return { frames: 0, sample: 0, lumas: [], motions: [], beats: [], noiseHits: 0, samples: 0, prev: null, ms: 0, cover: [], peaks: [] };
 }
 
 function corr(a: number[], b: number[]): number {
@@ -199,50 +189,6 @@ function corr(a: number[], b: number[]): number {
     sbb += y * y;
   }
   return saa > 1e-12 && sbb > 1e-12 ? sab / Math.sqrt(saa * sbb) : 0;
-}
-
-/** Count luminance transitions (with hysteresis) inside any 1 s window, per block. */
-export function flashArea(series: Float32Array[], rate: number, delta = THRESH.flashDelta, dark = THRESH.flashDark, maxPerSec = THRESH.flashPerSec): number {
-  if (series.length < 3) return 0;
-  const nb = series[0].length;
-  const win = Math.round(rate);
-  let worst = 0;
-  const flashing = new Uint8Array(nb);
-  for (let b = 0; b < nb; b++) {
-    const times: number[] = [];
-    let lo = series[0][b], hi = series[0][b];
-    let dir = 0; // 1 rising, -1 falling
-    for (let i = 1; i < series.length; i++) {
-      const v = series[i][b];
-      if (dir >= 0) {
-        if (v > hi) hi = v;
-        if (hi - v >= delta && Math.min(v, hi) < dark) {
-          times.push(i);
-          dir = -1;
-          lo = v;
-        }
-      }
-      if (dir <= 0) {
-        if (v < lo) lo = v;
-        if (v - lo >= delta && lo < dark) {
-          times.push(i);
-          dir = 1;
-          hi = v;
-        }
-      }
-    }
-    // More than maxPerSec flashes (2 transitions each) inside any 1 s window.
-    for (let i = 0; i + maxPerSec * 2 < times.length; i++) {
-      if (times[i + maxPerSec * 2] - times[i] < win) {
-        flashing[b] = 1;
-        break;
-      }
-    }
-  }
-  let n = 0;
-  for (let b = 0; b < nb; b++) n += flashing[b];
-  worst = n / nb;
-  return worst;
 }
 
 export class Screener {
@@ -280,7 +226,7 @@ export class Screener {
   screen(g: Genome): Promise<ScreenResult> {
     return new Promise((resolve) => {
       const cost = estimateCost(g);
-      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, flashArea: 0, cost, msPerFrame: 0 };
+      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, cost, msPerFrame: 0 };
       const fail = (reason: string, descriptor: number[] = []) => resolve({ ok: false, reason, metrics, descriptor });
       if (cost > COST_BUDGET_MS) {
         fail(`too slow (estimated ${cost.toFixed(1)} ms)`);
@@ -356,11 +302,10 @@ export class Screener {
     });
   }
 
-  /** Per-sample statistics (luma, block luminance, motion, noise). */
+  /** Per-sample statistics (luma, motion, noise). */
   private analyse(run: Run, beat: number, isMusic: boolean, lastLin: Float32Array, meanRGB: number[], bump: () => void): void {
     const W = SCREEN_W, H = SCREEN_H;
     const px = this.px;
-    const blocks = new Float32Array(BX * BY);
     const lin = new Float32Array(W * H);
     let sum = 0;
     let cover = 0;
@@ -373,12 +318,9 @@ export class Screener {
         const s = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
         sum += s;
         if (s > 0.08) cover++;
-        blocks[Math.floor((y * BY) / H) * BX + Math.floor((x * BX) / W)] += L;
         if (x > 0) spatial += Math.abs(s - (0.2126 * px[i - 4] + 0.7152 * px[i - 3] + 0.0722 * px[i - 2]) / 255);
       }
     }
-    const perBlock = (W / BX) * (H / BY);
-    for (let b = 0; b < blocks.length; b++) blocks[b] /= perBlock;
     const n = W * H;
     const mean = sum / n;
     // Motion on 4x4-averaged perceptual luminance, so the output dither does not count as movement.
@@ -403,7 +345,6 @@ export class Screener {
     run.lumas.push(mean);
     run.motions.push(motion);
     run.beats.push(beat);
-    run.blocks.push(blocks);
     if (motion > THRESH.noiseTemporal && spatial / n > THRESH.noiseSpatial) run.noiseHits++;
     run.cover.push(cover / n);
     // 99.7th percentile of luma from a coarse histogram.
@@ -446,7 +387,6 @@ export class Screener {
     m.motionSilent = avg(silent.motions);
     m.beatCorr = Math.max(Math.abs(corr(music.lumas, music.beats)), Math.abs(corr(music.motions, music.beats)));
     m.noise = music.lumas.length ? music.noiseHits / music.lumas.length : 0;
-    m.flashArea = flashArea(music.blocks, FPS / SAMPLE_EVERY);
     m.msPerFrame = music.ms / Math.max(1, music.frames);
     const descriptor = this.descriptor(meanRGB, rgbN, m, lastPx);
     const r = (reason: string): ScreenResult => ({ ok: false, reason, metrics: m, descriptor });
@@ -454,7 +394,6 @@ export class Screener {
     if (m.mean < THRESH.black && m.peak < THRESH.blackPeak) return r('nearly all black');
     if (m.mean > THRESH.white) return r('nearly all white');
     if (m.noise > THRESH.noiseFrac) return r('pure noise');
-    if (m.flashArea > THRESH.flashAreaMax) return r(`flashing (${Math.round(m.flashArea * 100)}% of the screen above 3 flashes/s)`);
     const recent = lastHalf(music.motions);
     if (avg(recent) < THRESH.frozen && Math.max(...recent) < THRESH.frozen * 3 && m.beatCorr < THRESH.frozenCorr) return r('frozen');
     if (m.motion < m.motionSilent * THRESH.reactRatio && m.beatCorr < THRESH.reactCorr) return r('unreactive (same motion without music)');

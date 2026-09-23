@@ -32,6 +32,7 @@ const smooth01 = (t: number) => {
 };
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const approach = (cur: number, target: number, rate: number, dt: number) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+const WAVE_RATIOS: [number, number][] = [[2, 3], [3, 4], [3, 5], [4, 5], [2, 5], [5, 6]];
 function h11(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
@@ -70,6 +71,9 @@ export interface Frame {
   beatPulse: number; onBeat: boolean; stem: Float32Array; onset: Float32Array; gate: Float32Array;
   loud: number; melody: number; build: number; drop: number; keyTonic: number; minor: boolean;
   sectionIndex: number; aspect: number; hit: number; hitPulse: number; dropStart: boolean; keyHue: number; keyPulse: number;
+  barPulse: number; bpm: number;
+  /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
+  surge: number;
 }
 
 /** Music state -> per-frame values and the waveform / spectrum textures (one per Stage). */
@@ -78,7 +82,7 @@ export class Signals {
     time: 0, dt: 0, phase: 0, act: 0.5, cx: 0.5, speed: 1, spin: 0, bars: 0, beats: 0, barIndex: 0, beatIndex: 0,
     barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, stem: new Float32Array(4), onset: new Float32Array(4),
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
-    aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0,
+    aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
   };
   spinStep = 0;
   clock = 0;
@@ -104,6 +108,7 @@ export class Signals {
     this.F.act = 0.5;
     this.F.phase = 0;
     this.F.spin = 0;
+    this.F.surge = 0;
     this.clock = 0;
     this.wave.fill(0);
     this.spec.fill(0);
@@ -136,12 +141,14 @@ export class Signals {
     F.minor = state.keyMode === 'minor';
     F.keyHue = num(state.keyHue, 0);
     F.keyPulse = num(state.keyChangePulse, 0);
+    F.barPulse = num(state.barPulse, 0);
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     F.dropStart = !!state.sectionChanged && state.section?.label === 'drop';
     F.speed = (0.4 + 0.75 * F.act) * (1 + 0.5 * F.build) + 0.4 * F.drop * F.act;
     F.phase = (F.phase + dt * F.speed) % 4096;
 
     const bpm = num(state.bpm, 120) || 120;
+    F.bpm = bpm;
     F.barIndex = num(state.barIndex, -1);
     F.beatIndex = num(state.beatIndex, -1);
     F.barPhase = num(state.barPhase, 0);
@@ -171,6 +178,9 @@ export class Signals {
       this.hitCooldown = 0.1;
     }
     F.hitPulse = Math.max(F.hit, F.hitPulse * Math.exp(-dt * 8));
+
+    const surge = 1.3 * F.beatPulse * F.gate[0] + 0.6 * F.loud + 2.5 * F.drop;
+    F.surge = approach(F.surge, surge, surge > F.surge ? 18 : 3, dt);
   }
 
   private processAudio(state: MusicState, dt: number): void {
@@ -251,6 +261,7 @@ export class Signals {
       case 'loud': return F.loud;
       case 'melody': return F.melody;
       case 'build': return F.build;
+      case 'surge': return Math.min(1.5, F.surge);
     }
   }
 
@@ -377,7 +388,8 @@ export class Slot {
   readonly seg = new Float32Array(48 * 4);
   readonly segZ = new Float32Array(48);
   segN = 0;
-  readonly waveU = new Float32Array(12);
+  readonly waveU = new Float32Array(16);
+  readonly arm = new Float32Array(12);
   waveBright = 0;
   waveThick = 1.5;
   waveN = 512;
@@ -685,8 +697,10 @@ export class Stage {
       const sch = OP_SCHEMAS[o.op];
       const P = (k: string) => s.P('op', i, o.p, k, sch);
       const a = s.opA;
+      const b = s.opB;
       const j = i * 4;
       a[j] = a[j + 1] = a[j + 2] = a[j + 3] = 0;
+      b[j] = b[j + 1] = b[j + 2] = b[j + 3] = 0;
       const wander = (w: number) => {
         // Every wandering op follows the same bar-locked Lissajous path.
         a[j] = P('cx') + w * A * 0.64 * Math.sin((TAU * F.bars) / 8);
@@ -699,22 +713,40 @@ export class Stage {
           a[j + 3] = P('radial');
           break;
         case 'rotate': {
-          a[j] = P('cx');
-          a[j + 1] = P('cy');
+          wander(P('wander'));
           const sign = o.p.alt > 0.5 && F.barIndex % 2 === 1 ? -1 : 1;
           a[j + 2] = -(o.p.lock * sig.spinStep + P('rate') * o.w * f60 * F.speed) * sign;
           break;
         }
         case 'translate': {
           const v = [P('vx'), P('vy')];
+          // Lanes move at 1x or 2x the shift (still whole pixels).
+          const lanes = o.p.lanes > 1 ? o.p.lanes : 0;
+          a[j + 2] = lanes;
           while (s.rem.length < 12) s.rem.push(0);
           for (let k = 0; k < 2; k++) {
             const px = -v[k] * o.w * F.speed * sdt * this.h + s.rem[i * 2 + k];
             const n = Math.round(px);
             s.rem[i * 2 + k] = px - n;
             a[j + k] = n / this.h;
+            // Edge strips already cover twice the shift (rain lanes move at up to 2x).
             s.shift[k] += n / this.h;
           }
+          break;
+        }
+        case 'push':
+          a[j] = P('amt') * o.w * f60 * F.speed;
+          a[j + 1] = o.p.axis;
+          break;
+        case 'stretch': {
+          // In the warp the stretch compounds every frame, so it is applied gently.
+          const k = o.stage === 'warp' ? Math.min(1, 0.04 * f60) : 1;
+          a[j] = P('base');
+          a[j + 1] = P('amt') * k;
+          a[j + 2] = P('beat') * k;
+          a[j + 3] = o.p.strips;
+          b[j] = o.stage === 'view' ? P('win') : 0;
+          b[j + 1] = o.stage === 'view' ? P('sky') : 0;
           break;
         }
         case 'swirl':
@@ -805,28 +837,79 @@ export class Stage {
         const wv = P('wander');
         const size = P('size');
         const force = P('force');
+        const inst = P('inst');
+        const xs = P('xs');
+        const follow = P('follow');
+        const jump = e.p.jump === 1;
+        if (e.p.swap === 1 && ((F.barIndex % 2) + 2) % 2 === 1) E[o + 1] += 0.333;
         const stations = [[-0.55 * A, -0.2], [0, -0.28], [0, 0.18], [0.55 * A, -0.05], [-0.3 * A, 0.25], [0.3 * A, 0.25]];
         const fl = this.fluid && s.genome.carrier.kind === 'fluid' ? this.fluid : null;
+        // Orbit centre: the bar-locked wander path shared with zoom / swirl / rotate.
+        const ocx = follow * A * 0.64 * Math.sin((TAU * F.bars) / 8);
+        const ocy = follow * 0.63 * Math.sin((TAU * F.bars) / 6 + 1);
+        // Instrument-driven sources: drums jump (every bar, or every hit), bass
+        // swings out with the bass, vocals follow the melody, other roams.
+        const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
+        const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
+        m[key('bi')] = F.barIndex;
+        m[key('bt')] = F.beatIndex;
+        const hits = [F.hit > 0.5 && mm('h0') <= 0.5, F.onset[1] > 0.5 && mm('h1') <= 0.5, F.onset[2] > 0.5 && mm('h2') <= 0.5, F.onset[3] > 0.5 && mm('h3') <= 0.5];
+        m[key('h0')] = F.hit;
+        m[key('h1')] = F.onset[1];
+        m[key('h2')] = F.onset[2];
+        m[key('h3')] = F.onset[3];
+        const tf = Math.min(1.6, Math.max(0.5, F.bpm / 120));
+        if (inst > 0 && (jump ? F.hit > 0 : newBar)) {
+          const c = (m[key('jn')] = mm('jn') + 1);
+          m[key('dtx')] = (h11(c * 1.7) - 0.5) * 1.2 * A;
+          m[key('dty')] = (h11(c * 2.9) - 0.5) * (jump ? 0.7 : 0.6);
+        }
         for (let i = 0; i < n; i++) {
+          const k4 = i % 4;
           const st = stations[i % 6];
           const row = P('row');
           const rx = (i - (n - 1) / 2) * (1.2 / Math.max(1, n)) * A + 0.05 * Math.sin(F.phase * 0.4 + i * 2.1);
-          const sx = st[0] + (rx - st[0]) * row + wv * Math.sin(F.phase * 0.23 + i * 1.9);
-          const sy = st[1] + (-0.5 - st[1]) * row + wv * 0.7 * Math.sin(F.phase * 0.31 + i * 2.7) * (1 - row);
+          let sx = st[0] + (rx - st[0]) * row + wv * Math.sin(F.phase * 0.23 + i * 1.9);
+          let sy = st[1] + (-0.5 - st[1]) * row + wv * 0.7 * Math.sin(F.phase * 0.31 + i * 2.7) * (1 - row);
+          const lvlOld = k4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[k4];
+          const lvlInst = k4 === 0 ? (jump ? F.hitPulse : F.onset[0]) : F.stem[k4];
+          if (inst > 0) {
+            const mir = i >= 4 ? -1 : 1;
+            let tx: number, ty: number;
+            if (k4 === 0) [tx, ty] = [mm('dtx', -0.55 * A), mm('dty', -0.2)];
+            else if (k4 === 1) [tx, ty] = [Math.cos(F.phase * 0.2) * (0.1 + 0.45 * F.stem[1]) * A, -0.28 + 0.2 * F.stem[1]];
+            else if (k4 === 2) [tx, ty] = [0.25 * A * Math.sin(F.phase * 0.15), (F.melody - 0.5) * 0.7];
+            else [tx, ty] = [0.55 * A * Math.cos(F.phase * 0.11 + 1), 0.25 * Math.sin(F.phase * 0.13)];
+            tx *= xs * mir;
+            const rate = k4 === 0 ? (jump ? 30 : 3) : 1.5;
+            const ix = (m[key('x' + i)] = approach(mm('x' + i, tx), tx, rate, sdt));
+            const iy = (m[key('y' + i)] = approach(mm('y' + i, ty), ty, rate, sdt));
+            sx += (ix - sx) * inst;
+            sy += (iy - sy) * inst;
+          }
           const ang = F.spin * 0.5 + (i / n) * TAU;
-          const ox = R * Math.cos(ang), oy = R * Math.sin(ang);
+          const ox = ocx + R * Math.cos(ang), oy = ocy + R * Math.sin(ang);
           const x = sx + (ox - sx) * orbit;
           const y = sy + (oy - sy) * orbit;
-          const lvl = i % 4 === 0 ? Math.max(F.onset[0], F.stem[0] * 0.5) : F.stem[i % 4];
+          const lvl = lvlOld + (lvlInst - lvlOld) * inst;
           const strength = lvl * (1 - orbit) + (Math.max(F.stem[3], F.stem[2]) * 0.8 + 0.2 * F.loud) * orbit;
           s.ink[i * 4] = x;
           s.ink[i * 4 + 1] = y;
           s.ink[i * 4 + 2] = strength;
           s.ink[i * 4 + 3] = size * (0.7 + 0.8 * strength);
-          if (fl && force > 0 && strength > 0.04 && (i % 4 > 0 || F.hit > 0)) {
-            const a = F.spin * 0.5 + i * (TAU / 4);
-            const Fm = (i % 4 === 0 ? 1400 * F.hit : 420 * strength) * (0.4 + 0.6 * F.act) * force;
-            fl.splat(x / F.aspect + 0.5, y + 0.5, Math.cos(a) * Fm, Math.sin(a) * Fm, 0.002, 0);
+          if (fl && force > 0) {
+            // Free-running pushes (aim turns with the bar) blended with instrument
+            // pushes (aim steps on each hit, ink goes out in tempo-scaled beat pulses).
+            const Fo = strength > 0.04 && (k4 > 0 || F.hit > 0) ? (k4 === 0 ? 1400 * F.hit : 420 * strength) : 0;
+            let Fi = 0;
+            if (inst > 0) {
+              if (hits[k4]) m[key('a' + i)] = mm('a' + i, i * (TAU / 4)) + (0.35 + 0.5 * h11(F.beatIndex * 3.1 + i)) * (i % 2 ? -1 : 1);
+              if (k4 === 0) Fi = hits[0] ? 650 * F.hit * tf : 0;
+              else if (lvlInst > 0.04) Fi = 45 * lvlInst * tf * Math.min(3, sdt * 60) + (newBeat ? 260 * lvlInst * tf : 0);
+            }
+            const Fm = (Fo + (Fi - Fo) * inst) * (0.4 + 0.6 * F.act) * force;
+            const a = inst > 0.5 ? mm('a' + i, i * (TAU / 4)) : F.spin * 0.5 + i * (TAU / 4);
+            if (Fm > 0) fl.splat(x / F.aspect + 0.5, y + 0.5, Math.cos(a) * Fm, Math.sin(a) * Fm, 0.002, 0);
           }
         }
         break;
@@ -850,10 +933,27 @@ export class Stage {
         break;
       }
       case 'plasma': {
+        const tempo = P('tempo');
         m[key('t')] = (mm('t') + sdt * F.speed * P('speed') * 0.66) % 256;
-        m[key('l')] = (mm('l') + sdt * (0.15 + 1.6 * F.beatPulse * F.gate[0]) * F.speed) % 256;
+        // Contours either run on beat bursts (tempo 0) or flow a quarter band per beat (tempo 1).
+        const lb = mm('lb', F.beats);
+        let db = F.beats - lb;
+        if (db < 0) db += 256;
+        if (db > 1) db = 0;
+        m[key('lb')] = F.beats;
+        const dBurst = sdt * (0.15 + 1.6 * F.beatPulse * F.gate[0]) * F.speed;
+        const dTempo = db * 0.25 + sdt * 0.04 * F.speed;
+        m[key('l')] = (mm('l') + dBurst + (dTempo - dBurst) * tempo) % 256;
+        const bs = (m[key('bs')] = approach(mm('bs'), F.stem[1] * F.gate[1], 1.5, sdt));
+        m[key('b')] = (mm('b') + sdt * bs * 0.25) % 256;
+        m[key('mel')] = approach(mm('mel', 0.5), F.melody, 1.2, sdt);
         E[o + 2] = m[key('t')]; E[o + 3] = m[key('l')];
         E[o + 4] = P('scale'); E[o + 5] = P('warp'); E[o + 6] = P('bands'); E[o + 7] = P('lines');
+        E[o + 8] = m[key('l')] * 0.1 + (m[key('b')] - m[key('l')] * 0.1) * tempo;
+        E[o + 9] = F.stem[1] + (bs - F.stem[1]) * tempo;
+        E[o + 10] = bs * tempo;
+        E[o + 11] = m[key('mel')] * 0.3 * P('melHue');
+        E[o + 12] = 1 + (0.9 * F.beatPulse - 0.45) * P('pulse');
         break;
       }
       case 'aurora': {
@@ -934,13 +1034,36 @@ export class Stage {
         m[key('sc')] = (mm('sc') + d * P('speed') * (0.5 + 0.5 * F.act)) % 1;
         E[o + 2] = m[key('sc')];
         E[o + 4] = P('y'); E[o + 5] = P('density'); E[o + 6] = P('peaks');
+        E[o + 8] = P('terrain'); E[o + 9] = P('flash');
         break;
       }
       case 'orb': {
         m[key('halo')] = approach(mm('halo'), Math.max(F.loud, sig.melodic()), 3, sdt);
-        E[o + 2] = P('x'); E[o + 3] = P('y') + 0.03 * Math.sin(F.phase * 0.01);
+        const bob = P('bob');
+        const dp = (m[key('dp')] = approach(mm('dp'), F.gate[0], 1, sdt));
+        E[o + 2] = P('x') + 0.035 * bob * Math.sin(TAU * F.barPhase);
+        E[o + 3] = P('y') + 0.03 * Math.sin(F.phase * 0.01) + 0.008 * bob * Math.sin(TAU * F.beatPhase) * dp;
         E[o + 4] = P('radius') * (1 + 0.08 * F.stem[1]); E[o + 5] = P('halo'); E[o + 6] = P('stripes'); E[o + 7] = P('craters');
         E[o + 8] = m[key('halo')];
+        const arms = P('arms');
+        E[o + 9] = arms;
+        E[o + 10] = P('clip');
+        if (arms > 0.001) {
+          // Five arms: drums, bass, vocals (or the melody), other, loudness. Each
+          // reaches and retracts smoothly with its driver plus a breath of its own,
+          // sways every 2 bars out of step with the others; the set turns every 16.
+          const g = (k: number) => F.stem[k] * F.gate[k];
+          const drivers = [F.onset[0] * F.gate[0] * 0.6 + g(0) * 0.4, g(1), Math.max(g(2), 0.7 * sig.melodic()), g(3), F.loud];
+          const spin = (TAU * F.bars) / 16;
+          for (let k = 0; k < 5; k++) {
+            s.arm[k] = spin + (k * TAU) / 5 + 0.45 * Math.sin((TAU * F.bars) / 2 + k * 1.3);
+            const breath = 0.5 + 0.5 * Math.sin((TAU * F.bars) / (2 + k * 0.5) + k * 2.1);
+            const target = 0.2 + 0.8 * drivers[k] + 0.45 * breath;
+            s.arm[5 + k] = m[key('len' + k)] = approach(mm('len' + k, target), target, 2.5, sdt);
+          }
+          s.arm[10] = 0.5 * Math.sin((TAU * F.bars) / 3);
+          s.arm[11] = 0.29;
+        }
         break;
       }
       case 'wave': {
@@ -949,11 +1072,38 @@ export class Stage {
         u[0] = e.p.shape; u[1] = P('amp'); u[2] = P('x'); u[3] = P('y');
         u[4] = P('radius'); u[5] = P('turns'); u[6] = e.p.ra + 0.004 * Math.sin(F.phase * 0.05); u[7] = e.p.rb * (F.minor ? 0.75 : 1) - 0.005;
         u[8] = m[key('ph')]; u[9] = F.spin * 0.0625; u[10] = P('hue'); u[11] = 0;
+        u[12] = u[13] = u[14] = u[15] = 0;
+        if (e.p.shape === 5) {
+          // Pendulum harmonograph: the ratio steps every rb bars through a
+          // circle-of-fifths order from the key (offset ra) and glides; phases
+          // advance with the beat, a quarter turn per bar; downbeats swing it,
+          // the melody detunes it and drum hits widen the second pendulum.
+          const L = WAVE_RATIOS.length;
+          const stepN = Math.floor(Math.max(0, F.barIndex) / e.p.rb);
+          const [ra, rb] = WAVE_RATIOS[(((F.keyTonic + stepN * 5 + e.p.ra - 1) % L) + L) % L];
+          const fx = (m[key('fx')] = approach(mm('fx', ra), ra, 1.2, sdt));
+          const fy = (m[key('fy')] = approach(mm('fy', rb), rb, 1.2, sdt));
+          const newBar = F.barIndex >= 0 && F.barIndex !== mm('bi', F.barIndex);
+          m[key('bi')] = F.barIndex;
+          const swing = (m[key('sw')] = newBar ? 1 : mm('sw') * Math.exp(-sdt * 1.2));
+          const det = 0.012 * (F.melody - 0.5) + 0.004 * Math.sin(F.phase * 0.05);
+          u[4] = fx; u[5] = fx * 2 + 0.01 + det; u[6] = fy; u[7] = fy * (F.minor ? 1.5 : 2) - 0.01;
+          u[8] = P('radius') * 0.72 * (0.75 + 0.2 * F.loud + 0.3 * swing);
+          u[9] = 0;
+          u[11] = P('amp') * 1.5 + 0.35 * sig.melodic() + 0.35 * F.onset[0];
+          u[12] = F.spin * 0.25;
+          u[13] = F.phase * 0.07 + F.beats * 0.25;
+          u[14] = 1.3 + F.phase * 0.05 - F.beats * 0.18;
+          u[15] = 0.5 - F.phase * 0.04 + F.beats * 0.11;
+        }
         s.waveBright = gain * 0.5 * (0.3 + 0.9 * Math.max(F.loud, 0.6 * sig.melodic()));
         s.waveThick = P('thick');
-        s.waveN = e.p.shape === 3 ? 1024 : 512;
+        s.waveN = e.p.shape === 3 || e.p.shape === 5 ? 1024 : 512;
         break;
       }
+      case 'snake':
+        this.tickSnake(s, e, slot, sdt);
+        break;
       case 'particles':
         break;
       case 'flame': {
@@ -989,6 +1139,85 @@ export class Stage {
     }
   }
 
+  /**
+   * Two heads (melody, bass) roaming the screen. The melody head turns every
+   * second beat and sharply on heavy drum hits; the bass head turns on each
+   * downbeat and sharply on strong bass hits. Turns are at any angle, they curve
+   * gently in between, bounce off the edges and move a fixed distance per beat.
+   */
+  private tickSnake(s: Slot, e: EmitterGene, slot: number, sdt: number): void {
+    const F = this.sig.F;
+    const P = (k: string) => s.P('em', slot, e.p, k, EMITTER_SCHEMAS.snake);
+    const m = s.mem;
+    const mm = (k: string, init = 0) => m['snake.' + k] ?? (m['snake.' + k] = init);
+    const set = (k: string, v: number) => (m['snake.' + k] = v);
+    const E = s.em;
+    const o = slot * 16;
+    const A = F.aspect * 0.5;
+    const M = 0.07;
+    const n = e.p.count;
+    E[o + 2] = n;
+    E[o + 3] = P('cover');
+    let db = F.beats - mm('lb', F.beats);
+    if (db < 0) db += 256;
+    if (db > 2) db = sdt * 2;
+    set('lb', F.beats);
+    const hitRise = F.hit > 0.7 && mm('hp') <= 0.7;
+    set('hp', F.hit);
+    const bassRise = F.onset[1] > 0.6 && mm('bp') <= 0.6;
+    set('bp', F.onset[1]);
+    const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bi', F.beatIndex);
+    const newBar = F.barIndex >= 0 && F.barIndex !== mm('ri', F.barIndex);
+    set('bi', F.beatIndex);
+    set('ri', F.barIndex);
+    const step = P('step') * (0.7 + 0.5 * F.act);
+    const turn = P('turn');
+    const curve = P('curve');
+    const heads: [string, boolean, boolean, number, number, number, number, number][] = [
+      // key, turn now, heavy turn, start x, start y, start angle, distance per beat, steering signal
+      ['m', newBeat && F.beatIndex % 2 === 0, hitRise, -0.3 * A, 0.15, 0.3, step * 1.18, F.melody],
+      ['b', newBar, bassRise, 0.3 * A, -0.2, 2.6, step * 0.82, F.stem[1]],
+    ];
+    for (let h = 0; h < n; h++) {
+      const [k, turnNow, heavy, sx, sy, sa, perBeat, steer] = heads[h];
+      const x = mm(k + 'x', sx);
+      const y = mm(k + 'y', sy);
+      let ang = mm(k + 'a', sa);
+      set(k + 'px', x);
+      set(k + 'py', y);
+      if (turnNow || heavy) {
+        const c = set(k + 'n', mm(k + 'n') + 1);
+        const side = h11(c * 7.3 + h * 50) < 0.5 ? -1 : 1;
+        ang += side * turn * ((heavy ? 1.3 : 0.45) + (heavy ? 1.2 : 0.9) * h11(c * 3.7 + 1 + h * 59));
+      }
+      ang += (steer - 0.5) * 0.8 * curve * sdt;
+      const d = db * perBeat;
+      let nx = x + Math.cos(ang) * d;
+      let ny = y + Math.sin(ang) * d;
+      if (nx < -A + M || nx > A - M) {
+        ang = Math.PI - ang;
+        nx = Math.min(A - M, Math.max(-A + M, nx));
+      }
+      if (ny < -0.5 + M || ny > 0.5 - M) {
+        ang = -ang;
+        ny = Math.min(0.5 - M, Math.max(-0.5 + M, ny));
+      }
+      set(k + 'a', ang % (TAU * 64));
+      set(k + 'x', nx);
+      set(k + 'y', ny);
+      const q = o + 4 + h * 4;
+      E[q] = nx;
+      E[q + 1] = ny;
+      E[q + 2] = x;
+      E[q + 3] = y;
+    }
+    const width = P('width');
+    E[o + 12] = (0.006 + 0.008 * F.loud) * width;
+    E[o + 13] = 0.25 + this.sig.melodic() * 0.55;
+    E[o + 14] = (0.011 + 0.02 * F.stem[1]) * width;
+    E[o + 15] = 0.25 + 0.6 * F.stem[1] * (0.3 + 0.7 * F.act);
+  }
+
   private updateParticles(s: Slot, sdt: number, fluid: boolean): void {
     const eng = this.eng;
     if (!this.particles) this.particles = new Particles(eng.gl, eng.fs);
@@ -1020,6 +1249,10 @@ export class Stage {
     pu.drag = P('drag');
     pu.lifeRate = P('life');
     pu.speed = P('speed') * F.speed;
+    // Surge: speed and zoom flow follow the beat envelope (V1 Warp Speed).
+    const surge = 1 + (0.35 + F.surge - 1) * P('surge');
+    pu.speed *= surge;
+    pu.zoomFlow *= surge;
     pu.spawnFrom = pu.spawnTo = e.p.spawn;
     pu.spawnMix = 0;
     pu.emitAngle = TAU * F.barPhase;
@@ -1141,6 +1374,8 @@ export class Stage {
       .f4v('uSegZ', s.segZ)
       .i1('uSegN', s.segN)
       .f1v('uChroma', this.sig.chroma)
+      .f1v('uArm', s.arm)
+      .f1('uBarPulse', F.barPulse)
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex);
   }

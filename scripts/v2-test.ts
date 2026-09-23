@@ -7,8 +7,8 @@ import {
   EMITTER_KINDS, FLAME_VARIATIONS,
   type Genome,
 } from '../src/v2/genome';
-import { crossover, mulberry32, mutate, randomGenome } from '../src/v2/ops';
-import { SEEDS } from '../src/v2/seeds';
+import { crossover, mulberry32, mutate, randomEmitter, randomGenome, randomOp } from '../src/v2/ops';
+import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
 import { Population, fitness } from '../src/v2/population';
 import { buildSources } from '../src/v2/glsl';
 
@@ -386,6 +386,164 @@ function fitnessOf(pop: Population, id: string): number {
     if (!(cost < 8)) over.push(`${s.origin}=${cost.toFixed(2)}`);
   }
   check('estimateCost.under-budget', over.length === 0, over.join(',') || 'all 24 seeds under 8ms');
+}
+
+// ------------------------------------------------- 13. seeds: range, round trip
+
+{
+  const bad: string[] = [];
+  for (const s of SEEDS) {
+    const back = repair(JSON.parse(JSON.stringify(s.genome)));
+    if (JSON.stringify(back) !== JSON.stringify(s.genome)) bad.push(`${s.origin}:roundtrip`);
+    if (validate(back).length) bad.push(`${s.origin}:${validate(back).join(';')}`);
+  }
+  check('seeds.serialization-roundtrip', bad.length === 0, bad.join(' | ') || 'all 24 seeds survive JSON + repair unchanged and in range');
+
+  // The reworked seeds use the parts that express their V1 behaviour.
+  const uses: [string, (g: Genome) => boolean][] = [
+    ['E01', (g) => g.chain.some((o) => o.op === 'stretch' && o.stage === 'view')],
+    ['E02', (g) => g.emitters.some((e) => e.kind === 'snake' && e.p.count === 2 && e.p.cover === 1)],
+    ['E03', (g) => g.chain.some((o) => o.op === 'translate' && o.p.lanes > 1)],
+    ['E06', (g) => g.emitters.some((e) => e.kind === 'ink' && e.p.inst === 1) && g.carrier.kind === 'fluid'],
+    ['E08', (g) => g.emitters.some((e) => e.kind === 'plasma' && e.p.tempo === 1 && e.p.pulse === 1)],
+    ['E09', (g) => g.chain.some((o) => o.op === 'push') && g.emitters.some((e) => e.kind === 'ink' && e.p.jump === 1 && e.p.swap === 1)],
+    ['E12', (g) => g.emitters.some((e) => e.kind === 'particles' && e.p.surge === 1) && g.reactions.some((r) => r.src === 'surge')],
+    ['E19', (g) => g.emitters.some((e) => e.kind === 'wave' && e.p.shape === 5)],
+    ['E20', (g) => g.emitters.some((e) => e.kind === 'orb' && e.p.arms > 0)],
+    ['E21', (g) => g.emitters.some((e) => e.kind === 'horizon' && e.p.terrain > 0)],
+    ['E23', (g) => g.emitters.some((e) => e.kind === 'flame' && e.p.flow === 2)],
+  ];
+  const miss = uses.filter(([o, f]) => !f(seedByOrigin(o))).map(([o]) => o);
+  check('seeds.reworked-parts', miss.length === 0, miss.join(',') || `${uses.length} reworked seeds use their new parts`);
+
+  const src = buildSources(seedByOrigin('E02'));
+  check('glsl.cover-emitter', src.feedback.includes('c = em_snake(p, c);'), 'snake paints over the trail in the feedback pass');
+  const top = cloneGenome(seedByOrigin('E02'));
+  top.emitters[0].layer = 'top';
+  check('glsl.cover-emitter-top', buildSources(top).composite.includes('c = em_snake(q, c);'), 'snake on the top layer paints over the composite');
+  check('glsl.stretch-view', buildSources(seedByOrigin('E01')).composite.includes('vMul *='), 'stretch scales the displayed picture');
+}
+
+// ------------------------------------------------ 14. new parts breed validly
+
+{
+  const rng = mulberry32(5005);
+  const NEW_EMITTERS = ['snake', 'orb', 'horizon', 'ink', 'plasma', 'particles', 'wave'] as const;
+  const withNewParts = (): Genome => {
+    const g = randomGenome(rng);
+    const e = randomEmitter(rng, NEW_EMITTERS[Math.floor(rng() * NEW_EMITTERS.length)]);
+    // Switch the new behaviours on.
+    if (e.kind === 'orb') e.p.arms = 0.3 + 0.7 * rng();
+    if (e.kind === 'horizon') e.p.terrain = 0.3 + 0.7 * rng();
+    if (e.kind === 'ink') e.p.inst = rng();
+    if (e.kind === 'plasma') e.p.tempo = rng();
+    if (e.kind === 'particles') e.p.surge = rng();
+    if (e.kind === 'wave') e.p.shape = rng() < 0.5 ? 4 : 5;
+    g.emitters = [e, ...g.emitters.filter((x) => x.kind !== e.kind)].slice(0, 3);
+    g.chain = [randomOp(rng, rng() < 0.5 ? 'push' : 'stretch'), ...g.chain].slice(0, 6);
+    if (rng() < 0.5) g.reactions.push({ src: 'surge', g: 'op', i: 0, k: 'amt', gain: 0.5 });
+    return repair(g);
+  };
+  const flames = SEEDS.filter((s) => s.genome.emitters.some((e) => e.kind === 'flame')).map((s) => s.genome);
+  const reworked = ['E01', 'E02', 'E06', 'E08', 'E09', 'E12', 'E19', 'E20', 'E21'].map(seedByOrigin);
+  const bad: string[] = [];
+  let newInChild = 0;
+  const N = 2000;
+  for (let i = 0; i < N; i++) {
+    const a = rng() < 0.5 ? withNewParts() : reworked[Math.floor(rng() * reworked.length)];
+    const b = rng() < 0.4 ? flames[Math.floor(rng() * flames.length)] : rng() < 0.5 ? withNewParts() : randomGenome(rng);
+    const child = rng() < 0.3 ? mutate(crossover(a, b, rng), rng, 0.4) : crossover(a, b, rng);
+    const errs = validate(child);
+    if (errs.length) bad.push(`#${i}:${errs.join(';')}`);
+    if (!(estimateCost(child) > 0)) bad.push(`#${i}:cost`);
+    if (!buildSources(child).composite.includes('void main')) bad.push(`#${i}:glsl`);
+    if (child.emitters.some((e) => e.kind === 'snake') || child.chain.some((o) => o.op === 'push' || o.op === 'stretch')) newInChild++;
+  }
+  check('breed.new-parts-valid', bad.length === 0, bad.slice(0, 5).join(' | ') || `${N} crossovers / mutations with new parts all valid`);
+  check('breed.new-parts-inherited', newInChild > N * 0.3, `${newInChild}/${N} children carry a new part`);
+
+  const mbad: string[] = [];
+  for (let i = 0; i < 1500; i++) {
+    const child = mutate(rng() < 0.5 ? withNewParts() : reworked[i % reworked.length], rng, 0.5 + 2.5 * rng());
+    const errs = validate(child);
+    if (errs.length) mbad.push(`#${i}:${errs.join(';')}`);
+  }
+  check('mutate.new-parts-valid', mbad.length === 0, mbad.slice(0, 5).join(' | ') || '1500 mutations of genomes with new parts all valid');
+
+  // Flame crossed with the reworked seeds keeps the flame's extended ranges.
+  const fx = crossover(seedByOrigin('E23'), seedByOrigin('E02'), mulberry32(77));
+  check('breed.flame-x-snake-valid', validate(fx).length === 0, validate(fx).join(';') || 'E23 x E02 child valid');
+}
+
+// ------------------------------------------------------ 15. seed migration
+
+{
+  // A population saved by the previous seed encoding: no seedVersion, stale
+  // seed genomes, votes on seeds, and children bred from them with old params.
+  const pop = Population.seeded(1000);
+  const data = pop.toJSON();
+  delete (data as { seedVersion?: number }).seedVersion;
+  const oldSeed = (id: string) => data.members.find((m) => m.id === id)!;
+  // Old encodings: E02 was a melody ribbon, E12 a dense particle field.
+  oldSeed('G0-E02').genome = repair({ ...oldSeed('G0-E02').genome, chain: [{ op: 'translate', stage: 'warp', w: 1, p: { vx: -0.12 } }], emitters: [{ kind: 'edge', layer: 'fb', p: { mode: 1 } }], reactions: [] });
+  oldSeed('G0-E12').genome.emitters[0].p.count = 16384;
+  Object.assign(oldSeed('G0-E02'), { likes: 4, dislikes: 1, views: 9, watch: 321.5, weakLikes: 2, softDislikes: 1 });
+  Object.assign(oldSeed('G0-E12'), { likes: 2, views: 3, watch: 40, hidden: true });
+  // Children with old-format genomes (parameters that no longer exist, missing new ones, old flame range).
+  const oldChild = {
+    id: 'G1-0001', gen: 1, parents: ['G0-E02', 'G0-E22'], created: 2000, name: 'Velvet Tide',
+    genome: {
+      v: 1,
+      chain: [{ op: 'zoom', stage: 'warp', w: 1, p: { rate: 0.01, cx: 0, cy: 0, radial: 0, wander: 0.1 } }, { op: 'translate', stage: 'warp', w: 1, p: { vx: -0.1, vy: 0 } }],
+      emitters: [
+        { kind: 'edge', layer: 'fb', p: { gain: 1, hue: 0, mode: 1, side: 0, base: 0, height: 0.3, density: 0.6 } },
+        { kind: 'flame', layer: 'fb', p: { gain: 1, hue: 0, count: 262144, zoom: 0.2, camSpin: 0.125, rounds: 2, ox: 0, oy: 0, flow: 1, breathe: 0.1, retired: 3 }, xforms: [{ aff: [0.5, 0, 0, 0.5, 0, 0], weight: 1, color: 0, vars: { julia: 1 }, spin: 0, bass: 0, drift: [0.3, 0.3], pulse: 0 }] },
+        { kind: 'plasma', layer: 'top', p: { gain: 1, hue: 0, scale: 1.7, warp: 2, bands: 8, lines: 0.8, speed: 0.15 } },
+      ],
+      carrier: { kind: 'warp', p: { halfLife: 0.5, floor: 1, blur: 0, amount: 1, vort: 28, fnoise: 0.35, fscale: 2, famt: 0.0012 } },
+      color: { scheme: 'analogous', p: { hue: 0.5, sat: 0.9, exposure: 1, contrast: 0.03, bloom: 1, adapt: 0.3, vignette: 0.45, ca: 0.0015, reflect: 0, reflectY: -0.16, tonemap: 0 } },
+      reactions: [{ src: 'beat', g: 'op', i: 0, k: 'rate', gain: 0.3 }],
+      energy: [0.2, 0.7],
+    },
+    likes: 3, dislikes: 0, softDislikes: 0, weakLikes: 1, views: 5, watch: 99, hidden: false,
+  };
+  const grandChild = { ...JSON.parse(JSON.stringify(oldChild)), id: 'G2-0002', gen: 2, parents: ['G1-0001', 'G0-E12'], likes: 1 };
+  data.members.push(oldChild as never, grandChild as never);
+  data.counter = 2;
+  const json = JSON.parse(JSON.stringify(data));
+
+  const loaded = Population.fromJSON(json);
+  check('migration.old-version-detected', loaded.seedVersion === 1, `seedVersion=${loaded.seedVersion}`);
+  const childBefore = JSON.stringify(loaded.get('G1-0001')!.genome);
+  const changed = loaded.upgradeSeeds();
+  check('migration.version-bumped', loaded.seedVersion === SEED_VERSION, `seedVersion=${loaded.seedVersion}`);
+  check('migration.all-seeds-upgraded', changed.length === 24, `${changed.length} seeds upgraded`);
+  const e02 = loaded.get('G0-E02')!;
+  const e12 = loaded.get('G0-E12')!;
+  check('migration.seed-genome-new', JSON.stringify(e02.genome) === JSON.stringify(seedByOrigin('E02')) && JSON.stringify(e12.genome) === JSON.stringify(seedByOrigin('E12')), `E02 emitters=${e02.genome.emitters.map((e) => e.kind)}`);
+  check('migration.votes-kept', e02.likes === 4 && e02.dislikes === 1 && e02.views === 9 && e02.watch === 321.5 && e02.weakLikes === 2 && e02.softDislikes === 1 && e12.likes === 2 && e12.hidden, `E02 ${e02.likes}/${e02.dislikes} views=${e02.views} watch=${e02.watch}; E12 likes=${e12.likes} hidden=${e12.hidden}`);
+  check('migration.ids-kept', e02.id === 'G0-E02' && e02.gen === 0 && e02.origin === 'E02' && loaded.size === 26, `size=${loaded.size}`);
+  const c1 = loaded.get('G1-0001')!;
+  const c2 = loaded.get('G2-0002')!;
+  check('migration.children-untouched', JSON.stringify(c1.genome) === childBefore && c1.likes === 3 && c2.likes === 1, 'bred children keep genomes and votes');
+  check('migration.parent-links-valid', [...c1.parents, ...c2.parents].every((id) => loaded.get(id)), `${c1.parents},${c2.parents}`);
+  check('migration.old-child-valid', validate(c1.genome).length === 0 && c1.genome.emitters.length === 3, validate(c1.genome).join(';') || 'old-format child repaired to a valid genome');
+  const plasma = c1.genome.emitters.find((e) => e.kind === 'plasma')!;
+  check('migration.old-child-defaults', plasma.p.tempo === 0 && plasma.p.pulse === 0 && c1.genome.chain[1].p.lanes === 0, 'new parameters default to the old behaviour');
+  check('migration.old-child-renders', buildSources(c1.genome).feedback.includes('void main') && estimateCost(c1.genome) < 8, 'old child still builds shaders');
+  const second = loaded.upgradeSeeds();
+  check('migration.idempotent', second.length === 0, `${second.length} seeds changed on the second run`);
+
+  // Round trip keeps the version, so the next load does not migrate again.
+  const again = Population.fromJSON(JSON.parse(JSON.stringify(loaded.toJSON())));
+  check('migration.version-persisted', again.seedVersion === SEED_VERSION && again.upgradeSeeds().length === 0, `seedVersion=${again.seedVersion}`);
+
+  // Seed missing from an old file comes back; a newer file is left alone.
+  const missing = Population.fromJSON({ ...json, members: json.members.filter((m: { id: string }) => m.id !== 'G0-E20') });
+  missing.upgradeSeeds();
+  check('migration.missing-seed-restored', !!missing.get('G0-E20'), 'G0-E20 restored');
+  const future = Population.fromJSON({ ...json, seedVersion: SEED_VERSION + 1 });
+  check('migration.newer-left-alone', future.upgradeSeeds().length === 0 && future.seedVersion === SEED_VERSION + 1, 'newer seed version untouched');
 }
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${failures} failing check(s)`);

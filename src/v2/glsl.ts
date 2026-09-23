@@ -61,7 +61,7 @@ vec3 hueRotate(vec3 c, float a) {
 const LIB = /* glsl */ `
 uniform vec2 uRes;
 uniform float uAspect, uTime, uPhase, uDt, uF60, uSpeed;
-uniform float uBeat, uBar, uBars, uBeats, uBeatPulse;
+uniform float uBeat, uBar, uBars, uBeats, uBeatPulse, uBarPulse;
 uniform float uSpin, uSpinStep;
 uniform vec4 uStem, uOnset, uPres;
 uniform float uAct, uBuild, uDrop, uLoud, uMelody, uKeyHue;
@@ -76,6 +76,7 @@ uniform vec4 uSeg[48];
 uniform vec4 uSegZ[12];
 uniform int uSegN;
 uniform float uChroma[12];
+uniform float uArm[12]; // orb arms: 5 angles, 5 lengths, curl, width
 uniform sampler2D uWave, uSpec;
 
 float waveAt(float x) { return texture(uWave, vec2(x, 0.5)).r; }
@@ -101,6 +102,10 @@ float fbm4(vec2 p) {
 }
 vec3 keyCol(float pc, float s, float v) { return hsv2rgb(vec3(fract(uKeyHue + pc * 7.0 / 12.0), s, v)); }
 vec3 lin(vec3 c) { return c * c; }
+// View-stage ops may scale the sampled picture and add light (stretch's window
+// brightening and sky); both are ignored in the feedback pass.
+float vMul = 1.0;
+vec3 vAdd = vec3(0.0);
 `;
 
 // ------------------------------------------------------------- chain ops
@@ -110,11 +115,13 @@ vec3 lin(vec3 c) { return c * c; }
 const OP_GLSL: Record<string, string> = {
   zoom: `{ vec2 d = p - OA.xy; float r = length(d); float z = 1.0 + OA.z * mix(1.0, 0.5 + r * 1.2, OA.w); p = OA.xy + d / z; }`,
   rotate: `{ p = OA.xy + rot2(OA.z) * (p - OA.xy); }`,
-  translate: `{ p += OA.xy; }`,
+  translate: `{ vec2 sh = OA.xy; if (OA.z > 1.0) { sh.y *= 1.0 + floor(hash11(floor((p.x + 5.0) * OA.z) * 1.37) * 2.0); sh.x *= 1.0 + floor(hash11(floor((p.y + 5.0) * OA.z) * 1.37) * 2.0); } p += sh; }`,
   swirl: `{ vec2 d = p - OA.xy; float r = length(d); p = OA.xy + rot2(OA.z / (r * OA.w + 0.4)) * d; }`,
   twist: `{ vec2 d = p - OA.xy; p = OA.xy + rot2(OA.z * length(d) * 8.0) * d; }`,
   ripple: `{ if (OA.w > 0.5) { float r = length(p); p += normalize(p + 1e-5) * OA.x * sin(r * OA.y - OA.z); } else { p.y += OA.x * sin(p.x * OA.y - OA.z); } }`,
   noise: `{ p += curlNoise(p * OA.y + 4.0, OA.z) * OA.x; }`,
+  push: `{ if (OA.y < 0.5) p.x -= sign(p.x) * OA.x * smoothstep(0.0, 0.03, abs(p.x)); else if (OA.y < 1.5) p.y -= sign(p.y) * OA.x * smoothstep(0.0, 0.03, abs(p.y)); else { float r = length(p); p -= p / max(r, 1e-4) * OA.x * smoothstep(0.0, 0.03, r); } }`,
+  stretch: `{ float hw = uAspect * 0.5; float bin = clamp((p.x + hw) / (2.0 * hw), 0.0, 1.0); bin = (floor(bin * OA.w) + 0.5) / OA.w; float lv = specAt(bin * 0.8 + 0.03); float st = 1.0 + OA.y * lv * (0.4 + 0.6 * uAct) + OA.z * uBeatPulse * uPres.x; float above = step(OA.x, p.y); vAdd += OB.y * above * mix(uColC * (0.025 + 0.05 * uStem.y * uPres.y), uColB * 0.002, smoothstep(OA.x, 0.5, p.y)) * vMul; vMul *= 1.0 + OB.x * (1.4 * lv - 0.3); p.y = OA.x + (p.y - OA.x) / st; }`,
   mirror: `{ if (OA.x < 0.5) p.x = abs(p.x); else if (OA.x < 1.5) p.y = abs(p.y); else p = abs(p); }`,
   tile: `{ vec2 h = vec2(uAspect, 1.0) * 0.5; vec2 q = mod(p * OA.x + h, 4.0 * h); p = abs(q - 2.0 * h) - h; }`,
   polar: `{ float a = mod(atan(p.y, p.x) + OA.y + PI, TAU) - PI; p = vec2(a / PI * uAspect * 0.5, length(p) * 2.0 * OA.x - 0.5); }`,
@@ -234,18 +241,20 @@ vec3 em_wire(vec2 p) {
 
   plasma: /* glsl */ `
 vec3 em_plasma(vec2 p) {
-  vec4 A = EA, B = EB;
+  // A: gain, hue, time, band offset. B: scale, warp, bands, lines.
+  // C: warp offset, bass swell, line thickening, hue shift. D.x: beat brightness.
+  vec4 A = EA, B = EB, C = EC;
   float t = A.z;
   vec2 q = p * B.x;
   vec2 w1 = vec2(fbm4(q + vec2(0.0, t)), fbm4(q + vec2(5.2, -t * 0.8)));
-  vec2 w2 = vec2(fbm4(q + B.y * w1 + vec2(1.7, 9.2) + A.w * 0.1), fbm4(q + B.y * w1 + vec2(8.3, 2.8)));
-  float f = fbm4(q + (2.0 + 0.8 * uStem.y) * w2);
+  vec2 w2 = vec2(fbm4(q + B.y * w1 + vec2(1.7, 9.2) + C.x), fbm4(q + B.y * w1 + vec2(8.3, 2.8)));
+  float f = fbm4(q + (2.0 + 0.8 * C.y) * w2);
   float bands = f * B.z - A.w;
   float line = 1.0 - abs(fract(bands) - 0.5) * 2.0;
   float fw = fwidth(bands) * 2.0;
-  float ln = smoothstep(1.0 - fw - 0.06, 1.0, line);
-  vec3 base = pal(f * 1.2 + t * 0.15 + A.y) * pow(f, 3.0) * mix(0.35, 0.08, B.w);
-  return (base + pal(f + 0.33 + A.y) * ln * B.w * (0.15 + 0.45 * uLoud) * (0.6 + 0.4 * f)) * A.x * uLayerK;
+  float ln = smoothstep(1.0 - fw - 0.06 - 0.06 * C.z, 1.0, line);
+  vec3 base = pal(f * 1.2 + t * 0.15 + A.y + C.w) * pow(f, 3.0) * mix(0.35, 0.08, B.w);
+  return (base + pal(f + 0.33 + A.y + C.w) * ln * B.w * (0.15 + 0.45 * uLoud) * ED.x * (0.6 + 0.4 * f)) * A.x * uLayerK;
 }`,
 
   aurora: /* glsl */ `
@@ -397,19 +406,53 @@ vec3 em_tiles(vec2 p) {
 }`,
 
   horizon: /* glsl */ `
+// Floor height at w = (x, z): a valley down the middle, hills either side whose
+// ridges follow the spectrum (frequency maps outward) and a ridge that rolls
+// toward the viewer on every kick; scrolls with the grid.
+float hzTerrain(vec2 w, float scroll, float amt) {
+  float ax = abs(w.x);
+  float z = w.y + scroll * 2.0;
+  float side = smoothstep(0.35, 1.6, ax);
+  float lv = specAt(clamp(ax / 5.0, 0.0, 1.0) * 0.7 + 0.03);
+  float ridge = 0.6 + 0.4 * sin(z * 1.3 + ax * 0.9);
+  float h = side * (0.03 + 0.34 * lv * (0.4 + 0.6 * uAct)) * ridge;
+  float k = fract(z * 0.25 + 0.5);
+  h += uBeatPulse * uPres.x * 0.05 * exp(-pow((k - 0.5) * 9.0, 2.0)) * (0.4 + side);
+  h *= smoothstep(18.0, 6.0, w.y);
+  return min(h, 0.32) * amt;
+}
 vec3 em_horizon(vec2 p) {
-  vec4 A = EA, B = EB;
+  vec4 A = EA, B = EB, C = EC;
   float hz = B.x;
   vec3 c = vec3(0.0);
   if (p.y < hz) {
     float dy = hz - p.y;
-    float z = 0.35 / dy;
+    float zFlat = 0.35 / dy;
+    float z = zFlat, h = 0.0;
+    if (C.x > 0.001) {
+      // Ray-march the heightfield: the eye is 0.35 above the floor.
+      float z0 = 0.2, st = 0.08;
+      for (int k = 0; k < 40; k++) {
+        float zt = z0 + st;
+        if (zt >= zFlat) break;
+        if (0.35 - dy * zt <= hzTerrain(vec2(p.x * zt, zt), A.z, C.x)) { z = zt; break; }
+        z0 = zt;
+        st *= 1.12;
+      }
+      for (int k = 0; k < 5; k++) {
+        float zm = 0.5 * (z0 + z);
+        if (0.35 - dy * zm <= hzTerrain(vec2(p.x * zm, zm), A.z, C.x)) z = zm; else z0 = zm;
+      }
+      h = hzTerrain(vec2(p.x * z, z), A.z, C.x);
+    }
     float x = p.x * z;
     float gz = abs(fract(z * 0.5 + A.z) - 0.5);
     float gx = abs(fract(x * B.y) - 0.5);
     float wz = fwidth(z * 0.5) * 1.2, wx = fwidth(x * B.y) * 1.2;
     float line = max(smoothstep(wz, 0.0, gz), smoothstep(wx, 0.0, gx));
-    c += pal(A.y) * line * exp(-z * 0.12) * (0.3 + 0.6 * uBeatPulse * uPres.x);
+    vec3 lc = mix(pal(A.y), uColC, smoothstep(0.02, 0.22, h));
+    lc = mix(lc, vec3(1.0), 0.35 * uBarPulse * C.y);
+    c += lc * line * exp(-z * 0.12) * (0.3 + 0.6 * uBeatPulse * uPres.x + 0.8 * h);
     c += pal(A.y) * 0.03 * exp(-dy * 25.0);
   } else if (B.z > 0.0) {
     float dy = p.y - hz;
@@ -427,15 +470,52 @@ vec3 em_orb(vec2 p) {
   vec2 d = p - A.zw;
   float md = length(d);
   float R = B.x;
+  // Signed distance to the rim; with arms, five tapered curling arms reach out.
+  float sd = md - R;
+  if (C.y > 0.001) {
+    float a = atan(d.y, d.x);
+    float rel = max(md / R - 1.0, 0.0);
+    float ext = 0.0;
+    for (int k = 0; k < 5; k++) {
+      float ang = uArm[k] + uArm[10] * rel;
+      float da = atan(sin(a - ang), cos(a - ang));
+      float w = uArm[11] / (1.0 + 1.9 * rel);
+      ext += uArm[5 + k] * exp(-da * da / (w * w));
+    }
+    sd = (md - R * (1.0 + ext * C.y)) * 0.6;
+  }
   vec3 moon = mix(vec3(1.0, 0.95, 0.85), pal(A.y), 0.3);
   vec3 sun = mix(uColC, uColB, smoothstep(-R, R, d.y));
   vec3 body = mix(moon, sun, B.z);
   float cut = d.y > 0.02 * R / 0.19 ? 1.0 : step(0.35 - d.y / R * 0.5, fract(d.y / R * 4.5 - uPhase * 0.2));
   cut = mix(1.0, cut, B.z);
   float tex = mix(1.0, 0.7 + 0.3 * fbm2(d * 1.8 / R), B.w);
-  vec3 c = body * smoothstep(R, R - 0.0025, md) * cut * tex * 0.5;
-  c += pal(A.y) * step(R, md) * B.y * (0.06 * exp(-(md - R) * 10.0) + 0.12 * C.x * exp(-(md - R) * 4.0));
+  vec3 c = body * smoothstep(0.0, -0.0025, sd) * cut * tex * 0.5;
+  c += pal(A.y) * step(0.0, sd) * B.y * (0.06 * exp(-sd * 10.0) + 0.12 * C.x * exp(-sd * 4.0));
+  c *= smoothstep(C.z - 0.0015, C.z + 0.0015, p.y);
   return c * A.x * uLayerK;
+}`,
+
+  snake: /* glsl */ `
+// Two heads: B = melody head (x, y, prev x, prev y), C = bass head, D = widths and
+// brightness (w0, b0, w1, b1); A.z = head count, A.w = cover. Each frame's new
+// stretch of body paints over (cover 1) or adds to (cover 0) the older trail.
+vec3 em_snake(vec2 p, vec3 c) {
+  vec4 A = EA, B = EB, C = EC, D = ED;
+  vec3 base = c;
+  if (A.z > 1.5) {
+    float wb = D.z;
+    vec3 cb = pal(0.5 + 0.4 * uStem.y + 0.15 * uBarPulse + A.y) * D.w * A.x;
+    float kb = smoothstep(wb, wb * 0.4, sdSeg(p, C.zw, C.xy));
+    base = mix(base + cb * kb * 0.3 * uAccum, mix(base, cb, kb), A.w);
+    base += cb * glow(length(p - C.xy), wb * 1.3) * 0.3 * uAccum;
+  }
+  float wm = D.x;
+  vec3 cm = pal(uMelody * 0.7 + 0.2 * uBeatPulse + A.y) * D.y * A.x;
+  float km = smoothstep(wm, wm * 0.4, sdSeg(p, B.zw, B.xy));
+  base = mix(base + cm * km * 0.3 * uAccum, mix(base, cm, km), A.w);
+  base += vec3(1.0) * glow(length(p - B.xy), wm * 1.3) * D.y * A.x * 0.25 * uAccum;
+  return base;
 }`,
 };
 
@@ -448,6 +528,9 @@ function emitterCode(kind: EmitterKind, slot: number): string {
     .replace(/\bEC\b/g, `uEm[${slot * 4 + 2}]`)
     .replace(/\bED\b/g, `uEm[${slot * 4 + 3}]`);
 }
+
+/** Emitters that repaint what is under them: em_<kind>(p, c) returns the new colour. */
+const COVER_EMITTERS = new Set<EmitterKind>(['snake']);
 
 /** Emitters drawn as fullscreen fields (the rest are geometry passes). */
 export function isFieldEmitter(kind: EmitterKind): boolean {
@@ -475,16 +558,21 @@ export function buildSources(g: Genome): Sources {
 
   const fbEm: string[] = [];
   const topEm: string[] = [];
+  let fbCover = '';
+  let topCover = '';
   let fbCode = '';
   let topCode = '';
   g.emitters.forEach((e, slot) => {
     if (!isFieldEmitter(e.kind)) return;
+    const cover = COVER_EMITTERS.has(e.kind);
     if (e.layer === 'fb') {
       fbCode += emitterCode(e.kind, slot) + '\n';
-      fbEm.push(`em_${e.kind}(p)`);
+      if (cover) fbCover += `  c = em_${e.kind}(p, c);\n`;
+      else fbEm.push(`em_${e.kind}(p)`);
     } else {
       topCode += emitterCode(e.kind, slot) + '\n';
-      topEm.push(`em_${e.kind}(q)`);
+      if (cover) topCover += `  c = em_${e.kind}(q, c);\n`;
+      else topEm.push(`em_${e.kind}(q)`);
     }
   });
 
@@ -526,7 +614,7 @@ void main() {
   c = max(prevAt(suv) * uDecay - uDecaySub, 0.0);
 #endif
   c += ${fbEm.length ? fbEm.join(' + ') : 'vec3(0.0)'};
-  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
+${fbCover}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
 }`;
 
   const composite = pre + /* glsl */ `
@@ -552,14 +640,14 @@ void main() {
   vec2 q = view(p);
 #ifdef LOG_TONE
   vec2 ox = vec2(0.5 / uRes.y, 0.0), oy = vec2(0.0, 0.5 / uRes.y);
-  vec3 c = (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25;
+  vec3 c = (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25 * vMul + vAdd;
   c += ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
-  float l = max(c.r, max(c.g, c.b));
+${topCover}  float l = max(c.r, max(c.g, c.b));
   float b = log(1.0 + l * 24.0) / log(25.0);
   c = c / max(l, 1e-5) * pow(b, 1.1) * 0.55;
 #else
-  vec3 c = fb(q) + ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
-#endif
+  vec3 c = fb(q) * vMul + vAdd + ${topEm.length ? topEm.join(' + ') : 'vec3(0.0)'};
+${topCover}#endif
   c *= att;
 #ifdef REFLECT
   c += uColC * glow(p.y - uReflectY, 0.0012) * 0.06 * step(0.99, att);
@@ -581,7 +669,8 @@ void main() {
 
 export const WAVE_VS = HEAD + COMMON + LIB + /* glsl */ `
 uniform float uN, uThick, uBright;
-uniform vec4 uW[3]; // (shape, amp, x, y) (radius, turns, ra, rb) (phase, rotation, hue, -)
+uniform vec4 uW[4]; // (shape, amp, x, y) (radius, turns, ra, rb) (phase, rotation, hue, -) (pendulum phases)
+// Pendulum (shape 5): uW[1] = frequencies, uW[2].x = scale, uW[2].w = second pendulum amplitude.
 out float vSide;
 out vec3 vCol;
 vec2 curve(float k) {
@@ -598,20 +687,31 @@ vec2 curve(float k) {
     float a = k * TAU * B.y;
     float r = B.x * (0.12 + 0.88 * k) + waveAt(k) * A.y * 0.2 * k;
     q = r * vec2(cos(a), sin(a));
-  } else {
+  } else if (sh == 3) {
     float t = k * 42.0;
     float damp = exp(-k * 2.0);
     float x = sin(B.z * t + C.x) + 0.5 * sin(B.z * 2.0 * t + 0.01 + C.x * 1.3);
     float y = sin(B.w * t + C.x * 0.7 + 1.3) + 0.5 * sin(B.w * 1.5 * t - 0.01);
     q = vec2(x, y) * damp * B.x * 0.62 * (1.0 + waveAt(k) * A.y * 0.4);
+  } else if (sh == 4) {
+    float a = (k - 0.5) * B.y * 0.37;
+    q = (B.x + waveAt(k) * A.y * 0.4) * vec2(cos(a), sin(a));
+  } else {
+    float t = k * 42.0;
+    float damp = exp(-k * 2.0);
+    vec4 D = uW[3];
+    float x = sin(B.x * t + D.x) + C.w * sin(B.y * t + D.y);
+    float y = sin(B.z * t + D.z) + C.w * sin(B.w * t + D.w);
+    q = vec2(x, y) * damp * C.x;
   }
   return rot2(C.y) * q + A.zw;
 }
 vec3 curveColor(float k) {
   int sh = int(uW[0].x + 0.5);
   float env = sh == 0 ? smoothstep(0.0, 0.15, k) * smoothstep(1.0, 0.85, k) : 1.0;
-  float damp = sh == 3 ? 0.5 + 0.5 * exp(-k * 1.5) : 1.0;
-  vec3 c = sh == 0 ? mix(pal(uW[2].z), vec3(1.0), 0.2) : mix(pal(uW[2].z), pal(uW[2].z + 0.66), k);
+  float damp = sh == 3 || sh == 5 ? 0.5 + 0.5 * exp(-k * 1.5) : 1.0;
+  float t = sh == 4 ? 0.5 + 0.5 * sin(k * TAU) : k;
+  vec3 c = sh == 0 ? mix(pal(uW[2].z), vec3(1.0), 0.2) : mix(pal(uW[2].z), pal(uW[2].z + 0.66), t);
   return c * env * damp;
 }
 void main() {

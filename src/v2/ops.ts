@@ -3,7 +3,7 @@
 
 import {
   CARRIER_KINDS, CARRIER_SCHEMA, COLOR_SCHEMA, EMITTER_KINDS, EMITTER_SCHEMAS, FLAME_VARIATIONS, FOLD_OPS, MAX_CHAIN,
-  MAX_EMITTERS, MAX_REACTIONS, MAX_XFORMS, MOTION_OPS, OP_KINDS, OP_SCHEMAS, SCHEMES, SIGNALS, XFORM_SPIN,
+  MAX_EMITTERS, MAX_REACTIONS, MAX_XFORMS, MOTION_OPS, OP_KINDS, OP_SCHEMAS, SCHEMES, SIGNALS, XFORM_DRIFT, XFORM_SPIN,
   cloneGenome, isVarOp, reactable, repair, repairXform, schemaFor, stageFree,
   type EmitterGene, type EmitterKind, type FlameVar, type FlameXformGene, type GeneGroup, type Genome, type OpGene,
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema,
@@ -140,7 +140,7 @@ export function randomEmitter(rng: Rng, kind?: EmitterKind): EmitterGene {
   p.gain = 0.6 + 0.8 * rng();
   if (k === 'particles') p.count = Math.min(p.count, 32768);
   if (k === 'flame') p.count = pick(rng, [65536, 131072, 262144]);
-  const layer = k === 'flame' ? 'fb' : (k === 'plasma' || k === 'blobs' || k === 'horizon' || k === 'orb') && rng() < 0.6 ? 'top' : rng() < 0.15 ? 'top' : 'fb';
+  const layer = k === 'flame' || (k === 'snake' && rng() < 0.9) ? 'fb' : (k === 'plasma' || k === 'blobs' || k === 'horizon' || k === 'orb') && rng() < 0.6 ? 'top' : rng() < 0.15 ? 'top' : 'fb';
   const e: EmitterGene = { kind: k, layer, p };
   if (k === 'flame') e.xforms = Array.from({ length: randInt(rng, 2, 3) }, () => randomXform(rng));
   return e;
@@ -501,9 +501,9 @@ const MUTATORS: [number, string, Mutator][] = [
     const x = pick(rng, f.xforms!);
     const r = rng();
     if (r < 0.3) x.alt = rng() < 0.2 ? undefined : { [pick(rng, FLAME_VARIATIONS)]: 0.4 + 0.6 * rng() };
-    else if (r < 0.5) x.drift = [Math.min(0.3, Math.max(0, x.drift[0] + gauss(rng) * 0.08)), Math.min(0.3, Math.max(0, x.drift[1] + gauss(rng) * 0.08))];
+    else if (r < 0.5) x.drift = [Math.min(XFORM_DRIFT, Math.max(0, x.drift[0] + gauss(rng) * 0.08)), Math.min(XFORM_DRIFT, Math.max(0, x.drift[1] + gauss(rng) * 0.08))];
     else if (r < 0.7) x.pulse = Math.min(0.3, Math.max(0, x.pulse + gauss(rng) * 0.08));
-    else if (r < 0.85) f.p.flow = Math.min(1, Math.max(0, f.p.flow + gauss(rng) * 0.25));
+    else if (r < 0.85) f.p.flow = Math.min(2, Math.max(0, f.p.flow + gauss(rng) * 0.25));
     else f.p.breathe = Math.min(0.4, Math.max(0, f.p.breathe + gauss(rng) * 0.1));
     return true;
   }],

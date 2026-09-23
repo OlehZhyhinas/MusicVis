@@ -36,10 +36,13 @@ export class Evolution {
       const data = await this.store.get<unknown>('population');
       if (data) {
         this.pop = Population.fromJSON(data);
-        const before = new Map(this.pop.list().filter((m) => m.gen === 0).map((m) => [m.id, JSON.stringify(m.genome)]));
-        this.pop.refreshSeeds();
-        const stale = this.pop.list().filter((m) => m.gen === 0 && before.get(m.id) !== JSON.stringify(m.genome)).map((m) => m.id);
-        if (stale.length) void this.store.deleteThumbs(stale);
+        // Seeds re-encoded since this population was saved get the new genomes
+        // (votes and children kept); their thumbnails are redrawn.
+        const stale = this.pop.upgradeSeeds();
+        if (stale.length) {
+          void this.store.deleteThumbs(stale);
+          void this.store.set('population', this.pop.toJSON());
+        }
       }
     } catch (err) {
       console.warn('[v2] stored population unreadable, starting from the seeds', err);
@@ -209,6 +212,7 @@ export class Evolution {
 
   async importJSON(text: string): Promise<number> {
     const p = Population.fromJSON(JSON.parse(text));
+    p.upgradeSeeds();
     this.pop = p;
     await this.store.clearThumbs();
     this.changed();
