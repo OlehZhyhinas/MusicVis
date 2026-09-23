@@ -542,7 +542,7 @@ vec3 comp(vec2 uv, vec2 p) {
   // ------------------------------------------------------------ E09
   {
     id: 'E09', name: 'Rorschach', kind: 'mirror split', energy: [0.2, 0.7],
-    palette: 'complementary', hue: 0.85, decay: 0.992, blur: 0.25, adapt: 0.35,
+    palette: 'complementary', hue: 0.85, decay: 0.986, blur: 0.1, adapt: 0.35,
     js(f, r) {
       const y = (f.melody - 0.5) * 0.6;
       r.mem.y = approach(mem(r, 'y', y), y, 4, f.dt);
@@ -553,20 +553,29 @@ vec3 comp(vec2 uv, vec2 p) {
       r.v[2] = melodic(f);
       r.v[3] = r.mem.dh;
       r.v[4] = mem(r, 'dy');
+      r.v[5] = ((f.barIndex % 2) + 2) % 2; // ink colours trade places every bar
     },
     warp: /* glsl */ `
 vec2 warp(vec2 p) {
   vec2 c = curlNoise(vec2(abs(p.x), p.y) * 2.5 + 4.0, uPhase * 0.35);
-  float out1 = 0.0016 * uF60 * uSpeed * smoothstep(0.0, 0.03, abs(p.x));
-  return vec2(p.x - sign(p.x) * out1, p.y * (1.0 - 0.0008 * uF60)) + vec2(sign(p.x) * c.x, c.y) * 0.0016 * uF60;
+  // Each beat pushes the ink outward, then it settles; bass adds a steady push.
+  float push = 0.0008 + 0.0065 * uBeatPulse + 0.003 * uStem.y * uPres.y;
+  float out1 = push * uF60 * uSpeed * smoothstep(0.0, 0.03, abs(p.x));
+  // Vocals and the other instruments stir the ink.
+  float stir = 0.0008 + 0.0028 * (uStem.z * uPres.z + uStem.w * uPres.w);
+  return vec2(p.x - sign(p.x) * out1, p.y * (1.0 - 0.0008 * uF60)) + vec2(sign(p.x) * c.x, c.y) * stir * uF60;
 }`,
     draw: /* glsl */ `
 vec3 draw(vec2 p, vec2 uv, vec3 prev) {
   float ax = abs(p.x);
-  vec3 c = uColA * uV[0].z * glow(length(vec2(ax - 0.03, (p.y - uV[0].y) * 0.6)), 0.02 + 0.02 * uLoud);
-  c += uColB * uStem.y * glow(length(vec2(ax, p.y + 0.24)), 0.035) * 0.6;
-  c += uColC * uV[0].w * glow(length(vec2(ax - 0.04, p.y - uV[1].x)), 0.025);
-  return c * 0.05;
+  vec3 ca = mix(uColA, uColB, uV[1].y);
+  vec3 cb = mix(uColB, uColA, uV[1].y);
+  // Melody blot along the spine, a bass blot swelling at the base, and a
+  // fresh blot at a new height on every drum hit.
+  vec3 c = ca * uV[0].z * glow(length(vec2(ax - 0.03, (p.y - uV[0].y) * 0.6)), 0.015 + 0.015 * uLoud);
+  c += cb * uStem.y * uPres.y * glow(length(vec2(ax, p.y + 0.24)), 0.025 + 0.025 * uStem.y) * 0.6;
+  c += uColC * uV[0].w * glow(length(vec2(ax - 0.05, p.y - uV[1].x)), 0.02 + 0.03 * uV[0].w);
+  return c * (0.025 + 0.05 * uBeatPulse);
 }`,
     comp: /* glsl */ `
 vec3 comp(vec2 uv, vec2 p) {
