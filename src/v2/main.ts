@@ -147,8 +147,17 @@ async function main(): Promise<void> {
     play: (id) => play(id, 1.2, true),
     currentId: () => currentId,
     toast: (msg, kind) => showToast(msg, kind ?? 'info'),
-    onOpen: () => playlistPanel.setCollapsed(true),
+    // The browser and the playlist share the right side: hide the playlist
+    // while the browser is open and bring it back when the browser closes.
+    onOpen: () => {
+      playlistWasOpen = !playlistPanel.isCollapsed;
+      playlistPanel.setCollapsed(true);
+    },
+    onClose: () => {
+      if (playlistWasOpen) playlistPanel.setCollapsed(false);
+    },
   });
+  let playlistWasOpen = false;
   evo.onChange = () => {
     browser.refresh();
     updateBar();

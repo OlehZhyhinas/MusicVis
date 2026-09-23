@@ -11,6 +11,7 @@ export interface BrowserCallbacks {
   currentId(): string | null;
   toast(msg: string, kind?: 'info' | 'error'): void;
   onOpen?(): void;
+  onClose?(): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -112,10 +113,13 @@ export class PresetBrowser {
   }
 
   setOpen(open: boolean): void {
+    const was = this.open;
     this.root.hidden = !open;
     if (open) {
       this.cb.onOpen?.();
       this.render();
+    } else if (was) {
+      this.cb.onClose?.();
     }
   }
 
