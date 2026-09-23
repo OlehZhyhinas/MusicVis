@@ -19,13 +19,13 @@
 // votes, views and ids are kept).
 
 import {
-  CARRIER_SCHEMA, COLOR_SCHEMA, DEFORM_SCHEMAS, EMIT_SCHEMAS, FEEL_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
+  CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FEEL_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
   SHAPE_SCHEMAS, defaultParams, repair,
-  type BodyGene, type CarrierKind, type DeformKind, type EmitKind, type FeelKind, type FlameXformGene, type Genome, type MaterialKind,
+  type BodyGene, type CarrierKind, type DeformKind, type EmitKind, type FeelKind, type MappingKind, type FlameXformGene, type Genome, type MaterialKind,
   type MotionKind, type OpGene, type OpKind, type PlaceKind, type ReactionGene, type Scheme, type ShapeKind, type Signal,
 } from './genome';
 
-export const SEED_VERSION = 4;
+export const SEED_VERSION = 5;
 
 export interface Seed {
   origin: string; // V1 preset id, e.g. 'E07'
@@ -54,6 +54,8 @@ interface BodyDef {
   material: [MaterialKind, P?];
   emit?: [EmitKind, P?];
   feel?: [FeelKind, P?];
+  /** Colour mapping; by default what the placement implies (grid: pitch, copies: instrument, one shape: fixed). */
+  color?: [MappingKind, P?];
 }
 function body(d: BodyDef): BodyGene {
   const [sk, sp = {}, xforms] = d.shape;
@@ -63,6 +65,8 @@ function body(d: BodyDef): BodyGene {
   const [ak, ap = {}] = d.material;
   const [ek, ep = {}] = d.emit ?? ['trail'];
   const [fk, fp = {}] = d.feel ?? ['flow'];
+  const implied: MappingKind = pk === 'grid' ? 'pitch' : ['orbit', 'stations', 'row', 'outline', 'ring', 'walker'].includes(pk) ? 'instrument' : 'fixed';
+  const [ck, cp = {}] = d.color ?? [implied];
   const b: BodyGene = {
     shape: { kind: sk, p: { ...defaultParams(SHAPE_SCHEMAS[sk]), ...sp } },
     place: { kind: pk, p: { ...defaultParams(PLACE_SCHEMAS[pk]), ...pp } },
@@ -71,6 +75,7 @@ function body(d: BodyDef): BodyGene {
     material: { kind: ak, p: { ...defaultParams(MATERIAL_SCHEMAS[ak]), ...ap } },
     emit: { kind: ek, p: { ...defaultParams(EMIT_SCHEMAS[ek]), ...ep } },
     feel: { kind: fk, p: { ...defaultParams(FEEL_SCHEMAS[fk]), ...fp } },
+    color: { kind: ck, p: { ...defaultParams(MAPPING_SCHEMAS[ck]), amount: 1, ...cp } },
   };
   if (xforms) b.shape.xforms = xforms;
   return b;
@@ -93,17 +98,15 @@ interface Def {
 
 function build(d: Def): Seed {
   const g: Genome = {
-    v: 4,
+    v: 5,
     chain: d.chain ?? [],
     bodies: d.bodies,
     carrier: {
       kind: d.carrier,
       p: { ...defaultParams(CARRIER_SCHEMA), halfLife: d.decay ? hl(d.decay) : 0.5, floor: 1, ...d.car },
     },
-    color: {
-      scheme: d.scheme,
-      p: { ...defaultParams(COLOR_SCHEMA), sat: 1, adapt: 0.6, bloom: 1, vignette: 0.45, hue: d.hue, ...d.color },
-    },
+    palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue } },
+    tone: { p: { ...defaultParams(TONE_SCHEMA), sat: 1, adapt: 0.6, bloom: 1, vignette: 0.45, ...d.color } },
     reactions: d.reactions ?? [],
     energy: d.energy,
   };

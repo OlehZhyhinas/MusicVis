@@ -64,7 +64,7 @@ vec3 hueRotate(vec3 c, float a) {
 `;
 
 /** Per-body uniform vec4 slots (see engine.ts packBody for the layout). */
-export const BODY_VEC4 = 20;
+export const BODY_VEC4 = 21;
 /** Explicit copies per body (uCp / uCq entries). */
 export const COPY_SLOTS = 6;
 
@@ -553,9 +553,17 @@ vec2 DFM(vec2 q, out float k) {
 // brightness shade; q = local position; Q = copy level, hue; R = copy size),
 // ex = extra light around it. M0 = BD(0) = (gain, hue, a, b), M1 = BD(1).
 
-const BODY_COL = `vec3 COL(vec4 Q, float cs, float sat) {
+// Colour mapping: BD(0).y = the body's base hue, BD(20) = (mapping kind, detail, height amount, instrument
+// amount). Q.y < -0.5 marks a pitch class (keyed colours around the song's key).
+const BODY_COL = `vec3 COL(vec4 Q, float cs, float sat, vec2 p) {
   if (Q.y < -0.5) { vec3 k = keyCol(-Q.y - 1.0 + BD(0).y * 12.0, sat, 1.0); return sat > 0.7 ? lin(k) : k; }
-  return pal(BD(0).y + Q.y + cs);
+  return pal(BD(0).y + Q.y + cs * BD(20).y + p.y * BD(20).z);
+}
+float CHUE(vec2 cc, float pc) {
+  int k = int(BD(20).x + 0.5);
+  if (k == 2) return -1.0 - pc;
+  if (k == 1) return (floor(hash12(cc + 5.1) * 4.0) * 0.25 + 0.1) * BD(20).w;
+  return 0.0;
 }`;
 
 const MATERIAL_GLSL: Record<string, string> = {
@@ -564,7 +572,7 @@ const MATERIAL_GLSL: Record<string, string> = {
   ex = vec3(0.0);
   float w = px() * BD(0).z;
   float cov = glow(s.x, w) + BD(0).w * glow(s.x, min(w * 7.0, 0.012 * BD(0).z));
-  vec3 col = COL(Q, s.y, 0.3) * s.z * Q.x * (0.12 + 0.08 * uLoud) * sqrt(clamp(uRes.y / 1080.0, 0.1, 1.0));
+  vec3 col = COL(Q, s.y, 0.3, p) * s.z * Q.x * (0.12 + 0.08 * uLoud) * sqrt(clamp(uRes.y / 1080.0, 0.1, 1.0));
   return vec4(col, cov);
 }`,
   // M0 = (gain, hue, soft, halo), M1 = (outline, core, clip, halo level)
@@ -572,8 +580,8 @@ const MATERIAL_GLSL: Record<string, string> = {
   float aa = px() * 1.2;
   float cov = smoothstep(aa, -max(aa, BD(0).z * R), s.x);
   cov *= 1.0 - 0.5 * BD(1).y + 0.5 * BD(1).y * smoothstep(0.0, -R, s.x);
-  vec3 col = COL(Q, s.y, 0.8) * s.z * Q.x * 0.5;
-  ex = COL(Q, 0.0, 0.8) * step(0.0, s.x) * BD(0).w * (0.06 * exp(-s.x * 10.0) + 0.12 * BD(1).w * exp(-s.x * 4.0));
+  vec3 col = COL(Q, s.y, 0.8, p) * s.z * Q.x * 0.5;
+  ex = COL(Q, 0.0, 0.8, p) * step(0.0, s.x) * BD(0).w * (0.06 * exp(-s.x * 10.0) + 0.12 * BD(1).w * exp(-s.x * 4.0));
   ex += mix(uColB, uColC, 0.5) * smoothstep(aa, 0.0, abs(s.x - 0.08 * R)) * 0.035 * (0.5 + uLoud) * BD(1).x;
   float clip = smoothstep(BD(1).z - 0.0015, BD(1).z + 0.0015, p.y);
   ex *= clip;
@@ -585,7 +593,7 @@ const MATERIAL_GLSL: Record<string, string> = {
   float w = max(BD(0).z * (0.7 + 0.8 * Q.x), px() * (1.5 + 2.0 * Q.x));
   float dd = max(s.x, 0.0);
   float cov = glow(dd, w) + BD(1).x * glow(dd, w * 6.0);
-  vec3 col = COL(Q, s.y, 0.3) * s.z * (BD(0).w * gTw + Q.x) * 0.4;
+  vec3 col = COL(Q, s.y, 0.3, p) * s.z * (BD(0).w * gTw + Q.x) * 0.4;
   return vec4(col, cov);
 }`,
   // M0 = (gain, hue, spacing, size)
@@ -596,14 +604,14 @@ const MATERIAL_GLSL: Record<string, string> = {
   float dm = smoothstep(BD(0).w * 0.5, BD(0).w * 0.5 - 0.12, length(g));
   float aa = px() * 1.2;
   float cov = max(smoothstep(aa, -aa, s.x), glow(s.x, sp * 0.6)) * dm;
-  vec3 col = COL(Q, s.y, 0.5) * s.z * Q.x * 0.35;
+  vec3 col = COL(Q, s.y, 0.5, p) * s.z * Q.x * 0.35;
   return vec4(col, cov);
 }`,
   // M0 = (gain, hue, amount, halo), M1 = (tex, clip, halo level, -)
   textured: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
   float amt = BD(0).z;
   float sd = s.x;
-  vec3 moon = mix(vec3(1.0, 0.95, 0.85), COL(Q, 0.0, 0.5), 0.3);
+  vec3 moon = mix(vec3(1.0, 0.95, 0.85), COL(Q, 0.0, 0.5, p), 0.3);
   vec3 body = moon;
   float cut = 1.0, tex = 1.0;
 #if TEX == 0
@@ -617,11 +625,11 @@ const MATERIAL_GLSL: Record<string, string> = {
   vec2 cell = floor(q / (R * 0.2));
   vec2 f = fract(q / (R * 0.2));
   float on = step(hash12(cell + floor(uBars) * 7.0), 0.25 + 0.5 * Q.x) * step(0.25, f.x) * step(0.3, f.y) * step(f.x, 0.75) * step(f.y, 0.8);
-  body = mix(moon * 0.12, mix(vec3(1.0, 0.8, 0.5), COL(Q, 0.1, 0.5), 0.3) * (0.6 + 0.6 * hash12(cell)), on * amt);
+  body = mix(moon * 0.12, mix(vec3(1.0, 0.8, 0.5), COL(Q, 0.1, 0.5, p), 0.3) * (0.6 + 0.6 * hash12(cell)), on * amt);
 #endif
   vec3 col = body * cut * tex * 0.5 * Q.x;
   float cov = smoothstep(0.0, -0.0025, sd);
-  ex = COL(Q, 0.0, 0.5) * step(0.0, sd) * BD(0).w * (0.06 * exp(-sd * 10.0) + 0.12 * BD(1).z * exp(-sd * 4.0));
+  ex = COL(Q, 0.0, 0.5, p) * step(0.0, sd) * BD(0).w * (0.06 * exp(-sd * 10.0) + 0.12 * BD(1).z * exp(-sd * 4.0));
   float clip = smoothstep(BD(1).y - 0.0015, BD(1).y + 0.0015, p.y);
   ex *= clip;
   return vec4(col, cov * clip);
@@ -645,12 +653,12 @@ const MATERIAL_GLSL: Record<string, string> = {
   float aa = px() * 1.4;
   float cov = smoothstep(aa, -aa, s.x);
   vec3 r = reflect(vec3(0.0, 0.0, -1.0), nn);
-  vec3 env = mix(uColB * 0.03, COL(Q, 0.0, 0.5) * 0.7, smoothstep(-0.3, 0.9, r.y));
+  vec3 env = mix(uColB * 0.03, COL(Q, 0.0, 0.5, p) * 0.7, smoothstep(-0.3, 0.9, r.y));
   env += vec3(1.0) * glow(r.y - 0.2 - 0.12 * sin(r.x * 3.0 + uPhase * 0.3), 0.06);
   env += uColC * pow(max(-r.x, 0.0), 5.0) * 0.8;
   float fres = pow(1.0 - nn.z, 2.0);
   vec3 chrome = env * (0.3 + 0.7 * fres) + vec3(0.02);
-  vec3 soft = COL(Q, F * 0.1, 0.5) * (0.25 + 0.5 * fres);
+  vec3 soft = COL(Q, F * 0.1, 0.5, p) * (0.25 + 0.5 * fres);
   vec3 col = mix(soft, chrome, BD(0).z) * Q.x;
   ex = (uColB * 0.003 + uColC * 0.015 * smoothstep(0.2, 1.0, F)) * (1.0 - cov);
   return vec4(col, cov);
@@ -677,7 +685,7 @@ function slot(src: string, bi: number, suffix: string): string {
     .replace(/\bEC\b/g, `uBd[${b + 18}]`)
     .replace(/\bED\b/g, `uBd[${b + 19}]`)
     .replace(/\bWV(\d)\b/g, (_m, k: string) => `uWv[${bi * 4 + Number(k)}]`)
-    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
+    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
 }
 
 /** Shape distance field for the body (SA/SB = its parameter slots). */
@@ -821,7 +829,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
       float e = pow(chromaAt(pc), 2.5) * lvl;
       float gate = lit < 0.99 ? step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse) : 1.0;
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
-      vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
+      vec4 Qc = vec4(e * gate, CHUE(cc, pc), 0.0, 0.0);
 ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(g0 - sp) / S')}
       if (links > 0.01) {
         for (int kk = 0; kk < 2; kk++) {
@@ -831,7 +839,7 @@ ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length
           float link = min(e, pow(chromaAt(pc2), 2.5) * lvl) * gate;
           if (link < 0.04) continue;
           vec2 np = nc + 0.5 + jit * (hash22(nc * 1.7 + 0.3) - 0.5);
-          acc += mix(COL(Qc, 0.0, 0.3), COL(vec4(0.0, -1.0 - pc2, 0.0, 0.0), 0.0, 0.3), 0.5) * link * links * glow(sdSeg(g0, sp, np) / S, px() * 1.1) * 0.8 * 0.2;
+          acc += mix(COL(Qc, 0.0, 0.3, p), COL(vec4(0.0, CHUE(nc, pc2), 0.0, 0.0), 0.0, 0.3, p), 0.5) * link * links * glow(sdSeg(g0, sp, np) / S, px() * 1.1) * 0.8 * 0.2;
         }
       }
     }
@@ -844,7 +852,7 @@ ${evalCopy('(g0 - sp) / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length
       float gate = 1.0;
       if (lit < 0.99) { gate = step(hash12(cc + BD(4).z), lit * (0.6 + 0.8 * uAct)) * (0.2 + 1.2 * uBeatPulse); e *= e; }
       gTw = 1.0 - 0.3 * twk + 0.3 * twk * sin(uTime * (0.5 + hash12(cc)) + pc);
-      vec4 Qc = vec4(e * gate, -1.0 - pc, 0.0, 0.0);
+      vec4 Qc = vec4(e * gate, CHUE(cc, pc), 0.0, 0.0);
 ${evalCopy('h.xy / S', 'Qc', 'T0').replace(/length\(p - T0\.xy\)/g, 'length(h.xy) / S')}
     }
   }
@@ -972,8 +980,8 @@ export function buildSources(g: Genome): Sources {
   if (g.carrier.kind === 'none') defs.push('NO_FEEDBACK');
   if (g.carrier.kind === 'fluid') defs.push('USE_FLUID');
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
-  if (g.color.p.reflect > 0.5) defs.push('REFLECT');
-  if (g.color.p.tonemap > 0.5) defs.push('LOG_TONE');
+  if (g.tone.p.reflect > 0.5) defs.push('REFLECT');
+  if (g.tone.p.tonemap > 0.5) defs.push('LOG_TONE');
   const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL;
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
@@ -1161,7 +1169,7 @@ vec3 curveColor(float k) {
   float env = sh == 0 ? smoothstep(0.0, 0.15, k) * smoothstep(1.0, 0.85, k) : 1.0;
   float damp = sh == 3 || sh == 5 ? 0.5 + 0.5 * exp(-k * 1.5) : 1.0;
   float t = sh == 4 ? 0.5 + 0.5 * sin(k * TAU) : k;
-  vec3 c = sh == 0 ? mix(pal(uW[2].z), vec3(1.0), 0.2) : mix(pal(uW[2].z), pal(uW[2].z + 0.66), t);
+  vec3 c = sh == 0 ? mix(pal(uW[2].z), vec3(1.0), 0.2) : mix(pal(uW[2].z), pal(uW[2].z + 0.66), t * uW[2].w);
   return c * env * damp;
 }
 void main() {

@@ -56,7 +56,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || 'repair(seed) === seed for all 24');
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || 'all 24 survive JSON + repair unchanged');
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 4, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION === 5, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;
@@ -158,7 +158,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
       for (let k = 0; k < 6; k++) {
         const base = randomBody(rng);
         (base as unknown as Record<string, Gene>)[locus] = randomGene(locus, rng, kind);
-        const g = repair({ v: 4, chain: [randomOp(rng)], bodies: [base], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [], energy: [0.2, 0.8] });
+        const g = repair({ v: 5, chain: [randomOp(rng)], bodies: [base], carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [], energy: [0.2, 0.8] });
         n++;
         const errs = validate(g);
         if (errs.length) bad.push(`${locus}=${kind}:${errs.join(';')}`);
@@ -177,7 +177,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
   const j = cloneGenome(e02);
   j.bodies[0].place.p.step += 0.01;
   j.bodies[0].motion = { kind: 'sway', p: { amp: 0.05, period: 2, tilt: 0.3 } };
-  j.color.p.hue = (j.color.p.hue + 0.05) % 1;
+  j.palette.p.hue = (j.palette.p.hue + 0.05) % 1;
   check('structuralKey.uniform-changes', structuralKey(repair(j)) === structuralKey(e02), structuralKey(e02));
   const m = cloneGenome(e02);
   m.bodies[0].material = { kind: 'glow', p: { gain: 1, hue: 0, width: 0.02, base: 0, halo: 0 } };
@@ -303,7 +303,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
       if (!sdfCapable(other) || UNIQUE_SHAPES.includes(b)) continue;
       const f = makeFuse(body, other, rng, mode);
       if (!f) continue;
-      const g = repair({ v: 4, chain: [randomOp(rng, 'swirl')], bodies: [f], carrier: { kind: 'warp', p: {} }, color: { scheme: 'triad', p: {} }, reactions: [{ src: 'bass', g: 'fu', i: 0, k: 'k', gain: 0.5 }], energy: [0.2, 0.8] });
+      const g = repair({ v: 5, chain: [randomOp(rng, 'swirl')], bodies: [f], carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [{ src: 'bass', g: 'fu', i: 0, k: 'k', gain: 0.5 }], energy: [0.2, 0.8] });
       n++;
       const errs = validate(g);
       if (errs.length) bad.push(`${a}+${b}/${mode}:${errs.join(';')}`);
@@ -389,7 +389,7 @@ const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Obj
   const pop2 = Population.fromJSON(JSON.parse(JSON.stringify(j1)));
   const norm = (d: ReturnType<Population['toJSON']>) => ({ ...d, members: [...d.members].sort((a, b) => a.id.localeCompare(b.id)) });
   check('serialization.roundtrip-equal', JSON.stringify(norm(j1)) === JSON.stringify(norm(pop2.toJSON())), 'toJSON -> JSON -> fromJSON -> toJSON matches');
-  check('serialization.version', j1.version === POPULATION_VERSION && POPULATION_VERSION === 5, `version=${j1.version}`);
+  check('serialization.version', j1.version === POPULATION_VERSION && POPULATION_VERSION === 6, `version=${j1.version}`);
   check('serialization.counter', pop2.addChild(randomGenome(mulberry32(9)), [p1, p2]).id === 'G1-0003', 'counter preserved');
   let threw = false;
   try {
@@ -581,18 +581,31 @@ const adjOf = (name: string) => name.split(/\s+/)[0];
   check('naming.dedupe', dup1 === 'Calm Orb II' && uniqueName(used, 'Calm Orb') === 'Calm Orb III', dup1);
 }
 
+/** A format-5 genome written back as format 3 (one colour gene, material hues, no feel / mapping loci). */
+function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unknown>[]; reactions: Record<string, unknown>[] } {
+  const o = JSON.parse(JSON.stringify(g));
+  o.v = 3;
+  o.color = { scheme: o.palette.kind, p: { ...o.tone.p, hue: o.palette.p.hue } };
+  delete o.palette;
+  delete o.tone;
+  for (const b of o.bodies) {
+    b.material.p.hue = b.color.p.hue;
+    delete b.color;
+  }
+  return o;
+}
+
 // ------------------------------------------------------ 12. feel genes
 
 {
   // A format-3 genome (no feel, reactions without curves) gets the neutral feel: instant response,
   // bar clock, grid-locked, i.e. exactly how it behaved.
-  const v3 = JSON.parse(JSON.stringify(seedByOrigin('E09'))) as Record<string, unknown> & { bodies: Record<string, unknown>[]; reactions: Record<string, unknown>[] };
-  v3.v = 3;
+  const v3 = toV3(seedByOrigin('E09'));
   for (const b of v3.bodies) delete b.feel;
   v3.reactions = v3.reactions.map((r) => ({ src: r.src, g: r.g, i: r.i, k: r.k, gain: r.gain }));
   const g = repair(v3);
   const f = g.bodies[0].feel;
-  check('feel.format3-neutral', !validate(g).length && g.v === 4 && f.kind === 'flow' && f.p.atk === 0.005 && f.p.rel === 0.005 && f.p.thr === 0 && f.p.sens === 1 && f.p.div === 4 && f.p.lock === 1
+  check('feel.format3-neutral', !validate(g).length && g.v === 5 && f.kind === 'flow' && f.p.atk === 0.005 && f.p.rel === 0.005 && f.p.thr === 0 && f.p.sens === 1 && f.p.div === 4 && f.p.lock === 1
     && g.reactions.every((r) => r.atk === 0.005 && r.rel === 0.005 && r.q === 0 && r.thr === 0), JSON.stringify(f.p));
   check('feel.format3-reactions-kept', JSON.stringify(g.reactions.map((r) => [r.src, r.g, r.i, r.k, r.gain])) === JSON.stringify(seedByOrigin('E09').reactions.map((r) => [r.src, r.g, r.i, r.k, r.gain])), `${g.reactions.length} reactions`);
 
@@ -631,7 +644,52 @@ const adjOf = (name: string) => name.split(/\s+/)[0];
   check('feel.names', ADJ_POOLS.stepped.includes(adjOf(stName)) || stName !== nameFor(seedByOrigin('E06')), `${stName} / ${calmName}`);
 }
 
-// -------------------------------------------------- 13. example crossovers
+// ------------------------------------------------------ 13. colour in parts
+
+{
+  // Format 3 / 4 colour converts: palette = scheme + hue, tone = the rest, mapping from the placement.
+  const v3 = toV3(seedByOrigin('E13'));
+  v3.reactions = [{ src: 'melody', g: 'col', i: 0, k: 'hue', gain: 0.3 }, { src: 'bass', g: 'ma', i: 0, k: 'hue', gain: 0.2 }, { src: 'beat', g: 'col', i: 0, k: 'bloom', gain: 0.3 }];
+  const g = repair(v3);
+  check('colour.format3-converts', !validate(g).length && JSON.stringify(g.palette) === JSON.stringify(seedByOrigin('E13').palette) && JSON.stringify(g.tone) === JSON.stringify(seedByOrigin('E13').tone) && g.bodies[0].color.kind === 'pitch', validate(g).join(';') || JSON.stringify(g.palette));
+  check('colour.format3-reactions', g.reactions.map((r) => `${r.g}.${r.k}`).join(',') === 'pal.hue,cm.hue,col.bloom', g.reactions.map((r) => `${r.g}.${r.k}`).join(','));
+  const back = [SEEDS.every((s) => JSON.stringify(repair(toV3(s.genome)).bodies.map((b) => b.color.kind)) === JSON.stringify(s.genome.bodies.map((b) => b.color.kind)))];
+  check('colour.seed-mappings-implied', back[0], SEEDS.map((s) => `${s.origin}:${s.genome.bodies[0].color.kind}`).join(' '));
+
+  // Palette, mapping and tone travel separately in crossover.
+  let palFromR = 0, mapFromR = 0, both = 0;
+  for (let i = 0; i < 300; i++) {
+    const c = crossover(seedByOrigin('E13'), seedByOrigin('E02'), mulberry32(70000 + i), 1);
+    const shapeDot = c.bodies[0].place.kind === 'grid';
+    if (!shapeDot) continue;
+    const pr = c.palette.kind === seedByOrigin('E02').palette.kind && c.palette.kind !== seedByOrigin('E13').palette.kind;
+    const mr = c.bodies[0].color.kind === 'instrument';
+    if (pr) palFromR++;
+    if (mr) mapFromR++;
+    if (pr !== mr) both++;
+  }
+  check('colour.parts-split', palFromR > 10 && mapFromR > 10 && both > 10, `grid children: ${palFromR} with the walker's palette, ${mapFromR} with its instrument mapping, ${both} with one but not the other`);
+
+  // Every mapping kind builds and names without hue words.
+  const rng = mulberry32(71000);
+  const bad: string[] = [];
+  for (const kind of LOCUS_KINDS.color) {
+    for (let k = 0; k < 8; k++) {
+      const b = randomBody(rng);
+      b.color = randomGene('color', rng, kind) as BodyGene['color'];
+      const gg = repair({ ...cloneGenome(seedByOrigin('E05')), bodies: [b] });
+      if (validate(gg).length) bad.push(`${kind}:${validate(gg).join(';')}`);
+      if (!buildSources(gg).feedback.includes('CHUE_0') && !buildSources(gg).composite.includes('CHUE_0') && SHAPE_CLASS[b.shape.kind] === 'sdf') bad.push(`${kind}:no mapping code`);
+      if (nameFor(gg).split(/\s+/).some((w) => HUE_WORDS.includes(w))) bad.push(`${kind}:hue word`);
+    }
+  }
+  check('colour.every-mapping', !bad.length, bad.slice(0, 3).join(' | ') || `${LOCUS_KINDS.color.length} mapping kinds build, validate and name cleanly`);
+  const hn = cloneGenome(seedByOrigin('E07'));
+  hn.bodies[0].color = { kind: 'height', p: { hue: 0, detail: 1, amount: 1.5 } };
+  check('colour.mapping-name', ADJ_POOLS.graded.includes(adjOf(nameFor(repair(hn)))) || nameFor(repair(hn)) !== nameFor(seedByOrigin('E07')), nameFor(repair(hn)));
+}
+
+// -------------------------------------------------- 14. example crossovers
 
 {
   console.log('\n--- 30 example crossovers ---');

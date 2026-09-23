@@ -13,9 +13,9 @@ import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, c
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import {
-  CARRIER_SCHEMA, COLOR_SCHEMA, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
+  CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, clampParam, drawOpId, structuralKey,
-  type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type Params, type Scheme, type Schema,
+  type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type PaletteGene, type Params, type Scheme, type Schema,
   type ShapeGene, type Signal,
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
@@ -83,12 +83,20 @@ function hsvLin(h: number, s: number, v: number, out: Float32Array, o: number): 
   const rgb = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i % 6];
   for (let k = 0; k < 3; k++) out[o + k] = Math.pow(rgb[k], 2.2);
 }
-function paletteColors(scheme: Scheme, hue: number, sat: number, out: Float32Array): void {
-  const s = SCHEME_OFFSETS[scheme];
+/** The palette's three slots around `hue` (the key hue plus the palette's offset). */
+function paletteColors(pal: PaletteGene, hue: number, sat: number, out: Float32Array): void {
   const sa = clamp01(sat);
+  if (pal.kind === 'free') {
+    hsvLin(hue, sa, 1, out, 0);
+    hsvLin(hue + pal.p.s1, sa, 0.9, out, 3);
+    hsvLin(hue + pal.p.s2, sa * 0.85, 1, out, 6);
+    return;
+  }
+  const s = SCHEME_OFFSETS[pal.kind];
+  const k = pal.p.spread;
   hsvLin(hue + s[0], sa, s[3], out, 0);
-  hsvLin(hue + s[1], sa * (scheme === 'mono' ? 0.5 : 1), s[4], out, 3);
-  hsvLin(hue + s[2], sa * 0.85, s[5], out, 6);
+  hsvLin(hue + s[1] * k, sa * (pal.kind === 'mono' ? 0.5 : 1), s[4], out, 3);
+  hsvLin(hue + s[2] * k, sa * 0.85, s[5], out, 6);
 }
 
 // ------------------------------------------------------------- signals
@@ -699,7 +707,7 @@ export class Stage {
         .f1('uWeight', s.weight)
         .f1('uSat', 1 - 0.45 * F.build)
         .f1('uSweep', F.keyPulse)
-        .f1('uReflectY', g.color.p.reflectY);
+        .f1('uReflectY', g.tone.p.reflectY);
       eng.fs.draw();
     }
     for (const s of slots) {
@@ -713,13 +721,13 @@ export class Stage {
     let wsum = 0;
     for (const s of slots) wsum += s.weight;
     for (const s of slots) {
-      const c = s.genome.color.p;
+      const c = s.genome.tone.p;
       const w = s.weight / Math.max(wsum, 1e-3);
-      post.bloom += s.P('col', 0, c, 'bloom', COLOR_SCHEMA) * w;
-      post.exposure += s.P('col', 0, c, 'exposure', COLOR_SCHEMA) * w;
-      post.vignette += s.P('col', 0, c, 'vignette', COLOR_SCHEMA) * w;
+      post.bloom += s.P('col', 0, c, 'bloom', TONE_SCHEMA) * w;
+      post.exposure += s.P('col', 0, c, 'exposure', TONE_SCHEMA) * w;
+      post.vignette += s.P('col', 0, c, 'vignette', TONE_SCHEMA) * w;
       post.adapt += c.adapt * w;
-      post.ca += s.P('col', 0, c, 'ca', COLOR_SCHEMA) * w;
+      post.ca += s.P('col', 0, c, 'ca', TONE_SCHEMA) * w;
       post.contrast += c.contrast * w;
     }
     if (!slots.length) Object.assign(post, { bloom: 1, exposure: 1, vignette: 0.45, adapt: 0.3, ca: 0, contrast: 0.03 });
@@ -756,9 +764,9 @@ export class Stage {
     });
 
     // Palette
-    const cp = g.color.p;
-    const sat = s.P('col', 0, cp, 'sat', COLOR_SCHEMA) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
-    paletteColors(g.color.scheme, F.keyHue + s.P('col', 0, cp, 'hue', COLOR_SCHEMA), sat, s.cols);
+    const tp = g.tone.p;
+    const sat = s.P('col', 0, tp, 'sat', TONE_SCHEMA) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
+    paletteColors(g.palette, F.keyHue + s.P('pal', 0, g.palette.p, 'hue', PALETTE_SCHEMAS[g.palette.kind]), sat, s.cols);
 
     // Carrier decay
     const car = g.carrier;
@@ -908,8 +916,16 @@ export class Stage {
     const PA = (k: string) => s.P('ma', bi, b.material.p, k, MATERIAL_SCHEMAS[b.material.kind]);
     const PE = (k: string) => s.P('em', bi, b.emit.p, k, EMIT_SCHEMAS[b.emit.kind]);
     const gain = PA('gain');
-    const hue = PA('hue');
     this.clk = this.bodyClock(s, b, bi, sdt);
+    // Colour mapping: the body's base hue (plus the age drift) and slot 20 (kind, detail, height, amount).
+    const cm = b.color;
+    const PC = (k: string) => s.P('cm', bi, cm.p, k, MAPPING_SCHEMAS[cm.kind]);
+    const hue = PC('hue') + (cm.kind === 'age' ? (this.clk.bars * cm.p.rate) % 1 : 0);
+    this.bodyHue = hue;
+    E[o + 80] = MAPPING_KINDS.indexOf(cm.kind);
+    E[o + 81] = PC('detail');
+    E[o + 82] = cm.kind === 'height' ? PC('amount') : 0;
+    E[o + 83] = cm.kind === 'instrument' ? PC('amount') : 1;
 
     // Material: slot 0 (gain, hue, a, b), slot 1.
     const halo = (m[key('halo')] = approach(mm('halo'), Math.max(F.loud, sig.melodic()), 3, sdt));
@@ -927,6 +943,7 @@ export class Stage {
     // Copies: placement, then motion.
     const copies = this.placeCopies(s, b, bi, sdt);
     this.applyMotion(s, b, bi, copies, sdt);
+    this.mapHues(s, b, bi, copies, sdt);
     const n = Math.min(COPY_SLOTS, copies.length);
     for (let i = 0; i < COPY_SLOTS; i++) {
       const c = copies[Math.min(i, copies.length - 1)];
@@ -1018,6 +1035,51 @@ export class Stage {
         flow: PS('flow'),
         breathe: PS('breathe'),
       };
+    }
+  }
+
+  private bodyHue = 0;
+
+  /** Each copy's hue offset from the colour mapping (the placement's own offsets are the instrument mapping). */
+  private mapHues(s: Slot, b: BodyGene, bi: number, copies: Copy[], sdt: number): void {
+    const F = this.sig.F;
+    const cm = b.color;
+    const P = (k: string) => s.P('cm', bi, cm.p, k, MAPPING_SCHEMAS[cm.kind]);
+    switch (cm.kind) {
+      case 'fixed': case 'height': case 'age':
+        for (const c of copies) c.hue = 0;
+        break;
+      case 'instrument': {
+        const a = P('amount');
+        for (const c of copies) c.hue *= a;
+        break;
+      }
+      case 'pitch': {
+        // The strongest pitch classes, one per copy (a grid picks its own per cell in the shader).
+        const ch = this.sig.chroma;
+        const order = Array.from({ length: 12 }, (_, i) => i).sort((x, y) => ch[y] - ch[x]);
+        copies.forEach((c, i) => (c.hue = -1 - order[i % 12]));
+        break;
+      }
+      case 'melody': {
+        const a = P('amount');
+        const mel = (s.mem[`b${bi}.hm`] = approach(s.mem[`b${bi}.hm`] ?? F.melody, F.melody, 4, sdt));
+        for (const c of copies) c.hue = mel * a + c.hue * 0.15;
+        break;
+      }
+      case 'speed': {
+        const a = P('amount');
+        copies.forEach((c, i) => {
+          const k = `b${bi}.hs${i}`;
+          const px = s.mem[k + 'x'] ?? c.x, py = s.mem[k + 'y'] ?? c.y;
+          const v = Math.min(3, Math.hypot(c.x - px, c.y - py) / Math.max(sdt, 1e-3));
+          s.mem[k + 'x'] = c.x;
+          s.mem[k + 'y'] = c.y;
+          const sm = (s.mem[k] = approach(s.mem[k] ?? v, v, 3, sdt));
+          c.hue = Math.min(1, sm * 1.5) * a;
+        });
+        break;
+      }
     }
   }
 
@@ -1470,7 +1532,7 @@ export class Stage {
         const ph = set('ph', (mm('ph') + sdt * F.speed * 0.07) % 4096);
         u[w0] = sh.p.form; u[w0 + 1] = P('amp'); u[w0 + 2] = 0; u[w0 + 3] = 0;
         u[w0 + 4] = P('radius'); u[w0 + 5] = P('turns'); u[w0 + 6] = sh.p.ra + 0.004 * Math.sin(F.phase * 0.05); u[w0 + 7] = sh.p.rb * (F.minor ? 0.75 : 1) - 0.005;
-        u[w0 + 8] = ph; u[w0 + 9] = 0; u[w0 + 10] = b.material.p.hue; u[w0 + 11] = 0;
+        u[w0 + 8] = ph; u[w0 + 9] = 0; u[w0 + 10] = this.bodyHue; u[w0 + 11] = b.color.p.detail;
         u[w0 + 12] = u[w0 + 13] = u[w0 + 14] = u[w0 + 15] = 0;
         if (sh.p.form === 5) {
           const L = WAVE_RATIOS.length;
@@ -1503,7 +1565,7 @@ export class Stage {
         } else {
           const f = bi * BODY_VEC4 * 4 + 64;
           E[f] = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
-          E[f + 1] = s.P('ma', bi, b.material.p, 'hue', MATERIAL_SCHEMAS[b.material.kind]);
+          E[f + 1] = this.bodyHue;
           E[f + 2] = lvl;
           E[f + 3] = t;
           E[f + 4] = 0; E[f + 5] = P('fall'); E[f + 6] = P('rays'); E[f + 7] = P('wav');
@@ -1531,7 +1593,7 @@ export class Stage {
     const mm = (k: string, init = 0) => m[key(k)] ?? (m[key(k)] = init);
     const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
     E[o] = gain;
-    E[o + 1] = s.P('ma', bi, b.material.p, 'hue', MATERIAL_SCHEMAS[b.material.kind]);
+    E[o + 1] = this.bodyHue;
     switch (sh.kind) {
       case 'plasma': {
         const tempo = P('tempo');

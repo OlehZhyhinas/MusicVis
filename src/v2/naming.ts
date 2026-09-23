@@ -194,6 +194,7 @@ const DARTING = ['Darting', 'Lurching', 'Jolting', 'Zigzag', 'Swerving', 'Dodgin
 const STIPPLED = ['Stippled', 'Dotted', 'Pointillist', 'Speckled', 'Freckled', 'Pebbled', 'Spotted', 'Granular', 'Sequined', 'Dappled', 'Flecked', 'Beaded'];
 const MOTTLED = ['Cratered', 'Pitted', 'Mottled', 'Weathered', 'Rugged', 'Scarred', 'Pockmarked', 'Worn', 'Stony', 'Dusty', 'Etched', 'Carved'];
 const SPARKING = ['Sparking', 'Crackling', 'Fizzing', 'Spitting', 'Sputtering', 'Scintillating', 'Effervescent', 'Popping', 'Sparkling', 'Glinting', 'Twinkling', 'Spangled'];
+const GRADED = ['Graded', 'Layered', 'Tiered', 'Stratified', 'Terraced', 'Shaded', 'Ombre', 'Banked', 'Tapered', 'Sloped', 'Ranked', 'Scaled'];
 const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Marching', 'Pulsed', 'Chopped', 'Stuttering', 'Measured', 'Tapping', 'Syncopated'];
 const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
@@ -292,14 +293,25 @@ function traits(g: Genome): Trait[] {
   const mid = (g.energy[0] + g.energy[1]) / 2;
   add(mid >= 0.5 ? 'energetic' : 'calm', mid >= 0.5 ? ENERGETIC : CALM, 0.4);
 
-  const c = g.color.p;
+  const c = g.tone.p;
   if (c.sat < 0.45 || c.exposure < 0.85) add('pale', PALE, clamp01(0.5 + (0.45 - Math.min(0.45, c.sat))));
   if (c.sat > 0.85 && c.exposure > 1.05) add('vivid', VIVID, 0.5);
-  if (g.color.scheme === 'mono') add('mono', MONO, 0.9);
-  if (g.color.scheme === 'complementary') add('twoTone', TWO_TONE, 0.9);
-  if (g.color.scheme === 'triad' || g.color.scheme === 'split') add('prismatic', PRISMATIC, 0.9);
+  const pk = g.palette.kind;
+  if (pk === 'mono') add('mono', MONO, 0.9);
+  if (pk === 'complementary') add('twoTone', TWO_TONE, 0.9);
+  if (pk === 'triad' || pk === 'split' || pk === 'free') add('prismatic', PRISMATIC, pk === 'free' ? 0.7 : 0.9);
   if (c.vignette > 0.55) add('shadowed', SHADOWED, clamp01((c.vignette - 0.55) * 3));
   if (c.reflect === 1) add('reflected', REFLECTED, 0.8);
+  // Colour mapping: what drives each body's hue.
+  for (const b of g.bodies) {
+    const k = b === g.bodies[0] ? 1 : 0.6;
+    switch (b.color.kind) {
+      case 'pitch': add('prismatic', PRISMATIC, k * 0.55); break;
+      case 'age': add('prismatic', PRISMATIC, k * 0.5); break;
+      case 'height': add('graded', GRADED, k * clamp01(0.3 + Math.abs(b.color.p.amount) * 0.4)); break;
+      case 'fixed': if (b.color.p.detail < 0.3) add('mono', MONO, k * 0.4); break;
+    }
+  }
 
   list.sort((a, b) => b.weight - a.weight);
   return list;
@@ -341,7 +353,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   tiled: TILED, fractal: FRACTAL, liquid: LIQUID, trailing: TRAILING, surging: SURGING, calm: CALM,
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
-  sparking: SPARKING, painted: PAINTED, stepped: STEPPED, generic: GENERIC_ADJ,
+  sparking: SPARKING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
 };
 
 /**

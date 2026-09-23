@@ -122,7 +122,7 @@ export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
  * curve: line geometry (a distance field too for forms 0, 1, 2, 4, used when fused).
- * field: a full-screen chunk with its own look (materials only set its gain / hue).
+ * field: a full-screen chunk with its own look (materials only set its gain, colour mapping its hue).
  * flame: the fractal-flame IFS (point geometry; placed by its camera offset).
  */
 export type ShapeClass = 'sdf' | 'curve' | 'field' | 'flame';
@@ -256,7 +256,7 @@ export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
 
 export const MATERIAL_KINDS = ['line', 'fill', 'glow', 'dots', 'textured', 'chrome'] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];
-const MAT_COMMON: Schema = { gain: P(0.02, 3, 1), hue: P(0, 1, 0) };
+const MAT_COMMON: Schema = { gain: P(0.02, 3, 1) };
 export const MATERIAL_SCHEMAS: Record<MaterialKind, Schema> = {
   // Thin glowing outline (width in pixels at 1080p), brighter with loudness.
   line: { ...MAT_COMMON, width: P(0.8, 3, 1.3), halo: P(0, 1, 0.12) },
@@ -327,6 +327,61 @@ const FEEL_COMMON: Schema = {
 };
 export const FEEL_SCHEMAS: Record<FeelKind, Schema> = { flow: FEEL_COMMON, step: FEEL_COMMON };
 
+// ----------------------------------------------------------------- colour
+// Colour in three parts: the palette (three hue slots relative to the song's key), each body's colour
+// mapping (what drives its hue), and the tone (saturation, brightness, contrast, bloom, post).
+
+export const SCHEMES = ['analogous', 'complementary', 'triad', 'split', 'mono'] as const;
+export type Scheme = (typeof SCHEMES)[number];
+/** Palette kinds: the classic schemes (slot offsets scaled by spread) or three free slots. */
+export const PALETTE_KINDS = [...SCHEMES, 'free'] as const;
+export type PaletteKind = (typeof PALETTE_KINDS)[number];
+const PAL_SCHEME: Schema = { hue: P(0, 1, 0.5), spread: P(0.5, 1.5, 1) };
+export const PALETTE_SCHEMAS: Record<PaletteKind, Schema> = {
+  analogous: PAL_SCHEME, complementary: PAL_SCHEME, triad: PAL_SCHEME, split: PAL_SCHEME, mono: PAL_SCHEME,
+  // hue: the first slot's offset from the key; s1 / s2: the other slots' offsets from the first.
+  free: { hue: P(0, 1, 0.5), s1: P(0, 1, 0.33), s2: P(0, 1, 0.66) },
+};
+export interface PaletteGene {
+  kind: PaletteKind;
+  p: Params;
+}
+/**
+ * Colour mapping (per body): what drives the hue. fixed: one hue; instrument: each copy its
+ * instrument's slot; pitch: the pitch class (chroma, around the key); melody: the melody line; height:
+ * the vertical position; age: the hue drifts with time, so older trail keeps older colours; speed: how
+ * fast each copy moves. hue: offset into the palette; amount: how far the driver moves the hue;
+ * detail: how much the shape's own shading (depth, bins, curve position) varies it; rate: age drift in
+ * palette turns per bar.
+ */
+export const MAPPING_KINDS = ['fixed', 'instrument', 'pitch', 'melody', 'height', 'age', 'speed'] as const;
+export type MappingKind = (typeof MAPPING_KINDS)[number];
+const MAP_BASE: Schema = { hue: P(0, 1, 0), detail: P(0, 1, 1) };
+export const MAPPING_SCHEMAS: Record<MappingKind, Schema> = {
+  fixed: MAP_BASE,
+  instrument: { ...MAP_BASE, amount: P(0, 1, 1) },
+  pitch: MAP_BASE,
+  melody: { ...MAP_BASE, amount: P(0, 1, 0.7) },
+  height: { ...MAP_BASE, amount: P(-1.5, 1.5, 0.8) },
+  age: { ...MAP_BASE, rate: C([0.03125, 0.0625, 0.125, 0.25, 0.5], 0.0625) },
+  speed: { ...MAP_BASE, amount: P(0, 1, 0.5) },
+};
+export const TONE_SCHEMA: Schema = {
+  sat: P(0.2, 1, 0.9),
+  exposure: P(0.6, 1.4, 1),
+  contrast: P(0, 0.08, 0.03),
+  bloom: P(0.4, 1.5, 1),
+  adapt: P(0.1, 0.6, 0.3),
+  vignette: P(0, 0.7, 0.45),
+  ca: P(0, 0.008, 0.0015),
+  reflect: C([0, 1], 0),
+  reflectY: P(-0.45, 0, -0.16),
+  tonemap: C([0, 1], 0), // 1 = flame log-density
+};
+export interface ToneGene {
+  p: Params;
+}
+
 // ------------------------------------------------------------------ genes
 
 export interface Gene<K extends string = string> {
@@ -352,19 +407,20 @@ export interface BodyGene {
   material: Gene<MaterialKind>;
   emit: Gene<EmitKind>;
   feel: Gene<FeelKind>;
+  color: Gene<MappingKind>;
   fuse?: FuseGene;
 }
 /** The loci of a body, in a fixed order (homologous slots for crossover): six of look, one of feel. */
-export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit', 'feel'] as const;
+export const LOCI = ['shape', 'place', 'motion', 'deform', 'material', 'emit', 'feel', 'color'] as const;
 export type Locus = (typeof LOCI)[number];
 
 export const LOCUS_KINDS: Record<Locus, readonly string[]> = {
   shape: SHAPE_KINDS, place: PLACE_KINDS, motion: MOTION_KINDS, deform: DEFORM_KINDS, material: MATERIAL_KINDS, emit: EMIT_KINDS,
-  feel: FEEL_KINDS,
+  feel: FEEL_KINDS, color: MAPPING_KINDS,
 };
 export const LOCUS_SCHEMAS: Record<Locus, Record<string, Schema>> = {
   shape: SHAPE_SCHEMAS, place: PLACE_SCHEMAS, motion: MOTION_SCHEMAS, deform: DEFORM_SCHEMAS, material: MATERIAL_SCHEMAS, emit: EMIT_SCHEMAS,
-  feel: FEEL_SCHEMAS,
+  feel: FEEL_SCHEMAS, color: MAPPING_SCHEMAS,
 };
 
 // ---------------------------------------------------------------- carrier
@@ -386,27 +442,6 @@ export interface CarrierGene {
   p: Params;
 }
 
-// ----------------------------------------------------------------- colour
-
-export const SCHEMES = ['analogous', 'complementary', 'triad', 'split', 'mono'] as const;
-export type Scheme = (typeof SCHEMES)[number];
-export const COLOR_SCHEMA: Schema = {
-  hue: P(0, 1, 0.5),
-  sat: P(0.2, 1, 0.9),
-  exposure: P(0.6, 1.4, 1),
-  contrast: P(0, 0.08, 0.03),
-  bloom: P(0.4, 1.5, 1),
-  adapt: P(0.1, 0.6, 0.3),
-  vignette: P(0, 0.7, 0.45),
-  ca: P(0, 0.008, 0.0015),
-  reflect: C([0, 1], 0),
-  reflectY: P(-0.45, 0, -0.16),
-  tonemap: C([0, 1], 0), // 1 = flame log-density
-};
-export interface ColorGene {
-  scheme: Scheme;
-  p: Params;
-}
 
 // -------------------------------------------------------------- reactions
 
@@ -415,13 +450,14 @@ export interface ColorGene {
 export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
- * Reaction targets. op: chain[i]; car / col: the carrier / colour (i = 0); body loci, i = body index:
- * sh shape, pl place, mo motion, de deform, ma material, em emit, fu fuse, fs fused shape;
+ * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,
+ * i = body index: sh shape, pl place, mo motion, de deform, ma material, em emit, fe feel, cm colour
+ * mapping, fu fuse, fs fused shape;
  * dr: a body's deform op, i = body * MAX_DRAW + op.
  */
-export type GeneGroup = 'op' | 'car' | 'col' | 'sh' | 'pl' | 'mo' | 'de' | 'ma' | 'em' | 'fe' | 'fu' | 'fs' | 'dr';
-export const GENE_GROUPS: GeneGroup[] = ['op', 'car', 'col', 'sh', 'pl', 'mo', 'de', 'ma', 'em', 'fe', 'fu', 'fs', 'dr'];
-export const BODY_GROUPS: Record<Locus, GeneGroup> = { shape: 'sh', place: 'pl', motion: 'mo', deform: 'de', material: 'ma', emit: 'em', feel: 'fe' };
+export type GeneGroup = 'op' | 'car' | 'col' | 'pal' | 'sh' | 'pl' | 'mo' | 'de' | 'ma' | 'em' | 'fe' | 'cm' | 'fu' | 'fs' | 'dr';
+export const GENE_GROUPS: GeneGroup[] = ['op', 'car', 'col', 'pal', 'sh', 'pl', 'mo', 'de', 'ma', 'em', 'fe', 'cm', 'fu', 'fs', 'dr'];
+export const BODY_GROUPS: Record<Locus, GeneGroup> = { shape: 'sh', place: 'pl', motion: 'mo', deform: 'de', material: 'ma', emit: 'em', feel: 'fe', color: 'cm' };
 /**
  * A reaction is a chain: signal source -> response curve (attack, release, threshold; q 1 holds the
  * value on the clock grid, every div beats) -> gain -> target parameter.
@@ -456,16 +492,18 @@ const NO_REACT = new Set([
  * Genome format. 1: before draw chains and merges; 2: one emitter object per light source
  * (legacy.ts); 3: bodies made of sub-genes; 4: feel genes (a body's response curve and clock, a
  * reaction's curve and clock). Older formats load through repair(); format-3 genomes get the neutral
- * feel (instant response, bar clock, grid-locked), which is exactly how they behaved.
+ * feel (instant response, bar clock, grid-locked), which is exactly how they behaved; 5: colour in
+ * parts (palette, per-body colour mapping, tone) replacing the single colour gene and material hues.
  */
-export const GENOME_VERSION = 4;
+export const GENOME_VERSION = 5;
 
 export interface Genome {
-  v: 4;
+  v: 5;
   chain: OpGene[];
   bodies: BodyGene[];
   carrier: CarrierGene;
-  color: ColorGene;
+  palette: PaletteGene;
+  tone: ToneGene;
   reactions: ReactionGene[];
   energy: [number, number]; // complexity range the preset suits
 }
@@ -531,7 +569,8 @@ export function locusSchema(locus: Locus, kind: string): Schema {
 export function schemaFor(g: Genome, group: GeneGroup, i: number): Schema | null {
   if (group === 'op') return g.chain[i] ? OP_SCHEMAS[g.chain[i].op] : null;
   if (group === 'car') return CARRIER_SCHEMA;
-  if (group === 'col') return COLOR_SCHEMA;
+  if (group === 'col') return TONE_SCHEMA;
+  if (group === 'pal') return PALETTE_SCHEMAS[g.palette.kind];
   if (group === 'dr') {
     const o = g.bodies[Math.floor(i / MAX_DRAW)]?.deform.ops?.[i % MAX_DRAW];
     return o ? OP_SCHEMAS[o.op] : null;
@@ -546,6 +585,7 @@ export function schemaFor(g: Genome, group: GeneGroup, i: number): Schema | null
     case 'ma': return MATERIAL_SCHEMAS[b.material.kind];
     case 'em': return EMIT_SCHEMAS[b.emit.kind];
     case 'fe': return FEEL_SCHEMAS[b.feel.kind];
+    case 'cm': return MAPPING_SCHEMAS[b.color.kind];
     case 'fu': return b.fuse ? FUSE_SCHEMA : null;
     case 'fs': return b.fuse ? SHAPE_SCHEMAS[b.fuse.shape.kind] : null;
   }
@@ -655,6 +695,7 @@ export function repairBody(raw: unknown): BodyGene {
   const material = repairGene(r.material, MATERIAL_KINDS, MATERIAL_SCHEMAS, 'glow');
   const emit = repairGene(r.emit, EMIT_KINDS, EMIT_SCHEMAS, 'trail');
   const feel = repairGene(r.feel, FEEL_KINDS, FEEL_SCHEMAS, 'flow');
+  const color = repairGene(r.color, MAPPING_KINDS, MAPPING_SCHEMAS, 'fixed');
   const rawOps = isObj(r.deform) && Array.isArray(r.deform.ops) ? (r.deform.ops as Partial<OpGene>[]) : [];
   const ops = rawOps.map(repairDrawOp).filter((o): o is OpGene => !!o).slice(0, MAX_DRAW);
   if (ops.length) deform.ops = ops;
@@ -674,11 +715,11 @@ export function repairBody(raw: unknown): BodyGene {
   if (cls === 'flame' && emit.kind !== 'trail' && emit.kind !== 'sparks') setKind(emit, 'trail', EMIT_SCHEMAS);
   if (cls === 'curve' && place.kind === 'grid') setKind(place, 'point', PLACE_SCHEMAS);
   if (cls === 'curve' && (material.kind === 'fill' || material.kind === 'textured' || material.kind === 'chrome')) {
-    setKind(material, 'line', MATERIAL_SCHEMAS, { gain: material.p.gain, hue: material.p.hue });
+    setKind(material, 'line', MATERIAL_SCHEMAS, { gain: material.p.gain });
   }
   if (cls !== 'sdf' && emit.kind === 'cover' && !(cls === 'curve' && isObj(r.fuse))) setKind(emit, 'trail', EMIT_SCHEMAS, { tip: emit.p.tip });
 
-  const body: BodyGene = { shape, place, motion, deform, material, emit, feel };
+  const body: BodyGene = { shape, place, motion, deform, material, emit, feel, color };
   if (isObj(r.fuse)) {
     const f = r.fuse as Record<string, unknown>;
     const fs = repairShape(f.shape, 'dot');
@@ -697,6 +738,42 @@ export function repairBody(raw: unknown): BodyGene {
 }
 
 /**
+ * Format 3/4 -> 5: the single colour gene splits into palette (scheme and hue) and tone (the rest);
+ * each body's material hue becomes its colour mapping's hue, with the mapping its placement implied
+ * (grids by pitch class, copies by instrument, single shapes one hue); hue reactions follow.
+ */
+export function upgradeColour(src: Record<string, unknown>): Record<string, unknown> {
+  const color = src.color as { scheme?: unknown; p?: Record<string, unknown> };
+  const cp = isObj(color.p) ? color.p : {};
+  const out: Record<string, unknown> = { ...src };
+  delete out.color;
+  out.palette = { kind: color.scheme, p: { hue: cp.hue, spread: 1 } };
+  const tp: Record<string, unknown> = { ...cp };
+  delete tp.hue;
+  out.tone = { p: tp };
+  if (Array.isArray(src.bodies)) {
+    out.bodies = src.bodies.map((b) => {
+      if (!isObj(b)) return b;
+      const mat = isObj(b.material) ? b.material : {};
+      const mp = isObj(mat.p) ? (mat.p as Record<string, unknown>) : {};
+      const place = isObj(b.place) ? String(b.place.kind) : 'point';
+      const kind = place === 'grid' ? 'pitch' : ['orbit', 'stations', 'row', 'outline', 'ring', 'walker'].includes(place) ? 'instrument' : 'fixed';
+      return { ...b, color: { kind, p: { hue: mp.hue ?? 0, detail: 1, amount: 1 } } };
+    });
+  }
+  if (Array.isArray(src.reactions)) {
+    out.reactions = src.reactions.map((r) => {
+      if (!isObj(r)) return r;
+      if (r.g === 'col' && r.k === 'hue') return { ...r, g: 'pal' };
+      if (r.g === 'ma' && r.k === 'hue') return { ...r, g: 'cm' };
+      return r;
+    });
+  }
+  out.v = 5;
+  return out;
+}
+
+/**
  * Returns a valid genome: every parameter clamped into its spec, unknown fields
  * dropped, caps enforced, dangling reactions retargeted or removed, and the GPU
  * cost brought under the budget by dropping copies. Older formats (1, 2) are
@@ -704,7 +781,8 @@ export function repairBody(raw: unknown): BodyGene {
  */
 export function repair(input: unknown): Genome {
   let src = (isObj(input) ? input : {}) as Record<string, unknown>;
-  if (src.v !== 3 && src.v !== 4 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
+  if (src.v !== 3 && src.v !== 4 && src.v !== 5 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
+  if (src.v !== 5 && isObj(src.color) && !isObj(src.palette)) src = upgradeColour(src);
   const g = src as Partial<Genome>;
   const chain = (Array.isArray(g.chain) ? g.chain : []).map(repairOp).filter((o): o is OpGene => !!o).slice(0, MAX_CHAIN);
 
@@ -728,8 +806,9 @@ export function repair(input: unknown): Genome {
   if (!bodies.length) bodies.push(repairBody({ shape: { kind: 'curve' }, place: { kind: 'point' }, material: { kind: 'line' }, emit: { kind: 'trail' } }));
   const ck = CARRIER_KINDS.includes(g.carrier?.kind as CarrierKind) ? (g.carrier!.kind as CarrierKind) : 'warp';
   const carrier: CarrierGene = { kind: ck, p: repairParams(g.carrier?.p, CARRIER_SCHEMA) };
-  const scheme = SCHEMES.includes(g.color?.scheme as Scheme) ? (g.color!.scheme as Scheme) : 'analogous';
-  const color: ColorGene = { scheme, p: repairParams(g.color?.p, COLOR_SCHEMA) };
+  const pk = PALETTE_KINDS.includes(g.palette?.kind as PaletteKind) ? (g.palette!.kind as PaletteKind) : 'analogous';
+  const palette: PaletteGene = { kind: pk, p: repairParams(g.palette?.p, PALETTE_SCHEMAS[pk]) };
+  const tone: ToneGene = { p: repairParams(g.tone?.p, TONE_SCHEMA) };
 
   let lo = clamp(num(g.energy?.[0], 0.2), 0, 1);
   let hi = clamp(num(g.energy?.[1], 0.7), 0, 1);
@@ -739,7 +818,7 @@ export function repair(input: unknown): Genome {
     lo = c - 0.075;
     hi = c + 0.075;
   }
-  const out: Genome = { v: 4, chain, bodies, carrier, color, reactions: [], energy: [round4(lo), round4(hi)] };
+  const out: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [round4(lo), round4(hi)] };
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -762,7 +841,7 @@ export function repair(input: unknown): Genome {
 /** A reaction index wrapped onto an existing target of the group, or -1 when the group has none. */
 function reactionIndex(g: Genome, group: GeneGroup, raw: number): number {
   const wrap = (n: number) => (n ? ((Math.floor(raw) % n) + n) % n : -1);
-  if (group === 'car' || group === 'col') return 0;
+  if (group === 'car' || group === 'col' || group === 'pal') return 0;
   if (group === 'op') return wrap(g.chain.length);
   if (group === 'dr') {
     const slots: number[] = [];
@@ -812,7 +891,7 @@ export function validate(g: Genome): string[] {
     for (const k of Object.keys(s)) if (!inRange(p[k], s[k])) errs.push(`${where}.${k}=${p[k]} out of range`);
     for (const k of Object.keys(p)) if (!(k in s)) errs.push(`${where}.${k} unknown`);
   };
-  if (g.v !== 4) errs.push('version');
+  if (g.v !== 5) errs.push('version');
   if (!Array.isArray(g.chain) || g.chain.length > MAX_CHAIN) errs.push('chain length');
   g.chain?.forEach((o, i) => {
     if (!OP_KINDS.includes(o.op)) errs.push(`chain[${i}] op ${o.op}`);
@@ -894,8 +973,9 @@ export function validate(g: Genome): string[] {
   if (sparks > 1) errs.push('more than one sparks emission');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
-  if (!SCHEMES.includes(g.color?.scheme)) errs.push('scheme');
-  else chk(g.color.p, COLOR_SCHEMA, 'color');
+  if (!PALETTE_KINDS.includes(g.palette?.kind)) errs.push('palette kind');
+  else chk(g.palette.p, PALETTE_SCHEMAS[g.palette.kind], 'palette');
+  chk(g.tone?.p, TONE_SCHEMA, 'tone');
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {
@@ -936,7 +1016,7 @@ export function bodyKey(b: BodyGene): string {
 export function structuralKey(g: Genome): string {
   const ops = g.chain.map((o) => `${o.op}${o.stage === 'view' ? '@v' : ''}`).join(',');
   const bodies = g.bodies.map(bodyKey).join(',');
-  return `${ops}|${bodies}|${g.carrier.kind}|r${g.color.p.reflect}t${g.color.p.tonemap}`;
+  return `${ops}|${bodies}|${g.carrier.kind}|r${g.tone.p.reflect}t${g.tone.p.tonemap}`;
 }
 
 export function genomeHash(g: Genome): number {

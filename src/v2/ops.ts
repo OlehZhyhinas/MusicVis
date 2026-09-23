@@ -2,7 +2,7 @@
 // a repaired (valid, in-range) genome.
 
 import {
-  CARRIER_KINDS, CARRIER_SCHEMA, COLOR_SCHEMA, COST_BUDGET_MS, DEFORM_KINDS, DRAW_OPS, EMIT_KINDS, FLAME_VARIATIONS,
+  CARRIER_KINDS, CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_KINDS, PALETTE_SCHEMAS, COST_BUDGET_MS, DEFORM_KINDS, DRAW_OPS, EMIT_KINDS, FLAME_VARIATIONS,
   FOLD_OPS, FUSE_SCHEMA, LOCI, LOCUS_KINDS, MATERIAL_KINDS, MAX_CHAIN, MAX_CHILD_BODIES, MAX_DRAW, MAX_REACTIONS,
   MAX_XFORMS, MOTION_KINDS, FEEL_SCHEMAS, REACTION_SCHEMA, MOTION_OPS, OP_KINDS, OP_SCHEMAS, PLACE_KINDS, SCHEMES, SHAPE_CLASS, SHAPE_KINDS,
   SHAPE_SCHEMAS, SIGNALS, UNIQUE_SHAPES, XFORM_DRIFT, XFORM_SPIN, BODY_GROUPS,
@@ -168,6 +168,7 @@ const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8 },
   material: { line: 2, fill: 1.5, glow: 2, dots: 0.8, textured: 0.8, chrome: 0.8 },
   emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8 },
+  color: { fixed: 1, instrument: 2, pitch: 1, melody: 1.2, height: 1, age: 1, speed: 0.8 },
 };
 
 function weightedKind(locus: Locus, rng: Rng, exclude: string[] = []): string {
@@ -257,6 +258,7 @@ export function randomBody(rng: Rng, shapeKind?: ShapeKind): BodyGene {
     material: randomGene('material', rng) as BodyGene['material'],
     emit: randomGene('emit', rng) as BodyGene['emit'],
     feel: randomGene('feel', rng) as BodyGene['feel'],
+    color: randomGene('color', rng) as BodyGene['color'],
   };
   fitLoci(b);
   return repairBody(b);
@@ -281,14 +283,21 @@ export function randomCurve(rng: Rng): Pick<ReactionGene, 'atk' | 'rel' | 'thr' 
   return { atk, rel, thr: rng() < 0.6 ? 0 : 0.3 * rng(), q: rng() < 0.15 ? 1 : 0, div: pick(rng, [1, 2, 4, 4, 8]) };
 }
 
+/** A palette: mostly the classic schemes, sometimes three free slots. */
+export function randomPalette(rng: Rng): Genome['palette'] {
+  const kind = rng() < 0.15 ? 'free' : pick(rng, SCHEMES);
+  return { kind, p: randomParams(PALETTE_SCHEMAS[kind], rng, 0.6) };
+}
+
 export function randomGenome(rng: Rng): Genome {
   const chain = Array.from({ length: randInt(rng, 1, 4) }, () => randomOp(rng));
   const bodies: BodyGene[] = [randomBody(rng)];
   if (rng() < 0.3) bodies.push(randomBody(rng));
   const g: Genome = {
-    v: 4, chain, bodies,
+    v: 5, chain, bodies,
     carrier: { kind: pick(rng, ['warp', 'warp', 'fluid', 'flow', 'none'] as const), p: randomParams(CARRIER_SCHEMA, rng, 0.5) },
-    color: { scheme: pick(rng, SCHEMES), p: randomParams(COLOR_SCHEMA, rng, 0.4) },
+    palette: randomPalette(rng),
+    tone: { p: randomParams(TONE_SCHEMA, rng, 0.4) },
     reactions: [],
     energy: [rng() * 0.5, 0.5 + rng() * 0.5],
   };
@@ -629,13 +638,19 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     // Dye wants the fluid.
     if (main.emit.kind === 'dye' && carrier.kind !== 'fluid' && rng() < 0.7) carrier = { kind: 'fluid', p: { ...carrier.p, floor: Math.max(carrier.p.floor, 1), halfLife: Math.max(carrier.p.halfLife, 1) } };
 
-    const color = { scheme: rng() < 0.5 ? D.color.scheme : R.color.scheme, p: mixParams(D.color.p, R.color.p, COLOR_SCHEMA, rng) };
+    // Colour in parts: the palette from either parent (blended when both use the same scheme), the
+    // tone mixed per setting; each body's colour mapping travelled with its locus above.
+    const ps = rng() < 0.5 ? D.palette : R.palette;
+    const palette = D.palette.kind === R.palette.kind && rng() < 0.5
+      ? { kind: D.palette.kind, p: morphParams(D.palette.p, R.palette.p, PALETTE_SCHEMAS[D.palette.kind], rng) }
+      : { kind: ps.kind, p: { ...ps.p } };
+    const tone = { p: mixParams(D.tone.p, R.tone.p, TONE_SCHEMA, rng) };
     const hasFlame = main.shape.kind === 'flame';
     const flameParent = [D, R].find((x) => x.bodies.some((q) => q.shape.kind === 'flame'));
-    if (hasFlame && flameParent && rng() < 0.75) color.p.tonemap = flameParent.color.p.tonemap;
-    else if (!hasFlame) color.p.tonemap = D.color.p.tonemap;
+    if (hasFlame && flameParent && rng() < 0.75) tone.p.tonemap = flameParent.tone.p.tonemap;
+    else if (!hasFlame) tone.p.tonemap = D.tone.p.tonemap;
 
-    const child: Genome = { v: 4, chain, bodies, carrier, color, reactions: [], energy: [0, 1] };
+    const child: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [0, 1] };
     const t = rng();
     child.energy = [D.energy[0] + (R.energy[0] - D.energy[0]) * t, D.energy[1] + (R.energy[1] - D.energy[1]) * t];
     const seen = new Set<string>();
@@ -707,11 +722,13 @@ const MUTATORS: [number, string, Mutator][] = [
     return jitterParams(gene.p, locusSchema(locus, gene.kind), rng, amt);
   }],
   [2, 'jitter-carrier', (g, rng, amt) => jitterParams(g.carrier.p, CARRIER_SCHEMA, rng, amt, 0.3)],
-  [3, 'jitter-color', (g, rng, amt) => {
-    jitterParams(g.color.p, COLOR_SCHEMA, rng, amt, 0.3);
-    if (rng() < 0.3) g.color.p.hue = (g.color.p.hue + gauss(rng) * 0.15 + 1) % 1;
+  [2, 'jitter-tone', (g, rng, amt) => jitterParams(g.tone.p, TONE_SCHEMA, rng, amt, 0.3)],
+  [2, 'jitter-palette', (g, rng, amt) => {
+    jitterParams(g.palette.p, PALETTE_SCHEMAS[g.palette.kind], rng, amt, 0.5);
+    if (rng() < 0.4) g.palette.p.hue = (g.palette.p.hue + gauss(rng) * 0.15 + 1) % 1;
     return true;
   }],
+  [0.9, 'swap-mapping', swapLocus('color')],
   [2, 'insert-op', (g, rng) => {
     if (g.chain.length >= MAX_CHAIN) return false;
     g.chain.splice(randInt(rng, 0, g.chain.length), 0, randomOp(rng));
@@ -785,7 +802,11 @@ const MUTATORS: [number, string, Mutator][] = [
     g.carrier.kind = pick(rng, kinds);
     return true;
   }],
-  [0.6, 'change-scheme', (g, rng) => ((g.color.scheme = pick(rng, SCHEMES)), true)],
+  [0.7, 'change-palette', (g, rng) => {
+    const kind = pick(rng, PALETTE_KINDS.filter((k) => k !== g.palette.kind));
+    g.palette = { kind, p: { ...randomParams(PALETTE_SCHEMAS[kind], rng, 0.3), hue: g.palette.p.hue } };
+    return true;
+  }],
   [2, 'flame-variation', (g, rng) => {
     const f = g.bodies.find((b) => b.shape.kind === 'flame')?.shape;
     if (f?.xforms) {
