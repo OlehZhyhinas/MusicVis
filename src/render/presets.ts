@@ -983,30 +983,34 @@ vec3 comp(vec2 uv, vec2 p) {
   // ------------------------------------------------------------ E23
   {
     id: 'E23', name: 'Ember Flame', kind: 'fractal flame', energy: [0.55, 1],
-    palette: 'split', hue: 0.02, decay: 0.85, adapt: 0.35, bloom: 1.2,
+    palette: 'split', hue: 0.02, decay: 0.92, adapt: 0.35, bloom: 1.2,
     warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
     comp: FLAME_COMP,
     flame: {
-      count: 524288, iters: 4, rounds: 2, zoom: 0.3, camSpin: -0.125, gain: 1,
+      // Energetic: flows every 4 bars (a drop reverses it), strong bass
+      // breathing, beat kicks on every transform, wide drift.
+      count: 524288, iters: 4, rounds: 2, zoom: 0.3, camSpin: -0.125, gain: 1, flow: 2, breathe: 0.2,
       xforms: [
-        { aff: [0.8, 0.2, -0.2, 0.8, 0, 0.1], weight: 1, color: 0.1, vars: { swirl: 0.6, linear: 0.4 }, alt: { spiral: 0.5, heart: 0.3 }, spin: 0.25, bass: 0.25 },
-        { aff: [0.4, -0.35, 0.35, 0.4, 0.6, 0], weight: 0.5, color: 0.6, vars: { horseshoe: 1 }, alt: { disc: 1 } },
-        { aff: [0.5, 0, 0, -0.5, -0.4, -0.3], weight: 0.4, color: 0.95, vars: { handkerchief: 0.8 }, alt: { polar: 0.8 }, spin: -0.125 },
+        { aff: [0.8, 0.2, -0.2, 0.8, 0, 0.1], weight: 1, color: 0.1, vars: { swirl: 0.6, linear: 0.4 }, alt: { spiral: 0.5, heart: 0.3 }, spin: 0.25, bass: 0.25, pulse: 0.1, drift: [0.3, 0.25] },
+        { aff: [0.4, -0.35, 0.35, 0.4, 0.6, 0], weight: 0.5, color: 0.6, vars: { horseshoe: 1 }, alt: { disc: 1 }, pulse: 0.12, drift: [0.35, 0.3] },
+        { aff: [0.5, 0, 0, -0.5, -0.4, -0.3], weight: 0.4, color: 0.95, vars: { handkerchief: 0.8 }, alt: { polar: 0.8 }, spin: -0.125, pulse: 0.08, drift: [0.25, 0.35] },
       ],
     },
   },
   // ------------------------------------------------------------ E24
   {
     id: 'E24', name: 'Spiral Nebula', kind: 'fractal flame', energy: [0.3, 0.75],
-    palette: 'triad', hue: 0.6, decay: 0.88, adapt: 0.3,
+    palette: 'triad', hue: 0.6, decay: 0.94, adapt: 0.3,
     warp: /* glsl */ `vec2 warp(vec2 p) { return p; }`,
     comp: FLAME_COMP,
     flame: {
-      count: 262144, iters: 4, rounds: 2, zoom: 0.22, camSpin: 0.0625, gain: 1,
+      // Flows between a spiral galaxy and a looser swirl every 8 bars (a drop
+      // reverses it); the arms drift, bass breathes, beats kick the core.
+      count: 262144, iters: 4, rounds: 2, zoom: 0.22, camSpin: 0.125, gain: 1, flow: 1, breathe: 0.15,
       xforms: [
-        { aff: [0.6, -0.5, 0.5, 0.6, 0, 0], weight: 1, color: 0, vars: { spiral: 0.3, linear: 0.7 }, spin: 0.0625, bass: 0.1 },
-        { aff: [0.3, 0, 0, 0.3, 0.7, 0], weight: 0.5, color: 0.5, vars: { spherical: 1 } },
-        { aff: [0.3, 0, 0, 0.3, -0.35, 0.6], weight: 0.3, color: 0.85, vars: { disc: 0.6, linear: 0.4 } },
+        { aff: [0.6, -0.5, 0.5, 0.6, 0, 0], weight: 1, color: 0, vars: { spiral: 0.3, linear: 0.7 }, alt: { swirl: 0.5, linear: 0.5 }, spin: 0.125, bass: 0.15, pulse: 0.08, drift: [0.12, 0.12] },
+        { aff: [0.3, 0, 0, 0.3, 0.7, 0], weight: 0.5, color: 0.5, vars: { spherical: 1 }, alt: { julia: 0.7, spherical: 0.3 }, drift: [0.25, 0.3] },
+        { aff: [0.3, 0, 0, 0.3, -0.35, 0.6], weight: 0.3, color: 0.85, vars: { disc: 0.6, linear: 0.4 }, alt: { heart: 0.6, linear: 0.4 }, drift: [0.3, 0.25] },
       ],
     },
   },
