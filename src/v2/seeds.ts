@@ -35,7 +35,7 @@ import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
 
-export const SEED_VERSION = 32;
+export const SEED_VERSION = 33;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -845,6 +845,29 @@ const MILKDROP: Def[] = [
       material: ['glow', { gain: 1.4, width: 0.006, base: 0.3 }],
     })],
     reactions: [rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 }), rx('drums', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.2 })],
+  },
+  {
+    // Geiss, Tokamak Plus 2: two waveforms are drawn across the screen and a slowly turning strain flow
+    // (squeezed toward one axis, pulled from the other) stretches and folds their trails into silky grey
+    // filaments, with a little turbulence; the waves swell with the volume and the bass strains harder.
+    origin: 'M20', name: 'Tokamak (after Geiss)', energy: [0.2, 0.8], scheme: 'mono', hue: 0.6,
+    color: { sat: 0.2, exposure: 1.05, adapt: 0.3, bloom: 0.8, vignette: 0.3, relief: 0.45, bump: 1, gloss: 0.6, metal: 0.3 },
+    carrier: 'warp', decay: 0.98,
+    chain: [
+      op('push', { amt: -0.002, axis: 0 }),
+      op('push', { amt: 0.002, axis: 1 }),
+      op('rotate', { lock: 0.0625, rate: 0, wander: 0.3 }),
+      op('noise', { amp: 0.0015, scale: 2.2, speed: 0.4 }),
+    ],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.45 }],
+      place: ['mirror', { axis: 1, x: 0, y: 0.18 }],
+      motion: ['sway', { amp: 0.12, period: 4, tilt: 0.6 }],
+      material: ['line', { gain: 0.7, width: 1.2, halo: 0.2 }],
+      color: ['age', { rate: 0.0625, detail: 0.3 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+    })],
+    reactions: [rx('loud', 'sh', 0, 'amp', 0.3, { atk: 0.03, rel: 0.3 }), rx('bass', 'op', 0, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 1, 'amt', 0.2, { atk: 0.05, rel: 0.6 })],
   },
 ];
 
