@@ -92,6 +92,26 @@ export function raymarchChecks(check: Check): void {
     if (!(minGap > 0.05)) camBad.push(`cam ${cam} roam ${roam} size ${size}: inside a shape (gap ${minGap.toFixed(2)})`);
     paths.push(path);
   }
+  // Lattice: every camera cruises forward inside the corridor, clear of the tallest shapes on either plate.
+  for (const cam of SCENE_SCHEMA.cam.choices!) for (const [gap, spec, size] of [[0, 1, 1.6], [1, 0, 0.4], [0, 1, 0.4]]) {
+    const p = { ...r01.bodies[0].shape.p, scene: 1, cam, gap, spec, size, pulse: 1, kick: 1, roam: 1 };
+    const out = new Float32Array(SCENE_VEC4 * 4);
+    const mem: Record<string, number> = {};
+    const F = { speed: 1, act: 1, loud: 1, beatPulse: 0, gate: new Float32Array([1, 1, 1, 1]), stem: new Float32Array([0, 1, 0, 0]), onset: new Float32Array(4), sectionIndex: 0, bars: 0 } as unknown as Frame;
+    let worst = 1e9, z0 = 0, z1 = 0;
+    for (let i = 0; i < 1200; i++) {
+      F.bars = i / 120;
+      F.onset[0] = i % 30 === 0 ? 1 : 0;
+      packScene(out, { F, sdt: 1 / 60, P: (k) => p[k], raw: p, mem, key: 'b0.' });
+      const cell = out[20], r = out[24];
+      const tallest = r * 1.2 * 2.6 + out[26] * cell;
+      worst = Math.min(worst, out[1] - (out[21] + tallest), out[22] - tallest - out[1]);
+      if (i === 0) z0 = out[2];
+      z1 = out[2];
+    }
+    if (!(worst > 0.1)) camBad.push(`lattice cam ${cam} gap ${gap}: corridor clearance ${worst.toFixed(2)}`);
+    if (!(Math.abs(z1 - z0) > 1)) camBad.push(`lattice cam ${cam}: does not travel`);
+  }
   const distinct = new Set(paths.filter((_, i) => i % 3 === 0).map((x) => x.join())).size === SCENE_SCHEMA.cam.choices!.length;
   check('scene.cameras', !camBad.length && distinct, camBad.join(' | ') || `${SCENE_SCHEMA.cam.choices!.length} camera modes move differently and keep clear of the shapes (3 settings each)`);
 

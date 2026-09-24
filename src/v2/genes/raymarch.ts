@@ -17,8 +17,8 @@ import type { Frame } from '../engine';
 const P = (min: number, max: number, def: number) => ({ min, max, def });
 const C = (choices: number[], def: number) => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
 
-/** Scene kinds: 0 smooth-union primitives. */
-export const SCENE_KINDS = ['primitives'] as const;
+/** Scene kinds: 0 smooth-union primitives, 1 an endless lattice of shapes between two plates. */
+export const SCENE_KINDS = ['primitives', 'lattice'] as const;
 /** Camera kinds: 0 orbit, 1 flythrough, 2 dolly zoom. */
 export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
 
@@ -27,10 +27,11 @@ export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
  * res: internal resolution as a fraction of the stage (cost goes with its square);
  * size: object scale (bass pulses it by `pulse`); blend: smooth-union radius; speed: animation and
  * camera speed; roam: how far the camera travels (orbit swing, flight path, dolly depth); kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
- * rim / ao / fog / glow: lighting terms.
+ * rim / ao / fog / glow: lighting terms. Lattice: gap = height of the corridor between the plates,
+ * spec = how far each cell's shape rises with its spectrum band.
  */
 export const SCENE_SCHEMA: Schema = {
-  scene: C([0], 0),
+  scene: C([0, 1], 0),
   cam: C([0, 1, 2], 0),
   res: C([0.35, 0.5, 0.7], 0.5),
   size: P(0.4, 1.6, 1),
@@ -44,12 +45,19 @@ export const SCENE_SCHEMA: Schema = {
   fog: P(0, 1, 0.4),
   glow: P(0, 1, 0.3),
   roam: P(0, 1, 0.5),
+  gap: P(0, 1, 0.5),
+  spec: P(0, 1, 0.6),
 };
 /** Structural switches reactions may not touch. */
 export const SCENE_NO_REACT = ['scene', 'cam', 'res'];
 
-/** Full-resolution (2560x1440) march cost per scene kind, ms; the pass costs this times res squared. */
-const SCENE_FULL_MS = [5.0];
+/**
+ * Full-resolution (2560x1440) march cost per scene kind in the cost model's units (ms on the
+ * calibration machine); the pass costs this times res squared. Scaled from timer-query readings on
+ * an M-series Mac against the wireframe solid (E14) as reference; kept on the high side because the
+ * readings were noisy on a shared GPU.
+ */
+const SCENE_FULL_MS = [8.0, 8.0];
 
 /** Estimated GPU ms of a scene body: the reduced-resolution march plus the upsampling field lookup. */
 export function sceneCost(p: Params): number {
@@ -67,6 +75,7 @@ export const SCENE_VEC4 = 32;
  *   0 camera position xyz, focal length    1 camera target xyz, roll
  *   2 time, size, blend, variation seed      3 rim, ao, fog, glow
  *   4 scene kind, camera kind, -, -
+ *   5 lattice: cell size, floor y, ceiling y, -   6 lattice: shape radius, seed, spectrum lift, time
  *   8-12 primitives: centre xyz, radius   13-27 primitives: rotation rows (3 per primitive)
  *   28 primitive kinds (0 sphere, 1 torus, 2 box, 3 octahedron) for 0-3, 29.x kind of 4
  */
@@ -99,7 +108,29 @@ vec2 rmPrims(vec3 p) {
   }
   return vec2(d, sh);
 }
+// An endless lattice: a plate below and a plate above, each carrying one shape per cell; every cell
+// rises with its own spectrum band and turns at its own pace.
+vec2 rmLattice(vec3 p) {
+  vec4 L = uScn[5], Q = uScn[6];
+  float c = L.x;
+  bool top = p.y > 0.5 * (L.y + L.z);
+  float yy = top ? L.z - p.y : p.y - L.y;
+  vec2 id = floor(p.xz / c);
+  vec2 q2 = (fract(p.xz / c) - 0.5) * c;
+  float h = hash12(id + (top ? 37.0 : 0.0) + floor(Q.y * 8.0) * 13.0);
+  float band = specAt(fract(h * 7.31) * 0.7 + 0.03);
+  float r = Q.x * (0.7 + 0.5 * h);
+  vec3 q = vec3(q2.x, yy - r * 1.2 - Q.z * band * c, q2.y);
+  q.xz = rot2(Q.w * (0.3 + h) + h * 6.0) * q.xz;
+  float d = rmPrim(int(h * 4.0), q, r);
+  // Never step past the cell wall (the neighbour's shape may be nearer).
+  d = min(d, 0.5 * c - max(abs(q2.x), abs(q2.y)) + 0.1 * c);
+  float sh = 0.15 + 0.7 * h;
+  if (yy < d) { d = yy; sh = 0.95; }
+  return vec2(d, sh);
+}
 vec2 rmMap(vec3 p) {
+  if (uScn[4].x > 0.5) return rmLattice(p);
   return rmPrims(p);
 }
 vec3 rmNormal(vec3 p, float t) {
@@ -139,7 +170,8 @@ void main() {
   vec3 pos = ro + rd * t;
   vec3 n = rmNormal(pos, t);
   vec3 ld = normalize(vec3(0.6, 0.8, -0.3));
-  float dif = clamp(dot(n, ld), 0.0, 1.0);
+  // Key light from above plus a headlight along the view, so corridors and undersides still read.
+  float dif = clamp(0.65 * dot(n, ld) + 0.45 * dot(n, -rd), 0.0, 1.0);
   float ao = mix(1.0, rmAO(pos, n), L.y);
   float fogv = exp(-t * t * L.z * 0.012);
   float rim = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0) * L.x;
@@ -216,7 +248,20 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
   out[12] = P('rim'); out[13] = P('ao'); out[14] = P('fog'); out[15] = P('glow');
   out[16] = c.raw.scene; out[17] = c.raw.cam;
   out[10] = (0.03 + 1.07 * P('blend')) * size;
-  placePrims(out, T, size, seed);
+  if (c.raw.scene === 1) {
+    const L = latticeFrame(P);
+    out[20] = L.cell; out[21] = L.floor; out[22] = L.ceil;
+    out[24] = L.cell * 0.22 * (size / P('size')); out[25] = seed; out[26] = P('spec') * 0.6; out[27] = T;
+  } else placePrims(out, T, size, seed);
+}
+
+/** Lattice geometry: cell size, the two plates and the free corridor between their tallest shapes. */
+function latticeFrame(P: (k: string) => number): { cell: number; floor: number; ceil: number; lo: number; hi: number } {
+  const cell = 1.4 * P('size');
+  // Tallest shape: a lifted, pulsed, largest-hash shape (radius 0.22 cell x 1.2 x pulse, reaching 2.6 radii up; lift 0.6 cell).
+  const top = cell * (0.22 * 1.2 * 2.6 * (1 + 0.38 * P('pulse')) + 0.6 * P('spec'));
+  const half = top + (0.6 + 2.5 * P('gap')) * P('size');
+  return { cell, floor: -half, ceil: half, lo: -half + top + 0.25, hi: half - top - 0.25 };
 }
 
 /**
@@ -264,6 +309,15 @@ function camera(out: Float32Array, c: SceneCtx, T: number, kick: number, side: n
     px = Math.cos(ang) * Math.cos(elev) * dist;
     py = Math.sin(elev) * dist;
     pz = Math.sin(ang) * Math.cos(elev) * dist;
+  }
+  if (c.raw.scene === 1) {
+    // The lattice is endless: the camera cruises forward and stays in the corridor between the plates.
+    const L = latticeFrame(P);
+    const D = set('travel', (get('travel') + sdt * F.speed * (0.4 + 2.2 * speed) * L.cell) % (L.cell * 512));
+    const mid = 0.5 * (L.lo + L.hi), span = Math.max(0, 0.5 * (L.hi - L.lo));
+    const squash = (y: number) => mid + span * Math.tanh(y / Math.max(span, 1e-3));
+    py = squash(py); ty = squash(ty) * 0.6;
+    pz += D; tz += D;
   }
   out[0] = px; out[1] = py; out[2] = pz; out[3] = f;
   out[4] = tx; out[5] = ty; out[6] = tz; out[7] = roll;

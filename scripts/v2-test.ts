@@ -1168,6 +1168,8 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
         // A silent allele the body cannot express (e.g. a fill material on a curve) is a valid state, not this check's case.
         if (alt && expressAllele(g, bi, (Object.keys(alt) as Locus[])[0]).ok) {
           const locus = (Object.keys(alt) as Locus[])[0];
+          // Some silent kinds cannot be expressed on this body (a fill material on a curve); keep looking.
+          if (!expressAllele(g, bi, locus).ok) continue;
           carrier = { g, b: bi, locus };
           break;
         }

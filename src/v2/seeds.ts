@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 26;
+export const SEED_VERSION = 27;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1089,6 +1089,23 @@ const RAYMARCH: Def[] = [
     reactions: [
       rx('bass', 'sh', 0, 'size', 0.12, { atk: 0.02, rel: 0.4 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // Cruising down an endless corridor between two plates of shapes, one per cell, each rising with its
+    // own band of the spectrum like a 3D equaliser city; the camera weaves and lunges on drum hits, each
+    // section rebuilds the city, and fog swallows the far end.
+    origin: 'R04', name: 'Resonant Grid', energy: [0.35, 1], scheme: 'analogous', hue: 0.5,
+    color: { adapt: 0.35, bloom: 1.2 }, carrier: 'warp', decay: 0.7,
+    bodies: [body({
+      shape: ['scene', { scene: 1, cam: 1, res: 0.5, size: 0.9, blend: 0.3, speed: 0.5, pulse: 0.5, kick: 0.6, vary: 1, rim: 0.6, ao: 0.8, fog: 0.5, glow: 0.25, roam: 0.3, gap: 0.3, spec: 0.9 }],
+      material: ['fill', { gain: 1.2 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('drums', 'sh', 0, 'kick', 0.25, { atk: 0.01, rel: 0.2 }),
+      rx('loud', 'sh', 0, 'spec', 0.2, { atk: 0.05, rel: 0.4 }),
       rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
     ],
   },
