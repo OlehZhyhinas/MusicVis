@@ -179,6 +179,27 @@ export interface MusicState {
   repeatIndex?: number;
   repeatSim?: number;
   repeatReturnSim?: number;
+
+  // --- Harmony map (src/analysis/harmony.ts; undefined when not analysed) ---
+  /** Current chord: 0..11 major triad on that root, 12..23 minor, -1 no chord. */
+  chord?: number;
+  /** 0..1 harmonic tension: the chord's pull away from the tonic plus the chroma's dissonance, smoothed. */
+  tension?: number;
+  /** 1 on a chord change, decays. */
+  chordPulse?: number;
+  /** On a resolution to the tonic (V-I, IV-I, a return home): the tension released, 0..1, decays. */
+  resolvePulse?: number;
+  /** 1 on a modulation (key change), decays. */
+  modulationPulse?: number;
+  /** The chord's position on the Tonnetz relative to the tonic (x along fifths, y along thirds), gliding. */
+  tonnetzX?: number;
+  tonnetzY?: number;
+  /** How the last chord change moved (harmony.ts MOVE: 1 fifth, 2 third, 3 step, 4 tritone, 5 mode). */
+  chordMove?: number;
+  /** Signed circle-of-fifths steps the key has travelled from the song's first key. */
+  keyWalk?: number;
+  /** Seconds until the next resolution (precomputed songs only). */
+  timeToResolve?: number;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */

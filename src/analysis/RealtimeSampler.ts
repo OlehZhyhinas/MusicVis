@@ -10,6 +10,7 @@
 import type { LiveAudioFrame, MusicState, Section, StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import type { RealtimeAnalyzer } from './RealtimeAnalyzer';
+import { LiveHarmony, initHarmonyState } from './harmonyState';
 
 const BEAT_TAU = 0.15;
 const BAR_TAU = 0.3;
@@ -39,6 +40,7 @@ export class RealtimeSampler {
   private lastBeatFloor = -Infinity;
   private seenChanges = 0;
   private seenKey = -1;
+  private readonly harmony = new LiveHarmony();
 
   constructor(analyzer: RealtimeAnalyzer) {
     this.a = analyzer;
@@ -84,6 +86,7 @@ export class RealtimeSampler {
       buildIntensity: 0,
       beatConfidence: 0,
     };
+    initHarmonyState(this.state);
   }
 
   /** Re-sync without firing events (e.g. after the input device changed). */
@@ -202,6 +205,9 @@ export class RealtimeSampler {
     }
     this.seenChanges = st.changes;
     s.buildIntensity = st.buildIntensity;
+
+    // --- Harmony map (realtime-lite) ---
+    this.harmony.sample(s, a.harmony, s.keyTonic, s.keyMode, dt, events);
 
     this.synced = true;
     return s;

@@ -7,7 +7,8 @@ import {
   moveKind, fifthDirection, roughness, tonnetzXY, triadDistance, type ChordIndex, type HarmonyInput,
 } from '../src/analysis/harmony';
 import { computeChroma, resampleChroma } from '../src/analysis/key';
-import type { KeySegment } from '../src/types';
+import type { AnalysisResult, KeySegment, LiveAudioFrame } from '../src/types';
+import { TimelineSampler } from '../src/analysis/TimelineSampler';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -265,6 +266,42 @@ export function harmonyTests(check: Check): void {
     check('harmony: realtime tracker counts 8 chord arrivals and 2 resolutions', trk.changes === 8 && trk.resolves === 2, `changes ${trk.changes} resolves ${trk.resolves}`);
     trk.setKey(7, 'major');
     check('harmony: realtime tracker counts a key change', trk.modulations === 1, String(trk.modulations));
+  }
+
+  // --- MusicState through the TimelineSampler ---
+  {
+    const C = { tonic: 0, mode: 'major' as const };
+    const { inp } = chromaSong({ name: '', chords: ['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C'], beats: [4], key: C }, 6, 0.2);
+    const T = inp.numFrames;
+    const z = () => new Float32Array(T);
+    const st = () => ({ drums: z(), bass: z(), vocals: z(), other: z() });
+    const r: AnalysisResult = {
+      duration: inp.duration, frameRate: inp.frameRate, numFrames: T, stems: st(), stemOnsets: st(), stemPresence: st(), complexity: z(), songComplexity: 0.5,
+      loudness: inp.loudness!, chroma: inp.chroma, bpm: 120, beats: Float32Array.from(inp.beats), downbeats: Float32Array.from(inp.beats).filter((_b, i) => i % 4 === 0), beatsPerBar: 4,
+      sections: [{ start: 0, end: inp.duration, label: 'verse', energy: 0.5 }], keys: inp.keys,
+    };
+    const smp = new TimelineSampler(r);
+    const live: LiveAudioFrame = { bass: 1, mid: 1, treb: 1, bassAtt: 1, midAtt: 1, trebAtt: 1, waveform: new Float32Array(1024), spectrum: new Float32Array(512) };
+    let changes = 0;
+    const resolveAt: number[] = [];
+    let maxT = 0;
+    let tAtG = 0;
+    let prevRes = 0;
+    let prevCh = 0;
+    for (let t = 0; t < inp.duration; t += 1 / 60) {
+      const s = smp.sample(t, 1 / 60, true, live);
+      if ((s.chordPulse ?? 0) > prevCh + 0.5) changes++;
+      if ((s.resolvePulse ?? 0) > prevRes + 0.3) resolveAt.push(t);
+      prevRes = s.resolvePulse ?? 0;
+      prevCh = s.chordPulse ?? 0;
+      maxT = Math.max(maxT, s.tension ?? 0);
+      if (Math.abs(t - 5.9) < 0.01) tAtG = s.tension ?? 0;
+    }
+    check('harmony: sampler fires a chord pulse on each of the 7 changes', changes === 7, String(changes));
+    check('harmony: sampler fires resolve pulses at the two V-I arrivals (6 s, 14 s)', resolveAt.length === 2 && Math.abs(resolveAt[0] - 6) < 0.05 && Math.abs(resolveAt[1] - 14) < 0.05, resolveAt.map((v) => v.toFixed(2)).join(','));
+    check('harmony: sampler tension is high on the V, in 0..1', tAtG > 0.3 && maxT <= 1, `${tAtG.toFixed(2)} max ${maxT.toFixed(2)}`);
+    const s0 = smp.sample(3, 0, true, live);
+    check('harmony: after a seek the sampler lands on the chord without firing', s0.chord === ch('F') && (s0.chordPulse ?? 0) < 1, `${s0.chord} ${s0.chordPulse}`);
   }
 
   // --- Cost ---

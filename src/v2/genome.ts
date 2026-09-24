@@ -510,7 +510,9 @@ export interface CarrierGene {
 
 // surge: beat envelope with a fast attack and slow ease that cruises with loudness and jumps on drops.
 // barpulse: a pulse on each downbeat; section: a pulse on each section change; bar: a slow wave across the bar.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section'] as const;
+// Harmony map (src/analysis/harmony.ts): tension = harmonic tension 0..1; resolve = a pulse on a resolution to the
+// tonic (sized by the tension released); chordchange = a pulse on each chord change; modulation = a pulse on a key change.
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,

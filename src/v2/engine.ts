@@ -122,6 +122,8 @@ export interface Frame {
   loud: number; melody: number; build: number; drop: number; keyTonic: number; minor: boolean;
   sectionIndex: number; aspect: number; hit: number; hitPulse: number; dropStart: boolean; keyHue: number; keyPulse: number;
   barPulse: number; bpm: number;
+  /** Harmony map: tension 0..1 and the resolve / chord change / modulation pulses. */
+  tension: number; resolve: number; chordPulse: number; modPulse: number;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
   surge: number;
 }
@@ -133,6 +135,7 @@ export class Signals {
     barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, stem: new Float32Array(4), onset: new Float32Array(4),
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
+    tension: 0, resolve: 0, chordPulse: 0, modPulse: 0,
   };
   spinStep = 0;
   clock = 0;
@@ -195,6 +198,10 @@ export class Signals {
     F.keyHue = num(state.keyHue, 0);
     F.keyPulse = num(state.keyChangePulse, 0);
     F.barPulse = num(state.barPulse, 0);
+    F.tension = num(state.tension, 0);
+    F.resolve = num(state.resolvePulse, 0);
+    F.chordPulse = num(state.chordPulse, 0);
+    F.modPulse = num(state.modulationPulse, 0);
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     this.sectionPulse *= Math.exp(-dt * 1.5);
     if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
@@ -320,6 +327,10 @@ export class Signals {
       case 'surge': return Math.min(1.5, F.surge);
       case 'barpulse': return F.barPulse;
       case 'section': return this.sectionPulse;
+      case 'tension': return F.tension;
+      case 'resolve': return F.resolve;
+      case 'chordchange': return F.chordPulse;
+      case 'modulation': return F.modPulse;
     }
   }
 

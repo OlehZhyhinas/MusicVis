@@ -47,7 +47,9 @@ REACTIONS(signal->1 parameter+gain; up to 6; 1 reaction/parameter): drums/bass/v
 instrument level. hit=drum trigger. beat=pulse/beat. bar=slow wave/bar. complexity=mix busyness.
 drop=structural drop. loud=overall loudness. melody=melody activity. build=tension pre-drop.
 surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on
-section change.
+section change. tension=harmonic tension 0..1(chord far from home key/dissonant). resolve=pulse when
+harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=pulse per chord change.
+modulation=pulse on a key change.
 `;
 
 /**

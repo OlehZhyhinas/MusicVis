@@ -5,6 +5,8 @@
 import type { AnalysisResult, KeySegment, LiveAudioFrame, MusicState, Section, SectionRepeat, StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import { detectRepeats } from './repetition';
+import { analyzeHarmony } from './harmony';
+import { HarmonyCursor, initHarmonyState } from './harmonyState';
 
 const BEAT_TAU = 0.15;
 const BAR_TAU = 0.3;
@@ -90,6 +92,8 @@ export class TimelineSampler {
   private barCur = -1;
   private secCur = 0;
   private keyCur = 0;
+  /** The harmony map (chords on the Tonnetz), computed once per song. */
+  private readonly harmony: HarmonyCursor | null;
 
   constructor(result: AnalysisResult) {
     this.r = result;
@@ -156,6 +160,14 @@ export class TimelineSampler {
       sinceDrop: Infinity,
       barSeconds: this.beatPeriod * (result.beatsPerBar > 0 ? result.beatsPerBar : 4),
     };
+    initHarmonyState(this.state);
+    let harmony: HarmonyCursor | null = null;
+    try {
+      if (result.chroma && result.numFrames > 0) harmony = new HarmonyCursor(analyzeHarmony(result));
+    } catch {
+      harmony = null;
+    }
+    this.harmony = harmony;
   }
 
   /** Call after seeking: the next sample re-syncs cursors without firing events. */
@@ -167,6 +179,9 @@ export class TimelineSampler {
     s.dropPulse = 0;
     s.keyChangePulse = 0;
     s.buildIntensity = 0;
+    s.chordPulse = 0;
+    s.resolvePulse = 0;
+    s.modulationPulse = 0;
   }
 
   sample(time: number, dt: number, playing: boolean, live: LiveAudioFrame): MusicState {
@@ -344,6 +359,9 @@ export class TimelineSampler {
       }
       s.sinceDrop = time - d;
     }
+
+    // --- Harmony map ---
+    this.harmony?.sample(s, time, dt, jumped);
 
     this.synced = true;
     this.lastTime = time;

@@ -32,6 +32,7 @@ import {
 import { BoxAvg, History, StreamDecimator, medianInPlace } from './rtUtil';
 import { BeatTracker } from './rtBeat';
 import { KeyTracker } from './rtKey';
+import { HarmonyTracker } from './harmony';
 import { StructureTracker, STRUCT_RATE } from './rtStructure';
 
 const TINY = 1e-20;
@@ -194,6 +195,8 @@ export class RealtimeAnalyzer {
 
   readonly beat: BeatTracker;
   readonly key: KeyTracker;
+  /** Realtime-lite chord tracking (harmony map). */
+  readonly harmony = new HarmonyTracker();
   readonly structure: StructureTracker;
 
   // ---- internals ----
@@ -574,6 +577,10 @@ export class RealtimeAnalyzer {
 
     // ---------------- key ----------------
     if (this.chromaFresh) this.key.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr, this.frameTime);
+    if (this.chromaFresh) {
+      this.harmony.setKey(this.key.tonic, this.key.mode, this.key.key >= 0);
+      this.harmony.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr);
+    }
 
     // ---------------- structure (~10 Hz) ----------------
     if (--this.structCountdown <= 0) {
@@ -598,6 +605,7 @@ export class RealtimeAnalyzer {
         this.cxSongN = 0;
         this.musicSeconds = 0;
         this.key.reset();
+        this.harmony.reset();
       }
     }
   }
