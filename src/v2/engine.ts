@@ -29,6 +29,7 @@ import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
+import { packCymatics } from './genes/cymatics';
 
 /**
  * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
@@ -138,7 +139,7 @@ export class Signals {
   readonly chroma = new Float32Array(12);
   private wave = new Float32Array(WAVE_N);
   private waveTmp = new Float32Array(WAVE_N);
-  private spec = new Float32Array(SPEC_N);
+  readonly spec = new Float32Array(SPEC_N);
   private rms = 0.1;
   private prevBarPhase = 0;
   private prevDrumOnset = 0;
@@ -1668,7 +1669,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1774,6 +1775,11 @@ export class Stage {
       case 'scene':
         packScene(s.scn, { F, sdt, P, raw: sh.p, mem: m, key: key('') });
         break;
+      case 'cymatics': {
+        const cf = { chroma: this.sig.chroma, spec: this.sig.spec, keyTonic: F.keyTonic, minor: F.minor, sectionIndex: F.sectionIndex, bass: F.stem[1] * F.gate[1], loud: F.loud, bpm: F.bpm };
+        packCymatics(E, o, o - 56, P, sh.p, cf, m, key, this.every(s, bi, 'cym', 4 * sh.p.hold), (k, raw) => this.resp(k, raw), sdt);
+        break;
+      }
     }
     void copies;
   }

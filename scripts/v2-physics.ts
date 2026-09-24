@@ -11,6 +11,7 @@ import { Population } from '../src/v2/population';
 import { buildSources } from '../src/v2/glsl';
 import { nameFor, nounKind } from '../src/v2/naming';
 import { MAX_BEAMS, beamsCost } from '../src/v2/genes/beams';
+import { cymaticsTarget } from '../src/v2/genes/cymatics';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -86,17 +87,40 @@ function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, noun: st
   }
   check(`${kind}.mutation`, !mbad.length && moved >= 3, mbad.slice(0, 3).join(' | ') || `300 mutations valid, ${moved} moved the ${kind} parameters`);
 
+  // A hidden-body slime emission names the preset after its network, so name a trail-emitting copy.
+  const nb = { ...(host.bodies.find((b) => b.shape.kind === kind) as BodyGene), emit: { kind: 'trail', p: {} } } as BodyGene;
   const named = nameFor(host);
-  check(`${kind}.name`, nounKind(host.bodies.find((b) => b.shape.kind === kind) as BodyGene) === noun, `${named} (${noun})`);
+  check(`${kind}.name`, nounKind(nb) === noun, `${named} (${noun})`);
 }
 
 export function physicsChecks(check: Check): void {
   shapeGeneChecks(check, 'beams', 'hot = 0.02 / (0.02 + along', 'beams', 'count');
   const maxed = around({ shape: { kind: 'beams', p: { count: MAX_BEAMS, gobo: 3 } }, material: { kind: 'glow' } });
-  check('beams.cost', Math.abs(beamsCost(maxed.bodies[0].shape.p) - (1.4 + MAX_BEAMS * 0.11)) < 1e-9 && estimateCost(maxed) < COST_BUDGET_MS * 0.5,
+  check('beams.cost', Math.abs(beamsCost(maxed.bodies[0].shape.p) - (1.2 + MAX_BEAMS * 0.24)) < 1e-9 && estimateCost(maxed) < COST_BUDGET_MS * 0.75,
     `12 textured beams ${beamsCost(maxed.bodies[0].shape.p).toFixed(2)} ms, genome ${estimateCost(maxed).toFixed(2)} ms`);
 
   seedChecks(check, 'V01', 'beams');
+
+  shapeGeneChecks(check, 'cymatics', 'float cymMode(', 'cymatics', null);
+  // Modes follow the music: chords (relative to the key), bands, sections; m != n; major / minor sign.
+  const base = { chroma: new Float32Array(12), spec: new Float32Array(64), keyTonic: 2, minor: false, sectionIndex: 0, bass: 0, loud: 0, bpm: 120 };
+  const p = { ...around({ shape: { kind: 'cymatics' } }).bodies[0].shape.p };
+  const ch = new Float32Array(12);
+  ch[2] = 1; ch[9] = 0.8; // D and A in D: the tonic and the fifth
+  const [m1, n1, s1] = cymaticsTarget(p, { ...base, chroma: ch }, ch);
+  const [m2, n2, s2] = cymaticsTarget(p, { ...base, minor: true }, [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0.9]);
+  const secs = new Set(Array.from({ length: 8 }, (_, k) => cymaticsTarget({ ...p, source: 2 }, { ...base, sectionIndex: k }, []).join(',')));
+  let pairsOk = true;
+  for (let top = 3; top <= 12; top++) for (let a = 0; a < 12; a++) for (let b = 0; b < 12; b++) {
+    const s = new Array(12).fill(0);
+    s[a] = 1;
+    s[b] = a === b ? 1 : 0.5;
+    const [m, n] = cymaticsTarget({ ...p, modes: top }, base, s);
+    if (!(m >= 1 && n <= top && m < n)) pairsOk = false;
+  }
+  check('cymatics.modes', m1 === 1 && n1 === 2 && s1 === 1 && s2 === -1 && m2 !== n2 && secs.size >= 4 && pairsOk,
+    `D+A in D -> (${m1},${n1}), minor sign ${s2}, ${secs.size} figures over 8 sections, every pair 1 <= m < n <= modes: ${pairsOk}`);
+  seedChecks(check, 'V02', 'cymatics');
 }
 
 /** A showcase seed: valid, under budget, uses its gene; a population saved before it gains it exactly once. */

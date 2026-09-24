@@ -12,6 +12,7 @@ import { CELLS_GLSL } from './genes/cells';
 import { BEAMS_GLSL } from './genes/beams';
 import { WATER_GLSL } from './genes/water';
 import { BLEND_GLSL, blendCall } from './genes/blend';
+import { CYMATICS_GLSL } from './genes/cymatics';
 import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
@@ -451,6 +452,7 @@ vec3 FLD(vec2 p) {
 }`,
   beams: BEAMS_GLSL,
   cells: CELLS_GLSL,
+  cymatics: CYMATICS_GLSL,
   terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);

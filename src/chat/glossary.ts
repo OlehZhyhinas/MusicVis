@@ -15,10 +15,11 @@ terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=down
 edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.
 flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
 superscope(3D point curve): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 lissajous,5 ring tunnel; p/q=frequencies; audio=wave/spectrum(spec) push; spinX/spinY=tumble turns/bar; persp=depth; n=points.
-beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.
+beams(stage light shafts): count=heads; spread=truss; fan/sweep=aim spread/swing; pattern 0 unison,1 scissor,2 wave,3 alt,4 step; period=bars; width=cone; haze; gobo 0 open,1 split,2 ring,3 noise; hues/head; length; flare; accent=beat chase.
 scene(ray-marched 3D,1/preset): scene 0 melting shapes; cam 0 orbit,1 fly,2 dolly zoom; roam=camera travel; res=render res(cost); blend=melt; pulse=bass swell; kick=drum camera jolt; vary=section reshuffle; rim/ao/fog/glow=light. Material sets look(line=neon rims).
 cells(Voronoi): mode 0 foam,1 veins,2 domes; warp=bent walls; fill=cell light; var=hue spread; pulse=beat pop.
-Field shapes(plasma,aurora,terrain,edge,beams,scene,cells)+flame draw 1 copy regardless of place count.
+cymatics(Chladni sand): plate 0 square,1 round; size; modes=max; source 0 chords,1 bands,2 section; hold=bars; settle=beats; sand=grains; line; shake=bass; rim.
+Fields(plasma,aurora,terrain,edge,beams,scene,cells,cymatics)+flame: 1 copy only.
 
 PLACE:
 point: fixed spot. orbit: copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.

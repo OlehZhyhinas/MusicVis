@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 18;
+export const SEED_VERSION = 19;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -763,6 +763,22 @@ const PHYSICS: Def[] = [
       feel: ['flow', { atk: 0.03, rel: 0.4 }],
     })],
     reactions: [rx('build', 'sh', 0, 'sweep', 0.5, { atk: 0.2, rel: 1 }), rx('bass', 'sh', 0, 'width', 0.2, { atk: 0.05, rel: 0.5 })],
+  },
+  {
+    // A Chladni plate: sand gathers on the nodal lines of the standing wave the chord asks for. On a
+    // new chord (checked every bar) the sand scatters and settles onto the new figure over two beats;
+    // minor keys give the antisymmetric figures. The plate turns slowly and the bass shakes the grains.
+    origin: 'V02', name: 'Chladni Plate', energy: [0.15, 0.8], scheme: 'analogous', hue: 0.08,
+    color: { sat: 0.7, adapt: 0.3, bloom: 1.1, vignette: 0.55 }, carrier: 'none',
+    bodies: [body({
+      shape: ['cymatics', { plate: 0, size: 0.42, modes: 7, source: 0, hold: 1, settle: 2, sand: 0.8, line: 1.6, shake: 0.4, rim: 0.35 }],
+      place: ['point', { x: 0, y: 0 }],
+      motion: ['spin', { rate: 0.0625 }],
+      material: ['glow', { gain: 1 }],
+      emit: ['none'],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+    })],
+    reactions: [rx('bass', 'sh', 0, 'line', 0.25, { atk: 0.03, rel: 0.4 })],
   },
 ];
 

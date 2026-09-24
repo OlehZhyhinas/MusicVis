@@ -37,6 +37,7 @@ import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
 import { BLEND_COST, BLEND_SCHEMA } from './genes/blend';
 import { SCENE_NO_REACT, SCENE_SCHEMA, sceneCost } from './genes/raymarch';
+import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
@@ -128,7 +129,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -144,6 +145,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   beams: 'field',
   scene: 'field',
   cells: 'field',
+  cymatics: 'field',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene'];
@@ -176,6 +178,8 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   scene: SCENE_SCHEMA,
   // Voronoi cell foam, veins or domes (see genes/cells.ts).
   cells: CELLS_SCHEMA,
+  // Chladni figures: sand on the nodal lines of a plate mode picked by the music (see genes/cymatics.ts).
+  cymatics: CYMATICS_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -1181,6 +1185,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
       case 'aurora': s.aurora += 2.6 * w; break;
       case 'beams': s.aurora += 2.4 * w; s.spectrum += 0.6; break;
       case 'cells': s.plasma += 2 * w; s.ink += 0.6 * w; if (sp.mode === 2) s.chrome += 0.6 * w; break;
+      case 'cymatics': s.plasma += 2.4 * w; s.mirror += 0.8; break;
       case 'terrain': s.terrain += 2.6 * w; break;
       case 'scene': s.depth += 2.8 * w; break;
       case 'edge': (sp.mode === 2 ? (s.rain += 2.6) : (s.terrain += 2.6)); if (sp.side === 1 || sp.side === 2) s.rain += 0.6; break;
@@ -1304,7 +1309,7 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3,
 };
 const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05 };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
@@ -1347,7 +1352,7 @@ export function bodyCost(b: BodyGene): number {
     return ms;
   }
   if (cls === 'field') {
-    const base = b.shape.kind === 'terrain' ? 0.25 + (b.shape.p.terrain > 0.001 ? 0.3 : 0) : b.shape.kind === 'beams' ? beamsCost(b.shape.p) : b.shape.kind === 'scene' ? sceneCost(b.shape.p) : b.shape.kind === 'cells' ? cellsCost(b.shape.p) : FIELD_COST[b.shape.kind] ?? 0.3;
+    const base = b.shape.kind === 'terrain' ? 0.25 + (b.shape.p.terrain > 0.001 ? 0.3 : 0) : b.shape.kind === 'beams' ? beamsCost(b.shape.p) : b.shape.kind === 'cymatics' ? cymaticsCost(b.shape.p) : b.shape.kind === 'scene' ? sceneCost(b.shape.p) : b.shape.kind === 'cells' ? cellsCost(b.shape.p) : FIELD_COST[b.shape.kind] ?? 0.3;
     ms += base + deformCost(b) + (b.fuse ? 0.2 + SDF_COST[b.fuse.shape.kind] : 0);
     return ms;
   }

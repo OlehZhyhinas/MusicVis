@@ -44,11 +44,11 @@ export const BEAMS_SCHEMA: Schema = {
 
 /**
  * Estimated GPU ms at 1440p: the full-screen pass with its haze field plus each beam (textured gobos
- * add a noise lookup). Timer-query measurements on Apple M5 Pro at 2560x1440, whole frame: 8 open
- * beams 2.5 ms, 12 textured beams 2.55 ms (the model is slightly conservative for large rigs).
+ * add a noise lookup per beam). Timer-query medians on Apple M5 Pro at 2560x1440 against a waveform
+ * seed as the baseline: 8 open beams ~2.2 ms, 12 open ~2.5 ms, 12 textured ~4 ms.
  */
 export function beamsCost(p: Record<string, number>): number {
-  return 1.4 + p.count * (p.gobo === 3 ? 0.11 : 0.08);
+  return 1.2 + p.count * (p.gobo === 3 ? 0.24 : 0.12);
 }
 
 /**
