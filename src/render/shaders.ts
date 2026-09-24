@@ -353,7 +353,18 @@ uniform float uBloomStr, uExposure, uCA, uVignette, uTonemap, uFrame, uKey, uAda
 // Camera (v2 choreography): scene uv = 0.5 + (I + uCamM) (uv - 0.5) + uCamT; zero = identity.
 uniform vec4 uCamM;
 uniform vec2 uCamT;
+// Harmony (v2 harmony gene): x = lopsided warp amount (0 = none), y = phase, z = style (0 lean, 1 swirl, 2 buckle).
+uniform vec4 uHarm;
 out vec4 o;
+vec2 harmWarp(vec2 d, vec4 h) {
+  float a = h.x;
+  if (h.z < 0.5) return a * vec2(0.07 * (d.y + 0.5) * (d.y + 0.5) * (1.0 + 0.3 * sin(h.y)), 0.035 * sin(d.x * 3.0 + h.y) * (d.x + 0.5));
+  if (h.z < 1.5) {
+    vec2 e = d - vec2(0.2, 0.12) - 0.06 * vec2(sin(h.y), cos(h.y * 0.7));
+    return rot2(a * 0.9 * exp(-dot(e, e) * 6.0)) * e - e;
+  }
+  return a * 0.04 * (d.x + 0.7) * vec2(sin(d.y * 7.0 + h.y + d.x * 2.0), sin(d.x * 5.0 - h.y * 1.3 + 1.0));
+}
 vec3 aces(vec3 x) {
   const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
@@ -361,6 +372,7 @@ vec3 aces(vec3 x) {
 void main() {
   vec2 d = vUv - 0.5;
   vec2 uv = 0.5 + vec2((1.0 + uCamM.x) * d.x + uCamM.y * d.y, uCamM.z * d.x + (1.0 + uCamM.w) * d.y) + uCamT;
+  if (uHarm.x > 0.0005) uv = clamp(uv + harmWarp(d, uHarm), 0.001, 0.999);
   vec3 col;
   if (uCA > 0.0005) {
     vec2 off = d * uCA;

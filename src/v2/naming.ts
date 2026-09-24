@@ -223,6 +223,7 @@ const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted'
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
 const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
 const SHIFTING = ['Journeying', 'Morphing', 'Mutating', 'Evolving', 'Shapeshifting', 'Protean', 'Metamorphic', 'Transforming', 'Changeling', 'Chameleon', 'Fluxing', 'Migrant'];
+const HARMONIC = ['Harmonic', 'Cadential', 'Resolving', 'Tonal', 'Consonant', 'Chordal', 'Modulating', 'Diatonic', 'Suspended', 'Chromatic', 'Tempered', 'Tuned'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
 function clamp01(x: number): number {
@@ -353,6 +354,11 @@ function traits(g: Genome): Trait[] {
     const cp = g.choreo.p;
     add('staged', STAGED, clamp01(0.35 + cp.push * 1.5 + cp.drain * 0.2 + cp.punch * 0.2));
   }
+  // Harmony: symmetry that follows the chord progression, named by how hard tension breaks it.
+  if (g.harmony) {
+    const hp = g.harmony.p;
+    add('harmonic', HARMONIC, clamp01(0.4 + hp.brk * 0.35 + hp.snap * 0.2 + hp.warp * 0.15));
+  }
   // Drift: a preset that travels through gene space over the song, named by how far it roams.
   if (g.drift) {
     const dp = g.drift.p;
@@ -401,6 +407,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, flocking: FLOCKING, teeming: TEEMING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
   staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED,
+  harmonic: HARMONIC,
 };
 
 /**

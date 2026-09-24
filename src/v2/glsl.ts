@@ -155,12 +155,14 @@ const OP_GLSL: Record<string, string> = {
   quad: `{ vec2 d = p - OA.xy; p += rot2(OA.w) * vec2(d.x * d.x - d.y * d.y, 2.0 * d.x * d.y) * OA.z; }`,
   push: `{ if (OA.y < 0.5) p.x -= sign(p.x) * OA.x * smoothstep(0.0, 0.03, abs(p.x)); else if (OA.y < 1.5) p.y -= sign(p.y) * OA.x * smoothstep(0.0, 0.03, abs(p.y)); else { float r = length(p); p -= p / max(r, 1e-4) * OA.x * smoothstep(0.0, 0.03, r); } }`,
   stretch: `{ float hw = uAspect * 0.5; float bin = clamp((p.x + hw) / (2.0 * hw), 0.0, 1.0); bin = (floor(bin * OA.w) + 0.5) / OA.w; float lv = specAt(bin * 0.8 + 0.03); float st = 1.0 + OA.y * lv * (0.4 + 0.6 * uAct) + OA.z * uBeatPulse * uPres.x; float above = step(OA.x, p.y); vAdd += OB.y * above * mix(uColC * (0.025 + 0.05 * uStem.y * uPres.y), uColB * 0.002, smoothstep(OA.x, 0.5, p.y)) * vMul; vMul *= 1.0 + OB.x * (1.4 * lv - 0.3); p.y = OA.x + (p.y - OA.x) / st; }`,
-  mirror: `{ if (OA.x < 0.5) p.x = abs(p.x); else if (OA.x < 1.5) p.y = abs(p.y); else p = abs(p); }`,
-  tile: `{ vec2 h = vec2(uAspect, 1.0) * 0.5; vec2 q = mod(p * OA.x + h, 4.0 * h); p = abs(q - 2.0 * h) - h; }`,
-  polar: `{ float a = mod(atan(p.y, p.x) + OA.y + PI, TAU) - PI; p = vec2(a / PI * uAspect * 0.5, length(p) * 2.0 * OA.x - 0.5); }`,
+  // Folds. OB.w: the harmony gene's loosening (0 = the exact fold), OB.z: its seed (per chord):
+  // mirrored halves turn and slide out of register, tiles and kaleidoscope segments each shift.
+  mirror: `{ vec2 o0 = p; if (OA.x < 0.5) p.x = abs(p.x); else if (OA.x < 1.5) p.y = abs(p.y); else p = abs(p); if (OB.w != 0.0) { float sd = OA.x < 0.5 ? step(o0.x, 0.0) : OA.x < 1.5 ? step(o0.y, 0.0) : step(o0.x, 0.0) + 2.0 * step(o0.y, 0.0); if (sd > 0.0) { float k = OB.w * (0.7 + 0.3 * sin(sd * 2.3 + OB.z)); p = rot2(0.45 * k) * p + vec2(0.1, -0.07) * k * sd; } } }`,
+  tile: `{ vec2 h = vec2(uAspect, 1.0) * 0.5; vec2 q = mod(p * OA.x + h, 4.0 * h); vec2 tid = floor((p * OA.x + h) / (4.0 * h)); p = abs(q - 2.0 * h) - h; if (OB.w != 0.0) { vec2 j = hash22(tid * 1.37 + OB.z) - 0.5; p = rot2(j.x * 1.2 * OB.w) * p + j * 0.5 * OB.w * h; } }`,
+  polar: `{ float a = mod(atan(p.y, p.x) + OA.y + PI, TAU) - PI; float r = length(p); if (OB.w != 0.0) a += OB.w * 0.7 * sin(r * 5.0 + OB.z) * step(0.0, a); p = vec2(a / PI * uAspect * 0.5, r * 2.0 * OA.x - 0.5); }`,
   tunnel: TUNNEL_GLSL,
   mosaic: MOSAIC_GLSL,
-  kaleido: `{ float seg = TAU / OA.x; float a = mod(atan(p.y, p.x) + OA.y, seg); a = abs(a - seg * 0.5); p = length(p) * vec2(cos(a), sin(a)); }`,
+  kaleido: `{ float seg = TAU / OA.x; float a0 = atan(p.y, p.x) + OA.y; float a = mod(a0, seg); a = abs(a - seg * 0.5); float r = length(p); if (OB.w != 0.0) { float j = hash11(mod(floor(a0 / seg), OA.x) * 3.1 + OB.z) - 0.5; a += j * seg * 0.9 * OB.w; r *= 1.0 + j * 0.35 * OB.w; } p = r * vec2(cos(a), sin(a)); }`,
 };
 
 function opCode(o: OpGene, i: number): string {

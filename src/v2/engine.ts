@@ -20,6 +20,7 @@ import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, c
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type ChoreoPose } from './genes/choreo';
+import { HarmonyMotor, IDLE_HARMONY, type HarmonyInputs, type HarmonyOut } from './genes/harmony';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
@@ -689,6 +690,12 @@ export class Stage {
   private poses = new WeakMap<Slot, ChoreoPose>();
   private pose: ChoreoPose = { ...IDENTITY_POSE };
   private cam = new Float32Array(6);
+  /** Harmony gene: each slot's spring state and effect this frame, and the final pass warp. */
+  private motors = new WeakMap<Slot, HarmonyMotor>();
+  private harmOut = new WeakMap<Slot, HarmonyOut>();
+  private harmIn: HarmonyInputs = { tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, tonnetzX: 0.5, tonnetzY: 0.2887, keyWalk: 0 };
+  private harmWarp = new Float32Array(4);
+  private harmSeed = 0;
 
   constructor(private eng: Engine, readonly opts: StageOptions) {
     const gl = eng.gl;
@@ -779,7 +786,9 @@ export class Stage {
       let q = this.poses.get(s);
       if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
       choreoPose(s.genome.choreo, cue, q);
+      this.harmonize(s, state, sdt, q);
     }
+    this.harmonyWarp(slots, state);
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
     cameraUniforms(this.pose, this.w / this.h, this.cam);
 
@@ -1017,17 +1026,21 @@ export class Stage {
         }
         case 'mirror':
           a[j] = o.p.axis;
+          this.loosen(s, b, j, i, o.stage);
           break;
         case 'tile':
           a[j] = P('n');
+          this.loosen(s, b, j, i, o.stage);
           break;
         case 'polar':
           a[j] = P('scale');
           a[j + 1] = F.spin * o.p.lock;
+          this.loosen(s, b, j, i, o.stage);
           break;
         case 'kaleido':
           a[j] = o.p.n;
           a[j + 1] = F.spin * o.p.lock;
+          this.loosen(s, b, j, i, o.stage);
           break;
         case 'mosaic':
           packMosaic(a, j, P, o.p, F.stem[1], F.spin);
@@ -2466,6 +2479,63 @@ export class Stage {
     if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
   }
 
+  /** Harmony gene: runs the slot's motor and composes its pose onto the choreography's. */
+  private harmonize(s: Slot, state: MusicState, sdt: number, q: ChoreoPose): void {
+    let o = this.harmOut.get(s);
+    if (!o) this.harmOut.set(s, (o = { ...IDLE_HARMONY }));
+    const h = s.genome.harmony;
+    if (!h) {
+      Object.assign(o, IDLE_HARMONY);
+      return;
+    }
+    let m = this.motors.get(s);
+    if (!m) this.motors.set(s, (m = new HarmonyMotor()));
+    const F = this.sig.F;
+    const I = this.harmIn;
+    I.tension = F.tension;
+    I.resolve = F.resolve;
+    I.chordPulse = F.chordPulse;
+    I.modPulse = F.modPulse;
+    I.tonnetzX = num(state.tonnetzX, 0.5);
+    I.tonnetzY = num(state.tonnetzY, 0.2887);
+    I.keyWalk = num(state.keyWalk, 0);
+    m.update(h, I, sdt, o);
+    q.zoom *= o.zoom;
+    q.roll += o.roll;
+    q.hue += o.hue;
+    q.sat *= o.sat;
+    q.exposure *= o.exposure;
+  }
+
+  /** The final pass warp: the slots' warp amounts blended by weight, the heaviest slot's style. */
+  private harmonyWarp(slots: Slot[], state: MusicState): void {
+    const w = this.harmWarp;
+    w[0] = w[1] = w[2] = w[3] = 0;
+    let top = 0;
+    let wsum = 0;
+    for (const s of slots) wsum += s.weight;
+    for (const s of slots) {
+      const o = this.harmOut.get(s);
+      if (!o || !s.genome.harmony) continue;
+      w[0] += (o.warp * s.weight) / Math.max(wsum, 1e-3);
+      if (s.weight > top) {
+        top = s.weight;
+        w[1] = o.phase;
+        w[2] = s.genome.harmony.p.style;
+      }
+    }
+    // Each chord breaks the folds its own way: the loosening seed follows the chord.
+    this.harmSeed = (num(state.chord, -1) + 1) * 1.618;
+  }
+
+  /** A fold op's loosening (OB.w) and seed (OB.z) from the slot's harmony motor. */
+  private loosen(s: Slot, b: Float32Array, j: number, i: number, stage: string): void {
+    const o = s.genome.harmony ? this.harmOut.get(s) : undefined;
+    if (!o || o.brk === 0) return;
+    b[j + 2] = this.harmSeed + i * 0.73;
+    b[j + 3] = o.brk * (stage === 'warp' ? 0.35 : 1);
+  }
+
   private post(pp: PostParams, target: 'canvas' | 'out', rawDt: number): void {
     const eng = this.eng;
     const gl = eng.gl;
@@ -2503,6 +2573,7 @@ export class Stage {
       .f1('uTonemap', 1)
       .f4('uCamM', this.cam[0], this.cam[1], this.cam[2], this.cam[3])
       .f2('uCamT', this.cam[4], this.cam[5])
+      .f4('uHarm', this.harmWarp[0], this.harmWarp[1], this.harmWarp[2], this.harmWarp[3])
       .f1('uFrame', this.frame % 1024);
     eng.fs.draw();
   }

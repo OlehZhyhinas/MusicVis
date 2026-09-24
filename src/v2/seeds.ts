@@ -33,8 +33,9 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
+import { HARMONY_SCHEMA } from './genes/harmony';
 
-export const SEED_VERSION = 31;
+export const SEED_VERSION = 32;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -107,6 +108,8 @@ interface Def {
   choreo?: Record<string, number>;
   /** Drift through gene space over the song (src/v2/genes/drift.ts); omitted = none. */
   drift?: Record<string, number>;
+  /** Harmony: symmetry that follows the chord progression (src/v2/genes/harmony.ts); omitted = none. */
+  harmony?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -125,6 +128,7 @@ function build(d: Def): Seed {
   };
   if (d.choreo) g.choreo = { p: { ...defaultParams(CHOREO_SCHEMA), ...d.choreo } };
   if (d.drift) g.drift = { p: { ...defaultParams(DRIFT_SCHEMA), ...d.drift } };
+  if (d.harmony) g.harmony = { p: { ...defaultParams(HARMONY_SCHEMA), ...d.harmony } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -1296,4 +1300,31 @@ const LANDSCAPE: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE].map(build);
+// H01.. showcase the harmony gene (genes/harmony.ts): the chord progression read on the Tonnetz,
+// consonance as symmetry, tension breaking it, resolutions snapping it back.
+const HARMONY: Def[] = [
+  {
+    // An eight-fold mandala of a slowly turning star, streaming outward. While the harmony sits on
+    // the home chord the mandala is perfect; as the chords wander away its segments slide apart and
+    // an off-centre swirl pulls at the frame; when the progression comes home (V-I) every segment
+    // clicks back into place with a flash. Each chord change nudges the colours along the lattice.
+    origin: 'H01', name: 'Cadence Mandala', energy: [0.2, 0.85], scheme: 'analogous', hue: 0.6,
+    color: { bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.975,
+    chain: [op('zoom', { rate: 0.016, radial: 1 }), op('rotate', { lock: 0.0625 }), op('kaleido', { n: 8, lock: 0.0625 }, 1, 'view')],
+    bodies: [body({
+      shape: ['star', { n: 5, r: 0.22, inner: 0.4 }],
+      place: ['point'],
+      motion: ['spin', { rate: 0.125 }],
+      material: ['line', { gain: 1.1, width: 2, halo: 0.25 }],
+      color: ['age', { rate: 0.0625, detail: 0.5 }],
+    })],
+    reactions: [
+      rx('chordchange', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.4 }),
+      rx('tension', 'op', 0, 'rate', 0.35, { atk: 0.3, rel: 0.6 }),
+      rx('bass', 'sh', 0, 'r', 0.2, { atk: 0.03, rel: 0.3 }),
+    ],
+    harmony: { brk: 0.85, warp: 0.3, style: 1, snap: 0.8, settle: 0.3, walk: 0.08, kick: 0.3, modHue: 0.1, modTurn: 0.008, calm: 0.4 },
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY].map(build);
