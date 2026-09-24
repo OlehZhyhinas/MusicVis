@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 27;
+export const SEED_VERSION = 28;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -800,6 +800,43 @@ const MILKDROP: Def[] = [
       emit: ['trail'],
     })],
     reactions: [rx('bass', 'op', 1, 'speed', 0.35, { atk: 0.03, rel: 0.4 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.05, rel: 0.6 }), rx('beat', 'col', 0, 'light', 0.2)],
+  },
+  {
+    // Waltra, Square Orgy: a turning grid of glossy tiles, each lit by the colour behind it, as bright
+    // blobs drift and bloom underneath; the grid swells with the bass and the tiles shine like enamel.
+    origin: 'M18', name: 'Square Orgy (after Waltra)', energy: [0.3, 0.9], scheme: 'triad', hue: 0.08,
+    color: { sat: 1, exposure: 1.05, adapt: 0.3, bloom: 0.8, vignette: 0.2, relief: 0.6, bump: 1.4, gloss: 0.9, light: 0.3 },
+    carrier: 'warp', car: { halfLife: 1.4, floor: 0.2 },
+    chain: [
+      op('zoom', { rate: 0.006, wander: 0.2 }),
+      op('mosaic', { size: 0.13, shape: 0, gap: 0.12, angle: 0.07, lock: 0.0625, pulse: 0.5 }, 1, 'view'),
+    ],
+    bodies: [body({
+      shape: ['dot', { r: 0.1 }],
+      place: ['float', { count: 6, spread: 0.7, speed: 0.18 }],
+      material: ['fill', { gain: 1.2, soft: 0.5 }],
+      color: ['height', { amount: 1.5, detail: 1 }],
+    })],
+    reactions: [rx('bass', 'op', 1, 'size', 0.2, { atk: 0.03, rel: 0.4 }), rx('beat', 'ma', 0, 'gain', 0.4, { rel: 0.25 })],
+  },
+  {
+    // Goody + Flexi, Data Crusher: a field of points streams outward from the centre at speed and is
+    // shown as a coarse wall of pixels, so the rush breaks into blocky streaks; the bass drives the
+    // flight and the drums flash the field.
+    origin: 'M19', name: 'Data Crusher (after Goody & Flexi)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.5,
+    color: { sat: 0.7, exposure: 1.1, adapt: 0.3, bloom: 0.9, vignette: 0.3 },
+    carrier: 'warp', car: { halfLife: 0.5, floor: 0.4 },
+    chain: [
+      op('zoom', { rate: 0.035 }),
+      op('rotate', { lock: 0.0625 }),
+      op('mosaic', { size: 0.02, shape: 0, gap: 0.25, angle: 0, lock: 0, pulse: 0.3 }, 1, 'view'),
+    ],
+    bodies: [body({
+      shape: ['dot', { r: 0.004 }],
+      place: ['grid', { lattice: 0, scale: 9, jitter: 0.6, density: 0.4, lit: 0.5, twinkle: 0.6 }],
+      material: ['glow', { gain: 1.4, width: 0.006, base: 0.3 }],
+    })],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 }), rx('drums', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.2 })],
   },
 ];
 

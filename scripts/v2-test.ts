@@ -31,6 +31,7 @@ import { buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { CELLS_SCHEMA } from '../src/v2/genes/cells';
 import { TUNNEL_SCHEMA } from '../src/v2/genes/tunnel';
+import { MOSAIC_SCHEMA } from '../src/v2/genes/mosaic';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 import { driftTests } from './drift-tests';
@@ -1710,6 +1711,49 @@ await noveltyTestsAsync(check);
   }
   check('tunnel.breeds-with-every-species', !probs.length && kept > n * 0.25, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; tunnel (or its flame-transform form) inherited in ${kept}/${n}`);
   check('tunnel.species-name', classify(m16).primary === 'vortex' && classify(m17).label.includes('vortex'), `M16 ${classify(m16).label} (${nameFor(m16)}), M17 ${classify(m17).label}`);
+}
+
+// -------------------------------------------------- MilkDrop mining: mosaic fold op
+
+{
+  const m18 = seedByOrigin('M18'), m19 = seedByOrigin('M19');
+  check('mosaic.schema', OP_KINDS.includes('mosaic') && OP_SCHEMAS.mosaic === MOSAIC_SCHEMA && m18.chain.some((o) => o.op === 'mosaic' && o.stage === 'view'), 'a stage-free fold op with its own schema');
+  const bad = repair({ ...cloneGenome(m18), chain: [{ op: 'mosaic', stage: 'view', w: 2, p: { size: 5, shape: 1.4, gap: -1, angle: 0.9, lock: 0.07, pulse: NaN } }] });
+  const bp = bad.chain[0].p;
+  check('mosaic.repair', !validate(bad).length && bp.size === 0.15 && bp.shape === 1 && bp.gap === 0 && bp.angle === 0.25 && bp.lock === 0.0625 && bp.pulse === 0, JSON.stringify(bp));
+  const view = buildSources(m18).composite;
+  const warpG = repair({ ...cloneGenome(m18), chain: [{ ...m18.chain[1], stage: 'warp' }] });
+  check('mosaic.glsl', view.includes('float s = max(uOpA[1].x, 1e-3)') && buildSources(warpG).feedback.includes('float s = max(uOpA[0].x, 1e-3)'), 'the block mapping builds into the view (composite) or warp (feedback) stage');
+  check('mosaic.cost', estimateCost(m18) < COST_BUDGET_MS && estimateCost(m19) < COST_BUDGET_MS, `M18 ${estimateCost(m18).toFixed(2)} ms, M19 ${estimateCost(m19).toFixed(2)} ms`);
+  const qr = mulberry32(3131);
+  let mosaics = 0;
+  const rbad: string[] = [];
+  for (let i = 0; i < 800; i++) {
+    const o = randomOp(qr);
+    if (o.op !== 'mosaic') continue;
+    mosaics++;
+    const g = repair({ ...cloneGenome(seedByOrigin('E05')), chain: [o] });
+    if (validate(g).length) rbad.push(validate(g)[0]);
+  }
+  check('mosaic.random', mosaics > 5 && !rbad.length, rbad[0] ?? `${mosaics}/800 random ops were mosaics, all valid`);
+  const rng = mulberry32(2121);
+  const probs: string[] = [];
+  let kept = 0, n = 0;
+  const bySp = new Map<string, Genome>();
+  for (const x of SEEDS) if (!bySp.has(classify(x.genome).primary)) bySp.set(classify(x.genome).primary, x.genome);
+  for (const [sp, other] of bySp) {
+    for (let k = 0; k < 6; k++) {
+      const c = k % 2 ? crossover(m18, other, rng) : crossover(other, m19, rng);
+      n++;
+      if (validate(c).length) probs.push(`${sp}:${validate(c)[0]}`);
+      if (c.chain.some((o) => o.op === 'mosaic') || c.bodies.some((b) => b.shape.kind === 'flame')) kept++;
+      const m = mutate(c, rng, 2);
+      if (validate(m).length) probs.push(`${sp} mutated:${validate(m)[0]}`);
+    }
+  }
+  check('mosaic.breeds-with-every-species', !probs.length && kept > n * 0.25, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; mosaic (or its flame-transform form) inherited in ${kept}/${n}`);
+  const tiledHits = SEEDS.slice(0, 24).filter((x) => ADJ_POOLS.tiled.includes(nameFor(repair({ ...cloneGenome(x.genome), chain: [...x.genome.chain.slice(0, 5), m18.chain[1]] })).split(' ')[0])).length;
+  check('mosaic.name', tiledHits >= 3 && classify(m18).label.includes('mirror'), `${tiledHits}/24 originals named tiled with a mosaic; M18 ${nameFor(m18)} (${classify(m18).label}), M19 ${nameFor(m19)} (${classify(m19).label})`);
 }
 
 void (repairBody as unknown);

@@ -5,6 +5,7 @@
 // structure changes the source, so compiled programs are cached by
 // structuralKey().
 
+import { MOSAIC_GLSL } from './genes/mosaic';
 import { TUNNEL_GLSL } from './genes/tunnel';
 import { HUEMAP_GLSL } from './genes/huemap';
 import { RELIEF_GLSL } from './genes/relief';
@@ -157,6 +158,7 @@ const OP_GLSL: Record<string, string> = {
   tile: `{ vec2 h = vec2(uAspect, 1.0) * 0.5; vec2 q = mod(p * OA.x + h, 4.0 * h); p = abs(q - 2.0 * h) - h; }`,
   polar: `{ float a = mod(atan(p.y, p.x) + OA.y + PI, TAU) - PI; p = vec2(a / PI * uAspect * 0.5, length(p) * 2.0 * OA.x - 0.5); }`,
   tunnel: TUNNEL_GLSL,
+  mosaic: MOSAIC_GLSL,
   kaleido: `{ float seg = TAU / OA.x; float a = mod(atan(p.y, p.x) + OA.y, seg); a = abs(a - seg * 0.5); p = length(p) * vec2(cos(a), sin(a)); }`,
 };
 

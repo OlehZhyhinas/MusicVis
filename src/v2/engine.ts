@@ -8,6 +8,7 @@
 import { packSuperscope } from './genes/superscope';
 import { resetCurveBlend, setCurveBlend } from './genes/blend';
 import { Water } from './genes/waterSim';
+import { packMosaic } from './genes/mosaic';
 import { packTunnel } from './genes/tunnel';
 import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
@@ -997,6 +998,9 @@ export class Stage {
         case 'kaleido':
           a[j] = o.p.n;
           a[j + 1] = F.spin * o.p.lock;
+          break;
+        case 'mosaic':
+          packMosaic(a, j, P, o.p, F.stem[1], F.spin);
           break;
         case 'tunnel':
           packTunnel(a, b, j, P, o.p, s.mem, `op${i}.tz`, sdt, F.speed, F.beatPulse, F.spin);

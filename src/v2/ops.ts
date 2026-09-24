@@ -339,6 +339,8 @@ export function opToXform(o: OpGene, rng: Rng): FlameXformGene {
   if (isVarOp(o.op)) {
     const v = o.op.slice(2) as FlameVar;
     x.vars = { [v]: 0.5 + 0.5 * o.w, linear: 0.3 * rng() };
+  } else if (o.op === 'mosaic') {
+    x.vars = { linear: 0.6, handkerchief: 0.4 };
   } else if (o.op === 'tunnel') {
     x.vars = { spherical: 0.6, polar: 0.4 };
   } else if (o.op === 'rotate' || o.op === 'swirl' || o.op === 'twist' || o.op === 'kaleido' || o.op === 'polar') {

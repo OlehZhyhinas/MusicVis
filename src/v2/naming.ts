@@ -262,6 +262,7 @@ function traits(g: Genome): Trait[] {
       case 'polar': add('orbital', ORBITAL, w * 0.6); break;
       case 'tunnel': add(o.p.speed >= 0 ? 'zoomOut' : 'zoomIn', o.p.speed >= 0 ? ZOOM_OUT : ZOOM_IN, clamp01(0.5 + Math.abs(o.p.speed) * 0.4)); break;
       case 'tile': add('tiled', TILED, w * 0.7); break;
+      case 'mosaic': add('tiled', TILED, clamp01(0.6 + o.p.gap * 0.5)); break;
       default:
         if (isVarOp(o.op)) add('fractal', FRACTAL, w * 0.7);
     }

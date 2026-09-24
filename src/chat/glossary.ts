@@ -12,7 +12,7 @@ Only 1 flame + 1 solid + 1 scene shape per preset(each unique, at most 1 of that
 CHAIN (up to 6 whole-scene ops + each body's own up to 3 draw-space deform ops, from the same op
 kinds): warp-stage feeds back frame-to-frame(trails/streaming); view-stage just reshapes the
 picture(no accumulation). Motion ops(zoom,rotate,translate,swirl,twist,ripple,noise,push,quad) are
-warp-only; folds(mirror,tile,polar,kaleido,stretch,tunnel)+v_ flame variations can run in either stage.
+warp-only; folds(mirror,tile,polar,kaleido,stretch,tunnel,mosaic)+v_ flame variations can run in either stage.
 
 CARRIER(always present): halfLife=trail length(s to fade to half). floor=black-level cut/frame
 (higher=trails vanish faster). blur=softens image. sharpen=edges sharpen/flats fade, grows
@@ -148,6 +148,7 @@ export const ENTRIES: Record<string, string> = {
   'op.tile': 'tile(fold): repeats in a grid; n=cells/unit.',
   'op.polar': 'polar(fold): polar-coord map, radial symmetry.',
   'op.kaleido': 'kaleido(fold): n-fold mirror.',
+  'op.mosaic': 'mosaic(fold): the picture in blocks; size=cell size; shape 0 square tiles,1 round LEDs,2 hexagons; gap=dark grout(view stage); angle/lock=grid turn; pulse=cells swell with bass.',
   'op.tunnel': 'tunnel(fold): the picture wrapped on a tunnel wall flown through; depth=tunnel size; speed=flight(neg=backward); twist=spiral; sides 0 round/3-8 polygon; rep=repeats round the wall; fog=dark far end.',
   'op.stretch': 'spectrum stretch; beat=extra pull on beat.',
   'op.v_': 'v_<name>(flame variation): bends space via that flame function; w=blend; s=scale.',
