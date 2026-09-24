@@ -10,6 +10,7 @@ import { Population } from '../src/v2/population';
 import { nameFor, nounKind, NOUN_POOLS } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 import { SCENE_SCHEMA, SCENE_VEC4, packScene, sceneCost } from '../src/v2/genes/raymarch';
+import { FRACTAL_FIRST, FRACTAL_KINDS, fractalDE, fractalFrame } from '../src/v2/genes/raymarchFractal';
 import type { Frame } from '../src/v2/engine';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -133,6 +134,27 @@ export function raymarchChecks(check: Check): void {
     }
     if (!(worst > 0.02)) camBad.push(`tunnel cam ${cam} gap ${gap} spec ${spec}: clearance ${worst.toFixed(3)}`);
     if (!(travelled > 5)) camBad.push(`tunnel cam ${cam}: travelled ${travelled.toFixed(1)}`);
+  }
+  // Fractals: every camera (the fly-in dives deep) stays outside the surface by the JS estimator.
+  for (let fk = 0; fk < FRACTAL_KINDS.length; fk++) for (const cam of SCENE_SCHEMA.cam.choices!) for (const [fscale, roam, iter] of [[-1.8, 1, 6], [2.5, 1, 10], [-3, 0.3, 3]]) {
+    const p = { ...r01.bodies[0].shape.p, scene: FRACTAL_FIRST + fk, cam, fscale, roam, iter, fold: 1, power: 8, size: 1, pulse: 1, kick: 1 };
+    const out = new Float32Array(SCENE_VEC4 * 4);
+    const mem: Record<string, number> = {};
+    const F = { speed: 1, act: 1, loud: 1, beatPulse: 0, gate: new Float32Array([1, 1, 1, 1]), stem: new Float32Array([0, 1, 0, 0]), onset: new Float32Array(4), sectionIndex: 0, bars: 0 } as unknown as Frame;
+    let worst = 1e9, nearest = 1e9;
+    for (let i = 0; i < 960; i++) {
+      F.bars = i / 60;
+      F.sectionIndex = Math.floor(i / 240);
+      F.onset[0] = i % 30 === 0 ? 1 : 0;
+      packScene(out, { F, sdt: 1 / 60, P: (k) => p[k], raw: p, mem, key: 'b0.' });
+      // Rebuild the frame the pass used (same seed, time and bass state) and measure the camera's clearance.
+      const fr = fractalFrame(FRACTAL_KINDS[fk], (k) => p[k], p, out[9], mem['b0.bass'], out[25], out[26]);
+      const d = fractalDE(fr, out[0], out[1], out[2]);
+      worst = Math.min(worst, d / fr.radius);
+      nearest = Math.min(nearest, Math.hypot(out[0], out[1], out[2]) / fr.radius);
+    }
+    if (!(worst > 0.02)) camBad.push(`${FRACTAL_KINDS[fk]} cam ${cam} scale ${fscale}: inside (clearance ${worst.toFixed(3)} radii)`);
+    if (cam === 1 && roam === 1 && !(nearest < 1.05)) camBad.push(`${FRACTAL_KINDS[fk]} fly never dives in (nearest ${nearest.toFixed(2)} radii)`);
   }
   const distinct = new Set(paths.filter((_, i) => i % 3 === 0).map((x) => x.join())).size === SCENE_SCHEMA.cam.choices!.length;
   check('scene.cameras', !camBad.length && distinct, camBad.join(' | ') || `${SCENE_SCHEMA.cam.choices!.length} camera modes move differently and keep clear of the shapes (3 settings each)`);

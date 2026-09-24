@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 28;
+export const SEED_VERSION = 29;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1122,6 +1122,39 @@ const RAYMARCH: Def[] = [
     reactions: [
       rx('drums', 'sh', 0, 'kick', 0.25, { atk: 0.01, rel: 0.2 }),
       rx('bass', 'sh', 0, 'pulse', 0.2, { atk: 0.02, rel: 0.3 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // A Mandelbulb turning under an orbiting camera: the bass raises its power so the bulbs sprout and
+    // melt back, its folds breathe with the low end, drum hits push the camera in, each section turns it
+    // to a new face; the spectrum tints its orbit-trap colours.
+    origin: 'R06', name: 'Bulb Bloom', energy: [0.2, 0.8], scheme: 'triad', hue: 0.3,
+    color: { adapt: 0.35, bloom: 1.15 }, carrier: 'warp', decay: 0.85,
+    bodies: [body({
+      shape: ['scene', { scene: 4, cam: 0, res: 0.35, size: 1, blend: 0.3, speed: 0.35, pulse: 0.6, kick: 0.5, vary: 1, rim: 0.7, ao: 0.8, fog: 0.2, glow: 0.35, roam: 0.4, gap: 0.5, spec: 0.6, iter: 5, fscale: -1.8, fold: 1, power: 7 }],
+      material: ['fill', { gain: 1.2 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'power', 0.25, { atk: 0.05, rel: 0.6 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // Diving into a Menger sponge and back out every sixteen bars, steering around its walls: the bass
+    // shifts where the holes open, drum hits lunge deeper, sections turn the sponge; neon rims only.
+    origin: 'R07', name: 'Sponge Descent', energy: [0.3, 0.9], scheme: 'split', hue: 0.55,
+    color: { adapt: 0.3, bloom: 1.3 }, carrier: 'warp', decay: 0.9,
+    bodies: [body({
+      shape: ['scene', { scene: 5, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.4, pulse: 0.5, kick: 0.6, vary: 1, rim: 1, ao: 0.6, fog: 0.4, glow: 0.5, roam: 0.9, gap: 0.5, spec: 0.5, iter: 4, fscale: -1.8, fold: 1, power: 8 }],
+      material: ['line', { gain: 1.1 }],
+      color: ['age', { rate: 0.0625, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'fold', 0.12, { atk: 0.05, rel: 0.5 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
       rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
     ],
   },

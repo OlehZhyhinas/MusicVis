@@ -1020,6 +1020,10 @@ function fitBudget(g: Genome): void {
     const res = SCENE_SCHEMA.res.choices!;
     while (b.shape.kind === 'scene' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.res > res[0]) b.shape.p.res = res[res.indexOf(b.shape.p.res) - 1];
   }
+  // A fractal scene then sheds iterations.
+  for (const b of g.bodies) {
+    while (b.shape.kind === 'scene' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.iter > SCENE_SCHEMA.iter.min) b.shape.p.iter--;
+  }
 }
 
 /** Halves a stem ecosystem's agents (down to floor) while the genome is over budget. */

@@ -1,0 +1,357 @@
+PASS  seeds.count: 65 seeds (17 MilkDrop)
+PASS  seeds.order: E01,E02,E03,E04,E05,E06,E07,E08,E09,E10,E11,E12,E13,E14,E15,E16,E17,E18,E19,E20,E21,E22,E23,E24,M01,M02,M03,M04,M05,M06,M07,M08,M09,M10,M11,M12,M13,M14,M15,M16,M17,C01,C02,V01,V02,A01,A03,A07,A02,A04,A05,A06,A08,A09,R01,R02,R03,R04,R05,R06,R07,P01,P02,P03,B01
+PASS  seeds.validate: all 65 valid
+PASS  seeds.repair-idempotent: repair(seed) === seed for all 65
+PASS  seeds.serialization-roundtrip: all 65 survive JSON + repair unchanged
+PASS  seeds.under-budget: all under 8 ms
+PASS  seeds.version: SEED_VERSION=29
+PASS  seeds.sub-gene-decomposition: 19 seeds use their sub-genes
+PASS  glsl.cover-emission: the walker paints over the trail in the feedback pass
+PASS  glsl.stretch-view: stretch scales the displayed picture
+PASS  glsl.grid-fold: stars are a grid fold
+PASS  glsl.metaball: chrome drops melt as metaballs
+PASS  repair.random-valid-idempotent: 400 random genomes valid and idempotent
+PASS  repair.garbage: 15 malformed inputs repair to valid genomes
+PASS  repair.flame-rules: point/trail
+PASS  repair.chunk-single-copy: count=1 emit=trail
+PASS  repair.curve-rules: line/point
+PASS  repair.unique-resources: solid/trail,dot/sparks,dot/trail
+PASS  validate.catches-range: bodies[0].place.count=9 out of range;bodies[0].place.inst=undefined out of range;bodies[0].place.xs=undefined out of range;bodies[0].place.jump=undefined out of range;bodies[0].place.wander=undefined out of range;bodies[0].place.swap=undefined out of range;bodies[0].place.fuse=undefined out of range
+PASS  repair.fits-budget: count=1 cost=8.84
+PASS  loci.every-kind-builds: 378 bodies (every kind of every locus) valid and build shaders
+PASS  loci.vocabulary: 17 shapes, 10 placements, 8 motions, 5 deformations, 6 materials, 8 emissions
+PASS  structuralKey.uniform-changes: noise|dot:loop:none:fill:fbc|warp|r0t0
+PASS  structuralKey.material-is-structure: noise|dot:loop:none:glow:fbc|warp|r0t0
+PASS  cross.all-seed-pairs-valid: 12480 children valid, <= 2 bodies, under budget
+PASS  cross.normally-one-body: 11556/12480 single-body children; tags {"merged":2632,"layered":924,"morph":1718,"fused":7206}
+PASS  cross.layering-rare: 924/12480 layered
+PASS  cross.all-operators-used: {"merged":2632,"layered":924,"morph":1718,"fused":7206}
+PASS  cross.mixes-ideas: 7734/12480 children take distinct loci from both parents (dominant 35750, recessive 10798 loci)
+PASS  morph.params-between-parents: 300 shape morphs interpolate within the parents and the spec
+PASS  morph.flame-x-flame: 88 morphs, 100/100 single flame, 88 blended in range
+PASS  ideas.wandering-cage: solid x walker, emit trail, motion hits
+PASS  ideas.moon-arms-on-flame: flame with arms deformation (feedback silhouette mask)
+PASS  ideas.ink-from-star-grid: grid x dye, carrier fluid
+PASS  ideas.polyhedra-turning-on-ink: ink stations with bar-locked spin (rate 1)
+PASS  ideas.incompatible-loci-refused: 242/300 flame children kept a placement a flame can express
+PASS  fuse.valid-roundtrip: 309 fused bodies valid, round-trip, build shaders
+PASS  mutate.valid: 3000 mutations valid, body cap kept
+PASS  mutate.sub-gene-swaps: unused: express-allele,drop-allele,delete-deform-op
+PASS  layer.cap-two: first=true second=false
+PASS  classify.seeds: 15 seeds classified as their species
+PASS  population.seeded-size: size=65
+PASS  population.child1: G1-0001
+PASS  population.child2: G2-0002
+PASS  fitness.liked-beats-disliked: liked > disliked
+PASS  fitness.soft-dislike: skip within 5 s lowers fitness
+PASS  fitness.weak-like: watch > 60 s counts
+PASS  serialization.roundtrip-equal: toJSON -> JSON -> fromJSON -> toJSON matches
+PASS  serialization.version: version=6
+PASS  serialization.counter: counter preserved
+PASS  serialization.rejects-garbage: non-population refused
+PASS  serialization.drops-invalid-members: size=67 expected=67
+PASS  cull.leaves-150-keeps-seeds: size=150
+PASS  migrate.every-emitter-kind: 15 old emitter kinds convert to their sub-genes
+PASS  migrate.merge-to-fuse: dot+solid
+PASS  migrate.draw-to-deform-ops: swirl
+PASS  migrate.reactions-follow: dr0.amt,fs0.size,fu0.k,sh0.r
+PASS  migrate.mask-merge: {"mode":2,"k":0.08,"t":0.5,"drive":1,"depth":0.6,"rate":8,"inside":1}
+PASS  migrate.format-1: dot/stations/trail,dot/point/none,dot/grid/trail
+PASS  migrate.upgrade-direct: repair(old) === repair(upgradeV2(repairV2(old)))
+PASS  migrate.v3-file-loads: size=68
+PASS  migrate.all-valid: every member valid
+PASS  migrate.children-kept: Wheeling Serpent / Starfish Pearl Cage / Old Flame
+PASS  migrate.children-faithful: rotate|dot:loop:arms:fill:top+1solid1|warp|r0t0
+PASS  migrate.descriptors-dropped: converted children are measured again
+PASS  migrate.seeds-replaced: 65 seeds upgraded
+PASS  migrate.seed-votes-kept: E02 4/1 views=9
+PASS  migrate.parent-links: parents resolve
+PASS  migrate.idempotent: second upgrade changes nothing
+PASS  migrate.stable: a saved v4 file reloads unchanged
+PASS  migrate.renders: every converted member builds shaders under budget
+PASS  migrate.v1-file-renamed: Churning Coil
+PASS  migrate.newer-file-rejected: refused
+PASS  naming.no-hue-words: 600 names, none hue-based
+PASS  naming.body-nouns: 11 seeds name their body
+PASS  naming.placement-changes-noun: Pivoting Lattice
+PASS  naming.walking-dot-serpent: Reaching Viper
+PASS  naming.arms-adjective: Grasping Planet
+PASS  naming.motion-deform-adjective: Skipping Smudge
+PASS  naming.swirl-adjective: Coiling Thread
+PASS  naming.fused-two-nouns: Reaching Pearl Cage
+PASS  naming.deterministic: Swiveling Hexagon
+PASS  naming.inherits-noun: 112/112 serpent children kept "Viper"
+PASS  naming.dedupe: Calm Orb II
+PASS  feel.format3-neutral: {"atk":0.005,"rel":0.005,"thr":0,"sens":1,"div":4,"lock":1}
+PASS  feel.format3-reactions-kept: 5 reactions
+PASS  feel.look-and-feel-split: 17 ink children with polyhedra's feel, 52 polyhedra children with ink's feel (of 400)
+PASS  feel.mutations: feel swaps, clock changes, rewired sources and curve changes all valid
+PASS  feel.random-curves: {"src":"bass","g":"op","i":0,"k":"s","gain":0.5775619788095355,"atk":0.005,"rel":0.005,"thr":0.14604423651471735,"q":0,"div":4}
+PASS  feel.names: Variegated Plume / Gentle Billow
+PASS  colour.format3-converts: {"kind":"mono","p":{"hue":0.6,"spread":1}}
+PASS  colour.format3-reactions: pal.hue,cm.hue,col.bloom
+PASS  colour.seed-mappings-implied: E01:fixed E02:instrument E03:fixed E04:instrument E05:instrument E06:instrument E07:fixed E08:fixed E09:instrument E10:pitch E11:fixed E12:fixed E13:pitch E14:fixed E15:fixed E16:fixed E17:fixed E18:fixed E19:fixed E20:fixed E21:fixed E22:fixed E23:fixed E24:fixed M01:age M02:fixed M03:instrument M04:instrument M05:age M06:instrument M07:age M08:age M09:age M10:fixed M11:age M12:fixed M13:height M14:instrument M15:age M16:age M17:fixed C01:age C02:pitch V01:fixed V02:fixed A01:fixed A03:fixed A07:melody A02:instrument A04:instrument A05:fixed A06:pitch A08:fixed A09:height R01:fixed R02:age R03:fixed R04:fixed R05:age R06:fixed R07:age P01:height P02:age P03:instrument B01:fixed
+PASS  colour.parts-split: grid children: 71 with the walker's palette, 77 with its instrument mapping, 74 with one but not the other
+PASS  colour.every-mapping: 7 mapping kinds build, validate and name cleanly
+PASS  colour.mapping-name: Banked Waveform
+PASS  linkage.place-motion: motion follows a recessive placement 90% (458/511) vs 13% otherwise; splits still happen
+PASS  linkage.material-colour: 302/348 recessive materials brought their colour mapping
+PASS  homology.reactions: 862 inherited reactions, no target driven twice
+PASS  homology.reaction-follows-locus: 97 E09-bodied children kept the beat -> material gain reaction
+PASS  allele.generations-valid: 6 generations x 60 children valid
+PASS  allele.compact: 309/390 bodies carry 628 silent alleles, 6% of the serialized size
+PASS  allele.mutations: express-allele / drop-allele keep carriers valid
+PASS  allele.roundtrip: alleles survive JSON + repair and never change the shaders
+PASS  allele.repair: {"motion":{"kind":"spin","p":{"rate":1,"alt":0}}}
+PASS  allele.resurfaces: 27/600 grandchildren walk again (neither parent shows the walk)
+PASS  editor.model-covers-loci: all 63 locus/kind combos reachable from a seed and modeled
+PASS  editor.model-widgets: every control across 65 seeds has the right widget; genome-wide sections present
+PASS  editor.kind-switch-valid: switchKind valid (or clean-refused) across 65 seeds x loci/kinds, palette, carrier, chain ops
+PASS  editor.slider-roundtrip: fromSlider(toSlider(v)) within one step for def/min/max of every non-choice spec, incl. log halfLife/atk/rel
+PASS  editor.setParam-clamps: setParam clamps range/int for every locus param, energy keeps its gap, editParam repairs a broken field-shape count
+PASS  editor.chain-ops: chain fills to MAX_CHAIN=6 and caps; moveOp swaps and carries reactions; removeOp reindexes/drops; setStage enforces warp-only motion ops
+PASS  editor.draw-ops: deform ops fill to MAX_DRAW=3 and cap; removing the last op clears deform.ops
+PASS  editor.reactions: reactions fill to MAX_REACTIONS=6 with distinct targets and cap; rewiring never double-drives; reactionTargets() stays reactable
+PASS  editor.express-allele: expressAllele swaps shape into place and files the old kind as silent
+PASS  editor.save-as-new: saveEdited makes G1-0001 "Plain Trace" (gen 1) from G0-E07, then G2-0002 at gen 2, surviving round-trip
+PASS  editor.parse-genome: parseGenome round-trips a genome and a {genome} wrapper, rejects garbage with a reason
+PASS  milkdrop.ids: G0-M01,G0-M02,G0-M03,G0-M04,G0-M05,G0-M06,G0-M07,G0-M08,G0-M09,G0-M10,G0-M11,G0-M12,G0-M13,G0-M14,G0-M15,G0-M16,G0-M17
+PASS  milkdrop.meta: credited names, reactions and an energy range on every M seed
+PASS  milkdrop.valid-in-range-budget: valid, in range, round-trip, under budget, buildable
+PASS  milkdrop.crossover-every-species: 1768 crossovers with 13 species (and their mutants) valid and under budget
+PASS  carrier.new-genes-default-off: {"s":0,"b":0}
+PASS  carrier.new-genes-cost: 2.18 -> 2.66 ms
+PASS  carrier.new-genes-free-without-feedback: no feedback, no sharpen / border cost
+PASS  carrier.new-genes-breed: strayed=0 sharpened=399/400 random-on=31/300
+PASS  ops.quad: 36/600 random ops were quad, all valid and built; a bad one is repaired into range
+PASS  migrate.adds-milkdrop-once: added G0-M01,G0-M02,G0-M03,G0-M04,G0-M05,G0-M06,G0-M07,G0-M08,G0-M09,G0-M10,G0-M11,G0-M12,G0-M13,G0-M14,G0-M15,G0-M16,G0-M17
+PASS  migrate.milkdrop-leaves-rest: existing seeds (votes, descriptors, hidden) and bred children untouched
+PASS  migrate.milkdrop-genomes: new seeds arrive with their genomes and names
+PASS  migrate.milkdrop-stable: a saved migrated population reloads without further changes
+PASS  superscope.schema: a curve-class shape with its own schema, no distance field
+PASS  superscope.repair: valid and idempotent
+PASS  superscope.clamps: {"family":5,"p":1,"q":8,"size":0.45,"audio":0,"spec":0,"spinX":0.25,"spinY":0.0625,"persp":0.5,"n":2048}
+PASS  superscope.no-fuse: fuse dropped
+PASS  superscope.glsl: curve pass carries the superscope family code
+PASS  superscope.cost: 0.790 -> 0.820 ms
+PASS  superscope.named: Sparse Scope (oscilloscope)
+PASS  superscope.breeds: 168 crossovers over 14 species valid, 107 kept the scope; 26/400 random bodies are scopes
+PASS  water.default-off: {"w":0,"s":0.03}
+PASS  water.clamps: {"w":1,"s":0.01}
+PASS  water.cost: 2.18 -> 2.30 ms
+PASS  water.glsl: feedback reads the ripple slope
+PASS  water.breeds: strayed=0 random-on=28/300, reactable, 28 crossovers valid
+PASS  avs.meta: 9 AVS seeds: Silk Strings (after UnConeD), One More (after Tonic), Brainstorm (after Duo), the Light of Speed (after NemoOrange), sakura (after Yathosho), Ocean4 (after Zevensoft), hubble002 (after El-vis), Fractal slo-mo metallic (after Degnic), Alien Device (after Jheriko & Zamuz)
+PASS  avs.valid-in-range-budget: valid, round-trip, under budget, buildable, genes present
+PASS  avs.crossover-every-species: 702 crossovers (and mutants) valid and under budget
+PASS  migrate.adds-avs-once: added G0-A01,G0-A03,G0-A07,G0-A02,G0-A04,G0-A05,G0-A06,G0-A08,G0-A09
+PASS  migrate.avs-leaves-rest: existing members untouched, new seeds arrive with their genomes
+PASS  scene.seeds: 7 R seeds valid, stable, under budget, species 3D scene
+PASS  scene.name: Spectral Sculpture
+PASS  scene.glsl-pass: scene pass built for scene genomes only; the body samples uScene
+PASS  scene.every-material: 6 materials light the scene
+PASS  scene.structure: one scene per genome, single copy, reactable: size,blend,speed,pulse,kick,vary,rim,ao,fog,glow,roam,gap,spec,fscale,fold,power
+PASS  scene.cost: res 0.35 1.23 ms, 0.7 4.17 ms; heavy genome repaired to res 0.35
+PASS  scene.cameras: 3 camera modes move differently and keep clear of the shapes (3 settings each)
+PASS  scene.breeds-every-species: 156 crossovers with 13 species valid and under budget (91 keep the scene), random genes in range
+PASS  scene.random-bodies: 13/300 random bodies are scenes
+PASS  scene.migrate: added G0-R01,G0-R02,G0-R03,G0-R04,G0-R05,G0-R06,G0-R07 once; votes and children untouched
+PASS  blend.default-add: old bodies add, shaders unchanged
+PASS  blend.modes: modes 1-5 wrap the body call, change the structure, cost a little; out-of-range clamps
+PASS  blend.breeds: 54/400 random bodies blend non-additively; crossovers valid; A07 draws in xor
+
+--- 30 example crossovers ---
+Constellations x Hex Keys -> Monochrome Starfield Prism  [merged] dot/grid/drift/none/fill/trail+polygon
+Constellations x Rain Curtains -> Ascending Rim  [fused] edge/point/none/none/glow/trail
+Ink Garden x Wandering Vortex -> Tilting Cloud  [layered] dot/orbit/none/none/glow/trail
+Harmonograph x Moonrise -> Stretching Sphere  [fused] dot/point/none/arms/line/trail
+Mandala x Moonrise -> Radial Course  [fused] curve/point/bob/none/line/trail
+Contour Plasma x Sunrise Arc -> Opalescent Contour  [fused] plasma/point/none/none/fill/trail
+Retro Grid x Ink Garden -> Iridescent Plume  [fused] dot/stations/none/none/fill/none
+Wandering Vortex x Night Skyline -> Wandering Profile  [fused] edge/point/none/none/glow/trail
+Liquid Chrome x Rising Smoke -> Chromatic Smoke  [morph] dot/row/none/none/glow/none
+Liquid Chrome x Aurora -> Liquid Aurora  [layered] aurora/point/none/none/glow/none
+Rorschach x Rising Smoke -> Bilateral Wheel  [morph] dot/row/none/none/glow/sparks
+Polyhedra x Oscilloscope -> Waltzing Current Polyhedron  [merged] curve/point/spin/none/line/trail+solid
+Rorschach x Contour Plasma -> Repeating Medallion  [fused] plasma/point/none/none/glow/none
+Oscilloscope x Moonrise -> Achromatic Bulb Strand  [merged] dot/point/spin/none/line/none+curve
+Polyhedra x Silk Flame -> Veering Frame  [fused] solid/point/spin/none/glow/trail
+Ember Flame x Harmonograph -> Fractal Ember  [fused] flame/point/none/none/line/trail
+Oscilloscope x Aurora -> Veering Trace  [fused] curve/point/spin/none/glow/trail
+Mandala x Spiral Nebula -> Opalescent Nebula Current  [merged] flame/point/spin/none/glow/trail+curve
+Polyhedra x Harmonograph -> Turning Polyhedron  [layered] solid/point/none/none/line/trail
+River of Light x Harmonograph -> Pouncing Serpent  [layered] dot/walker/hits/none/line/cover
+Retro Grid x Wandering Vortex -> Iridescent Ridge  [fused] terrain/orbit/none/none/fill/none
+Constellations x Retro Grid -> Understated Zenith  [fused] dot/grid/drift/none/glow/trail
+River of Light x Rain Curtains -> Dodging Viper  [fused] dot/walker/hits/none/fill/cover
+Spiral Nebula x Wandering Vortex -> Rotating Satellite  [fused] dot/point/spin/none/glow/trail
+Constellations x Contour Plasma -> Chromatic Contour Globe  [merged] plasma/grid/drift/none/fill/none+dot
+Retro Grid x Warp Speed -> Washed Halo  [morph] dot/point/none/none/textured/none
+Spiral Nebula x Ink Garden -> Iridescent Wash  [fused] dot/stations/none/none/glow/trail
+River of Light x Rain Curtains -> Skyward Border Sphere  [merged] edge/point/none/none/fill/trail+dot
+Rain Curtains x Rising Smoke -> Rising Margin  [fused] edge/point/none/none/glow/sparks
+Rain Curtains x Mandala -> Soaring Ridgeline  [layered] edge/point/spin/none/fill/trail
+PASS  choreo.defaults-valid: {"lead":8,"curve":2,"push":0.12,"roll":0,"drain":0.5,"dim":0.25,"punch":0.6,"relax":1,"frame":0,"shot":0.5,"glide":0,"dolly":0,"scene":0,"arc":0,"phrase":8}
+PASS  choreo.repair-clamps: {"lead":4,"curve":2,"push":0.3,"roll":-0.02,"drain":0.5,"dim":0.25,"punch":0.6,"relax":1,"frame":0,"shot":0.5,"glide":0,"dolly":0,"scene":0,"arc":0,"phrase":8}
+PASS  choreo.validate-catches: out-of-range push reported
+PASS  choreo.genome-roundtrip: repair is idempotent with a choreo gene
+PASS  choreo.genome-validate: choreo.dim
+PASS  choreo.seeds-untouched: existing seeds carry no choreo
+PASS  choreo.absent-stays-absent: repair does not invent a choreo gene
+PASS  choreo.cost: +0.020 ms, costliest seed with choreo 6.77 ms
+PASS  choreo.crossover-valid: 200 both-parent children blended, none invented
+PASS  choreo.crossover-carry: 106/200 single-parent children inherited it
+PASS  choreo.crossover-deterministic: choreo-less parents give choreo-less children
+PASS  choreo.mutate: gained 31/1000, lost 11/1000
+PASS  choreo.name-pool: Cinematic,Staged,Choreographed,Theatrical,Scripted,Plotted,Framed,Directed,Scenic,Dramatic,Orchestrated,Rehearsed
+PASS  choreo.name-deterministic: Achromatic Trace
+PASS  choreo.seeds: C01 Drop Countdown 0.64ms, C02 Scene Director 1.74ms
+PASS  choreo.migrate-once: added G0-C01,G0-C02; votes, seeds and bred children untouched
+PASS  choreo.migrate-v7: added G0-C02
+PASS  choreo.lookahead: t15 ttd=5 t25 since=5 ttd=35 t55 ttd=5 t85 ttd=Infinity since=25 bar=2s
+PASS  choreo.build-ramp: 0.000,0.000,0.500,1.000
+PASS  choreo.release-env: 1.000,0.250,0.000,0.000
+PASS  choreo.pose-far: far from a drop: identity
+PASS  choreo.pose-build: mid zoom 1.100 sat 0.57; peak zoom 1.200 sat 0.15 exp 0.50
+PASS  choreo.pose-release: drop zoom 1.150 sat 1.35 exp 1.40, settled after relax
+PASS  choreo.blend: half-way zoom 1.100
+PASS  choreo.camera-covers: identity uniforms zero; worst corner overshoot 0.0e+0
+PASS  choreo.scene-framing: chorus zoom 1.148 pan 0.136,0.011 hue 0.2; verse pan 0.063; frame 0 identity; 5 shots differ
+PASS  choreo.glide: pan 0.063 -> 0.099 -> 0.136 over 2 bars; glide 0 is a cut
+PASS  choreo.dolly: zoom 1.259 -> 1.306 -> 1.368 across the section
+PASS  choreo.phrase-arc: 1.000 1.063 1.100 1.038 1.000 1.063
+PASS  choreo.no-gene-identity: no gene or no look-ahead: identity pose
+PASS  drift.defaults-valid: {"step":0.35,"kinds":0,"what":0,"ret":0.75,"morph":2,"bound":0.15,"seed":0.5}
+PASS  drift.repair-clamps: {"step":1,"kinds":1,"what":0,"ret":0.75,"morph":2,"bound":0.02,"seed":0.5}
+PASS  drift.registered: registered, optional, with a glossary
+PASS  drift.genome-roundtrip: idempotent
+PASS  drift.genome-validate: drift.ret
+PASS  drift.absent-stays-absent: repair does not invent a drift
+PASS  drift.cost: 3.280 -> 3.792
+PASS  drift.path-within-cost: every stop within the charged worst case and the budget (40 seeds, wildest settings)
+PASS  drift.plan-deterministic: 10 stops
+PASS  drift.seed-changes-path: another seed, another journey
+PASS  drift.one-stop-per-section: intro,verse,build,chorus,verse,chorus,breakdown,build,drop,outro
+PASS  drift.opens-home: the first section plays the saved preset
+PASS  drift.moves: 8 of 10 sections differ from home: 0.000 0.022 0.044 0.052 0.022 0.052 0.075 0.044 0.055 0.000
+PASS  drift.return-exact: chorus 2 parent 3, verse 2 parent 1
+PASS  drift.return-partial: 24/24 seeds: chorus 2 at least as close to chorus 1 with ret 0.8 as with 0
+PASS  drift.bounds: every stop of 65 seeds x 3 settings valid and within its bound
+PASS  drift.bridge-furthest: mean breakdown 0.070 vs verse 0.018
+PASS  drift.outro-home: 30/30 outros closer to home than the drop
+PASS  drift.params-only-keeps-structure: 0 seeds changed structure with kinds 0
+PASS  drift.kinds-change-structure: 29/30 seeds change structure with kinds 2
+PASS  drift.colour-only: 0 stops moved a shape with what=colour
+PASS  drift.stop-at: binary search over section starts
+PASS  drift.seek-stable: same genome at each time in either order
+PASS  drift.morph-start: distance to the morph origin 0
+PASS  drift.morph-arrives: after morph bars the stop genome itself
+PASS  drift.morph-continuous: start 0.0129 mid 0.0065
+PASS  drift.morph-valid: mid-morph genome valid, structure of the new section
+PASS  drift.drop-cuts: a drop jumps straight to its genome
+PASS  drift.none-single-stop: without the gene, home all song
+PASS  drift.no-sections: an unanalysed song plays home
+PASS  drift.blend-full: blendToward(t=1) is the target
+PASS  drift.breeding-valid: 0 invalid, 40/40 children of two drifting parents drift
+PASS  drift.no-spurious: 0 children of drift-less parents drifted
+PASS  drift.cross: {"step":0.5,"kinds":2,"what":0,"ret":0.75,"morph":2,"bound":0.15,"seed":0.5}
+PASS  drift.name-pool: shifting adjectives are their own
+PASS  drift.named: Trailing Profile
+PASS  slime.schema: emit kinds none,trail,cover,dye,sparks,slime,flock,ecosystem; params count,sa,sd,steer,step,deposit,decay,diffuse,body,feed,birth,onDrop
+PASS  slime.every-seed-valid: 61/65 seeds grow a network (flames keep their trail), valid, stable, under budget
+PASS  slime.one-per-genome: slime,trail
+PASS  slime.cost-and-budget: 65k 2.07 ms, 1M 5.07 ms; plasma + 1M agents -> 131072 agents, 7.30 ms
+PASS  slime.scaling: agents follow the trail area (min 4096); brightness normalised
+PASS  slime.crossover-every-species: 168 crossovers with 14 species valid; 87 children grow a network
+PASS  slime.random-reachable: 32/400 random genomes grow a network, 0 invalid
+PASS  slime.names: Foraging Rhizome; 40/40 slime names use a veined adjective
+PASS  slime.seeds: P01 Physarum Bloom 4.53ms (Tendrilled Bloom), P02 Mycelial Star 3.12ms (Tri-Tone Blossom)
+PASS  slime.on-drop: showcase drop modes 1,2; reactable: sa,sd,steer,step,deposit,decay,diffuse,body,feed,birth
+PASS  slime.reaction-targets: showcase emission reactions: steer,deposit,diffuse,birth,step,feed
+PASS  slime.shapes-seed: 2/2 showcase bodies feed the trail and give birth; a shape seeds one: true
+PASS  slime.migrate-once: added G0-P01,G0-P02; votes, seeds and bred children untouched
+PASS  flock.schema: params count,speed,radius,align,cohere,separate,wander,home,size,body,onDrop; reactable speed,radius,align,cohere,separate,wander,home,size,body
+PASS  flock.every-seed-valid: 61/65 seeds lead a flock, valid, stable, under budget
+PASS  flock.one-per-genome: flock,trail; flock,slime
+PASS  flock.cost-and-budget: 16k 0.40 ms, 262k 4.90 ms; plasma + 262k birds -> 32768
+PASS  flock.crossover-every-species: 168 crossovers with 14 species valid; 77 children lead a flock
+PASS  flock.random-reachable: 31/400 random genomes lead a flock, 0 invalid
+PASS  flock.names: Veering Flock; 40/40 flock names use a flocking adjective
+PASS  flock.seed: P03 Murmuration 2.89ms (Contrasted Smoke); reactions speed,separate,align
+PASS  eco.schema: params count,wD,wB,wV,wO,glyph,size,trail,predation,bloom,graze,growth,starve,decay,speed,field,hues,body
+PASS  eco.populations: full 1.00/1.00/1.00/0.66 flora 0.60; silent 0.03/0.03/0.03/0.03 flora 0.12; vocal bridge 0.03/0.03/1.00/0.08 flora 0.92 vs no vocals 0.03/0.03/0.03/0.03 flora 0.11; drop predators 0.97 > 0.59, plankton 0.30 < 0.73; starved then revived 1.00/1.00/1.00/0.66 flora 0.60
+PASS  eco.interactions: plankton with predation 1 0.21 < 0 1.00; flora ungrazed 0.95 > grazed 0.61
+PASS  eco.roster: cuts 0,0.25,0.5,1
+PASS  eco.every-seed-valid: 61/65 seeds host an ecosystem, valid, stable, under budget
+PASS  eco.one-per-genome: ecosystem,trail
+PASS  eco.cost-and-budget: 16k 2.18 ms, 262k size 8 6.54 ms; plasma + 262k -> 16384 agents, 7.38 ms
+PASS  eco.crossover-every-species: 168 crossovers with 14 species valid; 85 children keep an ecosystem
+PASS  eco.random-reachable: 29/400 random genomes host an ecosystem, 0 invalid
+PASS  eco.names: Brooding Reef; 40/40 ecosystem names use a teeming adjective
+PASS  eco.seeds: B01 Stem Savanna 2.18ms (Prismatic Wetland)
+PASS  beams.repair: {"count":12,"spread":1.4,"fan":1,"sweep":1,"pattern":4,"period":8,"width":0.2,"haze":1,"gobo":3,"hues":0.5,"length":2.5,"flare":1,"accent":1} copies=1 emit=trail
+PASS  beams.random-bodies: 120 random bodies valid, idempotent, under budget, build shaders
+PASS  beams.crossover-every-seed: 520 children and mutants valid and under budget, 257 express beams
+PASS  beams.mutation: 300 mutations valid, 12 moved the beams parameters
+PASS  beams.name: Multicolored Shafts (beams)
+PASS  beams.cost: 12 textured beams 4.08 ms, genome 4.53 ms
+PASS  beams.seed: V01 Stage Rig: 2.61 ms, valid
+PASS  beams.seed-migrates-once: added G0-V01; votes, hidden seeds and bred children untouched; reload stable
+PASS  cymatics.repair: {"plate":1,"size":0.5,"modes":12,"source":2,"hold":8,"settle":4,"sand":1,"line":3,"shake":1,"rim":1} copies=1 emit=trail
+PASS  cymatics.random-bodies: 120 random bodies valid, idempotent, under budget, build shaders
+PASS  cymatics.crossover-every-seed: 520 children and mutants valid and under budget, 266 express cymatics
+PASS  cymatics.mutation: 300 mutations valid, 6 moved the cymatics parameters
+PASS  cymatics.name: Chromatic Mandorla (cymatics)
+PASS  cymatics.modes: D+A in D -> (1,2), minor sign -1, 7 figures over 8 sections, every pair 1 <= m < n <= modes: true
+PASS  cymatics.seed: V02 Chladni Plate: 1.55 ms, valid
+PASS  cymatics.seed-migrates-once: added G0-V02; votes, hidden seeds and bred children untouched; reload stable
+PASS  relief.default-off: {"relief":0,"bump":1}
+PASS  relief.cost: 0.79 -> 0.91 ms; M11 1.87 ms
+PASS  relief.repair: {"sat":0.7,"exposure":1,"contrast":0.03,"bloom":0.9,"adapt":0.15,"vignette":0.6,"ca":0.0015,"reflect":0,"reflectY":-0.16,"tonemap":0,"relief":1,"bump":0.2,"light":1,"gloss":0.5,"metal":0.5,"huemap":0,"bands":2,"drift":0,"solar":0,"poster":0}
+PASS  relief.glsl: composite lights the feedback layer; the feedback pass is untouched
+PASS  relief.breeds-with-every-species: 14 species x 6 crossovers (+ mutation) valid; relief inherited in 68/84
+PASS  relief.rare-in-random: 38/300 random genomes embossed
+PASS  relief.name: 17/24 originals named embossed when relief is on (e.g. Repousse Course); M11 is vortex × chrome
+PASS  migrate.adds-m11-once: added G0-M11,G0-M12,G0-M13,G0-M14,G0-M15,G0-M16,G0-M17; child and votes untouched
+PASS  map.layout: 2 clusters of 30: mean spacing 149 inside vs 276 across, 60/60 nearest map neighbours in the same cluster; settled in 25 ms; a new look-alike child appears 38 px from its twin, old nodes stay put, gentle re-heat; unfingerprinted nodes hang off their parents
+PASS  map.layout-scale: 500 nodes, 2543 springs: 1.25 ms per step
+PASS  fingerprint.clip: deterministic, 2 section changes over verse/build/drop, dropPulse 1.00, build 1.00, 12.19 s
+PASS  fingerprint.determinism: 39 features in 5 groups, identical on a second run
+PASS  fingerprint.traits: rings, n-fold petals, blobs, drift, symmetry, beat flash and hue each show on the matching picture
+PASS  fingerprint.flow: shift: drift 2.00; zoom: divergence 4.85
+PASS  fingerprint.black-frame: an all-black frame gives finite, zero traits
+PASS  fingerprint.distance: self 0, symmetric, triangle inequality, distinct pictures > 0.3, a 5%-of-spread wobble 0.037
+PASS  fingerprint.norm: robust scales never below the floors, z clipped at 4, identity until 3 fingerprints (fitted on 4)
+PASS  fingerprint.duplicate: near-copy of petals flagged as G0-E03 (0.029); a new picture passes; 61 members still to fingerprint
+PASS  fingerprint.persist: 4 fingerprints survive save/load; another version or a malformed vector is dropped; old files load without; a re-encoded seed is re-measured
+PASS  similarity.fit: 90 simulated answers (10% noise) on uncertain triplets (mean uncertainty 0.99): equal weights 49%, fitted 89% cross-validated (the hidden weights themselves 94%); weights 2.59/0.00/0.66/1.61/0.14 vs hidden 2.27/0.30/0.76/1.52/0.15
+PASS  similarity.triplet: distinct presets, a seen triplet is not asked again, none with fewer than 3 fingerprints (uncertainty 1.00, group disagreement 0.80)
+PASS  similarity.persist: fitted weights take over at answer 8; 12 answers reload with the same weights; malformed answers are dropped
+PASS  novelty.archive: capped at 5 (oldest dropped), refresh keeps one entry, invalid vectors refused, save/load keeps 5; another fingerprint version or a foreign file loads empty
+PASS  novelty.archive-persist: 65 old fingerprints migrated into the archive and saved; after G0-E04 is culled it is still archived (65)
+PASS  novelty.knn: a look inside the crowd rel 0.00, far outside rel 1.00; a member's own archive entry is excluded; the archive median maps to 0.51
+PASS  novelty.explore-score: weights 0 / 0.08 / 0.3 / 0.6; halves after 3 votes; explore: a liked preset (12:1) outranks an unvoted maximally novel one (0.72 > 0.46); wild: the novel one first, until 3 dislikes
+PASS  novelty.phenotype: off adds nothing; an unmeasured member counts as rel 0.5; wild keeps a far-away child (rel 1.00) and turns away a near copy (rel 0.00); gentle turns nothing away
+PASS  cells.schema: a field-class shape with its own schema
+PASS  cells.repair: {"mode":2,"scale":14,"speed":0,"warp":1,"wall":0.35,"fill":0.5,"var":0.2,"pulse":0.3}
+PASS  cells.glsl: the Voronoi field is built into the body pass
+PASS  cells.cost: M12 1.43 ms (measured 1.51 at 1440p), M13 1.55 ms (1.63)
+PASS  cells.breeds-with-every-species: 14 species x 6 crossovers (+ mutation) valid; cells inherited in 43/84
+PASS  cells.random: 20/600 random bodies are cell fields
+PASS  cells.name: Helical Cytoplasm
+PASS  huemap.default-off: {"h":0,"s":0}
+PASS  huemap.cost: 0.79 -> 0.82 ms; M14 2.66, M15 2.23
+PASS  huemap.repair: {"sat":0.7,"exposure":1,"contrast":0.03,"bloom":0.9,"adapt":0.15,"vignette":0.6,"ca":0.0015,"reflect":0,"reflectY":-0.16,"tonemap":0,"relief":0,"bump":1,"light":0.375,"gloss":0.5,"metal":0,"huemap":1,"bands":0.5,"drift":0,"solar":1,"poster":0}
+PASS  huemap.glsl: the composite maps the finished picture; the feedback pass is untouched
+PASS  huemap.breeds-with-every-species: 14 species x 6 crossovers (+ mutation) valid; hue map inherited in 73/84
+PASS  huemap.rare-in-random: 21/300 hue-mapped, 16/300 solarized random genomes
+PASS  huemap.name: 17/24 originals named psychedelic when hue-mapped; M14 is plasma × oscilloscope
+PASS  tunnel.schema: a stage-free fold op with its own schema
+PASS  tunnel.repair: {"depth":0.6,"speed":-1,"twist":0.2,"sides":6,"rep":3,"fog":0.6,"lock":0.25}
+PASS  tunnel.glsl: the tunnel mapping builds into the view (composite) or warp (feedback) stage
+PASS  tunnel.cost: M16 2.06 ms, M17 3.60 ms
+PASS  tunnel.random: 14/800 random ops were tunnels, all valid
+PASS  tunnel.breeds-with-every-species: 14 species x 6 crossovers (+ mutation) valid; tunnel (or its flame-transform form) inherited in 64/84
+PASS  tunnel.species-name: M16 vortex × oscilloscope (Falling Strand), M17 chrome × vortex
+
+PASSED: 0 failing check(s)
