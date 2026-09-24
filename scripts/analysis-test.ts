@@ -4,6 +4,7 @@
 import { analyzePcm } from '../src/analysis/analyzePcm';
 import { TimelineSampler } from '../src/analysis/TimelineSampler';
 import type { AnalysisResult, LiveAudioFrame, StemName } from '../src/types';
+import { harmonyTests } from './harmony-tests';
 
 const SR = 44100;
 const BPM = Number(process.env.BPM ?? 128);
@@ -599,6 +600,9 @@ for (const kind of ['sine', 'piano'] as const) {
     }
   }
 }
+
+console.log('\n# Harmony map');
+harmonyTests(check);
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);
 process.exitCode = failures === 0 ? 0 : 1;
