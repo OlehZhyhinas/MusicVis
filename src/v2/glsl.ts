@@ -5,6 +5,7 @@
 // structure changes the source, so compiled programs are cached by
 // structuralKey().
 
+import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
 import { BEAMS_GLSL } from './genes/beams';
@@ -1088,7 +1089,7 @@ uniform sampler2D uFb;
 uniform float uWeight, uSat, uSweep, uReflectY;
 out vec4 o;
 vec3 fb(vec2 q) { return texture(uFb, q / vec2(uAspect, 1.0) + 0.5).rgb; }
-vec2 view(vec2 p) {
+${RELIEF_GLSL}vec2 view(vec2 p) {
 ${viewOps}  return p;
 }
 ${code}
@@ -1105,12 +1106,12 @@ void main() {
   vec2 q = view(p);
 #ifdef LOG_TONE
   vec2 ox = vec2(0.5 / uRes.y, 0.0), oy = vec2(0.0, 0.5 / uRes.y);
-  vec3 c = (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25 * vMul + vAdd;
+  vec3 c = reliefLit(q, (fb(q + ox + oy) + fb(q - ox - oy) + fb(q + ox - oy) + fb(q - ox + oy)) * 0.25) * vMul + vAdd;
 ${topDraw}  float l = max(c.r, max(c.g, c.b));
   float b = log(1.0 + l * 24.0) / log(25.0);
   c = c / max(l, 1e-5) * pow(b, 1.1) * 0.55;
 #else
-  vec3 c = fb(q) * vMul + vAdd;
+  vec3 c = reliefLit(q, fb(q)) * vMul + vAdd;
 ${topDraw}#endif
   c *= att;
 #ifdef REFLECT

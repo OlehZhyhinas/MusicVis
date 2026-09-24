@@ -311,6 +311,8 @@ export function randomGenome(rng: Rng): Genome {
   g.carrier.p.sharpen = rng() < 0.12 ? 0.1 + 0.3 * rng() : 0;
   g.carrier.p.border = rng() < 0.12 ? 0.3 + 0.7 * rng() : 0;
   g.carrier.p.water = rng() < 0.08 ? 0.3 + 0.7 * rng() : 0;
+  // Relief (emboss lighting) is a strong look too.
+  g.tone.p.relief = rng() < 0.1 ? 0.4 + 0.6 * rng() : 0;
   const nr = randInt(rng, 1, 3);
   for (let i = 0; i < nr; i++) {
     const r = randomReaction(g, rng);

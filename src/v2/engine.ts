@@ -7,6 +7,7 @@
 
 import { packSuperscope } from './genes/superscope';
 import { Water } from './genes/waterSim';
+import { reliefUniforms } from './genes/relief';
 import type { MusicState, StemName } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
@@ -767,6 +768,8 @@ export class Stage {
         .f1('uSat', (1 - 0.45 * F.build) * this.poses.get(s)!.sat)
         .f1('uSweep', F.keyPulse)
         .f1('uReflectY', g.tone.p.reflectY);
+      const rl = reliefUniforms((k) => s.P('col', 0, g.tone.p, k, TONE_SCHEMA));
+      p.f4('uRelief', rl.v[0], rl.v[1], rl.v[2], rl.v[3]).f1('uMetal', rl.metal);
       eng.fs.draw();
     }
     for (const s of slots) {

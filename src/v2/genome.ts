@@ -393,6 +393,13 @@ export const TONE_SCHEMA: Schema = {
   reflect: C([0, 1], 0),
   reflectY: P(-0.45, 0, -0.16),
   tonemap: C([0, 1], 0), // 1 = flame log-density
+  // Relief: the carried picture lit as a height map (emboss / liquid chrome); bump: surface height,
+  // light: light direction in turns, gloss: specular highlight, metal: palette reflections.
+  relief: P(0, 1, 0),
+  bump: P(0.2, 3, 1),
+  light: P(0, 1, 0.375),
+  gloss: P(0, 1, 0.5),
+  metal: P(0, 1, 0),
 };
 export interface ToneGene {
   p: Params;
@@ -1204,6 +1211,8 @@ export function speciesScores(g: Genome): Record<Species, number> {
   // A sharpened carrier grows its own pattern field; a border feeds one from the edges.
   if (g.carrier.kind !== 'none') s.plasma += 3 * g.carrier.p.sharpen + 1.6 * g.carrier.p.border;
   if (g.carrier.kind !== 'none') s.ink += 1.2 * g.carrier.p.water;
+  // An embossed picture reads as a lit surface: liquid metal when it reflects the palette.
+  s.chrome += g.tone.p.relief * (2.8 + 1.4 * g.tone.p.metal);
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -1266,6 +1275,7 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.kind !== 'none' && g.carrier.p.sharpen > 0.001) ms += 0.45;
   if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
   if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.001) ms += WATER_COST;
+  if (g.tone.p.relief > 0.001) ms += 0.12; // four extra feedback samples in the composite
   for (const b of g.bodies) ms += bodyCost(b);
   if (g.choreo) ms += CHOREO_COST_MS;
   return ms;

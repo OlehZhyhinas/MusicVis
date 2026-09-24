@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 8;
+export const SEED_VERSION = 9;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -655,6 +655,31 @@ const MILKDROP: Def[] = [
     reactions: [
       rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.05, rel: 0.5 }), rx('vocals', 'op', 1, 'amt', -0.3, { atk: 0.05, rel: 0.5 }),
       rx('other', 'car', 0, 'sharpen', 0.2, { atk: 0.05, rel: 0.4 }),
+    ],
+  },
+  {
+    // Flexi, Martin + Geiss, dedicated to the sherwin maxawow: two wandering vortices, one stirred by the
+    // bass and one by the mids, and a bass-driven turbulence pull a colour frame (its hue swinging every
+    // bar) inward into layered ribbons that never fade; the picture is lit as a glossy embossed surface.
+    origin: 'M11', name: 'Sherwin Maxawow (after Flexi, Martin & Geiss)', energy: [0.2, 0.8], scheme: 'triad', hue: 0.05,
+    color: { sat: 1, exposure: 1.3, contrast: 0.005, adapt: 0.1, bloom: 0.6, vignette: 0.05, relief: 1, bump: 3, light: 0.375, gloss: 0.9, metal: 0.15 },
+    carrier: 'warp', car: { halfLife: 25, floor: 0, border: 0.75 },
+    chain: [
+      op('swirl', { amt: 0.018, k: 1.5, cx: -0.3, cy: 0.1, wander: 0.3 }),
+      op('swirl', { amt: -0.018, k: 1.5, cx: 0.3, cy: -0.1, wander: 0.35 }),
+      op('noise', { amp: 0.002, scale: 1.4, speed: 0.35 }),
+      op('zoom', { rate: -0.008 }),
+    ],
+    bodies: [body({
+      shape: ['curve', { form: 1, radius: 0.1, amp: 0.3 }],
+      place: ['walker', { heads: 1, step: 0.08, every: 2, curve: 1.2 }],
+      material: ['line', { gain: 0.25, width: 3 }],
+      color: ['age', { rate: 0.5, detail: 0.3 }],
+    })],
+    reactions: [
+      rx('bass', 'op', 0, 'amt', 0.5, { atk: 0.03, rel: 0.4 }), rx('other', 'op', 1, 'amt', -0.5, { atk: 0.03, rel: 0.4 }),
+      rx('bass', 'op', 2, 'amp', 0.5, { atk: 0.02, rel: 0.3, thr: 0.3 }), rx('bar', 'pal', 0, 'hue', 1),
+      rx('bar', 'col', 0, 'light', 0.4),
     ],
   },
 ];

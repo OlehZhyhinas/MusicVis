@@ -16,7 +16,7 @@ import {
 import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
 import { Population, fitness, POPULATION_VERSION, uniqueName } from '../src/v2/population';
 import {
-  CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, PALETTE_KINDS, REACTION_SCHEMA,
+  TONE_SCHEMA, CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, PALETTE_KINDS, REACTION_SCHEMA,
   reactable, schemaFor,
   type ParamSpec, type Schema, type Signal,
 } from '../src/v2/genome';
@@ -68,8 +68,8 @@ function freshGenome(): Genome {
   ];
   // Feature seeds (C01.. choreography, and other prefixes) follow the original E and M seeds.
   const base = origins.filter((o) => /^[EM]\d/.test(o));
-  check('seeds.count', base.length === 34 && M_COUNT === 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
-  check('seeds.order', JSON.stringify(origins.slice(0, 34)) === JSON.stringify(expected) && new Set(origins).size === origins.length, origins.join(','));
+  check('seeds.count', base.length === 24 + M_COUNT && M_COUNT >= 11, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
+  check('seeds.order', JSON.stringify(origins.slice(0, base.length)) === JSON.stringify(expected) && new Set(origins).size === origins.length, origins.join(','));
   const badValid: string[] = [];
   const badIdem: string[] = [];
   const badTrip: string[] = [];
@@ -86,7 +86,7 @@ function freshGenome(): Genome {
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || `repair(seed) === seed for all ${SEEDS.length}`);
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || `all ${SEEDS.length} survive JSON + repair unchanged`);
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 8, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION >= 8, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;
@@ -1435,6 +1435,57 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 choreoTests(check);
 slimeTests(check);
 physicsChecks(check);
+
+// -------------------------------------------------- MilkDrop mining: relief (emboss lighting)
+
+{
+  const base = seedByOrigin('E07');
+  const off = repair(JSON.parse(JSON.stringify({ ...base, tone: { p: { ...base.tone.p, relief: undefined, bump: undefined, light: undefined, gloss: undefined, metal: undefined } } })));
+  check('relief.default-off', off.tone.p.relief === 0 && TONE_SCHEMA.relief.max === 1 && !validate(off).length, JSON.stringify({ relief: off.tone.p.relief, bump: off.tone.p.bump }));
+  const on = cloneGenome(off);
+  on.tone.p.relief = 0.8;
+  check('relief.cost', Math.abs(estimateCost(on) - estimateCost(off) - 0.12) < 1e-9 && estimateCost(seedByOrigin('M11')) < COST_BUDGET_MS, `${estimateCost(off).toFixed(2)} -> ${estimateCost(on).toFixed(2)} ms; M11 ${estimateCost(seedByOrigin('M11')).toFixed(2)} ms`);
+  const bad = repair({ ...cloneGenome(on), tone: { p: { ...on.tone.p, relief: 7, bump: -3, light: 2, gloss: NaN, metal: 0.5 } } });
+  check('relief.repair', bad.tone.p.relief === 1 && bad.tone.p.bump === TONE_SCHEMA.bump.min && bad.tone.p.light === 1 && bad.tone.p.gloss === TONE_SCHEMA.gloss.def && !validate(bad).length, JSON.stringify(bad.tone.p));
+  const src = buildSources(on);
+  check('relief.glsl', src.composite.includes('reliefLit(q, fb(q))') && src.composite.includes('uniform vec4 uRelief') && !src.feedback.includes('reliefLit'), 'composite lights the feedback layer; the feedback pass is untouched');
+  // Breeds with every species: M11 crossed both ways with one seed per species stays valid and in range.
+  const m11 = seedByOrigin('M11');
+  const rng = mulberry32(8181);
+  const probs: string[] = [];
+  let kept = 0, n = 0;
+  const bySp = new Map<string, Genome>();
+  for (const x of SEEDS) if (!bySp.has(classify(x.genome).primary)) bySp.set(classify(x.genome).primary, x.genome);
+  for (const [sp, other] of bySp) {
+    for (let k = 0; k < 6; k++) {
+      const c = k % 2 ? crossover(m11, other, rng) : crossover(other, m11, rng);
+      n++;
+      if (validate(c).length) probs.push(`${sp}:${validate(c)[0]}`);
+      if (!(c.tone.p.relief >= 0 && c.tone.p.relief <= 1)) probs.push(`${sp}: relief ${c.tone.p.relief}`);
+      if (c.tone.p.relief > 0) kept++;
+      const m = mutate(c, rng, 2);
+      if (validate(m).length) probs.push(`${sp} mutated:${validate(m)[0]}`);
+    }
+  }
+  check('relief.breeds-with-every-species', !probs.length && kept > n * 0.3, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; relief inherited in ${kept}/${n}`);
+  const rr = mulberry32(99);
+  let randomOn = 0;
+  for (let i = 0; i < 300; i++) if (randomGenome(rr).tone.p.relief > 0) randomOn++;
+  check('relief.rare-in-random', randomOn > 5 && randomOn < 80, `${randomOn}/300 random genomes embossed`);
+  const nm = nameFor(on);
+  const embossedHits = SEEDS.slice(0, 24).filter((x) => ADJ_POOLS.embossed.includes(nameFor(repair({ ...cloneGenome(x.genome), tone: { p: { ...x.genome.tone.p, relief: 1 } } })).split(' ')[0])).length;
+  check('relief.name', embossedHits >= 4 && classify(m11).label.includes('chrome'), `${embossedHits}/24 originals named embossed when relief is on (e.g. ${nm}); M11 is ${classify(m11).label}`);
+  // Migration: a seed-version-6 population (E01-E24 + M01-M10, votes, a child) gains M11 exactly once.
+  const pop = Population.seeded(1);
+  for (const x of SEEDS) if (!/^(E\d\d|M0\d|M10)$/.test(x.origin)) pop.members.delete(`G0-${x.origin}`);
+  pop.get('G0-M05')!.likes = 2;
+  const kid = pop.addChild(crossover(seedByOrigin('M05'), seedByOrigin('E22'), mulberry32(4)), [pop.get('G0-M05')!, pop.get('G0-E22')!], 2);
+  const file = JSON.parse(JSON.stringify({ ...pop.toJSON(), seedVersion: 6 }));
+  const loaded = Population.fromJSON(file);
+  const kidBefore = JSON.stringify(loaded.get(kid.id));
+  const added = loaded.upgradeSeeds(9);
+  check('migrate.adds-m11-once', added.includes('G0-M11') && JSON.stringify(loaded.get('G0-M11')!.genome) === JSON.stringify(m11) && loaded.upgradeSeeds(10).length === 0 && JSON.stringify(loaded.get(kid.id)) === kidBefore && loaded.get('G0-M05')!.likes === 2, `added ${added.filter((x) => /M1[1-9]|M[2-9]\d/.test(x)).join(',')}; child and votes untouched`);
+}
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);
