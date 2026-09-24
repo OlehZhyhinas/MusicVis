@@ -34,7 +34,7 @@ import {
 import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 
-export const SEED_VERSION = 30;
+export const SEED_VERSION = 31;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1272,4 +1272,28 @@ const DRIFT: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT].map(build);
+// L01-: the song as a landscape (the 'landscape' shape, genes/landscape.ts): the analysed song is built
+// into terrain before playback and the camera travels through it, so the drops are on the horizon
+// long before they arrive.
+const LANDSCAPE: Def[] = [
+  {
+    // A night road over rolling hills, the altitude following the song's energy: the road climbs through
+    // each build toward a pass between two mountains, the drop, and plunges over its far side; every
+    // section begins at a lit gate over the road, breakdowns sink into valleys, and the next drop glows
+    // above its pass like a sun rising on the horizon. Drum hits bump the camera, the bass lights the road.
+    origin: 'L01', name: 'Road to the Drop', energy: [0.2, 0.9], scheme: 'analogous', hue: 0.55,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.35 }, carrier: 'warp', decay: 0.7,
+    bodies: [body({
+      shape: ['landscape', { path: 0, ground: 0, mark: 1, res: 0.5, look: 24, height: 0.35, relief: 0.7, rough: 0.5, wind: 0.5, fog: 0.45, glow: 0.6, tint: 0.5, kick: 0.3, rim: 0.5 }],
+      material: ['fill', { gain: 1.2 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'glow', 0.3, { atk: 0.02, rel: 0.3 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('loud', 'sh', 0, 'rough', 0.15, { atk: 0.1, rel: 1 }),
+    ],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE].map(build);

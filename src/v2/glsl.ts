@@ -21,6 +21,7 @@ import {
   type BodyGene, type Genome, type OpGene, type ShapeKind,
 } from './genome';
 import { SCENE_PASS, sceneField } from './genes/raymarch';
+import { LAND_PASS, landField } from './genes/landscape';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -729,7 +730,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
   const ops = b.deform.ops?.length ? `p = drawWarp(p, ${bi * 3}, int(BD(12).z + 0.5));` : '';
   const fuse = b.fuse;
   let pre = '';
-  if (cls === 'field') pre += (b.shape.kind === 'scene' ? sceneField(b.material.kind) : FIELD_GLSL[b.shape.kind]) ?? '';
+  if (cls === 'field') pre += (b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : FIELD_GLSL[b.shape.kind]) ?? '';
   if (drawsSdf(b)) pre += shapeCode(b.shape.kind, 'SHP', [2, 3]) + '\n';
   if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
@@ -987,6 +988,8 @@ export interface Sources {
   composite: string;
   /** The ray-marched scene pass (only when a body has a 'scene' shape). */
   scene?: string;
+  /** The landscape pass (only when a body has a 'landscape' shape). */
+  land?: string;
 }
 
 export function buildSources(g: Genome): Sources {
@@ -1141,7 +1144,10 @@ ${topDraw}#endif
   o = vec4(c * uWeight, 1.0);
 }`;
   const scene = g.bodies.some((b) => b.shape.kind === 'scene') ? HEAD + COMMON + lib(nb) + SCENE_PASS : undefined;
-  return scene ? { feedback, composite, scene } : { feedback, composite };
+  const land = g.bodies.some((b) => b.shape.kind === 'landscape') ? HEAD + COMMON + lib(nb) + LAND_PASS : undefined;
+  const out: Sources = scene ? { feedback, composite, scene } : { feedback, composite };
+  if (land) out.land = land;
+  return out;
 }
 
 /** True when the body is drawn by the curve geometry pass. */

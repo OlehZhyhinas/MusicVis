@@ -573,6 +573,7 @@ async function main(): Promise<void> {
       eng.setSong(result.sections);
       songCx = result.songComplexity ?? 0.5;
       eng.setSongComplexity(songCx);
+      eng.setSongWorld(result);
       if (!evolveOn) choose('new', 1.5);
       applyVolume();
       transport.setSections(result.sections, result.duration);

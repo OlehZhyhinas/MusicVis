@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -68,6 +68,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   network: ['Mycelium', 'Plexus', 'Rhizome', 'Veins', 'Capillaries', 'Delta', 'Tracery', 'Filigree', 'Roots', 'Mould', 'Hyphae', 'Reticulum'],
   cells: ['Cells', 'Foam', 'Membrane', 'Froth', 'Tissue', 'Colony', 'Crackle', 'Scales', 'Vesicles', 'Cytoplasm', 'Lacework', 'Hive'],
   cymatics: ['Chladni', 'Resonance', 'Nodes', 'Overtone', 'Harmonic', 'Sandplate', 'Standing Wave', 'Figure', 'Vibration', 'Drumhead', 'Soundplate', 'Mandorla'],
+  journey: ['Journey', 'Voyage', 'Odyssey', 'Pilgrimage', 'Expedition', 'Crossing', 'Wayfaring', 'Sojourn', 'Traverse', 'Trek', 'Frontier', 'Passage'],
   beams: ['Searchlight', 'Floodlight', 'Spotlight', 'Lightshow', 'Beacons', 'Shafts', 'Rays', 'Laser', 'Stagelight', 'Limelight', 'Footlights', 'Lighthouse'],
   depth: ['Sculpture', 'Cavern', 'Chamber', 'Abyss', 'Vault', 'Hollow', 'Monolith', 'Reliquary', 'Atrium', 'Void', 'Depths', 'Diorama'],
   segment: ['Stroke', 'Dash', 'Needle', 'Streak', 'Stitch', 'Splinter', 'Rod', 'Baton', 'Quill', 'Sliver', 'Spoke', 'Wand'],
@@ -96,6 +97,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'beams': return 'beams';
     case 'cells': return 'cells';
     case 'cymatics': return 'cymatics';
+    case 'landscape': return 'journey';
     case 'curve': return 'wave';
     case 'superscope': return 'scope';
     case 'bars': return 'spectrum';

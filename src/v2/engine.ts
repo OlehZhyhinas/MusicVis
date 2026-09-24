@@ -12,7 +12,7 @@ import { packMosaic } from './genes/mosaic';
 import { packTunnel } from './genes/tunnel';
 import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
-import type { MusicState, Section, StemName } from '../types';
+import type { AnalysisResult, MusicState, Section, StemName } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
 import { Fluid } from '../render/fluid';
@@ -36,6 +36,8 @@ import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
+import { LAND_VEC4, packLandscape } from './genes/landscape';
+import { LandWorld } from './genes/landscapeGpu';
 import { packCymatics } from './genes/cymatics';
 import { DriftDriver } from './genes/driftPlay';
 
@@ -357,10 +359,14 @@ export interface GenomePrograms {
   composite: Program;
   /** The ray-marched scene pass (genomes with a 'scene' body). */
   scene?: Program;
+  /** The landscape pass (genomes with a 'landscape' body). */
+  land?: Program;
 }
 interface CacheEntry {
   /** feedback, composite and (optionally) the scene pass. */
   pending: PendingProgram[];
+  /** Which optional passes follow feedback and composite in `pending`, in order. */
+  extra: ('scene' | 'land')[];
   done: GenomePrograms | null;
   failed: string | null;
   used: number;
@@ -383,12 +389,14 @@ export class ProgramCache {
       return key;
     }
     const src = buildSources(g);
+    const extra = (['scene', 'land'] as const).filter((k) => src[k]);
     this.entries.set(key, {
       pending: [
         new PendingProgram(this.gl, FULLSCREEN_VS, src.feedback, `v2-fb ${key}`, this.parallel),
         new PendingProgram(this.gl, FULLSCREEN_VS, src.composite, `v2-comp ${key}`, this.parallel),
-        ...(src.scene ? [new PendingProgram(this.gl, FULLSCREEN_VS, src.scene, `v2-scene ${key}`, this.parallel)] : []),
+        ...extra.map((k) => new PendingProgram(this.gl, FULLSCREEN_VS, src[k]!, `v2-${k} ${key}`, this.parallel)),
       ],
+      extra,
       done: null,
       failed: null,
       used: ++this.tick,
@@ -412,7 +420,7 @@ export class ProgramCache {
       return null;
     }
     e.done = { feedback: e.pending[0].program!, composite: e.pending[1].program! };
-    if (e.pending[2]) e.done.scene = e.pending[2].program!;
+    e.extra.forEach((k, i) => (e.done![k] = e.pending[2 + i].program!));
     return e.done;
   }
 
@@ -432,6 +440,7 @@ export class ProgramCache {
       e.done?.feedback.dispose();
       e.done?.composite.dispose();
       e.done?.scene?.dispose();
+      e.done?.land?.dispose();
       this.entries.delete(k);
     }
   }
@@ -447,6 +456,7 @@ export class ProgramCache {
       e.done?.feedback.dispose();
       e.done?.composite.dispose();
       e.done?.scene?.dispose();
+      e.done?.land?.dispose();
     }
     this.entries.clear();
   }
@@ -512,6 +522,9 @@ export class Slot {
   /** Ray-marched scene: its pass uniforms and its reduced-resolution target. */
   readonly scn = new Float32Array(SCENE_VEC4 * 4);
   sceneT: Target | null = null;
+  /** Landscape: its pass uniforms and its reduced-resolution target. */
+  readonly lsu = new Float32Array(LAND_VEC4 * 4);
+  landT: Target | null = null;
 
   /** The genome the slot stands for (saved, edited, shown in the editor); `genome` is what renders (a drift may differ). */
   home: Genome;
@@ -660,6 +673,8 @@ export class Stage {
   private waterBeat = -1;
   particles: Particles | null = null;
   slime: Physarum | null = null;
+  /** The song's world map for landscape bodies (created with the first one). */
+  land: LandWorld | null = null;
   private slimeOwner: Slot | null = null;
   private readonly slimeCopies = new Float32Array(COPY_SLOTS * 3);
   flock: Boids | null = null;
@@ -711,6 +726,8 @@ export class Stage {
       (s as { fb: PingPong }).fb = this.makeFb();
       s.sceneT?.dispose();
       s.sceneT = null;
+      s.landT?.dispose();
+      s.landT = null;
     }
   }
 
@@ -727,6 +744,8 @@ export class Stage {
     s.fb.dispose();
     s.sceneT?.dispose();
     s.sceneT = null;
+    s.landT?.dispose();
+    s.landT = null;
     this.slots = this.slots.filter((x) => x !== s);
   }
 
@@ -764,6 +783,7 @@ export class Stage {
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
     cameraUniforms(this.pose, this.w / this.h, this.cam);
 
+    if (slots.some((s) => s.progs.land)) (this.land ??= new LandWorld(gl)).update(state, sdt);
     for (const s of slots) this.tick(s, sdt);
 
     // Fluid, particles, flame: owned by the heaviest slot that uses them.
@@ -817,6 +837,7 @@ export class Stage {
     const flockSlot = slots.filter((s) => s.flock >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
+    for (const s of slots) if (s.progs.land) this.landPass(s, sdt);
     for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot, s === flockSlot, s === ecoSlot);
 
     // Composite every live slot into the HDR scene.
@@ -1726,7 +1747,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics': case 'landscape':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1831,6 +1852,9 @@ export class Stage {
       }
       case 'scene':
         packScene(s.scn, { F, sdt, P, raw: sh.p, mem: m, key: key('') });
+        break;
+      case 'landscape':
+        if (this.land) packLandscape(s.lsu, { F, sdt, P, raw: sh.p, mem: m, key: key(''), world: this.land.world, now: this.land.now, keyHue: F.keyHue });
         break;
       case 'cymatics': {
         const cf = { chroma: this.sig.chroma, spec: this.sig.spec, keyTonic: F.keyTonic, minor: F.minor, sectionIndex: F.sectionIndex, bass: F.stem[1] * F.gate[1], loud: F.loud, bpm: F.bpm };
@@ -2370,6 +2394,27 @@ export class Stage {
     this.eng.fs.draw();
   }
 
+  /** Ray-marches the slot's landscape body (the song's world map) into its reduced-resolution target. */
+  private landPass(s: Slot, sdt: number): void {
+    const gl = this.eng.gl;
+    const b = s.genome.bodies.find((x) => x.shape.kind === 'landscape');
+    if (!b || !s.progs.land || !this.land) return;
+    const res = b.shape.p.res;
+    const w = Math.max(2, Math.round(this.w * res));
+    const h = Math.max(2, Math.round(this.h * res));
+    if (!s.landT || s.landT.w !== w || s.landT.h !== h) {
+      s.landT?.dispose();
+      s.landT = new Target(gl, w, h, [this.eng.hdr], gl.LINEAR);
+    }
+    const tex = this.land.texture();
+    s.landT.bind();
+    gl.disable(gl.BLEND);
+    const p = s.progs.land.use();
+    this.setCommon(p, s, sdt, true);
+    p.f2('uRes', w, h).f4v('uLs', s.lsu).tex('uWorld', tex);
+    this.eng.fs.draw();
+  }
+
   private setCommon(p: Program, s: Slot, sdt: number, fbPass: boolean): void {
     const F = this.sig.F;
     const c = s.cols;
@@ -2418,6 +2463,7 @@ export class Stage {
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex);
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
+    if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
   }
 
   private post(pp: PostParams, target: 'canvas' | 'out', rawDt: number): void {
@@ -2495,6 +2541,7 @@ export class Stage {
     this.slime?.dispose();
     this.flock?.dispose();
     this.eco?.dispose();
+    this.land?.dispose();
     this.flame?.dispose();
     this.sig.dispose();
   }
@@ -2685,6 +2732,11 @@ export class Engine {
 
   setSongComplexity(cx: number): void {
     this.main.sig.songCx = cx;
+  }
+
+  /** The analysed song, for landscape bodies' world map (null: none, e.g. live input). */
+  setSongWorld(r: AnalysisResult | null): void {
+    (this.main.land ??= new LandWorld(this.gl)).setSong(r);
   }
 
   render(state: MusicState): void {

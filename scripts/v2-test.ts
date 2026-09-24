@@ -40,6 +40,7 @@ import { flockTests } from './flock-tests';
 import { ecosystemTests } from './ecosystem-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
+import { landscapeChecks } from './landscape-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
 import { lyricsTests } from './lyrics-tests';
 
@@ -1476,6 +1477,7 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 // -------------------------------------------------- 19. ray-marched scenes
 
 raymarchChecks(check);
+landscapeChecks(check);
 
 // -------------------------------------------------- AVS genes: blend mode (material.blend)
 
