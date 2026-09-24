@@ -17,6 +17,8 @@ export interface TestCase {
   expect: Check;
   /** Screen metrics the model is told (defaults to a medium, half-filled screen). */
   look?: LookMetrics;
+  /** Written after the prompt was tuned and never tuned against: the honest pass rate. */
+  heldOut?: boolean;
 }
 
 // ------------------------------------------------------------ probes
@@ -202,5 +204,18 @@ export const TEST_SET: TestCase[] = [
   { id: 'smoother', seed: 'M04', request: 'smoother motion', expect: any(up('*.feel.rel'), up('*.feel.atk'), kindIs('b0.feel', 'flow'), slower, up('carrier.halfLife')) },
   { id: 'nonsense', seed: 'E05', request: "what's the weather like tomorrow?", expect: unchanged },
   { id: 'sliders', seed: 'E08', request: 'set the exposure to 1.2', expect: (_b, a) => (Math.abs(a.tone.p.exposure - 1.2) < 1e-6 ? null : `exposure ${a.tone.p.exposure}`) },
+
+  // Held out: phrasings the prompt and lexicon were never tuned on.
+  { id: 'h-kick', seed: 'E13', request: 'can you make it pulse with the kick drum', expect: punchier, heldOut: true },
+  { id: 'h-less-busy', seed: 'M08', request: 'this is way too busy', expect: any(calmer, emptier), heldOut: true },
+  { id: 'h-slow-blue', seed: 'E12', request: 'slower and bluer', expect: all(slower, any(hueNear('blue', KEY), hueNear('cyan', KEY), hueNear('indigo', KEY))), heldOut: true },
+  { id: 'h-contrast', seed: 'E16', request: 'I want more contrast', expect: any(up('tone.contrast'), sharper), heldOut: true },
+  { id: 'h-sunset', seed: 'E14', request: 'make it look like a sunset', expect: any(hueNear('orange', KEY), hueNear('red', KEY), hueNear('pink', KEY), hueNear('amber', KEY)), heldOut: true },
+  { id: 'h-too-big', seed: 'E15', request: 'the blobs are too big', expect: smaller, heldOut: true },
+  { id: 'h-rotation', seed: 'E13', request: 'add some rotation', expect: any(chainGains('rotate'), kindIs('b0.motion', 'spin'), absUp('op*.lock'), absUp('op*.rate')), heldOut: true },
+  { id: 'h-fade-faster', seed: 'E02', request: 'make the trails fade faster', expect: shorterTrails, heldOut: true },
+  { id: 'h-hypnotic', seed: 'E10', request: 'make it more hypnotic', expect: changed, heldOut: true },
+  { id: 'h-thanks', seed: 'E07', request: 'thanks, that looks great!', expect: unchanged, heldOut: true },
+  { id: 'h-wider', seed: 'E05', request: 'spread the dots out wider', expect: any(up('*.place.radius'), up('*.place.spread'), up('*.place.xs'), up('*.place.follow')), heldOut: true },
+  { id: 'h-less-glow', seed: 'E16', request: 'tone down the glow', expect: any(down('tone.bloom'), down('*.material.gain'), down('*.material.halo'), down('*.material.width'), down('*.material.base')), heldOut: true },
 ];
-void changed;
