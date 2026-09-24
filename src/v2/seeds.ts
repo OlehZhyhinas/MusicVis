@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 11;
+export const SEED_VERSION = 12;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -777,4 +777,27 @@ const AVS: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS].map(build);
+// R01-: ray-marched 3D scenes (the 'scene' shape, genes/raymarch.ts), fed through the same material,
+// palette, carrier and reactions as every other body.
+const RAYMARCH: Def[] = [
+  {
+    // Five primitives (spheres, tori, boxes, octahedra) melt into each other under an orbiting camera;
+    // the bass swells them, drum hits jolt the camera in, each section reshuffles the arrangement, and a
+    // slow zoom in the feedback leaves soft trails behind the moving surfaces.
+    origin: 'R01', name: 'Melting Forms', energy: [0.2, 0.8], scheme: 'triad', hue: 0.6,
+    color: { adapt: 0.35, bloom: 1.1 }, carrier: 'warp', decay: 0.9,
+    chain: [op('zoom', { rate: 0.004 })],
+    bodies: [body({
+      shape: ['scene', { scene: 0, cam: 0, res: 0.7, size: 1, blend: 0.55, speed: 0.4, pulse: 0.5, kick: 0.5, vary: 1, rim: 0.6, ao: 0.7, fog: 0.4, glow: 0.3 }],
+      material: ['fill', { gain: 1.2 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'size', 0.15, { atk: 0.02, rel: 0.4 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH].map(build);

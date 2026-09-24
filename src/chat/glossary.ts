@@ -16,7 +16,8 @@ edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 b
 flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
 superscope(3D point curve, AVS style): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 3D lissajous,5 ring tunnel; p/q=frequencies; audio=push by waveform or spectrum(spec); spinX/spinY=3D tumble turns/bar; persp=depth; n=points. Never fuses.
 beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.
-Field shapes(plasma,aurora,terrain,edge,beams)+flame draw 1 copy regardless of place count.
+scene(ray-marched 3D scene,1/preset): scene 0 melting primitives; cam 0 orbit; res=internal resolution(cost); size=object scale; blend=how much shapes melt together; speed=animation+camera speed; pulse=bass swell; kick=camera jolt on drum hits; vary=how much each song section reshuffles it; rim/ao/fog/glow=lighting. Material picks the look(line=neon edges, glow=haze, chrome=reflective).
+Field shapes(plasma,aurora,terrain,edge,beams,scene)+flame draw 1 copy regardless of place count.
 
 PLACE:
 point: fixed spot. orbit: copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.
@@ -128,7 +129,7 @@ Stay inside each parameter's min/max range from the glossary.
 Prefer adjusting existing parameters over switching a gene's kind, unless the request names a new look(e.g. "switch to fire").
 Caps: max 3 bodies/genome, 6 reactions, 6 chain ops, 3 deform ops/body.
 1 reaction per parameter at a time; retarget or remove the old one before adding to the same target.
-Only 1 flame + 1 solid shape per preset. Field shapes(plasma,aurora,terrain,edge)+flame always draw 1 copy regardless of place count.
+Only 1 flame + 1 solid + 1 scene shape per preset. Field shapes(plasma,aurora,terrain,edge,scene)+flame always draw 1 copy regardless of place count.
 GPU budget ~8ms/frame; costliest: sparks count, flame count, place copy count, body count. Raise cautiously; lower another cost when adding one.
 When unsure which gene a word means, prefer the most direct parameter(e.g. "brighter"=tone.exposure before material gain) and say what changed.
 `;

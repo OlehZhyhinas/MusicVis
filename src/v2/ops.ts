@@ -163,7 +163,7 @@ export function randomXform(rng: Rng): FlameXformGene {
 
 /** Random pick weights per locus kind (the favoured kinds read well on most shapes). */
 const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
-  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7 },
+  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6 },
   place: { point: 3, orbit: 2, walker: 1.5, stations: 1.5, row: 0.7, float: 1.2, outline: 1.2, grid: 1.2, ring: 1.5, mirror: 1 },
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8 },

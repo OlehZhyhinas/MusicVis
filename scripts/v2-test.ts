@@ -33,6 +33,7 @@ import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '..
 import { choreoTests } from './choreo-tests';
 import { slimeTests } from './slime-tests';
 import { physicsChecks } from './v2-physics';
+import { raymarchChecks } from './raymarch-checks';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -1461,6 +1462,9 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('migrate.adds-avs-once', JSON.stringify(added) === JSON.stringify(as.map((x) => `G0-${x.origin}`)) && loaded.upgradeSeeds(12).length === 0, `added ${added.join(',')}`);
   check('migrate.avs-leaves-rest', before === after && loaded.get('G0-M03')!.likes === 2 && loaded.get(kid.id)!.likes === 1 && as.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome)), 'existing members untouched, new seeds arrive with their genomes');
 }
+// -------------------------------------------------- 19. ray-marched scenes
+
+raymarchChecks(check);
 
 // -------------------------------------------------- 16. example crossovers
 

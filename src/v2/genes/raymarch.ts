@@ -1,0 +1,257 @@
+// Ray-marched 3D scenes: the 'scene' shape gene (a full-screen chunk shape, one per genome).
+//
+// The scene is ray-marched in its own pass at a reduced internal resolution (the res gene, a
+// fraction of the stage size) into a half-float texture; the body's field function then samples
+// that texture (bilinear upsample) and maps its channels through the body's material, colour
+// mapping and the palette. From there it is an ordinary field body: placement folds, deformation,
+// the chain, the feedback carrier and the tone all apply to the picture.
+//
+// Scene texture channels: r = lit surface (diffuse, ambient, occlusion, fog), g = shade (a hue
+// coordinate: which primitive, facing), b = glow (near misses along the ray), a = rim light.
+//
+// This file has no runtime imports from genome.ts (genome.ts imports the schema from here).
+
+import type { MaterialKind, Params, Schema } from '../genome';
+import type { Frame } from '../engine';
+
+const P = (min: number, max: number, def: number) => ({ min, max, def });
+const C = (choices: number[], def: number) => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
+
+/** Scene kinds: 0 smooth-union primitives. */
+export const SCENE_KINDS = ['primitives'] as const;
+/** Camera kinds: 0 orbit. */
+export const SCENE_CAMS = ['orbit'] as const;
+
+/**
+ * scene: what is ray-marched (SCENE_KINDS); cam: how the camera moves (SCENE_CAMS);
+ * res: internal resolution as a fraction of the stage (cost goes with its square);
+ * size: object scale (bass pulses it by `pulse`); blend: smooth-union radius; speed: animation and
+ * camera speed; kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
+ * rim / ao / fog / glow: lighting terms.
+ */
+export const SCENE_SCHEMA: Schema = {
+  scene: C([0], 0),
+  cam: C([0], 0),
+  res: C([0.35, 0.5, 0.7], 0.5),
+  size: P(0.4, 1.6, 1),
+  blend: P(0, 1, 0.5),
+  speed: P(0, 1, 0.4),
+  pulse: P(0, 1, 0.5),
+  kick: P(0, 1, 0.4),
+  vary: P(0, 1, 0.5),
+  rim: P(0, 1, 0.5),
+  ao: P(0, 1, 0.6),
+  fog: P(0, 1, 0.4),
+  glow: P(0, 1, 0.3),
+};
+/** Structural switches reactions may not touch. */
+export const SCENE_NO_REACT = ['scene', 'cam', 'res'];
+
+/** Full-resolution (2560x1440) march cost per scene kind, ms; the pass costs this times res squared. */
+const SCENE_FULL_MS = [5.0];
+
+/** Estimated GPU ms of a scene body: the reduced-resolution march plus the upsampling field lookup. */
+export function sceneCost(p: Params): number {
+  const full = SCENE_FULL_MS[p.scene] ?? SCENE_FULL_MS[0];
+  return 0.25 + full * p.res * p.res;
+}
+
+// ------------------------------------------------------------------ GLSL
+
+/** vec4 slots of the scene pass (uScn). */
+export const SCENE_VEC4 = 32;
+
+/**
+ * The scene pass fragment body (after the shared library). uScn:
+ *   0 camera position xyz, focal length    1 camera target xyz, roll
+ *   2 time, size, blend, variation seed      3 rim, ao, fog, glow
+ *   4 scene kind, camera kind, -, -
+ *   8-12 primitives: centre xyz, radius   13-27 primitives: rotation rows (3 per primitive)
+ *   28 primitive kinds (0 sphere, 1 torus, 2 box, 3 octahedron) for 0-3, 29.x kind of 4
+ */
+export const SCENE_PASS = /* glsl */ `
+in vec2 vUv;
+uniform vec4 uScn[${SCENE_VEC4}];
+out vec4 o;
+float rmBox(vec3 p, vec3 b) { vec3 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); }
+float rmTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
+float rmOcta(vec3 p, float s) { p = abs(p); return (p.x + p.y + p.z - s) * 0.57735; }
+// Smooth-union primitives: five shapes on slow paths melting into each other (placed per frame in JS).
+float rmPrim(int kind, vec3 q, float r) {
+  if (kind == 0) return length(q) - r;
+  if (kind == 1) return rmTorus(q, vec2(r, r * 0.33));
+  if (kind == 2) return rmBox(q, vec3(r * 0.72)) - r * 0.08;
+  return rmOcta(q, r * 1.25);
+}
+vec2 rmPrims(vec3 p) {
+  float k = max(uScn[2].z, 1e-3);
+  float d = 1e5, sh = 0.0;
+  for (int i = 0; i < 5; i++) {
+    vec4 c = uScn[8 + i];
+    vec3 q = p - c.xyz;
+    q = vec3(dot(uScn[13 + i * 3].xyz, q), dot(uScn[14 + i * 3].xyz, q), dot(uScn[15 + i * 3].xyz, q));
+    int kind = int((i < 4 ? uScn[28][i] : uScn[29].x) + 0.5);
+    float di = rmPrim(kind, q, c.w);
+    float h = clamp(0.5 + 0.5 * (di - d) / k, 0.0, 1.0);
+    d = mix(di, d, h) - k * h * (1.0 - h);
+    sh = mix(float(i) * 0.2, sh, h);
+  }
+  return vec2(d, sh);
+}
+vec2 rmMap(vec3 p) {
+  return rmPrims(p);
+}
+vec3 rmNormal(vec3 p, float t) {
+  vec2 e = vec2(1.0, -1.0) * 0.0008 * (1.0 + t);
+  return normalize(e.xyy * rmMap(p + e.xyy).x + e.yyx * rmMap(p + e.yyx).x + e.yxy * rmMap(p + e.yxy).x + e.xxx * rmMap(p + e.xxx).x);
+}
+float rmAO(vec3 p, vec3 n) {
+  float occ = 0.0, w = 1.0;
+  for (int i = 1; i <= 3; i++) {
+    float h = 0.06 * float(i * i);
+    occ += (h - rmMap(p + n * h).x) * w;
+    w *= 0.6;
+  }
+  return clamp(1.0 - 2.2 * occ, 0.0, 1.0);
+}
+void main() {
+  vec4 C0 = uScn[0], C1 = uScn[1], L = uScn[3];
+  vec2 sp = (vUv - 0.5) * vec2(uAspect, 1.0);
+  vec3 ro = C0.xyz;
+  vec3 cw = normalize(C1.xyz - ro);
+  vec3 cu = normalize(cross(cw, vec3(sin(C1.w), cos(C1.w), 0.0)));
+  vec3 cv = cross(cu, cw);
+  vec3 rd = normalize(sp.x * cu + sp.y * cv + C0.w * cw);
+  float t = 0.02, glw = 0.0;
+  vec2 h = vec2(1e5, 0.0);
+  bool hit = false;
+  const float TMAX = 24.0;
+  for (int i = 0; i < 64; i++) {
+    h = rmMap(ro + rd * t);
+    glw += exp(-max(h.x, 0.0) * 14.0);
+    if (h.x < 0.0012 * t) { hit = true; break; }
+    t += h.x * 0.9;
+    if (t > TMAX) break;
+  }
+  float glow = glw * 0.012 * L.w;
+  if (!hit) { o = vec4(0.0, 0.0, glow, 0.0); return; }
+  vec3 pos = ro + rd * t;
+  vec3 n = rmNormal(pos, t);
+  vec3 ld = normalize(vec3(0.6, 0.8, -0.3));
+  float dif = clamp(dot(n, ld), 0.0, 1.0);
+  float ao = mix(1.0, rmAO(pos, n), L.y);
+  float fogv = exp(-t * t * L.z * 0.012);
+  float rim = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0) * L.x;
+  float lit = (0.85 * dif + 0.18) * ao * fogv;
+  float shade = h.y + 0.12 * dot(n, vec3(0.5, 0.3, -0.4));
+  o = vec4(lit, shade, glow, rim * fogv * (0.4 + 0.6 * ao));
+}`;
+
+/** The field function of a scene body: samples the scene texture, lit through the material. */
+export function sceneField(material: MaterialKind): string {
+  const look: Record<MaterialKind, string> = {
+    fill: 'base * s.x + mix(base, vec3(1.0), 0.5) * s.w * 0.8 + alt * s.z',
+    line: 'base * s.w * 2.2 + base * s.x * 0.1 + alt * s.z',
+    glow: 'base * s.x * 0.55 + alt * s.z * 2.5 + base * s.w * 0.6',
+    dots: 'base * smoothstep(0.02, -0.02, length(fract(uv * uRes / (5.0 * uRes.y / 1080.0)) - 0.5) - 0.5 * sqrt(clamp(s.x, 0.0, 1.0))) * 1.3 + base * s.w * 0.5 + alt * s.z',
+    textured: 'base * s.x * (0.55 + 0.45 * sin(s.y * 40.0)) + base * s.w + alt * s.z',
+    chrome: 'pal(h + s.w * 0.8 + s.x * 0.3) * (s.x * 0.7 + s.w * 1.2) + vec3(pow(clamp(s.x, 0.0, 1.0), 8.0)) * 0.7 + alt * s.z',
+  };
+  return /* glsl */ `
+uniform sampler2D uScene;
+vec3 FLD(vec2 p) {
+  vec2 uv = p / vec2(uAspect, 1.0) + 0.5;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
+  vec4 s = texture(uScene, uv);
+  vec4 A = EA;
+  float h = A.y + s.y * BD(20).y;
+  vec3 base = pal(h), alt = pal(h + 0.33);
+  vec3 c = ${look[material]};
+  return max(c, 0.0) * A.x * uLayerK;
+}`;
+}
+
+// ------------------------------------------------------------ packing
+
+export interface SceneCtx {
+  F: Frame;
+  sdt: number;
+  /** Parameter with reactions applied. */
+  P: (k: string) => number;
+  raw: Params;
+  mem: Record<string, number>;
+  /** Prefix for this body's persistent state in mem. */
+  key: string;
+}
+
+const TAU = Math.PI * 2;
+const hash = (n: number) => {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/** Fills the scene pass uniforms (SCENE_VEC4 vec4s) for this frame. */
+export function packScene(out: Float32Array, c: SceneCtx): void {
+  const { F, sdt, P, mem } = c;
+  const k = (s: string) => `${c.key}${s}`;
+  const get = (s: string, init = 0) => mem[k(s)] ?? (mem[k(s)] = init);
+  const set = (s: string, v: number) => (mem[k(s)] = v);
+  const speed = P('speed');
+  // Scene time: runs with the tempo and the activity, a little faster when loud.
+  const T = set('t', (get('t') + sdt * F.speed * (0.15 + 0.85 * speed) * (0.6 + 0.4 * F.act + 0.3 * F.loud)) % 4096);
+  // Bass swells the objects; the beat adds a small kick.
+  const bass = set('bass', approach(get('bass'), F.stem[1], 10, 3, sdt));
+  const pulse = P('pulse');
+  const size = P('size') * (1 + pulse * (0.3 * bass + 0.08 * F.beatPulse * F.gate[0]));
+  // Section changes reshuffle the arrangement (seed drifts to the new section's value over about a bar).
+  const target = hash(F.sectionIndex + 1) * P('vary');
+  const seed = set('seed', approach(get('seed', target), target, 1.5, 1.5, sdt));
+  // Drum hits jolt the camera toward the scene and roll it slightly.
+  const kick = set('kick', Math.max(get('kick') * Math.exp(-sdt * 7), F.onset[0] * F.gate[0] * P('kick')));
+  const side = set('side', F.onset[0] > 0.6 && get('kick') < 0.05 ? -get('side', 1) : get('side', 1));
+  // Orbit camera.
+  const ang = set('ang', (get('ang') + sdt * F.speed * (0.05 + 0.5 * speed)) % (TAU * 64));
+  const elev = 0.35 + 0.3 * Math.sin(T * 0.11);
+  const dist = (5.6 - 1.4 * kick) * (0.6 + 0.4 * P('size'));
+  out.fill(0);
+  out[0] = Math.cos(ang) * Math.cos(elev) * dist;
+  out[1] = Math.sin(elev) * dist;
+  out[2] = Math.sin(ang) * Math.cos(elev) * dist;
+  out[3] = 1.6; // focal length
+  out[4] = 0; out[5] = 0; out[6] = 0;
+  out[7] = 0.12 * kick * side;
+  out[8] = T; out[9] = size; out[10] = P('blend'); out[11] = seed;
+  out[12] = P('rim'); out[13] = P('ao'); out[14] = P('fog'); out[15] = P('glow');
+  out[16] = c.raw.scene; out[17] = c.raw.cam;
+  out[10] = (0.03 + 1.07 * P('blend')) * size;
+  placePrims(out, T, size, seed);
+}
+
+/** Five primitives on slow Lissajous paths, each tumbling; the section seed picks kinds and phases. */
+function placePrims(out: Float32Array, T: number, sz: number, seed: number): void {
+  for (let i = 0; i < 5; i++) {
+    const ph = i * 1.2566 + seed * TAU * (0.3 + 0.13 * i);
+    const o = (8 + i) * 4;
+    out[o] = Math.sin(T * 0.7 * (1 + 0.1 * i) + ph) * 1.05 * sz;
+    out[o + 1] = 0.7 * Math.sin(T * 0.53 * (1 + 0.07 * i) + ph * 1.7) * 1.05 * sz;
+    out[o + 2] = Math.cos(T * 0.61 + ph * 2.3) * 1.05 * sz;
+    out[o + 3] = sz * (0.42 + 0.1 * Math.sin(i * 3.1 + seed * 5));
+    rotRows(out, (13 + i * 3) * 4, T * 0.4 + i, T * 0.3 + i * 2);
+    const kind = (i + Math.floor(seed * 4)) % 4;
+    if (i < 4) out[28 * 4 + i] = kind;
+    else out[29 * 4] = kind;
+  }
+}
+
+/** Rows of a rotation (about z by a, then about x by b) into three vec4 slots starting at o. */
+function rotRows(out: Float32Array, o: number, a: number, b: number): void {
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  out[o] = ca; out[o + 1] = sa; out[o + 2] = 0;
+  out[o + 4] = -sa * cb; out[o + 5] = ca * cb; out[o + 6] = sb;
+  out[o + 8] = sa * sb; out[o + 9] = -ca * sb; out[o + 10] = cb;
+}
+
+/** Eases x toward y with separate rise / fall rates (per second). */
+function approach(x: number, y: number, up: number, down: number, dt: number): number {
+  return x + (y - x) * (1 - Math.exp(-dt * (y > x ? up : down)));
+}

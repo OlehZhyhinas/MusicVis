@@ -14,6 +14,7 @@ import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
 } from './genome';
+import { SCENE_PASS, sceneField } from './genes/raymarch';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -718,7 +719,7 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
   const ops = b.deform.ops?.length ? `p = drawWarp(p, ${bi * 3}, int(BD(12).z + 0.5));` : '';
   const fuse = b.fuse;
   let pre = '';
-  if (cls === 'field') pre += FIELD_GLSL[b.shape.kind] ?? '';
+  if (cls === 'field') pre += (b.shape.kind === 'scene' ? sceneField(b.material.kind) : FIELD_GLSL[b.shape.kind]) ?? '';
   if (drawsSdf(b)) pre += shapeCode(b.shape.kind, 'SHP', [2, 3]) + '\n';
   if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
@@ -974,6 +975,8 @@ ${placeCode}  return c;
 export interface Sources {
   feedback: string;
   composite: string;
+  /** The ray-marched scene pass (only when a body has a 'scene' shape). */
+  scene?: string;
 }
 
 export function buildSources(g: Genome): Sources {
@@ -1127,7 +1130,8 @@ ${topDraw}#endif
   c = max(mix(vec3(l2), c, uSat), 0.0);
   o = vec4(c * uWeight, 1.0);
 }`;
-  return { feedback, composite };
+  const scene = g.bodies.some((b) => b.shape.kind === 'scene') ? HEAD + COMMON + lib(nb) + SCENE_PASS : undefined;
+  return scene ? { feedback, composite, scene } : { feedback, composite };
 }
 
 /** True when the body is drawn by the curve geometry pass. */

@@ -19,6 +19,7 @@ import {
   createGenomeGene, genomeGene, genomeGeneSchema, genomeGenes, repairGenomeGenes,
   type GenomeGeneValue,
 } from './geneRegistry';
+import { SCENE_CAMS, SCENE_KINDS } from './genes/raymarch';
 import type { Member, Population } from './population';
 
 // ------------------------------------------------------------ addressing
@@ -288,6 +289,8 @@ const ON_OFF = ['off', 'on'];
 /** Names for coded choices, by `<gene kind>.<key>` (then by key alone). */
 const CHOICE_NAMES: Record<string, string[]> = {
   'solid.solid': ['tetra', 'cube', 'octa', 'icosa', 'polygon', 'by section'],
+  'scene.scene': [...SCENE_KINDS],
+  'scene.cam': [...SCENE_CAMS],
   'bars.mode': ['baseline', 'arc', 'ring', 'mirrored'],
   'curve.form': ['wave', 'circle', 'spiral', 'lissajous', 'arc', 'harmonograph'],
   'edge.mode': ['skyline', 'melody', 'rain', 'ridge'],

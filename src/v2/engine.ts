@@ -26,6 +26,7 @@ import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
 import { slimeDisplayScale } from './genes/physarum';
 import { packBeams } from './genes/beams';
+import { SCENE_VEC4, packScene } from './genes/raymarch';
 
 /**
  * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
@@ -332,9 +333,12 @@ export class Signals {
 export interface GenomePrograms {
   feedback: Program;
   composite: Program;
+  /** The ray-marched scene pass (genomes with a 'scene' body). */
+  scene?: Program;
 }
 interface CacheEntry {
-  pending: [PendingProgram, PendingProgram];
+  /** feedback, composite and (optionally) the scene pass. */
+  pending: PendingProgram[];
   done: GenomePrograms | null;
   failed: string | null;
   used: number;
@@ -361,6 +365,7 @@ export class ProgramCache {
       pending: [
         new PendingProgram(this.gl, FULLSCREEN_VS, src.feedback, `v2-fb ${key}`, this.parallel),
         new PendingProgram(this.gl, FULLSCREEN_VS, src.composite, `v2-comp ${key}`, this.parallel),
+        ...(src.scene ? [new PendingProgram(this.gl, FULLSCREEN_VS, src.scene, `v2-scene ${key}`, this.parallel)] : []),
       ],
       done: null,
       failed: null,
@@ -375,18 +380,17 @@ export class ProgramCache {
     const key = this.request(g);
     const e = this.entries.get(key)!;
     if (e.done || e.failed) return e.done;
-    const a = e.pending[0].poll(now);
-    const b = e.pending[1].poll(now);
-    if (!a || !b) return null;
-    const err = e.pending[0].error ?? e.pending[1].error;
+    const ready = e.pending.map((p) => p.poll(now));
+    if (ready.includes(false)) return null;
+    const err = e.pending.find((p) => p.error)?.error;
     if (err) {
       console.error(err);
       e.failed = err;
-      e.pending[0].program?.dispose();
-      e.pending[1].program?.dispose();
+      for (const p of e.pending) p.program?.dispose();
       return null;
     }
     e.done = { feedback: e.pending[0].program!, composite: e.pending[1].program! };
+    if (e.pending[2]) e.done.scene = e.pending[2].program!;
     return e.done;
   }
 
@@ -405,6 +409,7 @@ export class ProgramCache {
       if (!e.done && !e.failed) continue;
       e.done?.feedback.dispose();
       e.done?.composite.dispose();
+      e.done?.scene?.dispose();
       this.entries.delete(k);
     }
   }
@@ -419,6 +424,7 @@ export class ProgramCache {
     for (const e of this.entries.values()) {
       e.done?.feedback.dispose();
       e.done?.composite.dispose();
+      e.done?.scene?.dispose();
     }
     this.entries.clear();
   }
@@ -475,6 +481,9 @@ export class Slot {
   slime = -1;
   /** Per reaction this frame: the source signal and the response after its curve (live meters). */
   readonly meters = new Float32Array(MAX_REACTIONS * 2);
+  /** Ray-marched scene: its pass uniforms and its reduced-resolution target. */
+  readonly scn = new Float32Array(SCENE_VEC4 * 4);
+  sceneT: Target | null = null;
 
   constructor(
     public genome: Genome,
@@ -653,6 +662,8 @@ export class Stage {
     for (const s of this.slots) {
       s.fb.dispose();
       (s as { fb: PingPong }).fb = this.makeFb();
+      s.sceneT?.dispose();
+      s.sceneT = null;
     }
   }
 
@@ -667,6 +678,8 @@ export class Stage {
 
   disposeSlot(s: Slot): void {
     s.fb.dispose();
+    s.sceneT?.dispose();
+    s.sceneT = null;
     this.slots = this.slots.filter((x) => x !== s);
   }
 
@@ -751,6 +764,7 @@ export class Stage {
     const slimeSlot = slots.filter((s) => s.slime >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
 
+    for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
     for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot);
 
     // Composite every live slot into the HDR scene.
@@ -1649,6 +1663,7 @@ export class Stage {
         return 0.2;
       }
       case 'plasma': case 'terrain': case 'edge': case 'beams':
+      case 'plasma': case 'terrain': case 'edge': case 'scene':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1741,7 +1756,7 @@ export class Stage {
         E[o + 8] = P('terrain'); E[o + 9] = P('flash');
         break;
       }
-      case 'beams': {
+      case 'beams': case 'scene': {
         const bf = { bars: this.clk.bars, loud: F.loud, melodic: this.sig.melodic(), drop: F.drop, speed: F.speed };
         packBeams(E, o, o - 56, P, sh.p, bf, m, key, copies[0]?.y ?? 0, (k, raw) => this.resp(k, raw), sdt);
         break;
@@ -2167,6 +2182,26 @@ export class Stage {
     s.fb.swap();
   }
 
+  /** Ray-marches the slot's scene body into its reduced-resolution target. */
+  private scenePass(s: Slot, sdt: number): void {
+    const gl = this.eng.gl;
+    const b = s.genome.bodies.find((x) => x.shape.kind === 'scene');
+    if (!b || !s.progs.scene) return;
+    const res = b.shape.p.res;
+    const w = Math.max(2, Math.round(this.w * res));
+    const h = Math.max(2, Math.round(this.h * res));
+    if (!s.sceneT || s.sceneT.w !== w || s.sceneT.h !== h) {
+      s.sceneT?.dispose();
+      s.sceneT = new Target(gl, w, h, [this.eng.hdr], gl.LINEAR);
+    }
+    s.sceneT.bind();
+    gl.disable(gl.BLEND);
+    const p = s.progs.scene.use();
+    this.setCommon(p, s, sdt, true);
+    p.f2('uRes', w, h).f4v('uScn', s.scn);
+    this.eng.fs.draw();
+  }
+
   private setCommon(p: Program, s: Slot, sdt: number, fbPass: boolean): void {
     const F = this.sig.F;
     const c = s.cols;
@@ -2214,6 +2249,7 @@ export class Stage {
       .f1('uBarPulse', F.barPulse)
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex);
+    if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
   }
 
   private post(pp: PostParams, target: 'canvas' | 'out', rawDt: number): void {
