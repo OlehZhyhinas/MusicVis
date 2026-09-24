@@ -1663,8 +1663,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams':
-      case 'plasma': case 'terrain': case 'edge': case 'scene':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1757,11 +1756,14 @@ export class Stage {
         E[o + 8] = P('terrain'); E[o + 9] = P('flash');
         break;
       }
-      case 'beams': case 'scene': {
+      case 'beams': {
         const bf = { bars: this.clk.bars, loud: F.loud, melodic: this.sig.melodic(), drop: F.drop, speed: F.speed };
         packBeams(E, o, o - 56, P, sh.p, bf, m, key, copies[0]?.y ?? 0, (k, raw) => this.resp(k, raw), sdt);
         break;
       }
+      case 'scene':
+        packScene(s.scn, { F, sdt, P, raw: sh.p, mem: m, key: key('') });
+        break;
     }
     void copies;
   }
