@@ -20,6 +20,8 @@ import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
 import { Phenotype } from './phenotype';
 import { Fingerprinter } from './fingerprintRender';
+import { ExploreControls, loadExploreMode } from './exploreUi';
+import { EXPLORE_LABEL } from './novelty';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
 import { ChatPane } from '../chat/chatPane';
@@ -83,6 +85,8 @@ async function main(): Promise<void> {
   const pheno = new Phenotype(new Fingerprinter(eng, screener.runner), () => evo.pop);
   evo.pheno = pheno;
   pheno.onFingerprint = () => evo.changed();
+  pheno.mode = loadExploreMode();
+  await pheno.attachStore(store);
 
   function resizeCanvas(): void {
     eng.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
@@ -201,6 +205,12 @@ async function main(): Promise<void> {
     onClose: () => {
       if (dock.tab === 'presets') dock.close();
     },
+    novelty: (m) => pheno.novelty(m),
+  });
+  const explore = new ExploreControls(pheno.mode, (m) => {
+    pheno.mode = m;
+    browser.refresh();
+    showToast(`Exploration: ${EXPLORE_LABEL[m]}`, 'evolve', 4000, ExploreControls.hint(m));
   });
   const editor = new GeneEditor($<HTMLElement>('v2-genes'), {
     eng,
@@ -568,6 +578,7 @@ async function main(): Promise<void> {
       { group: 'Presets', icon: 'hash', label: 'Go to preset by ID…', keys: ['G'], run: () => palette.open('goto'), stay: true },
       { group: 'Presets', icon: 'evolve', label: `Evolve mode ${evolveOn ? 'off' : 'on'}`, keys: ['E'], run: () => setEvolve(!evolveOn) },
       { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
+      { group: 'Presets', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
       { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
       { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
       { group: 'Panels', icon: 'trash', label: 'Clear playlist', run: () => clearPlaylist() },

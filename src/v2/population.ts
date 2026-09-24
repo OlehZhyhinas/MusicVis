@@ -245,15 +245,16 @@ export class Population {
   /**
    * Tournament selection within a niche. The second parent is often of a
    * different type (cross-type mating) and sometimes from the other niche;
-   * near-duplicates of the first parent are penalised.
+   * near-duplicates of the first parent are penalised. `bonus` adds to each
+   * candidate's score (the exploration mode's phenotype-novelty bonus).
    */
-  pickParents(niche: Energy, rng: Rng, tournament = 3): [Member, Member] | null {
+  pickParents(niche: Energy, rng: Rng, tournament = 3, bonus?: (m: Member) => number): [Member, Member] | null {
     const pool = this.visible();
     if (pool.length < 2) return null;
     const inNiche = pool.filter((m) => m.energy === niche);
     const base = inNiche.length >= 2 ? inNiche : pool;
     const score = (m: Member, ref?: Member) => {
-      let s = fitness(m) + 0.04 * Math.min(1, this.novelty(m) / 0.2);
+      let s = fitness(m) + 0.04 * Math.min(1, this.novelty(m) / 0.2) + (bonus ? bonus(m) : 0);
       if (ref && descriptorDistance(m.descriptor, ref.descriptor) < DUP_DIST * 2) s -= 0.15;
       if (ref && structuralKey(m.genome) === structuralKey(ref.genome)) s -= 0.05;
       return s;

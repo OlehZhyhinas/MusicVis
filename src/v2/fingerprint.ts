@@ -684,12 +684,19 @@ export function groupTerms(za: Float32Array, zb: Float32Array): number[] {
 
 /** Phenotype distance between two z-scored fingerprints: weighted RMS over groups. */
 export function zDistance(za: Float32Array, zb: Float32Array, w: GroupWeights = EQUAL_WEIGHTS): number {
-  const t = groupTerms(za, zb);
   let s = 0, ws = 0;
-  GROUPS.forEach((g, i) => {
-    s += w[g] * t[i];
-    ws += w[g];
-  });
+  for (const g of GROUPS) {
+    const wg = w[g];
+    if (!wg) continue;
+    const idx = GROUP_INDEX[g];
+    let t = 0;
+    for (let k = 0; k < idx.length; k++) {
+      const d = za[idx[k]] - zb[idx[k]];
+      t += d * d;
+    }
+    s += (wg * t) / idx.length;
+    ws += wg;
+  }
   return ws > 0 ? Math.sqrt(s / ws) : 0;
 }
 

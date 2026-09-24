@@ -104,7 +104,9 @@ export class Evolution {
     const recent = new Set(this.history);
     if (reason === 'evolve' && this.rng() < 0.3) {
       // Exploration: something nobody has seen yet, newest first.
-      const fresh = pool.filter((m) => m.views === 0 && dist(m) < 0.25).sort((a, b) => b.created - a.created);
+      // With exploration on, the most novel-looking first.
+      const nov = (m: Member) => (this.pheno && this.pheno.mode !== 'off' ? this.pheno.novelty(m)?.rel ?? 0.5 : 0);
+      const fresh = pool.filter((m) => m.views === 0 && dist(m) < 0.25).sort((a, b) => nov(b) - nov(a) || b.created - a.created);
       if (fresh.length) return fresh[Math.floor(this.rng() * Math.min(4, fresh.length))];
     }
     let cands = pool.filter((m) => dist(m) < 0.1 && !recent.has(m.id) && (reason !== 'drop' || m.genome.energy[1] >= 0.8));
@@ -113,8 +115,10 @@ export class Evolution {
     // Score = fitness plus an exploration bonus for rarely seen presets (so
     // unvoted children get airtime until votes decide), with random
     // tie-breaking so the seeds at the front of the list don't win every tie.
+    // Exploration mode adds phenotype novelty (tapering as votes come in).
     const totalViews = pool.reduce((s, m) => s + m.views, 0) + 1;
-    const score = (m: Member) => fitness(m) + 0.15 * Math.sqrt(Math.log(totalViews + 1) / (m.views + 1)) + 0.02 * this.rng();
+    const base = (m: Member) => (this.pheno ? this.pheno.score(m) : fitness(m));
+    const score = (m: Member) => base(m) + 0.15 * Math.sqrt(Math.log(totalViews + 1) / (m.views + 1)) + 0.02 * this.rng();
     // Weighted pick among the best dozen.
     const ranked = cands.map((m) => ({ m, f: score(m) })).sort((a, b) => b.f - a.f).slice(0, reason === 'evolve' ? 10 : 14);
     let total = 0;
@@ -176,6 +180,16 @@ export class Evolution {
           onEvent?.({ kind: 'reject', reason, tried });
           continue;
         }
+        // Explore / wild: turn away children that look too familiar (never in the last half of the attempts).
+        if (fp && tried <= (n * MAX_TRIES_PER_CHILD) / 2) {
+          const acc = this.pheno!.acceptNovelty(fp);
+          if (!acc.ok) {
+            const reason = `too familiar for ${this.pheno!.mode} mode (novelty ${acc.rel.toFixed(2)})`;
+            this.lastRejects.push(reason);
+            onEvent?.({ kind: 'reject', reason, tried });
+            continue;
+          }
+        }
         const child = this.pop.addChild(cloneGenome(g), parents, Date.now(), tag);
         child.descriptor = res.descriptor;
         if (fp) this.pheno!.adopt(child, fp);
@@ -197,7 +211,7 @@ export class Evolution {
   async autoBreed(niche: Energy): Promise<Member[]> {
     const born: Member[] = [];
     for (let i = 0; i < 2; i++) {
-      const pair = this.pop.pickParents(niche, this.rng);
+      const pair = this.pop.pickParents(niche, this.rng, 3, this.pheno ? (m) => this.pheno!.bonus(m) : undefined);
       if (!pair) break;
       born.push(...(await this.breed(pair, 1, this.rng() < 0.8 ? 'cross' : 'mutate')));
     }

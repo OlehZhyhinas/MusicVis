@@ -1,12 +1,26 @@
 // Phenotype controller: fingerprints members in the background (idle work,
 // one at a time, only while nothing else is rendering offscreen), keeps the
 // robust normalisation fitted to every fingerprint seen, and answers "does
-// this child look like something we already have?" for breeding.
+// this child look like something we already have?" for breeding. Owns the
+// novelty archive (every fingerprint ever shown or bred, persisted) and the
+// exploration mode.
 
 import type { Genome } from './genome';
 import type { Member, Population } from './population';
 import { DUP_FP_DIST, FP_VERSION, FeatureNorm, validFingerprint, zDistance, type GroupWeights, EQUAL_WEIGHTS } from './fingerprint';
 import type { Fingerprinter } from './fingerprintRender';
+import {
+  NoveltyArchive, exploreScore, knnNovelty, noveltyTable, relNovelty, voteCount, EXPLORE_ACCEPT,
+  type ExploreMode,
+} from './novelty';
+import { fitness } from './population';
+
+export interface KV {
+  get<T>(key: string): Promise<T | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+const ARCHIVE_KEY = 'novelty-archive';
 
 export interface DuplicateHit {
   id: string;
@@ -23,6 +37,13 @@ export class Phenotype {
   private zCache = new WeakMap<number[], Float32Array>();
   /** Called after a member got its fingerprint (the evolution saves, the map refreshes). */
   onFingerprint: ((m: Member) => void) | null = null;
+  archive = new NoveltyArchive();
+  mode: ExploreMode = 'gentle';
+  private store: KV | null = null;
+  private saveTimer = 0;
+  private table: Map<string, { nov: number; rel: number }> = new Map();
+  private tableKey = '';
+  private typical: number[] = [];
 
   readonly fper: Fingerprinter | null;
   private popRef: () => Population;
@@ -36,9 +57,88 @@ export class Phenotype {
     return this.popRef();
   }
 
-  /** Every valid fingerprint the normalisation is fitted on. */
+  /** Load the archive; members fingerprinted before the archive existed are added to it. */
+  async attachStore(store: KV): Promise<void> {
+    this.store = store;
+    try {
+      this.archive = NoveltyArchive.fromJSON(await store.get<unknown>(ARCHIVE_KEY));
+    } catch {
+      this.archive = new NoveltyArchive();
+    }
+    this.syncArchive();
+  }
+
+  /** Every current member's fingerprint is in the archive (migration and imports). */
+  syncArchive(): void {
+    const before = this.archive.version;
+    const known = new Set(this.archive.entries.map((e) => e.id));
+    for (const m of this.pop.list()) if (validFingerprint(m.fp) && m.fpv === FP_VERSION && !known.has(m.id)) this.archive.add(m.id, m.fp);
+    if (this.archive.version !== before) {
+      this.refit(true);
+      this.saveArchive();
+    }
+  }
+
+  /** Write the archive now (tests; the app saves debounced). */
+  async flush(): Promise<void> {
+    clearTimeout(this.saveTimer);
+    await this.store?.set(ARCHIVE_KEY, this.archive.toJSON());
+  }
+
+  private saveArchive(): void {
+    if (!this.store) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => void this.store?.set(ARCHIVE_KEY, this.archive.toJSON()), 1500) as unknown as number;
+  }
+
+  /** Every valid fingerprint the normalisation is fitted on: the archive (every look seen) plus current members. */
   protected corpus(): number[][] {
-    return this.pop.list().map((m) => m.fp).filter(validFingerprint);
+    const inArchive = new Set(this.archive.entries.map((e) => e.id));
+    return [...this.archive.entries.map((e) => e.fp), ...this.pop.list().filter((m) => !inArchive.has(m.id)).map((m) => m.fp).filter(validFingerprint)];
+  }
+
+  // ------------------------------------------------------------ novelty
+
+  private ensureTable(): void {
+    const key = `${this.archive.version}:${this.fitN}:${this.pop.size}:${JSON.stringify(this.weights)}`;
+    if (key === this.tableKey) return;
+    this.tableKey = key;
+    const t = noveltyTable(this.pop.list(), this.archive, this.norm, this.weights);
+    this.table = t.table;
+    this.typical = t.typical;
+  }
+
+  /** A member's novelty (mean distance to its k nearest archived looks) and its relative value 0..1; null without a fingerprint. */
+  novelty(m: Member): { nov: number; rel: number } | null {
+    if (!validFingerprint(m.fp)) return null;
+    this.ensureTable();
+    return this.table.get(m.id) ?? null;
+  }
+
+  /** Novelty of a candidate fingerprint (not yet a member). */
+  noveltyOf(fp: number[]): { nov: number; rel: number } {
+    this.ensureTable();
+    const az = this.archive.entries.map((e) => ({ id: e.id, z: this.z(e.fp) }));
+    const nov = knnNovelty(this.z(fp), az, undefined, undefined, this.weights);
+    return { nov, rel: relNovelty(nov, this.typical) };
+  }
+
+  /** Exploration score: fitness + mode weight x relative novelty, the weight tapering with votes. Unfingerprinted members count as averagely novel. */
+  score(m: Member): number {
+    return exploreScore(fitness(m), this.novelty(m)?.rel ?? 0.5, this.mode, voteCount(m));
+  }
+
+  /** The novelty bonus alone (for parent selection). */
+  bonus(m: Member): number {
+    return this.score(m) - fitness(m);
+  }
+
+  /** In explore / wild mode, a child less novel than the mode's floor is turned away. */
+  acceptNovelty(fp: number[]): { ok: boolean; rel: number } {
+    const floor = EXPLORE_ACCEPT[this.mode];
+    if (!floor || this.archive.size < 8) return { ok: true, rel: floor ? this.noveltyOf(fp).rel : 0 };
+    const { rel } = this.noveltyOf(fp);
+    return { ok: rel >= floor, rel };
   }
 
   /** Refit the robust z-score normalisation when the corpus has grown by 10% (or on force). */
@@ -96,6 +196,7 @@ export class Phenotype {
     this.refit(true);
     this.timer = window.setInterval(() => {
       if (this.running || document.hidden || !idle()) return;
+      this.syncArchive();
       const m = this.missing()[0];
       if (!m) return;
       this.running = true;
@@ -121,6 +222,8 @@ export class Phenotype {
   adopt(m: Member, fp: number[]): void {
     m.fp = fp;
     m.fpv = FP_VERSION;
+    this.archive.add(m.id, fp);
+    this.saveArchive();
     this.refit();
     this.onFingerprint?.(m);
   }

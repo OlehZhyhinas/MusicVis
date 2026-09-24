@@ -1,0 +1,23 @@
+/* Exploration / novelty controls in the Presets tab (tools row, row badge). */
+.v2b-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none;
+}
+.v2b-tools-l {
+  font-size: 12px;
+  color: var(--tx2);
+}
+.v2b-tools .seg button {
+  padding: 0 10px;
+}
+.prs .nov {
+  font: 400 10px/1 var(--mono);
+  color: var(--tx3);
+  white-space: nowrap;
+}
+.prs .nov.hi {
+  color: var(--acc);
+}

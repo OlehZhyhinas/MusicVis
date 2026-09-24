@@ -6,8 +6,12 @@ import {
   CLIP, DUP_FP_DIST, FEATURES, FEATURE_COUNT, FP_VERSION, FeatureNorm, FingerprintAcc, GROUPS, ReferenceClip,
   blockFlow, clipPart, fpDistance, frameFeatures, validFingerprint,
 } from '../src/v2/fingerprint';
-import { Population } from '../src/v2/population';
+import { Population, fitness } from '../src/v2/population';
 import { Phenotype } from '../src/v2/phenotype';
+import {
+  EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, parseExploreMode,
+  relNovelty, voteCount,
+} from '../src/v2/novelty';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -67,6 +71,129 @@ function fingerprintOf(p: Pattern): number[] {
     if (f % 48 === 0) acc.pair(paint(p, s.time, s.beatPulse), paint(p, s.time + 1 / 60, s.beatPulse));
   }
   return acc.finish();
+}
+
+/** In-memory stand-in for the IndexedDB key-value store. */
+class MemKV {
+  data = new Map<string, unknown>();
+  async get<T>(k: string): Promise<T | undefined> {
+    return this.data.get(k) as T | undefined;
+  }
+  async set(k: string, v: unknown): Promise<void> {
+    this.data.set(k, JSON.parse(JSON.stringify(v)));
+  }
+}
+
+/** A random but reproducible fingerprint cloud: `n` points around `centre` with spread `s` (in feature floors). */
+function cloud(n: number, seed: number, centre: number, s: number): number[][] {
+  let x = seed >>> 0;
+  const r = () => ((x = (x * 1664525 + 1013904223) >>> 0) / 2 ** 32) - 0.5;
+  return Array.from({ length: n }, () => FEATURES.map((f) => centre * f.floor * 10 + r() * s * f.floor * 10));
+}
+
+export async function noveltyTestsAsync(check: Check): Promise<void> {
+  // ------------------------------------------------ archive
+  {
+    const a = new NoveltyArchive(5);
+    const pts = cloud(8, 1, 0, 1);
+    pts.forEach((p, i) => a.add(`G1-000${i}`, p, i));
+    a.add('G1-0007', pts[7], 99); // refresh keeps one entry
+    a.add('bad', [1, 2, 3]);
+    const back = NoveltyArchive.fromJSON(JSON.parse(JSON.stringify(a.toJSON())), 5);
+    const other = NoveltyArchive.fromJSON({ ...a.toJSON(), fpVersion: FP_VERSION + 1 });
+    const junk = NoveltyArchive.fromJSON({ format: 'nope' });
+    check('novelty.archive', a.size === 5 && a.entries[0].id === 'G1-0003' && !a.has('bad') && back.size === 5 && back.entries[4].t === 99 && other.size === 0 && junk.size === 0,
+      `capped at 5 (oldest dropped), refresh keeps one entry, invalid vectors refused, save/load keeps ${back.size}; another fingerprint version or a foreign file loads empty`);
+  }
+  {
+    // Persistence + migration: a population fingerprinted before the archive existed fills it; culled members stay in it.
+    const pop = Population.seeded(5);
+    const pts = cloud(pop.size, 7, 0, 1);
+    pop.list().forEach((m, i) => {
+      m.fp = pts[i];
+      m.fpv = FP_VERSION;
+    });
+    const kv = new MemKV();
+    const ph = new Phenotype(null, () => pop);
+    await ph.attachStore(kv);
+    const migrated = ph.archive.size;
+    await ph.flush();
+    const gone = pop.list()[3];
+    pop.members.delete(gone.id);
+    const ph2 = new Phenotype(null, () => pop);
+    await ph2.attachStore(kv);
+    const stored = (kv.data.get('novelty-archive') as { entries: unknown[] }).entries.length;
+    check('novelty.archive-persist', migrated === pts.length && stored === pts.length && ph2.archive.has(gone.id) && ph2.archive.size === pts.length,
+      `${migrated} old fingerprints migrated into the archive and saved; after ${gone.id} is culled it is still archived (${ph2.archive.size})`);
+  }
+
+  // ------------------------------------------------ k-NN novelty
+  {
+    const norm = FeatureNorm.identity();
+    const crowd = cloud(40, 3, 0, 1);
+    const a = new NoveltyArchive();
+    crowd.forEach((p, i) => a.add(`C${i}`, p));
+    const inside = { id: 'X1', fp: cloud(1, 11, 0, 0.5)[0] };
+    const outside = { id: 'X2', fp: cloud(1, 12, 3, 0.5)[0] };
+    const { table, typical } = noveltyTable([inside, outside, { id: 'C0', fp: crowd[0] }], a, norm);
+    const zs = crowd.map((p, i) => ({ id: `C${i}`, z: norm.z(p) }));
+    const k1 = knnNovelty(norm.z(crowd[0]), zs, 1, 'C0');
+    const self = knnNovelty(norm.z(crowd[0]), zs, 1);
+    const ri = table.get('X1')!.rel, ro = table.get('X2')!.rel;
+    const pct = relNovelty(typical[Math.floor(typical.length / 2)], typical);
+    check('novelty.knn', ro === 1 && ri < 0.6 && table.get('X2')!.nov > table.get('X1')!.nov && self === 0 && k1 > 0 && Math.abs(pct - 0.5) < 0.05 && relNovelty(-1, typical) === 0,
+      `a look inside the crowd rel ${ri.toFixed(2)}, far outside rel ${ro.toFixed(2)}; a member's own archive entry is excluded; the archive median maps to ${pct.toFixed(2)}`);
+  }
+
+  // ------------------------------------------------ exploration scoring
+  {
+    const bad: string[] = [];
+    // Off: pure fitness. Novelty never helps in off mode.
+    if (exploreScore(0.4, 1, 'off', 0) !== 0.4) bad.push('off adds novelty');
+    // Modes are ordered.
+    const ws = EXPLORE_MODES.map((m) => noveltyWeight(m, 0));
+    if (!ws.every((w, i) => i === 0 || w > ws[i - 1])) bad.push(`weights ${ws}`);
+    // The weight tapers with votes: halved after VOTE_HALF votes. A well-liked preset
+    // beats an unvoted maximally novel one in explore mode; in wild mode the novel one
+    // gets its airtime, but once it has three dislikes the liked one wins again.
+    if (Math.abs(noveltyWeight('wild', 3) - EXPLORE_WEIGHT.wild / 2) > 1e-9) bad.push('taper');
+    const liked = { likes: 12, dislikes: 1, weakLikes: 0, softDislikes: 0 };
+    const unvoted = { likes: 0, dislikes: 0, weakLikes: 0, softDislikes: 0 };
+    const disliked = { likes: 0, dislikes: 3, weakLikes: 0, softDislikes: 0 };
+    const sc = (v: typeof liked, rel: number, m: 'explore' | 'wild') => exploreScore(fitness({ ...v } as never), rel, m, voteCount(v));
+    const likedScore = sc(liked, 0.1, 'explore'), novelScore = sc(unvoted, 1, 'explore');
+    if (!(likedScore > novelScore)) bad.push(`explore: liked ${likedScore.toFixed(3)} vs novel ${novelScore.toFixed(3)}`);
+    if (!(sc(unvoted, 1, 'wild') > sc(liked, 0.1, 'wild') && sc(disliked, 1, 'wild') < sc(liked, 0.1, 'wild'))) bad.push('wild ordering');
+    // Between two unvoted presets, the novel one wins in every mode but off.
+    for (const m of EXPLORE_MODES.slice(1)) if (!(exploreScore(0.2, 0.9, m, 0) > exploreScore(0.2, 0.1, m, 0))) bad.push(`${m} ignores novelty`);
+    if (!(EXPLORE_ACCEPT.off === 0 && EXPLORE_ACCEPT.gentle === 0 && EXPLORE_ACCEPT.wild > EXPLORE_ACCEPT.explore)) bad.push('accept floors');
+    if (parseExploreMode('wild') !== 'wild' || parseExploreMode('bogus') !== 'gentle') bad.push('parse');
+    check('novelty.explore-score', !bad.length, bad.join(', ') || `weights ${ws.join(' / ')}; halves after 3 votes; explore: a liked preset (12:1) outranks an unvoted maximally novel one (${likedScore.toFixed(2)} > ${novelScore.toFixed(2)}); wild: the novel one first, until 3 dislikes`);
+  }
+  {
+    // Phenotype: score / acceptance use the mode; unfingerprinted members count as average.
+    const pop = Population.seeded(9);
+    const ms = pop.list();
+    const crowd = cloud(ms.length - 1, 5, 0, 1);
+    ms.slice(0, -1).forEach((m, i) => {
+      m.fp = crowd[i];
+      m.fpv = FP_VERSION;
+    });
+    const ph = new Phenotype(null, () => pop);
+    ph.syncArchive();
+    const odd = ms[ms.length - 1];
+    ph.mode = 'off';
+    const offBonus = ph.bonus(odd);
+    ph.mode = 'wild';
+    const unknown = ph.bonus(odd);
+    const far = cloud(1, 99, 4, 0.2)[0];
+    const near = crowd[0].map((v, i) => v + FEATURES[i].floor * 0.2);
+    const accFar = ph.acceptNovelty(far), accNear = ph.acceptNovelty(near);
+    ph.mode = 'gentle';
+    const gentleNear = ph.acceptNovelty(near);
+    check('novelty.phenotype', offBonus === 0 && Math.abs(unknown - EXPLORE_WEIGHT.wild * 0.5) < 1e-9 && accFar.ok && !accNear.ok && gentleNear.ok,
+      `off adds nothing; an unmeasured member counts as rel 0.5; wild keeps a far-away child (rel ${accFar.rel.toFixed(2)}) and turns away a near copy (rel ${accNear.rel.toFixed(2)}); gentle turns nothing away`);
+  }
 }
 
 export function noveltyTests(check: Check): void {

@@ -14,6 +14,8 @@ export interface BrowserCallbacks {
   toast(msg: string, kind?: 'info' | 'error' | 'ok', detail?: string): void;
   /** A child was picked: close the browser (the dock). */
   onClose?(): void;
+  /** Phenotype novelty (rel 0..1 against the archive), null before the preset is fingerprinted. */
+  novelty?(m: Member): { nov: number; rel: number } | null;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -55,6 +57,7 @@ export class PresetBrowser {
 
   constructor(private evo: Evolution, private cb: BrowserCallbacks) {
     this.typeSel.innerHTML = `<option value="">All types</option>` + SPECIES.map((s) => `<option value="${s}">${SPECIES_LABEL[s]}</option>`).join('');
+    if (cb.novelty) this.sortSel.insertAdjacentHTML('beforeend', '<option value="novel">Most novel</option>');
     for (const el of [this.typeSel, this.sortSel]) el.addEventListener('change', () => this.render());
     this.energySeg.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-v]');
@@ -216,6 +219,7 @@ export class PresetBrowser {
     const sort = this.sortSel.value;
     if (sort === 'newest') ms = ms.sort((a, b) => b.created - a.created || b.id.localeCompare(a.id));
     else if (sort === 'gen') ms = ms.sort((a, b) => b.gen - a.gen || a.id.localeCompare(b.id));
+    else if (sort === 'novel') ms = ms.sort((a, b) => (this.cb.novelty?.(b)?.rel ?? -1) - (this.cb.novelty?.(a)?.rel ?? -1) || b.created - a.created);
     else ms = ms.sort((a, b) => fitness(b) - fitness(a) || b.created - a.created);
     return ms;
   }
@@ -272,7 +276,7 @@ export class PresetBrowser {
       </div>
       <div class="sc">
         <b title="Score: Wilson lower bound of liking">${(score * 100).toFixed(0)}%</b>
-        <div class="votes" title="likes / dislikes · views"><span style="color:var(--ok)">${icon('up', 12)}</span>${m.likes}<span style="color:var(--neg)">${icon('down', 12)}</span>${m.dislikes}<span class="dim v2b-views">· ${m.views}v</span></div>
+        <div class="votes" title="likes / dislikes · views"><span style="color:var(--ok)">${icon('up', 12)}</span>${m.likes}<span style="color:var(--neg)">${icon('down', 12)}</span>${m.dislikes}<span class="dim v2b-views">· ${m.views}v</span></div>${novBadge(this.cb.novelty?.(m))}
       </div>`;
     return r;
   }
@@ -379,6 +383,12 @@ const TAG_TITLE: Record<NonNullable<Member['cross']>, string> = {
   layered: 'Rare: a second, separate layer on top',
   edited: 'Edited by hand in the gene editor and saved as a new preset',
 };
+
+function novBadge(n: { nov: number; rel: number } | null | undefined): string {
+  if (n === undefined) return '';
+  if (!n) return '<span class="nov" title="Novelty: not measured yet (fingerprinting in the background)">nov …</span>';
+  return `<span class="nov${n.rel >= 0.6 ? ' hi' : ''}" title="Novelty: how unlike every look seen so far this preset is (mean distance ${n.nov.toFixed(2)} to its 10 nearest looks in the archive; 50 = typical)">nov ${Math.round(n.rel * 100)}</span>`;
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);

@@ -35,7 +35,7 @@ import { choreoTests } from './choreo-tests';
 import { slimeTests } from './slime-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
-import { noveltyTests } from './novelty-tests';
+import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -1581,6 +1581,7 @@ physicsChecks(check);
 // -------------------------------------------------- phenotype fingerprints and novelty
 
 noveltyTests(check);
+await noveltyTestsAsync(check);
 
 // -------------------------------------------------- MilkDrop mining: cells (Voronoi field)
 
