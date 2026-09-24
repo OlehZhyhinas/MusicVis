@@ -33,6 +33,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...
 }
 
 const MIN_H = 150;
+/** A new preset is read ahead once it has been showing this long with the chat idle. */
+const READ_AHEAD_MS = 3000;
 const EXAMPLES = ['calmer, with longer trails', 'make it more blue', 'fill more of the screen', 'pulse harder on the bass'];
 
 export class ChatPane {
@@ -43,6 +45,9 @@ export class ChatPane {
   private undo: { before: Genome; after: Genome; btn: HTMLButtonElement }[] = [];
   private collapsed = loadSetting<boolean>('chat.collapsed', false);
   private shown = false;
+  private readTimer = 0;
+  private fitInput: () => void = () => {};
+  private warmP: Promise<void> | null = null;
 
   private readonly status: HTMLElement;
   private readonly stopBtn: HTMLButtonElement;
@@ -93,6 +98,13 @@ export class ChatPane {
       ev.preventDefault();
       void this.submit();
     });
+    // The box grows with its text (up to the CSS max-height).
+    const fit = () => {
+      this.input.style.height = 'auto';
+      this.input.style.height = `${this.input.scrollHeight + 2}px`;
+    };
+    this.input.addEventListener('input', fit);
+    this.fitInput = fit;
     this.input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
         ev.preventDefault();
@@ -140,7 +152,7 @@ export class ChatPane {
     const label: Record<State, string> = { off: 'off', unsupported: 'unavailable', loading: 'loading', warming: 'reading preset', ready: 'ready', busy: 'thinking', failed: 'failed' };
     this.status.textContent = label[s];
     this.status.classList.toggle('on', s === 'ready' || s === 'busy' || s === 'warming');
-    const canType = s === 'ready';
+    const canType = s === 'ready' || s === 'warming';
     this.input.disabled = !(s === 'ready' || s === 'warming');
     this.send.disabled = !canType;
     this.stopBtn.hidden = s !== 'busy';
@@ -186,9 +198,8 @@ export class ChatPane {
       });
       saveSetting('chat.enabled', true);
       this.note(`Model ready in ${((performance.now() - t0) / 1000).toFixed(1)} s (${this.llm.plan?.label ?? ''}).`, 'dim');
-      this.setState('warming');
-      await this.warm();
       this.setState('ready');
+      await this.warmUp();
       this.greet();
     } catch (err) {
       console.error('[chat] load failed', err);
@@ -230,18 +241,35 @@ export class ChatPane {
     // Undo steps belong to the preset they were made on.
     for (const u of this.undo) u.btn.disabled = true;
     this.undo = [];
+    // Read a new preset ahead once it has stayed a few seconds (auto-switching presets pass by).
+    window.clearTimeout(this.readTimer);
+    this.readTimer = window.setTimeout(() => {
+      if (this.state === 'ready' && this.shown && !this.collapsed && this.chat.stale) void this.warmUp();
+    }, READ_AHEAD_MS);
+  }
+
+  /** Runs the model's read-ahead of the preset, showing 'reading preset' meanwhile. */
+  private warmUp(): Promise<void> {
+    this.warmP ??= (async () => {
+      this.setState('warming');
+      await this.warm();
+      if (this.state === 'warming') this.setState('ready');
+    })().finally(() => (this.warmP = null));
+    return this.warmP;
   }
 
   // ------------------------------------------------------------ turns
 
   private async submit(): Promise<void> {
     const text = this.input.value.trim();
+    if (text && this.state === 'warming' && this.warmP) await this.warmP;
     if (!text || this.state !== 'ready') return;
     if (!this.deps.editor.current()) {
       this.note('No preset is playing yet.', 'warn');
       return;
     }
     this.input.value = '';
+    this.fitInput();
     this.log.append(h('div', { class: 'gc-msg me' }, h('p', { text })));
     const bot = h('div', { class: 'gc-msg bot pending' });
     const say = h('p', { class: 'gc-say' });
@@ -265,17 +293,12 @@ export class ChatPane {
     if (res) this.showResult(bot, say, res);
     this.scroll();
     // A nearly full conversation starts over now, while the user reads the reply.
-    if (this.chat.full) {
-      this.setState('warming');
-      try {
-        await this.chat.maintain();
-      } catch (err) {
-        console.warn('[chat] refresh failed', err);
-        this.chat.reset();
-      }
-    }
     this.setState('ready');
     this.input.focus();
+    if (this.chat.full) {
+      this.chat.reset();
+      void this.warmUp();
+    }
   }
 
   private showResult(bot: HTMLElement, say: HTMLElement, r: TurnResult): void {

@@ -58,6 +58,8 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   const hue = applyEdits(g, [{ op: 'set', path: 'palette.hue', value: 'blue' }], ctx);
   check('colour names set absolute hues against the key', Math.abs(hue.genome.palette.p.hue - (0.62 - 0.1)) < 1e-6, String(hue.genome.palette.p.hue));
 
+  const kn = applyEdits(g, [{ op: 'set', path: 'b0.motion.spin.rate', value: 0.5 }, { op: 'set', path: `op0.${g.chain[0]?.op ?? 'zoom'}.w`, value: 0.5 }], ctx);
+  check('a kind spelled into a path switches to it and sets the param', kn.genome.bodies[0].motion.kind === 'spin' && kn.genome.bodies[0].motion.p.rate === 0.5 && (!g.chain[0] || kn.genome.chain[0].w === 0.5), kn.errors.join(' | '));
   const k = applyEdits(g, [{ op: 'kind', path: 'b0.material', kind: 'glow' }, { op: 'set', path: 'b0.material.width', value: 0.03 }], ctx);
   check('a kind switch then a param of the new kind', k.genome.bodies[0].material.kind === 'glow' && k.genome.bodies[0].material.p.width === 0.03, k.errors.join(' | '));
 }

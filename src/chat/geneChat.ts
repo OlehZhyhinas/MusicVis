@@ -123,6 +123,7 @@ export class GeneChat {
   }
 
   private stateText(g: Genome): string {
+    this.adoptSaved();
     const preset = this.ctx.presetId();
     const look = lookText(this.ctx.look());
     if (this.seen && preset === this.seenPreset) {
@@ -144,31 +145,43 @@ export class GeneChat {
     return this.usedTokens + TURN_RESERVE > CONTEXT_TOKENS;
   }
 
-  /** Between turns: when the context is nearly full, start over and read the prompt again now. */
-  async maintain(): Promise<boolean> {
-    if (!this.full || this.busyNow) return false;
-    this.reset();
-    await this.prewarm();
-    return true;
+  /** True when the model has not read the preset being edited now (a new preset since its last turn). */
+  get stale(): boolean {
+    if (this.messages.length <= 1) return true;
+    this.adoptSaved();
+    return this.seenPreset !== this.ctx.presetId();
+  }
+
+  /** A preset saved from the edits (Save as new) is the same picture under a new id: no need to reread it. */
+  private adoptSaved(): void {
+    const id = this.ctx.presetId();
+    if (id === this.seenPreset || !this.seen) return;
+    const g = this.ctx.genome();
+    if (g && JSON.stringify(g) === JSON.stringify(this.seen)) this.seenPreset = id;
   }
 
   /**
-   * Reads the system prompt and the current preset ahead of the first request, so the first real
-   * turn only reads the request. Resolves when done.
+   * Reads the system prompt (first time) and the current preset ahead of a request, so the request
+   * itself only reads a few tokens. Used at start and, while the chat is idle, after the preset
+   * changes. Resolves when done; an abort leaves the conversation to start over.
    */
   async prewarm(signal?: AbortSignal): Promise<void> {
     const g = this.ctx.genome();
-    if (!g || this.busyNow || this.messages.length > 1) return;
+    if (!g || this.busyNow || !this.stale) return;
+    if (this.full) this.reset();
     this.busyNow = true;
     try {
       const msg = `${this.notes(presentKeys(g))}${this.stateText(g)}\nRequest: nothing yet, I will ask next. Reply with no edits.`;
       const msgs: ChatMessage[] = [...this.messages, { role: 'user', content: msg }];
       const r = await this.llm.generate(msgs, { schema: replySchema(g), maxTokens: 40, signal });
-      if (r.aborted) return;
+      if (r.aborted) {
+        this.reset();
+        return;
+      }
       this.messages = [...msgs, { role: 'assistant', content: r.text }];
       this.seen = g;
       this.seenPreset = this.ctx.presetId();
-      this.usedTokens = r.promptTokens + r.completionTokens;
+      this.remember(r);
     } finally {
       this.busyNow = false;
     }
@@ -223,7 +236,7 @@ export class GeneChat {
       let repaired = false;
       if (hard.length && !opts.signal?.aborted) {
         repaired = true;
-        const fix = `${this.notes(failedKeys(reply?.edits ?? [], g))}These edits did not work:\n${hard.map((e) => `- ${e}`).join('\n')}\nThe other edits were applied. Reply with JSON holding only replacement edits that do what was asked within the rules (or no edits if it cannot be done), and a "say" for the user.`;
+        const fix = `${this.notes(failedKeys(reply?.edits ?? [], g))}These edits did not work:\n${hard.map((e) => `- ${e}`).join('\n')}\nThe other edits were applied. Paths are written exactly as in the preset (bN.<locus>.<param>, opN.<param>, tone.<param>, ...), without kind names. Reply with JSON holding only replacement edits that do what was asked within the rules (or no edits if it cannot be done), and a "say" for the user.`;
         const msgs2: ChatMessage[] = [...this.messages, { role: 'user', content: fix }];
         const r2 = await this.llm.generate(msgs2, { schema: replySchema(g), maxTokens: MAX_REPLY_TOKENS, signal: opts.signal, onText: (t) => opts.onText?.(partialSay(t)) });
         add(r2, fix);
