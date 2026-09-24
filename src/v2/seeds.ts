@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 27;
+export const SEED_VERSION = 28;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1106,6 +1106,22 @@ const RAYMARCH: Def[] = [
     reactions: [
       rx('drums', 'sh', 0, 'kick', 0.25, { atk: 0.01, rel: 0.2 }),
       rx('loud', 'sh', 0, 'spec', 0.2, { atk: 0.05, rel: 0.4 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // Racing down a bending, ribbed tunnel: every rib closes in with its own band of the spectrum, the
+    // wall ripples with the bass, drum hits surge the ride forward, and each section re-routes the bends.
+    origin: 'R05', name: 'Wormhole Run', energy: [0.45, 1], scheme: 'triad', hue: 0.95,
+    color: { adapt: 0.3, bloom: 1.25 }, carrier: 'warp', decay: 0.8,
+    bodies: [body({
+      shape: ['scene', { scene: 2, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.45, pulse: 0.8, kick: 0.7, vary: 1, rim: 0.7, ao: 0.6, fog: 0.55, glow: 0.4, roam: 0.6, gap: 0.5, spec: 0.8 }],
+      material: ['glow', { gain: 1.1 }],
+      color: ['age', { rate: 0.0625, detail: 1 }],
+    })],
+    reactions: [
+      rx('drums', 'sh', 0, 'kick', 0.25, { atk: 0.01, rel: 0.2 }),
+      rx('bass', 'sh', 0, 'pulse', 0.2, { atk: 0.02, rel: 0.3 }),
       rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
     ],
   },
