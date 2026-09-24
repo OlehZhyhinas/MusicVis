@@ -1043,10 +1043,15 @@ void main() {
       bl += texture(uPrev, suv + off).rgb + texture(uPrev, suv - off * 0.5).rgb;
     }
     bl *= 0.0625;
-    pv += (pv - bl) * uSharpen;
-    pv = mix(pv, vec3(luma(pv)), 0.15 * uSharpen);
-    pv += (vec3(hash12(vUv * uRes + fract(uTime * 7.31) * 97.0), hash12(vUv * uRes + 13.7 + fract(uTime * 5.17) * 89.0), hash12(vUv * uRes + 41.3 + fract(uTime * 3.91) * 83.0)) - 0.5) * uSharpNoise;
-    pv = clamp(pv, 0.0, 1.0);
+    // Sharpened on the brightness, so the channels grow one pattern and keep its colours.
+    float lv = luma(pv);
+    // Grain only where there is light nearby, so patterns grow out of what is drawn, not out of black.
+    float lb = luma(bl);
+    float lg = max(lv + (lv - lb) * uSharpen + (hash12(vUv * uRes + fract(uTime * 7.31) * 97.0) - 0.5) * uSharpNoise * smoothstep(0.0, 0.06, lb), 0.0);
+    // Growth out of darkness takes the palette's second colour.
+    pv = lv > 0.004 ? pv * (lg / lv) : uColB * (lg / max(luma(uColB), 0.05));
+    pv = mix(pv, vec3(luma(pv)), 0.04 * uSharpen);
+    pv = clamp(pv / max(1.0, max(pv.r, max(pv.g, pv.b))), 0.0, 1.0);
   }
   c = max(pv * uDecay - uDecaySub, 0.0);
   if (uBorder > 0.001) {

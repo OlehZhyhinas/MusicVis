@@ -444,7 +444,7 @@ export const CARRIER_SCHEMA: Schema = {
   // Unsharp mask of the carried picture (the classic blur-difference warp trick): edges sharpen and
   // uniform areas fade, so the feedback grows reaction-diffusion patterns. grain: its blur radius.
   sharpen: P(0, 1, 0),
-  grain: P(0.002, 0.02, 0.006),
+  grain: P(0.002, 0.05, 0.006),
   // A coloured frame drawn into the feedback every frame (MilkDrop's outer border), swelling with
   // the bass; the warp carries it inward.
   border: P(0, 1, 0),

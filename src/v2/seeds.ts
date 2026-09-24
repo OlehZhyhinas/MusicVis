@@ -545,7 +545,7 @@ const MILKDROP: Def[] = [
     // Geiss, Reaction Diffusion 2: the blur-difference warp grows worm-like Turing patterns out of a
     // faint waveform and treble grain; the centre wanders, the picture turns and bass kicks the zoom.
     origin: 'M05', name: 'Reaction Diffusion 2 (after Geiss)', energy: [0.25, 0.85], scheme: 'analogous', hue: 0.08,
-    color: { sat: 0.85, adapt: 0.4, bloom: 1.2, contrast: 0.05 }, carrier: 'warp', decay: 0.93, car: { sharpen: 0.45, grain: 0.009 },
+    color: { sat: 1, exposure: 0.6, adapt: 0.2, bloom: 0.7, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.09, sharpen: 0.15, grain: 0.05 },
     chain: [op('zoom', { rate: 0.009, wander: 0.3 }), op('rotate', { lock: 0, rate: 0.002, wander: 0.3 })],
     bodies: [body({
       shape: ['curve', { form: 0, amp: 0.3 }],
@@ -556,19 +556,22 @@ const MILKDROP: Def[] = [
     reactions: [rx('bass', 'op', 0, 'rate', 0.5, { atk: 0.02, rel: 0.35, thr: 0.35 }), rx('hit', 'car', 0, 'sharpen', 0.25, { rel: 0.3 })],
   },
   {
-    // Flexi, mindblob: a blob on a spring, pulled by the bass and the treble, stirs a liquid that folds
-    // into sharpened ribbons of two contrasting colours.
-    origin: 'M06', name: 'Mindblob (after Flexi)', energy: [0.15, 0.7], scheme: 'complementary', hue: 0.75,
-    color: { adapt: 0.35, bloom: 1.1 }, carrier: 'fluid', decay: 0.995, car: { floor: 1, amount: 1.2, vort: 34, fnoise: 0.3, sharpen: 0.12, grain: 0.006 },
+    // Flexi, mindblob: two ink sources on springy circles, pulled around by their instruments, stir a
+    // liquid of two contrasting colours; the bass thickens the flow and swells the sources.
+    origin: 'M06', name: 'Mindblob (after Flexi)', energy: [0.15, 0.7], scheme: 'complementary', hue: 0.72,
+    color: { exposure: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'fluid', car: { halfLife: 1.2, floor: 1.2, amount: 1.2, vort: 34, fnoise: 0.5 },
     bodies: [body({
-      shape: ['dot', { r: 0.02 }],
-      place: ['stations', { count: 2, inst: 1, xs: 0.6, jump: 0, wander: 0.15 }],
-      motion: ['circle', { radius: 0.06, period: 4 }],
-      material: ['glow', { gain: 1.1, width: 0.03 }],
+      shape: ['dot', { r: 0.015 }],
+      place: ['stations', { count: 2, inst: 1, xs: 0.6, jump: 0, wander: 0.2 }],
+      motion: ['circle', { radius: 0.1, period: 2 }],
+      material: ['glow', { gain: 0.5, width: 0.02 }],
       emit: ['dye', { force: 1.3 }],
       feel: ['flow', { atk: 0.02, rel: 0.35 }],
     })],
-    reactions: [rx('bass', 'car', 0, 'amount', 0.3, { atk: 0.05, rel: 0.5 })],
+    reactions: [
+      rx('bass', 'car', 0, 'amount', 0.3, { atk: 0.05, rel: 0.5 }), rx('bass', 'sh', 0, 'r', 0.15, { atk: 0.03, rel: 0.3 }),
+      rx('loud', 'em', 0, 'force', 0.5, { atk: 0.05, rel: 0.4 }),
+    ],
   },
   {
     // Rovastar, Fractopia: a squaring flow pulls the coloured border inward into fractal coastlines
@@ -635,6 +638,6 @@ const MILKDROP: Def[] = [
 ];
 
 /** MilkDrop re-creations released so far (in order M01..). */
-const MILKDROP_READY = 4;
+const MILKDROP_READY = 6;
 
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP.slice(0, MILKDROP_READY)].map(build);
