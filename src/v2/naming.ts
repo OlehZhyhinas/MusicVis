@@ -143,7 +143,7 @@ function isStructural(g: Genome): boolean {
   const body = g.bodies[0];
   if (!body || body.material.p.gain >= 0.4) return false;
   for (const o of [...g.chain, ...(body.deform.ops ?? [])]) {
-    if ((o.op === 'kaleido' || o.op === 'mirror') && o.w >= 0.5) return true;
+    if ((o.op === 'kaleido' || o.op === 'mirror' || o.op === 'tunnel') && o.w >= 0.5) return true;
   }
   return false;
 }
@@ -257,6 +257,7 @@ function traits(g: Genome): Trait[] {
       case 'noise': add('wandering', WANDERING, w * clamp01(o.p.amp * 500)); break;
       case 'push': add('breathing', BREATHING, w * clamp01(Math.abs(o.p.amt) * 150)); break;
       case 'polar': add('orbital', ORBITAL, w * 0.6); break;
+      case 'tunnel': add(o.p.speed >= 0 ? 'zoomOut' : 'zoomIn', o.p.speed >= 0 ? ZOOM_OUT : ZOOM_IN, clamp01(0.5 + Math.abs(o.p.speed) * 0.4)); break;
       case 'tile': add('tiled', TILED, w * 0.7); break;
       default:
         if (isVarOp(o.op)) add('fractal', FRACTAL, w * 0.7);

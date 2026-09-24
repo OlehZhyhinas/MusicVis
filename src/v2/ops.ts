@@ -338,6 +338,8 @@ export function opToXform(o: OpGene, rng: Rng): FlameXformGene {
   if (isVarOp(o.op)) {
     const v = o.op.slice(2) as FlameVar;
     x.vars = { [v]: 0.5 + 0.5 * o.w, linear: 0.3 * rng() };
+  } else if (o.op === 'tunnel') {
+    x.vars = { spherical: 0.6, polar: 0.4 };
   } else if (o.op === 'rotate' || o.op === 'swirl' || o.op === 'twist' || o.op === 'kaleido' || o.op === 'polar') {
     const a = (o.op === 'rotate' ? (o.p.lock || 0.0625) : 0.1) * Math.PI * 2 * (rng() < 0.5 ? 1 : -1) + rng() * 0.4;
     const s = 0.55 + 0.3 * rng();

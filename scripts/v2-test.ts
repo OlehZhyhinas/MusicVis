@@ -16,7 +16,7 @@ import {
 import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
 import { Population, fitness, POPULATION_VERSION, uniqueName } from '../src/v2/population';
 import {
-  TONE_SCHEMA, CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, PALETTE_KINDS, REACTION_SCHEMA,
+  TONE_SCHEMA, CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, OP_SCHEMAS, PALETTE_KINDS, REACTION_SCHEMA,
   reactable, schemaFor,
   type ParamSpec, type Schema, type Signal,
 } from '../src/v2/genome';
@@ -30,6 +30,7 @@ import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/n
 import { buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { CELLS_SCHEMA } from '../src/v2/genes/cells';
+import { TUNNEL_SCHEMA } from '../src/v2/genes/tunnel';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 import { driftTests } from './drift-tests';
@@ -1662,6 +1663,48 @@ await noveltyTestsAsync(check);
   check('huemap.rare-in-random', hOn > 3 && hOn < 70 && sOn > 1 && sOn < 60, `${hOn}/300 hue-mapped, ${sOn}/300 solarized random genomes`);
   const hits = SEEDS.slice(0, 24).filter((x) => ADJ_POOLS.psychedelic.includes(nameFor(repair({ ...cloneGenome(x.genome), tone: { p: { ...x.genome.tone.p, huemap: 1 } } })).split(' ')[0])).length;
   check('huemap.name', hits >= 4 && classify(m14).label.includes('plasma'), `${hits}/24 originals named psychedelic when hue-mapped; M14 is ${classify(m14).label}`);
+}
+
+// -------------------------------------------------- MilkDrop mining: tunnel fold op
+
+{
+  const m16 = seedByOrigin('M16'), m17 = seedByOrigin('M17');
+  check('tunnel.schema', OP_KINDS.includes('tunnel') && OP_SCHEMAS.tunnel === TUNNEL_SCHEMA && m16.chain.some((o) => o.op === 'tunnel' && o.stage === 'view'), 'a stage-free fold op with its own schema');
+  const bad = repair({ ...cloneGenome(m16), chain: [{ op: 'tunnel', stage: 'view', w: 3, p: { depth: 9, speed: -7, twist: 0.2, sides: 7, rep: 2.6, fog: NaN, lock: 0.3 } }] });
+  const bp = bad.chain[0].p;
+  check('tunnel.repair', !validate(bad).length && bad.chain[0].stage === 'view' && bad.chain[0].w === 1 && bp.depth === 0.6 && bp.speed === -1 && bp.sides === 6 && bp.rep === 3 && bp.fog === TUNNEL_SCHEMA.fog.def && bp.lock === 0.25, JSON.stringify(bp));
+  const view = buildSources(m16);
+  const warpG = repair({ ...cloneGenome(m16), chain: [{ ...m16.chain[1], stage: 'warp' }] });
+  check('tunnel.glsl', view.composite.includes('OB') === false && view.composite.includes('float z = uOpA[1].x / max(r, 1e-3)') && buildSources(warpG).feedback.includes('float z = uOpA[0].x / max(r, 1e-3)'), 'the tunnel mapping builds into the view (composite) or warp (feedback) stage');
+  check('tunnel.cost', estimateCost(m16) < COST_BUDGET_MS && estimateCost(m17) < COST_BUDGET_MS, `M16 ${estimateCost(m16).toFixed(2)} ms, M17 ${estimateCost(m17).toFixed(2)} ms`);
+  const qr = mulberry32(5511);
+  let tunnels = 0;
+  const rbad: string[] = [];
+  for (let i = 0; i < 800; i++) {
+    const o = randomOp(qr);
+    if (o.op !== 'tunnel') continue;
+    tunnels++;
+    const g = repair({ ...cloneGenome(seedByOrigin('E05')), chain: [o] });
+    if (validate(g).length) rbad.push(validate(g)[0]);
+  }
+  check('tunnel.random', tunnels > 5 && !rbad.length, rbad[0] ?? `${tunnels}/800 random ops were tunnels, all valid`);
+  const rng = mulberry32(4141);
+  const probs: string[] = [];
+  let kept = 0, n = 0;
+  const bySp = new Map<string, Genome>();
+  for (const x of SEEDS) if (!bySp.has(classify(x.genome).primary)) bySp.set(classify(x.genome).primary, x.genome);
+  for (const [sp, other] of bySp) {
+    for (let k = 0; k < 6; k++) {
+      const c = k % 2 ? crossover(m16, other, rng) : crossover(other, m17, rng);
+      n++;
+      if (validate(c).length) probs.push(`${sp}:${validate(c)[0]}`);
+      if (c.chain.some((o) => o.op === 'tunnel') || c.bodies.some((b) => b.shape.kind === 'flame')) kept++;
+      const m = mutate(c, rng, 2);
+      if (validate(m).length) probs.push(`${sp} mutated:${validate(m)[0]}`);
+    }
+  }
+  check('tunnel.breeds-with-every-species', !probs.length && kept > n * 0.25, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; tunnel (or its flame-transform form) inherited in ${kept}/${n}`);
+  check('tunnel.species-name', classify(m16).primary === 'vortex' && classify(m17).label.includes('vortex'), `M16 ${classify(m16).label} (${nameFor(m16)}), M17 ${classify(m17).label}`);
 }
 
 void (repairBody as unknown);

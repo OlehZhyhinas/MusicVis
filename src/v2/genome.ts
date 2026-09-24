@@ -33,6 +33,7 @@ import { repair as repairV2, upgradeV2 } from './legacy';
 import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
 import { FLOCK_SCHEMA, flockCost } from './genes/boids';
+import { TUNNEL_SCHEMA } from './genes/tunnel';
 import { CELLS_SCHEMA, cellsCost } from './genes/cells';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
@@ -66,7 +67,7 @@ export const TURNS = [-1, -0.5, -0.25, -0.125, -0.0625, 0, 0.0625, 0.125, 0.25, 
 // ------------------------------------------------------------------ chain
 
 export const MOTION_OPS = ['zoom', 'rotate', 'translate', 'swirl', 'twist', 'ripple', 'noise', 'push', 'quad'] as const;
-export const FOLD_OPS = ['mirror', 'tile', 'polar', 'kaleido', 'stretch'] as const;
+export const FOLD_OPS = ['mirror', 'tile', 'polar', 'kaleido', 'stretch', 'tunnel'] as const;
 export const VAR_OPS = FLAME_VARIATIONS.map((v) => `v_${v}`) as `v_${FlameVar}`[];
 export type OpKind = (typeof MOTION_OPS)[number] | (typeof FOLD_OPS)[number] | `v_${FlameVar}`;
 export const OP_KINDS: OpKind[] = [...MOTION_OPS, ...FOLD_OPS, ...VAR_OPS];
@@ -94,6 +95,8 @@ export const OP_SCHEMAS: Record<string, Schema> = {
   polar: { scale: P(0.4, 1.6, 1), lock: C(LOCKS, 0) },
   kaleido: { n: I(3, 12, 6), lock: C(LOCKS, 0.0625) },
   // Spectrum stretch of the displayed picture (view) or a slow pull up loud strips (warp).
+  // Tunnel: the picture wrapped on a tunnel wall flown through (see genes/tunnel.ts).
+  tunnel: TUNNEL_SCHEMA,
   stretch: { base: P(-0.4, 0.2, -0.16), amt: P(0, 1.5, 0.9), beat: P(0, 0.4, 0.18), strips: I(8, 64, 32), win: P(0, 1, 1), sky: P(0, 1, 0) },
 };
 for (const v of VAR_OPS) OP_SCHEMAS[v] = VAR_SCHEMA;
@@ -548,7 +551,7 @@ export const MAX_REACTIONS = 6;
 const NO_REACT = new Set([
   'mode', 'form', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'sides', 'ra', 'rb', 'n',
   'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
-  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q',
+  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q', 'rep',
   ...SCENE_NO_REACT,
 ]);
 
@@ -1285,6 +1288,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
       case 'tile': s.mirror += 1.8; break;
       case 'kaleido': s.mirror += 2.2; break;
       case 'polar': s.vortex += 1; break;
+      case 'tunnel': s.vortex += 3.2; break;
       case 'push': if (p.axis === 0) s.mirror += 0.5; else s.vortex += 0.5; break;
       case 'quad': s.flame += Math.min(1.6, p.amt * o.w); s.plasma += Math.min(1.2, p.amt * o.w * 0.6); break;
       case 'stretch': s.terrain += 1.2; break;

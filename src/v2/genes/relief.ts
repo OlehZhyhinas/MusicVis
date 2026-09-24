@@ -19,7 +19,7 @@ vec3 reliefLit(vec2 q, vec3 c) {
   float spec = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), mix(6.0, 48.0, uRelief.w)) * uRelief.w * 1.6;
   float lv = luma(c);
   // Metal: the surface reflects the palette along its normal, keeping the picture's brightness.
-  vec3 env = pal(0.5 + 0.4 * n.x + 0.3 * n.y) * (0.25 + 1.4 * sqrt(max(lv, 0.0)));
+  vec3 env = pal(0.5 + 0.4 * n.x + 0.3 * n.y) * 1.6 * sqrt(max(lv, 0.0));
   vec3 base = mix(c, env, uMetal);
   // Highlights only where there is a surface (light nearby), so flat black stays black.
   vec3 lit = base * (0.3 + 1.05 * dif) + spec * mix(vec3(1.0), uColC, 0.25) * smoothstep(0.0, 0.08, lv);

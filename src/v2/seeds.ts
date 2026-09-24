@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 24;
+export const SEED_VERSION = 25;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -755,6 +755,51 @@ const MILKDROP: Def[] = [
       }),
     ],
     reactions: [rx('bass', 'op', 0, 'rate', 0.15, { atk: 0.02, rel: 0.3 }), rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.25, thr: 0.5 })],
+  },
+  {
+    // martin, tunnel race: bright waveform bands scroll up the carried picture, which is wrapped onto
+    // the wall of a pale tunnel rushing toward you as rings, surging on every beat and turning with the
+    // bar, with an orb racing round the wall; the far end is lost in haze.
+    origin: 'M16', name: 'Tunnel Race (after martin)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.85,
+    color: { sat: 0.8, exposure: 1.2, adapt: 0.25, bloom: 1.1, vignette: 0.15 },
+    carrier: 'warp', car: { halfLife: 2.5, blur: 0.15 },
+    chain: [
+      op('translate', { vx: 0, vy: 0.3 }),
+      op('tunnel', { depth: 0.16, speed: 0.8, twist: 0.1, sides: 0, rep: 2, fog: 0.5, lock: 0.0625 }, 1, 'view'),
+    ],
+    bodies: [
+      body({
+        shape: ['curve', { form: 0, amp: 0.2 }],
+        place: ['point', { x: 0, y: -0.4 }],
+        material: ['line', { gain: 1.3, width: 3, halo: 0.4 }],
+        color: ['age', { rate: 0.25, detail: 0.5 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.04 }],
+        place: ['orbit', { count: 1, radius: 0.3, rate: 0.5 }],
+        material: ['glow', { gain: 1.2, width: 0.03 }],
+        emit: ['none'],
+      }),
+    ],
+    reactions: [rx('bass', 'op', 1, 'speed', 0.3, { atk: 0.03, rel: 0.4 }), rx('loud', 'op', 1, 'twist', 0.2, { atk: 0.1, rel: 0.8 })],
+  },
+  {
+    // Flexi + Martin, tunnel of supraschismatika: a dark chrome pipe flown through at speed, glints
+    // streaking along its polished wall toward you; the bass drives the flight and the twist.
+    origin: 'M17', name: 'Tunnel of Supraschismatika (after Flexi & Martin)', energy: [0.3, 0.9], scheme: 'mono', hue: 0.6,
+    color: { sat: 0.25, exposure: 0.9, adapt: 0.3, bloom: 1.2, vignette: 0.35, relief: 0.7, bump: 1.6, light: 0.25, gloss: 1, metal: 0.6 },
+    carrier: 'warp', decay: 0.9,
+    chain: [
+      op('translate', { vx: 0, vy: -0.25 }),
+      op('tunnel', { depth: 0.22, speed: 1, twist: -0.35, sides: 0, rep: 3, fog: 0.9, lock: 0 }, 1, 'view'),
+    ],
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      place: ['float', { count: 6, spread: 0.6, speed: 0.2 }],
+      material: ['glow', { gain: 1.6, width: 0.012, base: 0.4 }],
+      emit: ['trail'],
+    })],
+    reactions: [rx('bass', 'op', 1, 'speed', 0.35, { atk: 0.03, rel: 0.4 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.05, rel: 0.6 }), rx('beat', 'col', 0, 'light', 0.2)],
   },
 ];
 

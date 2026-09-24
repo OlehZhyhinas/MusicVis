@@ -8,6 +8,7 @@
 import { packSuperscope } from './genes/superscope';
 import { resetCurveBlend, setCurveBlend } from './genes/blend';
 import { Water } from './genes/waterSim';
+import { packTunnel } from './genes/tunnel';
 import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
 import type { MusicState, StemName } from '../types';
@@ -985,6 +986,9 @@ export class Stage {
         case 'kaleido':
           a[j] = o.p.n;
           a[j + 1] = F.spin * o.p.lock;
+          break;
+        case 'tunnel':
+          packTunnel(a, b, j, P, o.p, s.mem, `op${i}.tz`, sdt, F.speed, F.beatPulse, F.spin);
           break;
         default: // flame variations
           a[j] = Math.min(1, o.w * (o.stage === 'warp' ? 0.1 * f60 : 1));
