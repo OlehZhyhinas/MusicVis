@@ -41,6 +41,7 @@ fill/textured/chrome hold steady brightness; line/glow/dots accumulate into the 
 
 EMIT: none: no trail. trail: leaves light in feedback; tip=extra bright point at current position. cover: paints over old trail instead of adding light; amt=opacity. dye: pushes into fluid carrier on hits/beats.
 sparks(1/preset): curl=swirliness; zoomFlow=inherits carrier zoom; life=lifetime; surge=extra burst; top=above/below body; body=source shape visibility.
+slime(1/preset): physarum agents grow glowing vein networks; count=agents; sa/sd=sensor angle/distance (sd larger=wider cells); turn=steering; step=speed; deposit=trail laid; decay=trail kept/frame; diffuse=blur; body=source shape visibility.
 
 FUSE (2nd shape merged in): mode 0 union(k=blend radius, grows w/bass),1 morph(t=mix),2 region(lit inside/along other shape). drive=what moves t(none,sweep,bass,melody,loud,surge).
 

@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -63,6 +63,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   snake: ['Serpent', 'Trail', 'Ribbon', 'Wake', 'Coil', 'Sidewinder', 'Viper', 'Python', 'Eel', 'Adder', 'Slither', 'Curl'],
   polygon: ['Prism', 'Facet', 'Shard', 'Hexagon', 'Gem', 'Tablet', 'Plate', 'Keystone', 'Tile', 'Emblem', 'Sigil', 'Lozenge'],
   star: ['Star', 'Asterisk', 'Pinwheel', 'Starburst', 'Compass', 'Spur', 'Rowel', 'Sunburst', 'Blossom', 'Burr', 'Thistle', 'Urchin'],
+  network: ['Mycelium', 'Plexus', 'Rhizome', 'Veins', 'Capillaries', 'Delta', 'Tracery', 'Filigree', 'Roots', 'Mould', 'Hyphae', 'Reticulum'],
   segment: ['Stroke', 'Dash', 'Needle', 'Streak', 'Stitch', 'Splinter', 'Rod', 'Baton', 'Quill', 'Sliver', 'Spoke', 'Wand'],
   scope: ['Scope', 'Knot', 'Gyroscope', 'Armillary', 'Spirograph', 'Torus', 'Orrery', 'Astrolabe', 'Whorl', 'Rotor', 'Loop', 'Oscillograph'],
 };
@@ -71,6 +72,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
 export function nounKind(b: BodyGene): NounKind {
   const hidden = b.emit.kind === 'sparks' && b.emit.p.body < 0.3;
   if (hidden && b.shape.kind !== 'flame') return 'particles';
+  if (b.emit.kind === 'slime' && b.emit.p.body < 0.3) return 'network';
   return shapeNoun(b.shape, b);
 }
 
@@ -195,6 +197,7 @@ const REACHING = ['Reaching', 'Tentacled', 'Grasping', 'Sprawling', 'Starfish', 
 const DARTING = ['Darting', 'Lurching', 'Jolting', 'Zigzag', 'Swerving', 'Dodging', 'Jerking', 'Sidestepping', 'Careening', 'Bounding', 'Pouncing', 'Skipping'];
 const STIPPLED = ['Stippled', 'Dotted', 'Pointillist', 'Speckled', 'Freckled', 'Pebbled', 'Spotted', 'Granular', 'Sequined', 'Dappled', 'Flecked', 'Beaded'];
 const MOTTLED = ['Cratered', 'Pitted', 'Mottled', 'Weathered', 'Rugged', 'Scarred', 'Pockmarked', 'Worn', 'Stony', 'Dusty', 'Etched', 'Carved'];
+const VEINED = ['Veined', 'Branching', 'Creeping', 'Mycelial', 'Foraging', 'Sprawling', 'Rooting', 'Tendrilled', 'Reticulate', 'Threaded', 'Questing', 'Spreading'];
 const SPARKING = ['Sparking', 'Crackling', 'Fizzing', 'Spitting', 'Sputtering', 'Scintillating', 'Effervescent', 'Popping', 'Sparkling', 'Glinting', 'Twinkling', 'Spangled'];
 const GRADED = ['Graded', 'Layered', 'Tiered', 'Stratified', 'Terraced', 'Shaded', 'Ombre', 'Banked', 'Tapered', 'Sloped', 'Ranked', 'Scaled'];
 const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Marching', 'Pulsed', 'Chopped', 'Stuttering', 'Measured', 'Tapping', 'Syncopated'];
@@ -278,6 +281,7 @@ function traits(g: Genome): Trait[] {
       case 'textured': if (b.material.p.tex === 0) add('mottled', MOTTLED, k * 0.5); break;
     }
     if (b.emit.kind === 'sparks') add('sparking', SPARKING, k * 0.55);
+    if (b.emit.kind === 'slime') add('veined', VEINED, k * 0.7);
     if (b.emit.kind === 'cover') add('painted', PAINTED, k * 0.45);
     if (b.emit.kind === 'dye') add('liquid', LIQUID, k * 0.5);
     // Feel: stepped responses, slow clocks and long releases, sharp sensitive attacks.
@@ -362,7 +366,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   tiled: TILED, fractal: FRACTAL, liquid: LIQUID, trailing: TRAILING, surging: SURGING, calm: CALM,
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
-  sparking: SPARKING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
+  sparking: SPARKING, veined: VEINED, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
   staged: STAGED,
 };
 

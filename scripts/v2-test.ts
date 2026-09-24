@@ -31,6 +31,7 @@ import { buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
+import { slimeTests } from './slime-tests';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -330,7 +331,7 @@ function freshGenome(): Genome {
       body.deform = { kind: 'none', p: {} };
       body.place = { kind: 'point', p: { x: 0, y: 0 } };
       // No particle system either: its cost is not what this checks, and a costly body with sparks sheds the fuse to fit the budget.
-      if (body.emit.kind === 'sparks') body.emit = { kind: 'trail', p: { tip: 0 } };
+      if (body.emit.kind === 'sparks' || body.emit.kind === 'slime') body.emit = { kind: 'trail', p: { tip: 0 } };
       const other = randomGene('shape', rng, b) as BodyGene['shape'];
       if (!sdfCapable(other) || UNIQUE_SHAPES.includes(b)) continue;
       const f = makeFuse(body, other, rng, mode);
@@ -1393,6 +1394,7 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 // -------------------------------------------------- choreography
 
 choreoTests(check);
+slimeTests(check);
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);

@@ -21,6 +21,8 @@ import {
   type ShapeGene, type Signal,
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
+import { Physarum } from './genes/physarumGpu';
+import { slimeDisplayScale } from './genes/physarum';
 
 /**
  * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
@@ -466,6 +468,8 @@ export class Slot {
   /** The body throwing sparks (-1: none) and its spawn settings. */
   sparks = -1;
   spawn = { mode: 4, count: 3, angle: 0, radius: 0.3 };
+  /** The body growing a physarum network (-1: none). */
+  slime = -1;
   /** Per reaction this frame: the source signal and the response after its curve (live meters). */
   readonly meters = new Float32Array(MAX_REACTIONS * 2);
 
@@ -482,12 +486,14 @@ export class Slot {
     this.drA = new Float32Array(this.nb * 12);
     this.drB = new Float32Array(this.nb * 12);
     this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
+    this.slime = genome.bodies.findIndex((b) => b.emit.kind === 'slime');
   }
 
   /** Swaps in a genome with the same structure (same programs, same uniform layout): parameters only. */
   retarget(g: Genome): void {
     this.genome = g;
     this.sparks = g.bodies.findIndex((b) => b.emit.kind === 'sparks');
+    this.slime = g.bodies.findIndex((b) => b.emit.kind === 'slime');
   }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
@@ -599,6 +605,7 @@ export class Stage {
   private avgLum: PingPong;
   fluid: Fluid | null = null;
   particles: Particles | null = null;
+  slime: Physarum | null = null;
   flame: Flame | null = null;
   private pu: ParticleUpdate;
   flash = 0;
@@ -636,6 +643,7 @@ export class Stage {
       this.out = new Target(gl, w, h, [formats(gl).rgba8], gl.LINEAR);
     }
     this.fluid?.resize(w / h);
+    this.slime?.resize(w, h);
     for (const s of this.slots) {
       s.fb.dispose();
       (s as { fb: PingPong }).fb = this.makeFb();
@@ -705,7 +713,10 @@ export class Stage {
       });
     }
 
-    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot);
+    const slimeSlot = slots.filter((s) => s.slime >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
+    if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
+
+    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot);
 
     // Choreography over the song timeline (look-ahead from the offline analysis).
     const cue = cueOf(state);
@@ -1012,7 +1023,7 @@ export class Stage {
     E[o + 48] = b.emit.kind === 'cover' ? PE('amt') : 0;
     E[o + 49] = b.emit.kind === 'cover' || b.emit.kind === 'trail' ? PE('tip') : 0;
     E[o + 50] = ops.length;
-    E[o + 51] = b.emit.kind === 'sparks' ? PE('body') : 1;
+    E[o + 51] = b.emit.kind === 'sparks' || b.emit.kind === 'slime' ? PE('body') : 1;
 
     // Fuse: slot 13 (mode, blend radius, t, inside), 14-15 the fused shape.
     if (b.fuse) {
@@ -2042,7 +2053,23 @@ export class Stage {
     }
   }
 
-  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean): void {
+  /** Physarum: sense, move, deposit, diffuse and decay (genes/physarumGpu.ts). */
+  private updateSlime(s: Slot, sdt: number): void {
+    if (!this.slime) {
+      this.slime = new Physarum(this.eng.gl, this.eng.fs, this.eng.hdr);
+      this.slime.resize(this.w, this.h);
+    }
+    const bi = s.slime;
+    const b = s.genome.bodies[bi];
+    const sch = EMIT_SCHEMAS.slime;
+    const P = (k: string) => s.P('em', bi, b.emit.p, k, sch);
+    this.slime.step({
+      dt: sdt, time: this.sig.clock, aspect: this.sig.F.aspect, count: b.emit.p.count,
+      sa: P('sa'), sd: P('sd'), turn: P('turn'), step: P('step'), deposit: P('deposit'), decay: P('decay'), diffuse: P('diffuse'),
+    });
+  }
+
+  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean, slimeOwner = false): void {
     const eng = this.eng;
     const gl = eng.gl;
     const g = s.genome;
@@ -2086,6 +2113,11 @@ export class Stage {
     gl.blendFunc(gl.ONE, gl.ONE);
     for (const c of s.curves) if (!c.top) this.drawCurve(s, c, 1, sdt, true);
     if (partOwner && s.sparks >= 0 && g.bodies[s.sparks].emit.p.top < 0.5) this.drawParticles(s, 1, true);
+    if (slimeOwner && this.slime && s.slime >= 0) {
+      const b = g.bodies[s.slime];
+      const gain = s.P('ma', s.slime, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+      this.slime.draw(gain * 1.5, slimeDisplayScale(b.emit.p), s.cols);
+    }
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;
       const fill = 1 - Math.max(0, Math.min(0.995, s.decay));
@@ -2220,6 +2252,7 @@ export class Stage {
     this.avgLum.dispose();
     this.fluid?.dispose();
     this.particles?.dispose();
+    this.slime?.dispose();
     this.flame?.dispose();
     this.sig.dispose();
   }

@@ -31,6 +31,7 @@
 import { FLAME_VARIATIONS, type FlameVar } from './variations';
 import { repair as repairV2, upgradeV2 } from './legacy';
 import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
+import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
@@ -284,7 +285,7 @@ export const STATIC_MATERIALS: MaterialKind[] = ['fill', 'textured', 'chrome'];
 
 // -------------------------------------------------------------- emission
 
-export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks'] as const;
+export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime'] as const;
 export type EmitKind = (typeof EMIT_KINDS)[number];
 export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   // Redrawn every frame on top of the picture.
@@ -301,6 +302,8 @@ export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
     zoomFlow: P(-0.5, 1.5, 0.5), lift: P(-0.2, 0.2, 0), drag: P(1, 5, 2.5), life: P(0.1, 0.8, 0.3), spread: P(0.01, 0.2, 0.05),
     surge: P(0, 1, 0), top: C([0, 1], 0), body: P(0, 1, 1),
   },
+  // Physarum agents growing vein networks out of a trail the body seeds (genes/physarum.ts).
+  slime: SLIME_SCHEMA,
 };
 
 // ------------------------------------------------------------------ fuse
@@ -824,6 +827,7 @@ export function repair(input: unknown): Genome {
   const bodies: BodyGene[] = [];
   const used = new Set<ShapeKind>();
   let sparks = false;
+  let slime = false;
   for (const raw of Array.isArray(g.bodies) ? g.bodies : []) {
     if (bodies.length >= MAX_BODIES) break;
     const b = repairBody(raw);
@@ -833,6 +837,11 @@ export function repair(input: unknown): Genome {
     if (b.emit.kind === 'sparks') {
       if (sparks) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
       sparks = true;
+    }
+    // One agent simulation per genome as well.
+    if (b.emit.kind === 'slime') {
+      if (slime) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
+      slime = true;
     }
     used.add(b.shape.kind);
     if (b.fuse) used.add(b.fuse.shape.kind);
@@ -899,6 +908,15 @@ function reactionIndex(g: Genome, group: GeneGroup, raw: number): number {
 
 /** Drops copies (most expensive body first) until the estimated cost fits the budget. */
 function fitBudget(g: Genome): void {
+  // Slime agents go first (halved, down to a still-connected network), then copies, then more agents.
+  const fewerAgents = (floor: number) => {
+    for (const b of g.bodies) {
+      while (b.emit.kind === 'slime' && b.emit.p.count > floor && estimateCost(g) > COST_BUDGET_MS * 0.95) {
+        b.emit.p.count = Math.max(floor, Math.round(b.emit.p.count / 2));
+      }
+    }
+  };
+  fewerAgents(65536);
   for (let guard = 0; guard < 24 && estimateCost(g) > COST_BUDGET_MS * 0.95; guard++) {
     let best: BodyGene | null = null;
     let bc = 0;
@@ -914,6 +932,7 @@ function fitBudget(g: Genome): void {
     if (!best) break;
     best.place.p[countKey(best.place.kind)!] -= 1;
   }
+  fewerAgents(SLIME_SCHEMA.count.min);
   // Still over: a grid evaluates one cell instead of its 3x3 neighbourhood, then fused shapes go.
   for (const b of g.bodies) {
     if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
@@ -951,6 +970,7 @@ export function validate(g: Genome): string[] {
   if (!Array.isArray(g.bodies) || g.bodies.length < 1 || g.bodies.length > MAX_BODIES) errs.push('body count');
   const used = new Set<string>();
   let sparks = 0;
+  let slimes = 0;
   g.bodies?.forEach((b, i) => {
     const w = `bodies[${i}]`;
     for (const locus of LOCI) {
@@ -1005,6 +1025,7 @@ export function validate(g: Genome): string[] {
       used.add(k);
     }
     if (b.emit.kind === 'sparks') sparks++;
+    if (b.emit.kind === 'slime') slimes++;
     if (b.fuse) {
       const f = b.fuse;
       if (!f.shape || !SHAPE_KINDS.includes(f.shape.kind)) errs.push(`${w}.fuse shape kind`);
@@ -1036,6 +1057,7 @@ export function validate(g: Genome): string[] {
     }
   });
   if (sparks > 1) errs.push('more than one sparks emission');
+  if (slimes > 1) errs.push('more than one slime emission');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
   if (!PALETTE_KINDS.includes(g.palette?.kind)) errs.push('palette kind');
@@ -1267,6 +1289,7 @@ export function bodyCost(b: BodyGene): number {
   const cls = SHAPE_CLASS[b.shape.kind];
   let ms = 0;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
+  if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
   if (cls === 'flame') {
     ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.35;
     if (b.fuse || b.deform.kind !== 'none') ms += 0.3 + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] : 0);
