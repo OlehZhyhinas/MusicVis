@@ -214,6 +214,7 @@ const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed',
 const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted', 'Plotted', 'Framed', 'Directed', 'Scenic', 'Dramatic', 'Orchestrated', 'Rehearsed'];
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
 const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
+const SHIFTING = ['Journeying', 'Morphing', 'Mutating', 'Evolving', 'Shapeshifting', 'Protean', 'Metamorphic', 'Transforming', 'Changeling', 'Chameleon', 'Fluxing', 'Migrant'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
 function clamp01(x: number): number {
@@ -340,6 +341,11 @@ function traits(g: Genome): Trait[] {
     const cp = g.choreo.p;
     add('staged', STAGED, clamp01(0.35 + cp.push * 1.5 + cp.drain * 0.2 + cp.punch * 0.2));
   }
+  // Drift: a preset that travels through gene space over the song, named by how far it roams.
+  if (g.drift) {
+    const dp = g.drift.p;
+    add('shifting', SHIFTING, clamp01(0.4 + dp.step * 0.4 + dp.bound * 0.5 + dp.kinds * 0.1));
+  }
 
   list.sort((a, b) => b.weight - a.weight);
   return list;
@@ -382,7 +388,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
-  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, layered: LAYERED,
+  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED,
 };
 
 /**

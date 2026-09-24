@@ -40,6 +40,7 @@ import { SCENE_NO_REACT, SCENE_SCHEMA, sceneCost } from './genes/raymarch';
 import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
+import { DRIFT_COST_MS, DRIFT_HEADROOM, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 export { FLAME_VARIATIONS };
 export type { FlameVar };
 
@@ -568,6 +569,8 @@ export interface Genome {
   energy: [number, number]; // complexity range the preset suits
   /** Optional: composes the picture over the song timeline (src/v2/genes/choreo.ts). */
   choreo?: ChoreoGene;
+  /** Optional: the preset drifts through gene space over the song (src/v2/genes/drift.ts). */
+  drift?: DriftGene;
 }
 
 export const MAX_CHAIN = 6;
@@ -905,6 +908,7 @@ export function repair(input: unknown): Genome {
   }
   const out: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [round4(lo), round4(hi)] };
   if (isObj(g.choreo)) out.choreo = repairChoreo(g.choreo);
+  if (isObj(g.drift)) out.drift = repairDrift(g.drift);
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -1116,6 +1120,7 @@ export function validate(g: Genome): string[] {
   else chk(g.palette.p, PALETTE_SCHEMAS[g.palette.kind], 'palette');
   chk(g.tone?.p, TONE_SCHEMA, 'tone');
   if (g.choreo !== undefined) errs.push(...validateChoreo(g.choreo));
+  if (g.drift !== undefined) errs.push(...validateDrift(g.drift));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {
@@ -1312,6 +1317,9 @@ export function estimateCost(g: Genome): number {
   if (g.tone.p.huemap > 0.001 || g.tone.p.solar > 0.001) ms += 0.03;
   for (const b of g.bodies) ms += bodyCost(b) + (b.material.p.blend ? BLEND_COST : 0);
   if (g.choreo) ms += CHOREO_COST_MS;
+  // A drifting preset may play genomes up to DRIFT_HEADROOM dearer than itself (the planner rejects
+  // dearer ones), so its cost is the worst case over any path.
+  if (g.drift) ms = ms * (1 + DRIFT_HEADROOM) + DRIFT_COST_MS;
   return ms;
 }
 

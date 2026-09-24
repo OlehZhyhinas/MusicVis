@@ -166,6 +166,7 @@ export const ENTRIES: Record<string, string> = {
 
   // ------------------------------------------------------------- gene
   'gene.choreo': "CHOREO(optional, knows the song ahead): before drops the camera pushes in and leans, colour drains, light dims; slams on the drop, settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle. Each section type gets its own framing; frame=how far framings push/pan/lean; shot=which set of framings; glide=bars into new framing(0=cut); dolly=slow push-in across each section; scene=hue shift per section type. arc=zoom swell per phrase(phrase=bars).",
+  'gene.drift': 'DRIFT(optional, performance layer): the preset travels through gene space over the song, each section a small mutation of the last; step=how far per section; morph=bars to morph(0=cut); kinds 0 params only,1 shapes change on drops,2 any section; what 0 all,1 form,2 colour,3 motion; ret=returning section type goes back to its earlier look; bound=max distance from the saved preset; seed=which journey. The saved preset stays the home.',
 };
 
 export const LEXICON = `

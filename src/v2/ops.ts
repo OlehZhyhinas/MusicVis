@@ -12,6 +12,7 @@ import {
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema, type ShapeGene, type ShapeKind,
 } from './genome';
 import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
+import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 
 export type Rng = () => number;
 
@@ -757,6 +758,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     child.energy = [D.energy[0] + (R.energy[0] - D.energy[0]) * t, D.energy[1] + (R.energy[1] - D.energy[1]) * t];
     const choreo = crossChoreo(D.choreo, R.choreo, rng);
     if (choreo) child.choreo = choreo;
+    const drift = crossDrift(D.drift, R.drift, rng);
+    if (drift) child.drift = drift;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1092,6 +1095,18 @@ const MUTATORS: [number, string, Mutator][] = [
   [1.5, 'jitter-choreo', (g, rng, amt) => {
     if (!g.choreo) return false;
     jitterChoreo(g.choreo, rng, amt);
+    return true;
+  }],
+  // Drift through gene space over the song: rarely gained (or lost), nudged when present.
+  [0.4, 'drift', (g, rng) => {
+    if (!g.drift) g.drift = randomDrift(rng);
+    else if (rng() < 0.3) delete g.drift;
+    else jitterDrift(g.drift, rng);
+    return true;
+  }],
+  [1, 'jitter-drift', (g, rng, amt) => {
+    if (!g.drift) return false;
+    jitterDrift(g.drift, rng, amt);
     return true;
   }],
 ];
