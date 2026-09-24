@@ -6,8 +6,9 @@ import { COST_BUDGET_MS, MAX_BODIES, MAX_REACTIONS, cloneGenome, estimateCost, v
 import * as E from '../src/v2/geneEdit';
 import { SEEDS } from '../src/v2/seeds';
 import { applyEdits, paramPaths, parseKindPath, parsePath, replySchema, settablePaths, type Edit } from '../src/chat/edits';
-import { SYSTEM_PROMPT, genomeDiff, genomeText, glossaryGaps, lookText } from '../src/chat/prompt';
+import { systemPrompt, genomeDiff, genomeText, glossaryGaps, lookText } from '../src/chat/prompt';
 import { parseReply, partialSay } from '../src/chat/geneChat';
+import { registerGenomeGene, repairGenomeGenes, validateGenomeGenes } from '../src/v2/geneRegistry';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -113,7 +114,7 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   check('reply schema is JSON with path enums', s.includes('"tone.exposure"') && s.includes('"add_body"'), `${s.length} chars`);
   const t = genomeText(g, 0.2);
   check('genome text lists every body and the palette', t.includes('b0.shape=') && t.includes('palette=') && t.includes('tone '), `${t.length} chars`);
-  check('system prompt within budget', SYSTEM_PROMPT.length < 16000, `${SYSTEM_PROMPT.length} chars`);
+  check('system prompt within budget', systemPrompt().length < 16000, `${systemPrompt().length} chars`);
   const gaps = glossaryGaps();
   check('every gene kind has a glossary entry', gaps.length === 0, gaps.join(', ') || 'none missing');
   check('look text words', /dark/.test(lookText({ brightness: 0.08, coverage: 0.1, motion: 0.01, colourfulness: 0.5, hue: 0.6 })));
@@ -132,6 +133,31 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   check('replies parse after a think block', !!r && r.say === 'Bluer now.' && r.edits.length === 1);
   check('broken replies are null', parseReply('{"say": "x", "edits": [') === null);
   check('partial say streams', partialSay('{"say": "Making it cal') === 'Making it cal');
+}
+
+// ------------------------------------------------------------ registered genome-wide genes
+
+{
+  registerGenomeGene({
+    key: 'testWave', title: 'Test wave', kinds: ['sine', 'saw'], optional: true, glossary: 'a test gene',
+    schemas: { sine: { amp: { min: 0, max: 1, def: 0.5 }, rate: { min: 0.1, max: 4, def: 1 } }, saw: { amp: { min: 0, max: 1, def: 0.5 }, teeth: { min: 2, max: 9, def: 4, int: true } } },
+  });
+  const g = seeds[0];
+  const model = E.buildModel(g).find((x) => x.id === 'testWave');
+  check('an absent optional gene shows as an addable section', !!model && model.gene?.present === false && model.gene.optional);
+  const a = applyEdits(g, [{ op: 'add_gene', gene: 'testWave' }, { op: 'set', path: 'testWave.amp', value: 0.8 }, { op: 'kind', path: 'testWave', kind: 'saw' }, { op: 'set', path: 'testWave.teeth', value: 7 }], ctx);
+  const v = E.geneValue(a.genome, 'testWave');
+  check('chat adds, sets and switches a registered gene', !!v && v.kind === 'saw' && v.p.amp === 0.8 && v.p.teeth === 7, `${JSON.stringify(v)} ${a.errors.join(' | ')}`);
+  const errs: string[] = [];
+  validateGenomeGenes(a.genome as unknown as Record<string, unknown>, errs);
+  check('the registered gene validates', errs.length === 0, errs.join(', '));
+  check('a later structural edit keeps it', !!E.geneValue(applyEdits(a.genome, [{ op: 'add_op', kind: 'swirl' }], ctx).genome, 'testWave'));
+  check('its paths are in the reply schema and the genome text', JSON.stringify(replySchema(a.genome)).includes('"testWave.teeth"') && genomeText(a.genome, 0).includes('testWave=saw'));
+  const r = applyEdits(a.genome, [{ op: 'remove_gene', gene: 'testWave' }], ctx);
+  check('remove it again', !E.geneValue(r.genome, 'testWave') && r.errors.length === 0);
+  const repaired: Record<string, unknown> = {};
+  repairGenomeGenes({ testWave: { kind: 'saw', p: { amp: 5, teeth: 3.4, junk: 1 } } }, repaired);
+  check('repairGenomeGenes clamps and drops unknown params', JSON.stringify(repaired.testWave) === JSON.stringify({ kind: 'saw', p: { amp: 1, teeth: 3 } }), JSON.stringify(repaired.testWave));
 }
 
 void (null as unknown as Genome);

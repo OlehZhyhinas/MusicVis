@@ -7,7 +7,7 @@
 // last genome that worked.
 
 import {
-  COST_BUDGET_MS, DRAW_OPS, FLAME_VARIATIONS, OP_KINDS, SIGNALS, cloneGenome, estimateCost, repair, schemaFor, structuralKey,
+  COST_BUDGET_MS, DRAW_OPS, FLAME_VARIATIONS, OP_KINDS, SIGNALS, cloneGenome, estimateCost, schemaFor, structuralKey,
   type FlameVar, type Genome, type OpKind,
 } from './genome';
 import * as E from './geneEdit';
@@ -444,7 +444,7 @@ export class GeneEditor {
     if (!parent || !this.scratch || this.saving || !this.dirtyNow) return;
     this.saving = true;
     this.saveBtn.disabled = true;
-    const g = repair(this.scratch);
+    const g = E.repairKeeping(this.scratch);
     const adjusted = JSON.stringify(g) !== JSON.stringify(this.scratch);
     this.say('Checking the edited preset…');
     let warn = '';
@@ -614,6 +614,12 @@ export class GeneEditor {
     const err = this.errLine(sec.id);
     if (err) gb.append(err);
     if (sec.target) for (const c of sec.params) gb.append(this.paramRow(sec.target, c, sec.id));
+    if (sec.gene?.optional) {
+      const key = sec.gene.key;
+      gb.append(h('div', { class: 'row' }, sec.gene.present
+        ? this.button(`Remove ${title.toLowerCase()}`, () => this.structural((g) => E.removeGenomeGene(g, key), sec.id), undefined, false, 'trash', 'ghost')
+        : this.button(`Add ${title.toLowerCase()}`, () => this.structural((g) => E.addGenomeGene(g, key), sec.id), undefined, false, 'plus', 'ghost')));
+    }
     if (sec.target?.t === 'fuse') {
       const b = sec.target.b;
       gb.append(h('div', { class: 'row' }, this.button('Remove fused shape', () => this.structural((g) => E.removeFuse(g, b), sec.id), undefined, false, 'trash', 'ghost')));

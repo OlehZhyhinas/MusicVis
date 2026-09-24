@@ -15,6 +15,10 @@ import {
   type ShapeKind, type Signal, type Stage,
 } from './genome';
 import { fitLoci } from './ops';
+import {
+  createGenomeGene, genomeGene, genomeGeneSchema, genomeGenes, repairGenomeGenes,
+  type GenomeGeneValue,
+} from './geneRegistry';
 import type { Member, Population } from './population';
 
 // ------------------------------------------------------------ addressing
@@ -31,7 +35,9 @@ export type Target =
   | { t: 'palette' }
   | { t: 'tone' }
   | { t: 'reaction'; j: number }
-  | { t: 'energy' };
+  | { t: 'energy' }
+  /** A registered genome-wide gene (geneRegistry.ts), by its genome key. */
+  | { t: 'gene'; key: string };
 
 export const targetId = (t: Target): string => {
   switch (t.t) {
@@ -39,6 +45,7 @@ export const targetId = (t: Target): string => {
     case 'fuse': case 'fuseShape': return `b${t.b}.${t.t}`;
     case 'drawOp': case 'xform': return `b${t.b}.${t.t}${t.j}`;
     case 'op': case 'reaction': return `${t.t}${t.j}`;
+    case 'gene': return t.key;
     default: return t.t;
   }
 };
@@ -59,6 +66,12 @@ const VAR_SPEC: ParamSpec = P(0, 1, 0.5);
 const AFF_KEYS = ['a', 'b', 'c', 'd', 'e', 'f'];
 export const ENERGY_SCHEMA: Schema = { lo: P(0, 1, 0.2), hi: P(0, 1, 0.7) };
 const ENERGY_GAP = 0.15;
+
+/** The registered genome-wide gene stored under `key` (undefined when absent). */
+export function geneValue(g: Genome, key: string): GenomeGeneValue | undefined {
+  const v = (g as unknown as Record<string, unknown>)[key];
+  return v && typeof v === 'object' ? (v as GenomeGeneValue) : undefined;
+}
 
 function bodyOf(g: Genome, b: number): BodyGene | null {
   return g.bodies[b] ?? null;
@@ -96,6 +109,11 @@ export function schemaAt(g: Genome, t: Target): Schema | null {
     case 'tone': return TONE_SCHEMA;
     case 'reaction': return g.reactions[t.j] ? REACTION_SCHEMA : null;
     case 'energy': return ENERGY_SCHEMA;
+    case 'gene': {
+      const spec = genomeGene(t.key);
+      const v = geneValue(g, t.key);
+      return spec && v ? genomeGeneSchema(spec, v.kind) : null;
+    }
   }
 }
 
@@ -133,6 +151,7 @@ export function getParam(g: Genome, t: Target, k: string): number {
     case 'tone': return g.tone.p[k];
     case 'reaction': return (g.reactions[t.j] as unknown as Params)[k];
     case 'energy': return k === 'lo' ? g.energy[0] : g.energy[1];
+    case 'gene': return geneValue(g, t.key)!.p[k];
   }
 }
 
@@ -175,6 +194,7 @@ export function setParam(g: Genome, t: Target, k: string, raw: number): number {
     case 'palette': g.palette.p[k] = v; break;
     case 'tone': g.tone.p[k] = v; break;
     case 'reaction': (g.reactions[t.j] as unknown as Params)[k] = v; break;
+    case 'gene': geneValue(g, t.key)!.p[k] = v; break;
     case 'energy': {
       let [lo, hi] = g.energy;
       if (k === 'lo') {
@@ -199,7 +219,14 @@ export function setParam(g: Genome, t: Target, k: string, raw: number): number {
 export function editParam(g: Genome, t: Target, k: string, v: number): { genome: Genome; repaired: boolean } {
   setParam(g, t, k, v);
   if (!validate(g).length) return { genome: g, repaired: false };
-  return { genome: repair(g), repaired: true };
+  return { genome: repairKeeping(g), repaired: true };
+}
+
+/** repair(), keeping the registered genome-wide genes (repaired against their schemas). */
+export function repairKeeping(g: Genome): Genome {
+  const out = repair(g);
+  repairGenomeGenes(g as unknown as Record<string, unknown>, out as unknown as Record<string, unknown>);
+  return out;
 }
 
 // --------------------------------------------------------------- sliders
@@ -339,6 +366,8 @@ export interface SectionModel {
   canAdd?: boolean;
   /** Silent alleles of a body. */
   alleles?: { locus: Locus; kind: string; summary: string }[];
+  /** A registered genome-wide gene: whether the genome has it and whether it may be removed / added. */
+  gene?: { key: string; present: boolean; optional: boolean };
   open: boolean;
 }
 
@@ -440,6 +469,20 @@ export function buildModel(g: Genome): SectionModel[] {
       };
     }),
   });
+  for (const spec of genomeGenes()) {
+    const v = geneValue(g, spec.key);
+    const t: Target = { t: 'gene', key: spec.key };
+    const gene = { key: spec.key, present: !!v, optional: spec.optional };
+    if (!v) {
+      out.push({ id: spec.key, title: spec.title, body: -1, params: [], gene, open: false });
+      continue;
+    }
+    out.push({
+      id: spec.key, title: spec.title, body: -1, target: t, gene,
+      kind: spec.kinds ? { value: v.kind ?? spec.kinds[0], options: [...spec.kinds] } : undefined,
+      params: paramControls(genomeGeneSchema(spec, v.kind), (k) => v.p[k], v.kind ?? spec.key), open: false,
+    });
+  }
   out.push({ id: 'energy', title: 'Energy range', body: -1, target: { t: 'energy' }, params: paramControls(ENERGY_SCHEMA, (k) => (k === 'lo' ? g.energy[0] : g.energy[1])), open: false });
   return out;
 }
@@ -474,7 +517,7 @@ function dropStaleReactions(g: Genome): void {
 
 function finish(before: Genome, g: Genome, check: (out: Genome) => string | null): EditResult {
   dropStaleReactions(g);
-  const out = repair(g);
+  const out = repairKeeping(g);
   if (out.bodies.length !== g.bodies.length) return fail(before, 'the renderer cannot show that combination');
   const why = check(out);
   if (why) return fail(before, why);
@@ -543,6 +586,15 @@ export function switchKind(gIn: Genome, t: Target, kind: string): EditResult {
       return finish(gIn, g, () => null);
     }
     case 'reaction': return setReactionSource(gIn, t.j, kind as Signal);
+    case 'gene': {
+      const spec = genomeGene(t.key);
+      const v = geneValue(g, t.key);
+      if (!spec?.kinds || !v) return fail(gIn, `no ${t.key} gene to switch`);
+      if (!spec.kinds.includes(kind)) return fail(gIn, `unknown ${t.key} kind "${kind}"`);
+      if (v.kind === kind) return { genome: gIn, ok: true };
+      (g as unknown as Record<string, unknown>)[t.key] = { kind, p: carryParams(v.p, genomeGeneSchema(spec, v.kind), genomeGeneSchema(spec, kind)) };
+      return finish(gIn, g, () => null);
+    }
     default: return fail(gIn, 'this section has no kind');
   }
 }
@@ -775,6 +827,29 @@ export function removeFuse(gIn: Genome, b: number): EditResult {
   return finish(gIn, g, () => null);
 }
 
+// Registered genome-wide genes.
+
+/** Adds an optional genome-wide gene (its default kind and params). */
+export function addGenomeGene(gIn: Genome, key: string, kind?: string): EditResult {
+  const spec = genomeGene(key);
+  if (!spec) return fail(gIn, `unknown gene "${key}"`);
+  if (geneValue(gIn, key)) return { genome: gIn, ok: true };
+  const g = cloneGenome(gIn);
+  (g as unknown as Record<string, unknown>)[key] = createGenomeGene(spec, kind);
+  return finish(gIn, g, (out) => (geneValue(out, key) ? null : `could not add ${spec.title.toLowerCase()}`));
+}
+
+/** Removes an optional genome-wide gene. */
+export function removeGenomeGene(gIn: Genome, key: string): EditResult {
+  const spec = genomeGene(key);
+  if (!spec) return fail(gIn, `unknown gene "${key}"`);
+  if (!spec.optional) return fail(gIn, `${spec.title} cannot be removed`);
+  if (!geneValue(gIn, key)) return { genome: gIn, ok: true };
+  const g = cloneGenome(gIn);
+  delete (g as unknown as Record<string, unknown>)[key];
+  return finish(gIn, g, () => null);
+}
+
 // Bodies.
 
 export interface NewBody {
@@ -873,7 +948,7 @@ export function parseGenome(text: string): EditResult & { genome: Genome } {
   const src = obj && obj.genome && typeof obj.genome === 'object' ? obj.genome : obj;
   const s = src as Record<string, unknown> | null;
   if (!s || !Array.isArray(s.chain) || !(Array.isArray(s.bodies) || Array.isArray(s.emitters))) return { genome: repair({}), ok: false, reason: 'no genome in that JSON' };
-  const g = repair(s);
+  const g = repairKeeping(s as unknown as Genome);
   const errs = validate(g);
   return errs.length ? { genome: g, ok: false, reason: errs[0] } : { genome: g, ok: true };
 }
@@ -883,7 +958,7 @@ export function parseGenome(text: string): EditResult & { genome: Genome } {
  * id G{gen}-nnnn, a descriptive name inherited from the parent) tagged 'edited'.
  */
 export function saveEdited(pop: Population, parent: Member | null, g: Genome, now = Date.now()): Member {
-  const child = pop.addChild(repair(g), parent ? [parent] : [], now);
+  const child = pop.addChild(repairKeeping(g), parent ? [parent] : [], now);
   child.cross = 'edited';
   return child;
 }

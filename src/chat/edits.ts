@@ -7,10 +7,11 @@
 
 import {
   COST_BUDGET_MS, DRAW_OPS, LOCI, LOCUS_KINDS, MAX_BODIES, OP_KINDS, PALETTE_KINDS, CARRIER_KINDS, SHAPE_KINDS,
-  SIGNALS, MAX_CHAIN, OP_SCHEMAS, PALETTE_SCHEMAS, cloneGenome, estimateCost, locusSchema, repair, validate,
+  SIGNALS, MAX_CHAIN, OP_SCHEMAS, PALETTE_SCHEMAS, cloneGenome, estimateCost, locusSchema, validate,
   type GeneGroup, type Genome, type Locus, type OpKind, type ParamSpec, type ShapeKind, type Signal,
 } from '../v2/genome';
 import * as E from '../v2/geneEdit';
+import { genomeGene, genomeGeneSchema, genomeGenes } from '../v2/geneRegistry';
 
 // ------------------------------------------------------------ edit types
 
@@ -31,7 +32,9 @@ export type Edit =
   | { op: 'remove_xform'; body: number; index: number }
   | { op: 'fuse'; body: number; shape: string; mode?: string }
   | { op: 'unfuse'; body: number }
-  | { op: 'express'; body: number; locus: string };
+  | { op: 'express'; body: number; locus: string }
+  | { op: 'add_gene'; gene: string; kind?: string }
+  | { op: 'remove_gene'; gene: string };
 
 export interface Reply {
   say: string;
@@ -56,6 +59,8 @@ export function parsePath(path: string): { target: E.Target; key: string } | nul
   if (m) return { target: { t: m[1] as 'op' | 'reaction', j: +m[2] }, key: m[3] };
   m = /^(carrier|palette|tone|energy)\.([A-Za-z0-9]+)$/.exec(path);
   if (m) return { target: { t: m[1] as 'carrier' }, key: m[2] };
+  m = /^([a-z][A-Za-z0-9]*)\.([A-Za-z0-9]+)$/.exec(path);
+  if (m && genomeGene(m[1])) return { target: { t: 'gene', key: m[1] }, key: m[2] };
   return null;
 }
 
@@ -70,6 +75,7 @@ export function parseKindPath(path: string): E.Target | null {
   m = /^(op|reaction)(\d)$/.exec(path);
   if (m) return { t: m[1] as 'op' | 'reaction', j: +m[2] };
   if (path === 'palette' || path === 'carrier') return { t: path };
+  if (genomeGene(path)?.kinds) return { t: 'gene', key: path };
   return null;
 }
 
@@ -103,6 +109,10 @@ export function settablePaths(g: Genome): string[] {
     for (const kind of OP_KINDS) for (const k of Object.keys(OP_SCHEMAS[kind])) set.add(`op${j}.${k}`);
   }
   for (const kind of PALETTE_KINDS) for (const k of Object.keys(PALETTE_SCHEMAS[kind])) set.add(`palette.${k}`);
+  // Registered genome-wide genes: every kind's params (an add_gene or kind switch may come first).
+  for (const spec of genomeGenes()) {
+    for (const kind of spec.kinds ?? [undefined]) for (const k of Object.keys(genomeGeneSchema(spec, kind))) set.add(`${spec.key}.${k}`);
+  }
   return [...set].sort();
 }
 
@@ -276,6 +286,8 @@ export function applyEdits(gIn: Genome, edits: Edit[], ctx: ApplyContext): Appli
       case 'fuse': res(e, E.addFuse(g, e.body, e.shape as ShapeKind, MODE_NAMES[e.mode ?? 'union'] ?? 0), `b${e.body}.fuse`, `body ${e.body} fuses a ${e.shape}`); break;
       case 'unfuse': res(e, E.removeFuse(g, e.body), `b${e.body}.shape`, `body ${e.body} unfused`); break;
       case 'express': res(e, E.expressAllele(g, e.body, e.locus as Locus), `b${e.body}.${e.locus}`, `body ${e.body} expresses its silent ${e.locus}`); break;
+      case 'add_gene': res(e, E.addGenomeGene(g, e.gene, e.kind), e.gene, `added ${genomeGene(e.gene)?.title.toLowerCase() ?? e.gene}`); break;
+      case 'remove_gene': res(e, E.removeGenomeGene(g, e.gene), e.gene, `removed ${genomeGene(e.gene)?.title.toLowerCase() ?? e.gene}`); break;
       default: errors.push(`${describeEdit(e)} failed: unknown op`);
     }
   }
@@ -283,7 +295,7 @@ export function applyEdits(gIn: Genome, edits: Edit[], ctx: ApplyContext): Appli
   if (cost > COST_BUDGET_MS) errors.push(`the preset now costs ${cost.toFixed(1)} ms per frame, over the ${COST_BUDGET_MS} ms budget: use fewer copies, particles or bodies`);
   const bad = validate(g);
   if (bad.length) {
-    g = repair(g);
+    g = E.repairKeeping(g);
     changes.push('repaired to a valid genome');
   }
   return { genome: g, errors, changes, touched, structural: false };
@@ -339,7 +351,9 @@ export function replySchema(g: Genome): object {
   });
   g.chain.forEach((_o, j) => kindPaths.push(`op${j}`));
   g.reactions.forEach((_r, j) => kindPaths.push(`reaction${j}`));
-  const allKinds = [...new Set([...SHAPE_KINDS, ...LOCI.flatMap((l) => LOCUS_KINDS[l]), ...OP_KINDS, ...PALETTE_KINDS, ...CARRIER_KINDS, ...SIGNALS])];
+  const regs = genomeGenes();
+  for (const spec of regs) if (spec.kinds) kindPaths.push(spec.key);
+  const allKinds = [...new Set([...SHAPE_KINDS, ...LOCI.flatMap((l) => LOCUS_KINDS[l]), ...OP_KINDS, ...PALETTE_KINDS, ...CARRIER_KINDS, ...SIGNALS, ...regs.flatMap((r) => r.kinds ?? [])])];
   const bodyIdx = { type: 'integer', minimum: 0, maximum: Math.max(0, g.bodies.length - 1) };
   const variants = [
     obj('set', { path: str(paths), value: { anyOf: [NUM, { type: 'string' }] } }),
@@ -359,6 +373,11 @@ export function replySchema(g: Genome): object {
   ];
   if (g.bodies.some((b) => b.shape.kind === 'flame')) variants.push(obj('add_xform', { body: bodyIdx }), obj('remove_xform', { body: bodyIdx, index: INT }));
   if (g.bodies.some((b) => b.alt)) variants.push(obj('express', { body: bodyIdx, locus: str(LOCI) }));
+  const optional = regs.filter((r) => r.optional).map((r) => r.key);
+  if (optional.length) {
+    const kinds = regs.flatMap((r) => r.kinds ?? []);
+    variants.push(kinds.length ? obj('add_gene', { gene: str(optional), kind: str(kinds) }, ['kind']) : obj('add_gene', { gene: str(optional) }), obj('remove_gene', { gene: str(optional) }));
+  }
   return {
     type: 'object',
     properties: { say: { type: 'string' }, edits: { type: 'array', items: { anyOf: variants }, maxItems: MAX_EDITS } },

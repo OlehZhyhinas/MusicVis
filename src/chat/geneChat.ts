@@ -4,10 +4,11 @@
 // metrics and the request, decodes a grammar-constrained JSON reply, applies it through the editor's
 // edit functions, and gives the model one repair round with the exact errors when edits fail.
 
-import { COST_BUDGET_MS, estimateCost, repair, type Genome } from '../v2/genome';
+import { COST_BUDGET_MS, estimateCost, type Genome } from '../v2/genome';
+import { repairKeeping } from '../v2/geneEdit';
 import { applyEdits, replySchema, type Edit, type Reply } from './edits';
 import { CONTEXT_TOKENS, type ChatMessage, type GenerateResult, type LocalLLM } from './llm';
-import { SYSTEM_PROMPT, genomeDiff, genomeText, lookText, type LookMetrics } from './prompt';
+import { systemPrompt, genomeDiff, genomeText, lookText, type LookMetrics } from './prompt';
 
 export interface ChatContext {
   /** The genome being edited now (the editor's scratch copy). */
@@ -64,7 +65,7 @@ export function partialSay(text: string): string {
 }
 
 export class GeneChat {
-  private messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+  private messages: ChatMessage[] = [{ role: 'system', content: systemPrompt() }];
   /** The genome as the model last saw it (after its own edits), and whose preset it was. */
   private seen: Genome | null = null;
   private seenPreset = '';
@@ -87,7 +88,7 @@ export class GeneChat {
 
   /** Forgets the conversation (the next turn reads the system prompt again). */
   reset(): void {
-    this.messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+    this.messages = [{ role: 'system', content: systemPrompt() }];
     this.seen = null;
     this.seenPreset = '';
     this.usedTokens = 0;
@@ -202,7 +203,7 @@ export class GeneChat {
       }
       const problems = errors.filter((e) => !e.startsWith('note:'));
       if (estimateCost(g) > COST_BUDGET_MS) {
-        g = repair(g);
+        g = repairKeeping(g);
         changes.push(`reduced copies to fit the ${COST_BUDGET_MS} ms budget`);
       }
       if (this.ctx.presetId() !== preset) {

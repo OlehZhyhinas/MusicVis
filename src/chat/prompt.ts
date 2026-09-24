@@ -10,6 +10,7 @@ import {
 import * as E from '../v2/geneEdit';
 import { colourName, paramPaths } from './edits';
 import { GLOSSARY, LEXICON, RULES } from './glossary';
+import { genomeGenes } from '../v2/geneRegistry';
 
 /**
  * Kinds the schemas define that the glossary does not mention (genes added since it was written).
@@ -20,12 +21,28 @@ export function glossaryGaps(): string[] {
   const has = (w: string) => new RegExp(`(^|[^a-z_])${w.toLowerCase()}([^a-z_]|$)`).test(text);
   const kinds = [...LOCI.flatMap((l) => LOCUS_KINDS[l].map((k) => [l, k] as const)), ...[...MOTION_OPS, ...FOLD_OPS].map((k) => ['op', k] as const),
     ...CARRIER_KINDS.map((k) => ['carrier', k] as const), ...PALETTE_KINDS.map((k) => ['palette', k] as const), ...SIGNALS.map((k) => ['signal', k] as const)];
-  return kinds.filter(([, k]) => k !== 'none' && !has(k)).map(([l, k]) => `${l} ${k}`);
+  const out = kinds.filter(([, k]) => k !== 'none' && !has(k)).map(([l, k]) => `${l} ${k}`);
+  for (const spec of genomeGenes()) if (!spec.glossary) out.push(`gene ${spec.key}`);
+  return out;
 }
-const GAPS = glossaryGaps();
-if (GAPS.length) console.warn(`[chat] genes without a glossary entry: ${GAPS.join(', ')}`);
 
-export const SYSTEM_PROMPT = `You edit a live music visualizer preset for the user. The preset is a genome: 1-3 bodies (light sources) plus a space chain, a carrier (how light moves and fades), a palette, a tone and reactions (music signals driving parameters). Each user message shows the preset and a request. Reply with JSON only:
+/** Descriptions of the registered genome-wide genes (geneRegistry.ts), for the system prompt. */
+function registeredGlossary(): string {
+  const specs = genomeGenes();
+  if (!specs.length) return '';
+  const lines = specs.map((s) => `${s.key}${s.kinds ? ` (kinds: ${s.kinds.join(', ')})` : ''}${s.optional ? ', optional: add_gene / remove_gene' : ''}: ${s.glossary ?? s.title}`);
+  return `\nGenome-wide genes (paths <gene>.<param>, kind path <gene>):\n${lines.join('\n')}\n`;
+}
+let cached = '';
+/**
+ * The system prompt. Built on first use (after every gene module has registered) and then kept
+ * byte-identical, so the engine's cache of it stays valid for the whole session.
+ */
+export function systemPrompt(): string {
+  if (cached) return cached;
+  const GAPS = glossaryGaps();
+  if (GAPS.length) console.warn(`[chat] genes without a glossary entry: ${GAPS.join(', ')}`);
+  cached = `You edit a live music visualizer preset for the user. The preset is a genome: 1-3 bodies (light sources) plus a space chain, a carrier (how light moves and fades), a palette, a tone and reactions (music signals driving parameters). Each user message shows the preset and a request. Reply with JSON only:
 {"say": "<one short friendly sentence about what you changed>", "edits": [<edit>, ...]}
 Edits (applied in order):
 {"op":"set","path":"b0.shape.r","value":0.2}  set a parameter; value is a number in the range shown, a choice name, or for any hue a colour name ("blue")
@@ -39,17 +56,20 @@ Edits (applied in order):
 {"op":"fuse","body":0,"shape":"star","mode":"morph"}  (modes union, morph, region); {"op":"unfuse","body":0}
 {"op":"add_xform","body":0}; {"op":"remove_xform","body":0,"index":1}  (flame transforms)
 {"op":"express","body":0,"locus":"shape"}  swap in a body's silent allele
+{"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes listed below
 Paths: bN.<locus>.<param> (loci: shape place motion deform material emit feel color), bN.fuse.<p>, bN.fuseShape.<p>, bN.drawOpJ.<p> (w = strength), bN.xformJ.<p> (var.<name> = variation weight), opJ.<p> (w = strength), carrier.<p>, palette.<p>, tone.<p>, reactionJ.<p>.
 Colours: to change the overall colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}; a body's colour offset is bN.color.hue.
 Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
 
 ${GLOSSARY}
-
+${registeredGlossary()}
 Everyday words:
 ${LEXICON}
 
 ${RULES}
 ${GAPS.length ? `Genes not described above (newer; judge them by their parameter names): ${GAPS.join(', ')}.\n` : ''}Limits: ${MAX_BODIES} bodies, ${MAX_REACTIONS} reactions, ${MAX_CHAIN} chain ops, ${MAX_DRAW} deform ops per body, cost budget ${COST_BUDGET_MS} ms.`;
+  return cached;
+}
 
 // ------------------------------------------------------------ genome text
 
@@ -137,6 +157,11 @@ export function genomeText(g: Genome, keyHue: number): string {
   const first = (keyHue + g.palette.p.hue) % 1;
   lines.push(`palette=${g.palette.kind} ${paramsText(g, { t: 'palette' }, 'palette')} (key hue now ${colourName(keyHue)}; first palette colour on screen: ${colourName(first)})`);
   lines.push(`tone ${paramsText(g, { t: 'tone' }, 'tone')}`);
+  for (const spec of genomeGenes()) {
+    const v = E.geneValue(g, spec.key);
+    if (!v) lines.push(`${spec.key}: off${spec.optional ? ' (add_gene to use it)' : ''}`);
+    else lines.push(`${spec.key}${v.kind ? `=${v.kind}` : ''} ${paramsText(g, { t: 'gene', key: spec.key }, v.kind ?? spec.key)}`);
+  }
   if (!g.reactions.length) lines.push('Reactions: none');
   g.reactions.forEach((r, j) => {
     const target = paramPaths(g).find((p) => p.path.endsWith(`.${r.k}`) && E.targetLabel(g, r).length > 0);
@@ -163,7 +188,7 @@ export function reactionPath(_g: Genome, r: { g: string; i: number; k: string })
 export function genomeDiff(a: Genome, b: Genome, keyHue: number): string[] | null {
   if (JSON.stringify(a) === JSON.stringify(b)) return [];
   // Structure changed: the diff would be long and confusing, send the whole preset instead.
-  const shape = (g: Genome) => JSON.stringify([g.bodies.map((x) => LOCI.map((l) => (x[l] as Gene).kind).concat(x.fuse?.shape.kind ?? '', String(x.deform.ops?.length ?? 0), String(x.shape.xforms?.length ?? 0))), g.chain.map((o) => o.op + o.stage), g.carrier.kind, g.palette.kind, g.reactions.map((r) => r.src + reactionPath(g, r))]);
+  const shape = (g: Genome) => JSON.stringify([g.bodies.map((x) => LOCI.map((l) => (x[l] as Gene).kind).concat(x.fuse?.shape.kind ?? '', String(x.deform.ops?.length ?? 0), String(x.shape.xforms?.length ?? 0))), g.chain.map((o) => o.op + o.stage), g.carrier.kind, g.palette.kind, g.reactions.map((r) => r.src + reactionPath(g, r)), genomeGenes().map((sp) => E.geneValue(g, sp.key)?.kind ?? (E.geneValue(g, sp.key) ? '+' : '-'))]);
   if (shape(a) !== shape(b)) return null;
   const pa = new Map(paramPaths(a).map((p) => [p.path, p.value]));
   const out: string[] = [];
