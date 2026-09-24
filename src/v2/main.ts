@@ -339,7 +339,8 @@ async function main(): Promise<void> {
       },
     },
     transport,
-    [$<HTMLElement>('pl-live'), $<HTMLElement>('pl-live-empty'), $<HTMLElement>('tp-mic')],
+    [$<HTMLElement>('tp-mic'), $<HTMLElement>('pl-live'), $<HTMLElement>('pl-live-empty')],
+    popovers,
   );
 
   transport.setVolumeUi(volume, muted);
