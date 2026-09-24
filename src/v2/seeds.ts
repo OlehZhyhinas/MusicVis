@@ -822,6 +822,39 @@ const AVS: Def[] = [
     })],
     reactions: [rx('hit', 'op', 0, 'amp', 0.6, { rel: 0.3 }), rx('bass', 'op', 1, 'amt', 0.4, { atk: 0.03, rel: 0.5 }), rx('beat', 'ma', 0, 'gain', 0.3, { rel: 0.2 })],
   },
+  {
+    // NemoOrange, the Light of Speed ('long-exposure photographs of highways and cities'): a
+    // handful of tiny tight coils in warm yellows and reds wander on slow looping paths while the
+    // picture streams outward from a drifting centre under a long fade, so each coil draws a light
+    // trail; the trails meet in a maximum blend (no burn-out) and the beat nudges the flow sideways.
+    origin: 'A02', name: 'the Light of Speed (after NemoOrange)', energy: [0.25, 0.8], scheme: 'analogous', hue: 0.06,
+    color: { sat: 0.9, adapt: 0.3, bloom: 1.3, vignette: 0.45 }, carrier: 'warp', car: { halfLife: 1.4, blur: 0.2 },
+    chain: [op('zoom', { rate: 0.035, wander: 0.2 }), op('noise', { amp: 0.0006, scale: 1.5, speed: 0.3 }), op('translate', { vx: 0, vy: 0 })],
+    bodies: [body({
+      shape: ['curve', { form: 2, radius: 0.035, turns: 6, amp: 0.1 }],
+      place: ['float', { count: 6, spread: 0.6, speed: 0.1 }],
+      motion: ['spin', { rate: 0.5 }],
+      material: ['line', { gain: 0.9, width: 2, halo: 0.25, blend: 1 }],
+      color: ['instrument', { hue: 0, amount: 0.35 }],
+    })],
+    reactions: [rx('beat', 'op', 2, 'vx', 0.25, { rel: 0.4 }), rx('hit', 'op', 2, 'vy', -0.2, { rel: 0.4 }), rx('loud', 'op', 0, 'rate', 0.3, { atk: 0.05, rel: 0.6 })],
+  },
+  {
+    // Yathosho (Jan T. Sott, movement by David Hansen), sakura: three soft blobs in blue, pink and
+    // red swell on the beat and are copied into a turning ring of offset layers, then folded into a
+    // six-petal blossom whose radius ripples in concentric bands, over water, all washed pastel.
+    origin: 'A04', name: 'sakura (after Yathosho)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.92,
+    color: { sat: 0.5, exposure: 1.1, adapt: 0.35, bloom: 1.2, vignette: 0.3 }, carrier: 'warp', car: { halfLife: 0.7, water: 0.6, wsize: 0.04 },
+    chain: [op('ripple', { amp: 0.004, freq: 9, speed: 1, radial: 1 }), op('rotate', { lock: 0.125 }), op('zoom', { rate: 0.004 }), op('kaleido', { n: 6, lock: -0.0625 }, 1, 'view')],
+    bodies: [body({
+      shape: ['dot', { r: 0.006 }],
+      place: ['ring', { n: 5, radius: 0.13 }],
+      motion: ['pulse', { amp: 0.4 }],
+      material: ['glow', { gain: 0.45, width: 0.022, base: 0.15 }],
+      color: ['instrument', { hue: 0, amount: 1 }],
+    })],
+    reactions: [rx('beat', 'pl', 0, 'radius', 0.35, { rel: 0.35 }), rx('bass', 'car', 0, 'water', 0.3, { atk: 0.03, rel: 0.5 }), rx('vocals', 'op', 0, 'amp', 0.4, { atk: 0.1, rel: 0.6 })],
+  },
 ];
 
 // R01-: ray-marched 3D scenes (the 'scene' shape, genes/raymarch.ts), fed through the same material,
