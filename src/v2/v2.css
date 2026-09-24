@@ -19,17 +19,12 @@
 /* ------------------------------------------------------------ browser */
 
 #v2-browser {
-  position: absolute;
-  top: 16px;
-  right: 14px;
-  bottom: 190px;
-  width: min(560px, calc(100vw - 28px));
   display: flex;
   flex-direction: column;
-  z-index: 38;
+  flex: 1;
+  min-height: 0;
   font-size: 13px;
   overflow: hidden;
-  background: rgba(14, 16, 24, 0.82);
 }
 #v2-browser[hidden] {
   display: none;
@@ -284,17 +279,12 @@
 /* -------------------------------------------------------- gene editor */
 
 #v2-genes {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  bottom: 190px;
-  width: min(330px, calc(100vw - 28px));
   display: flex;
   flex-direction: column;
-  z-index: 24;
+  flex: 1;
+  min-height: 0;
   font-size: 12px;
   overflow: hidden;
-  background: rgba(14, 16, 24, 0.78);
 }
 #v2-genes[hidden] {
   display: none;
@@ -305,11 +295,6 @@
 #v2-genes.vg-collapsed .vg-top,
 #v2-genes.vg-collapsed .vg-body {
   display: none;
-}
-/* The HUD readouts and frame stats move right of the editor. */
-#app.vg-open #hud,
-#app.vg-open #v2-stats {
-  left: min(358px, calc(100vw - 200px));
 }
 
 .vg-head {

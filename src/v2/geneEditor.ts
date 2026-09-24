@@ -139,6 +139,8 @@ export class GeneEditor {
 
   /** Called when the close button is pressed (main hides the panel). */
   onClose: (() => void) | null = null;
+  /** Asked to be seen (a discard question is waiting): main opens the Genes tab. */
+  onAttention: (() => void) | null = null;
 
   get dirty(): boolean {
     return this.dirtyNow;
@@ -190,6 +192,7 @@ export class GeneEditor {
     this.forced = true;
     if (this.collapsed) this.root.classList.remove('vg-collapsed');
     this.applyVisibility();
+    this.onAttention?.();
   }
 
   private hidePrompt(): void {

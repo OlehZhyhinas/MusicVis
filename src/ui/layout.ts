@@ -39,6 +39,7 @@ export function applyLayout(app: HTMLElement, L: LayoutState): void {
   app.classList.toggle('compact', L.compact);
   const s = app.style;
   s.setProperty('--dock-w', `${L.dockW}px`);
+  s.setProperty('--dock-gap', L.dockW ? `${GAP}px` : '0px');
   s.setProperty('--cw', `${L.cw}px`);
   s.setProperty('--tw', `${L.tw}px`);
   s.setProperty('--tx', `${L.tx}px`);

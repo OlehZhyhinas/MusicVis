@@ -6,7 +6,7 @@ function ensureContainer(): HTMLDivElement {
   if (container) return container;
   container = document.createElement('div');
   container.className = 'toast-container';
-  document.body.appendChild(container);
+  (document.getElementById('app') ?? document.body).appendChild(container);
   return container;
 }
 

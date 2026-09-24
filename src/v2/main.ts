@@ -25,6 +25,7 @@ import { PresetBar } from '../ui/presetBar';
 import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
 import { AutoHide } from '../ui/autoHide';
 import { applyLayout, computeLayout } from '../ui/layout';
+import { Dock } from '../ui/dock';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
@@ -35,6 +36,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 async function main(): Promise<void> {
   hydrateIcons();
   const popovers = new Popovers();
+  const dock = new Dock();
   const appRoot = $<HTMLElement>('app');
   const canvas = $<HTMLCanvasElement>('viz-canvas');
   const emptyStateEl = $<HTMLElement>('playlist-empty');
@@ -43,7 +45,8 @@ async function main(): Promise<void> {
   const transportEl = $<HTMLElement>('transport');
   const hudEl = $<HTMLElement>('hud');
   const statsEl = $<HTMLElement>('v2-stats');
-  const playlistPanelEl = $<HTMLElement>('playlist-panel');
+  const playlistPanelEl = $<HTMLElement>('tab-playlist');
+  const firstRun = $<HTMLElement>('first-run');
   const helpOverlay = $<HTMLElement>('help-overlay');
   const presetLabel = $<HTMLElement>('preset-label');
   const faintId = $<HTMLElement>('faint-id');
@@ -57,7 +60,6 @@ async function main(): Promise<void> {
   let shuffle = loadSetting<boolean>('shuffle', false);
   let repeat = loadSetting<RepeatMode>('repeat', 'off');
   let evolveOn = loadSetting<boolean>('v2.evolve', false);
-  let genesOn = loadSetting<boolean>('v2.genesOn', true);
   let muted = false;
   hudEl.hidden = statsEl.hidden = !hudOn;
   appRoot.classList.toggle('hud-on', hudOn);
@@ -81,7 +83,7 @@ async function main(): Promise<void> {
     relayout();
   }
   function relayout(): void {
-    applyLayout(appRoot, computeLayout(null));
+    applyLayout(appRoot, computeLayout(dock.tab));
     popovers.place();
   }
   window.addEventListener('resize', resizeCanvas);
@@ -169,7 +171,7 @@ async function main(): Promise<void> {
     onDislike: () => vote(false),
     onNext: () => nextPreset(),
     onEvolve: () => setEvolve(!evolveOn),
-    onPresets: () => browser.toggle(),
+    onPresets: () => dock.toggle('presets'),
     thumb: (id) => evo.thumb(id),
   });
   function nextPreset(): void {
@@ -190,15 +192,10 @@ async function main(): Promise<void> {
     toast: (msg, kind) => showToast(msg, kind ?? 'info'),
     // The browser and the playlist share the right side: hide the playlist
     // while the browser is open and bring it back when the browser closes.
-    onOpen: () => {
-      playlistWasOpen = !playlistPanel.isCollapsed;
-      playlistPanel.setCollapsed(true);
-    },
     onClose: () => {
-      if (playlistWasOpen) playlistPanel.setCollapsed(false);
+      if (dock.tab === 'presets') dock.close();
     },
   });
-  let playlistWasOpen = false;
   const editor = new GeneEditor($<HTMLElement>('v2-genes'), {
     eng,
     evo,
@@ -215,20 +212,16 @@ async function main(): Promise<void> {
     },
     onDirty: () => updateBar(),
   });
-  editor.onClose = () => setGenes(false);
+  editor.onClose = () => dock.close();
+  editor.onAttention = () => dock.open('genes');
   function toggleGenes(): void {
-    // Gene editor: shown with the HUD; K with the HUD off opens both.
-    if (!hudOn) {
-      setHud(true);
-      setGenes(true);
-    } else setGenes(!(genesOn && hudOn));
+    // K opens the Genes tab and the HUD; K again closes the tab.
+    if (dock.tab === 'genes') dock.close();
+    else {
+      dock.open('genes');
+      if (!hudOn) setHud(true);
+    }
   }
-  function setGenes(on: boolean): void {
-    genesOn = on;
-    saveSetting('v2.genesOn', on);
-    editor.setShown(hudOn && genesOn);
-  }
-  editor.setShown(hudOn && genesOn);
   evo.onChange = () => {
     browser.refresh();
     updateBar();
@@ -272,7 +265,7 @@ async function main(): Promise<void> {
       applyVolume();
     },
     onFullscreen: () => toggleFullscreen(),
-    onPlaylistToggle: () => playlistPanel.toggle(),
+    onPlaylistToggle: () => dock.toggle('playlist'),
     onMore: (anchor) => openMore(anchor),
     onVolumePopover: (anchor) => popovers.toggle(volPop, anchor),
   });
@@ -290,12 +283,12 @@ async function main(): Promise<void> {
       'View',
       { icon: 'hud', label: 'HUD', kbd: 'H', on: () => hudOn, run: () => setHud(!hudOn), keep: true },
       { icon: 'genes', label: 'Gene editor', kbd: 'K', run: () => toggleGenes() },
-      { icon: 'list', label: 'Playlist', kbd: 'P', run: () => playlistPanel.toggle() },
+      { icon: 'list', label: 'Playlist', kbd: 'P', run: () => dock.toggle('playlist') },
       { icon: 'fullscreen', label: 'Fullscreen', kbd: 'F', run: () => toggleFullscreen() },
       'Preset',
       { icon: 'hash', label: 'Go to preset…', kbd: 'G', run: () => setGotoVisible(true) },
       { icon: 'skip', label: 'Next preset', kbd: 'N', run: () => nextPreset() },
-      { icon: 'grid', label: 'Preset browser', kbd: 'B', run: () => browser.toggle() },
+      { icon: 'grid', label: 'Preset browser', kbd: 'B', run: () => dock.toggle('presets') },
       ...(phone || narrow
         ? ([
             'Playback',
@@ -333,10 +326,12 @@ async function main(): Promise<void> {
         transport.setTrackLoading(null);
         transport.show();
         liveMode.setOpen(false);
-        playlistPanel.setCollapsed(true);
+        if (dock.tab === 'playlist') dock.close();
+        updateEmpty();
       },
       onStop: () => {
         if (playlist.isEmpty) transport.hide();
+        updateEmpty();
       },
       onNewSong: (cx) => {
         songCx = cx;
@@ -378,23 +373,38 @@ async function main(): Promise<void> {
     },
     onAdd: () => fileInput.click(),
   });
-  playlistPanel.onCollapse = (c) => {
-    transport.setPlaylistOpen(!c);
+  let wasEmpty = playlist.isEmpty;
+  function updateEmpty(): void {
+    const empty = playlist.isEmpty && !liveMode.active;
+    firstRun.hidden = !empty;
+    appRoot.classList.toggle('is-empty', empty);
+  }
+  dock.onChange = (tab) => {
+    relayout();
+    browser.setOpen(tab === 'presets');
+    editor.setShown(tab === 'genes');
+    transport.setPlaylistOpen(tab === 'playlist');
+    presetBar.setPresetsOpen(tab === 'presets');
     updateNowPlaying();
   };
-  playlistPanel.setCollapsed(!playlist.isEmpty);
+  $('fr-add').addEventListener('click', () => fileInput.click());
+  $('fr-drop').addEventListener('click', () => fileInput.click());
+  $('et-help').addEventListener('click', () => setHelpVisible(true));
+  $('et-fullscreen').addEventListener('click', () => toggleFullscreen());
 
   playlist.onChange = () => {
     playlistPanel.render(playlist);
     const cur = playlist.currentTrack;
     if (cur && cur.status === 'analyzing') transport.setTrackLoading(cur.progress);
     else if (cur && (cur.status === 'ready' || cur.status === 'error')) transport.setTrackLoading(null);
-    emptyStateEl.hidden = !playlist.isEmpty;
     updateNowPlaying();
     if (playlist.isEmpty && !liveMode.active) {
       transport.hide();
-      playlistPanel.setCollapsed(false);
+      // Emptied: the dock closes and the first-run card returns.
+      if (!wasEmpty && dock.tab === 'playlist') dock.close();
     }
+    wasEmpty = playlist.isEmpty;
+    updateEmpty();
   };
 
   function updateNowPlaying(): void {
@@ -402,7 +412,7 @@ async function main(): Promise<void> {
     const cur = playlist.currentTrack;
     const i = cur ? all.indexOf(cur) : -1;
     transport.setNowPlaying(cur?.title ?? '', cur ? `Track ${i + 1} of ${all.length}` : `${all.length} tracks`);
-    transport.setPlaylistBadge(playlistPanel.isCollapsed && all.length ? all.length : null);
+    transport.setPlaylistBadge(dock.tab !== 'playlist' && all.length ? all.length : null);
   }
   function applyVolume(): void {
     if (player) player.volume = muted ? 0 : volume;
@@ -413,7 +423,6 @@ async function main(): Promise<void> {
     hudEl.hidden = statsEl.hidden = !on;
     appRoot.classList.toggle('hud-on', on);
     saveSetting('v2.hudOn', on);
-    editor.setShown(on && genesOn);
   }
   function setHelpVisible(show: boolean): void {
     helpOverlay.hidden = !show;
@@ -554,8 +563,9 @@ async function main(): Promise<void> {
     }
     if (ev.key === 'Escape') {
       if (popovers.close()) return;
-      setHelpVisible(false);
-      if (browser.open) browser.setOpen(false);
+      if (!helpOverlay.hidden) setHelpVisible(false);
+      else if (!presetGoto.hidden) setGotoVisible(false);
+      else dock.close();
       return;
     }
     switch (ev.key) {
@@ -579,14 +589,14 @@ async function main(): Promise<void> {
         break;
       case 'f': case 'F': toggleFullscreen(); break;
       case 'h': case 'H': setHud(!hudOn); break;
-      case 'p': case 'P': playlistPanel.toggle(); break;
+      case 'p': case 'P': dock.toggle('playlist'); break;
       case 'n': case 'N': nextPreset(); break;
       case 'k': case 'K': toggleGenes(); break;
       case 's': case 'S': toggleShuffle(); break;
       case 'l': case 'L': vote(true); break;
       case 'd': case 'D': vote(false); break;
       case 'e': case 'E': setEvolve(!evolveOn); break;
-      case 'b': case 'B': browser.toggle(); break;
+      case 'b': case 'B': dock.toggle('presets'); break;
       case 'g': case 'G':
         ev.preventDefault();
         setGotoVisible(true);
@@ -610,6 +620,11 @@ async function main(): Promise<void> {
   updateBar();
   // Descriptors for novelty scoring, in the background.
   window.setTimeout(() => void evo.describeMissing(40), 4000);
+
+  // The dock starts open on its last tab (a sheet on phones, so not there).
+  updateEmpty();
+  if (window.innerWidth >= 600) dock.open(dock.lastTab);
+  else relayout();
 
   // Debug / test handle.
   (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, play, choose, current, editor };

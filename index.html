@@ -33,14 +33,38 @@
         <div class="row" id="pl-tags"></div>
       </div>
 
-      <aside id="v2-genes" class="panel" aria-label="Gene editor" hidden></aside>
-
       <form id="preset-goto" class="panel" hidden>
         <label for="preset-goto-input">Go to preset</label>
         <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. G0-E07 or G3-0012" />
       </form>
 
-      <aside id="v2-browser" class="panel" hidden>
+
+
+      <aside id="dock" class="dock glass strong chrome" aria-label="Panels" hidden>
+        <div class="grab"></div>
+        <div class="dock-head">
+          <div class="seg full lg" role="tablist" aria-label="Dock tabs">
+            <button role="tab" id="dt-playlist" aria-controls="tab-playlist" aria-selected="false" title="Playlist (P)" data-icon="list" data-icon-size="14"><span>Playlist</span></button>
+            <button role="tab" id="dt-presets" aria-controls="tab-presets" aria-selected="false" title="Presets (B)" data-icon="grid" data-icon-size="14"><span>Presets</span></button>
+            <button role="tab" id="dt-genes" aria-controls="tab-genes" aria-selected="false" title="Gene editor (K)" data-icon="genes" data-icon-size="14"><span>Genes</span></button>
+          </div>
+          <button id="dock-close" class="ib sm" aria-label="Close panel (Esc)" title="Close (Esc)" data-icon="x" data-icon-size="16"></button>
+        </div>
+
+        <section id="tab-playlist" class="dock-body" role="tabpanel" aria-labelledby="dt-playlist" hidden>
+          <div class="sec-h">
+            <div class="col grow" style="gap: 0"><h2>Playlist</h2><span class="dim" id="pl-summary"></span></div>
+            <button id="pl-add" class="btn sm" title="Add songs (multi-file picker)" data-icon="plus" data-icon-size="14"><span>Add</span></button>
+            <button id="pl-live" class="ib sm" aria-label="Live input" title="Live input: microphone, audio interface or virtual device" data-icon="mic" data-icon-size="16"></button>
+            <button id="pl-clear" class="ib sm" aria-label="Clear playlist" title="Clear playlist" data-icon="trash" data-icon-size="16"></button>
+          </div>
+          <ul id="playlist-items" class="scroll grow" role="list" aria-label="Tracks"></ul>
+          <button id="playlist-empty" class="dropzone" data-icon="upload" data-icon-size="15">Drop audio files here or anywhere · or click to choose</button>
+          <div class="dock-foot"><span class="kbd">P</span> toggle <span class="kbd">Shift ←</span><span class="kbd">Shift →</span> prev / next track <span class="kbd">Esc</span> close</div>
+        </section>
+
+        <section id="tab-presets" class="dock-body" role="tabpanel" aria-labelledby="dt-presets" hidden>
+          <div id="v2-browser">
         <div class="v2b-header">
           <span class="v2b-title">Presets <span id="v2b-count"></span></span>
           <div class="v2b-actions">
@@ -76,28 +100,34 @@
           <div id="v2b-results-grid"></div>
         </div>
         <div id="v2b-list" role="list"></div>
+          </div>
+        </section>
+
+        <section id="tab-genes" class="dock-body" role="tabpanel" aria-labelledby="dt-genes" hidden>
+          <div id="v2-genes" aria-label="Gene editor"></div>
+        </section>
       </aside>
 
-      <aside id="playlist-panel" class="panel" hidden>
-        <div id="playlist-header">
-          <span id="playlist-title">Playlist</span>
-          <div id="playlist-header-actions">
-            <button id="pl-add" class="tp-btn-text" aria-label="Add songs">Add</button>
-            <button id="pl-live" class="tp-btn-text" aria-label="Live input" title="Live input: microphone, audio interface or virtual device">Live</button>
-            <button id="pl-clear" class="tp-btn-text" aria-label="Clear playlist">Clear</button>
-            <button id="pl-close" class="tp-btn" aria-label="Close playlist" data-icon="x" data-icon-size="16"></button>
-          </div>
+      <div id="empty-tools" class="row chrome">
+        <button id="et-help" class="ib" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" data-icon="keyboard"></button>
+        <button id="et-fullscreen" class="ib" aria-label="Fullscreen" title="Fullscreen (F)" data-icon="fullscreen"></button>
+      </div>
+
+      <div id="first-run" class="first-run empty-card glass strong chrome" hidden>
+        <div class="big-ic" data-icon="music" data-icon-size="30"></div>
+        <h2>Drop audio to begin</h2>
+        <p>Add a few songs and the visuals follow every beat, section and drop. Or play live from a microphone, audio interface or virtual device.</p>
+        <div class="row fr-actions">
+          <button id="fr-add" class="btn primary lg" title="Opens the multi-file picker" data-icon="plus" data-icon-size="16"><span>Add songs</span></button>
+          <button id="pl-live-empty" class="btn lg" title="Live input: microphone, audio interface or BlackHole" data-icon="mic" data-icon-size="16"><span>Live input</span></button>
         </div>
-        <ul id="playlist-items"></ul>
-        <div id="playlist-empty" tabindex="0" role="button" aria-label="Add songs">
-          <span class="playlist-empty-title">Add songs</span>
-          <span class="playlist-empty-hint">or drop audio files anywhere</span>
+        <button id="fr-drop" class="dropzone" data-icon="upload" data-icon-size="16">or drop audio files anywhere · MP3, WAV, FLAC, OGG, M4A</button>
+        <div class="row dim fr-keys">Press <span class="kbd">?</span> for shortcuts or <span class="kbd">/</span> for every command</div>
+        <div class="row fr-links">
+          <a class="btn ghost sm" data-bug href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener" title="Opens a new GitHub issue prefilled with a template, the current preset, page and browser" data-icon="bug" data-icon-size="14"><span>Report a bug</span></a>
+          <a class="btn ghost sm" href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener" data-icon="github" data-icon-size="14"><span>GitHub</span></a>
         </div>
-        <button id="pl-live-empty" aria-label="Live input">
-          <span class="pl-live-title">Live input</span>
-          <span class="pl-live-hint">microphone, audio interface or BlackHole</span>
-        </button>
-      </aside>
+      </div>
 
       <div id="bottom">
         <div id="preset-bar" class="pbar glass chrome" aria-label="Current preset">
