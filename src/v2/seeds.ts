@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 21;
+export const SEED_VERSION = 22;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -914,6 +914,51 @@ const AVS: Def[] = [
       color: ['instrument', { hue: 0, amount: 1 }],
     })],
     reactions: [rx('beat', 'pl', 0, 'radius', 0.35, { rel: 0.35 }), rx('bass', 'car', 0, 'water', 0.3, { atk: 0.03, rel: 0.5 }), rx('vocals', 'op', 0, 'amp', 0.4, { atk: 0.1, rel: 0.6 })],
+  },
+  {
+    // Zevensoft, Ocean4: fireworks over a night sea. Spherical bursts of random-coloured sparks
+    // blossom and fall above a rolling horizon line that follows the melody, and the sea below
+    // mirrors it all; the hits set off the bursts and the bass lifts the swell.
+    origin: 'A05', name: 'Ocean4 (after Zevensoft)', energy: [0.3, 0.9], scheme: 'complementary', hue: 0.62,
+    color: { sat: 0.85, adapt: 0.35, bloom: 1.3, vignette: 0.4, reflect: 1, reflectY: -0.22 }, carrier: 'warp', car: { halfLife: 0.4, blur: 0.1 },
+    bodies: [
+      body({
+        shape: ['edge', { mode: 1, side: 2, base: -0.22, height: 0.12, density: 0.6 }],
+        material: ['fill', { gain: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.004 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['glow', { gain: 0.6, width: 0.006 }],
+        emit: ['sparks', { count: 16384, size: 2.2, speed: 0.7, curl: 0.05, zoomFlow: 0, lift: -0.06, drag: 3, life: 0.55, spread: 0.12, surge: 1, top: 0, body: 0.1 }],
+        color: ['age', { hue: 0.5, rate: 0.25, detail: 1 }],
+      }),
+    ],
+    reactions: [rx('hit', 'em', 1, 'speed', 0.5, { rel: 0.3 }), rx('bass', 'sh', 0, 'height', 0.4, { atk: 0.05, rel: 0.5 }), rx('loud', 'ma', 1, 'gain', 0.3, { atk: 0.05, rel: 0.4 })],
+  },
+  {
+    // El-vis, hubble002: spiral galaxies of a thousand spectrum-pushed dots, re-coloured and moved
+    // on the beat, drift through a blue starfield while the feedback smears their arms into a
+    // blurred nebula that slowly twists and draws you in.
+    origin: 'A06', name: 'hubble002 (after El-vis)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.6,
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.3, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.8, blur: 0.3 },
+    chain: [op('zoom', { rate: 0.006 }), op('twist', { amt: 0.004 }), op('noise', { amp: 0.0006, scale: 2, speed: 0.2 })],
+    bodies: [
+      body({
+        shape: ['curve', { form: 2, radius: 0.14, turns: 6, amp: 0.4 }],
+        place: ['float', { count: 3, spread: 0.45, speed: 0.06 }],
+        motion: ['spin', { rate: 0.25 }],
+        material: ['dots', { gain: 0.8, spacing: 0.01, size: 0.5 }],
+        color: ['pitch', { hue: 0, detail: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.002 }],
+        material: ['glow', { gain: 0.3, width: 0.003 }],
+        emit: ['sparks', { count: 8192, size: 1.6, speed: 0.2, curl: 0, zoomFlow: 1.3, drag: 1.5, life: 0.5, spread: 0.2, surge: 0.3, top: 0, body: 0 }],
+        color: ['fixed', { hue: 0.33, detail: 0.5 }],
+      }),
+    ],
+    reactions: [rx('bass', 'sh', 0, 'amp', 0.4, { atk: 0.03, rel: 0.4 }), rx('beat', 'pl', 0, 'spread', 0.2, { rel: 0.5 }), rx('other', 'op', 1, 'amt', 0.3, { atk: 0.1, rel: 0.8 })],
   },
 ];
 
