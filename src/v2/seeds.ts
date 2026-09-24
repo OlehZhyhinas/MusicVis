@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 22;
+export const SEED_VERSION = 23;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -959,6 +959,36 @@ const AVS: Def[] = [
       }),
     ],
     reactions: [rx('bass', 'sh', 0, 'amp', 0.4, { atk: 0.03, rel: 0.4 }), rx('beat', 'pl', 0, 'spread', 0.2, { rel: 0.5 }), rx('other', 'op', 1, 'amt', 0.3, { atk: 0.1, rel: 0.8 })],
+  },
+  {
+    // Degnic, Fractal (slo-mo metallic): a spectrum-pulsed ring echoes down a slowly turning,
+    // sinking feedback tunnel, blurred and sharpened into nested rings, and the whole picture is lit
+    // as brushed metal; onsets kick the turn and the bass pulls the tunnel in faster.
+    origin: 'A08', name: 'Fractal slo-mo metallic (after Degnic)', energy: [0.1, 0.6], scheme: 'mono', hue: 0.58,
+    color: { sat: 0.15, exposure: 1.05, adapt: 0.3, bloom: 0.8, vignette: 0.45, relief: 0.8, bump: 1.6, light: 0.3, gloss: 0.8, metal: 0.9 },
+    carrier: 'warp', car: { halfLife: 1.2, blur: 0.2, sharpen: 0.05, grain: 0.004 },
+    chain: [op('zoom', { rate: -0.008, wander: 0.15 }), op('rotate', { lock: 0.0625, rate: 0.002 }), op('mirror', { axis: 2 }, 1, 'view')],
+    bodies: [body({
+      shape: ['curve', { form: 1, radius: 0.22, amp: 0.3 }],
+      material: ['line', { gain: 0.9, width: 1.6, halo: 0.2 }],
+      feel: ['flow', { atk: 0.1, rel: 1 }],
+    })],
+    reactions: [rx('hit', 'op', 1, 'rate', 0.4, { rel: 0.8 }), rx('bass', 'op', 0, 'rate', -0.3, { atk: 0.1, rel: 1 }), rx('vocals', 'sh', 0, 'radius', 0.2, { atk: 0.1, rel: 0.6 })],
+  },
+  {
+    // Jheriko, Alien Device (gallery remix by Zamuz): an icosahedron of pentagons turns in space
+    // on the bar, interlaced line by line into the trail so the device flickers like an old
+    // monitor, while the camera shakes on the hits and the bass swells the machine.
+    origin: 'A09', name: 'Alien Device (after Jheriko & Zamuz)', energy: [0.3, 0.85], scheme: 'complementary', hue: 0.35,
+    color: { sat: 0.85, adapt: 0.35, bloom: 1.2, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.3, blur: 0.1 },
+    chain: [op('noise', { amp: 0.0008, scale: 1.2, speed: 0.6 }), op('zoom', { rate: 0.003 })],
+    bodies: [body({
+      shape: ['solid', { solid: 3, size: 0.3, tilt: 0.5, inner: 0 }],
+      motion: ['spin', { rate: 0.25 }],
+      material: ['line', { gain: 1.1, width: 1.8, halo: 0.2, blend: 5 }],
+      color: ['height', { hue: 0, amount: 0.6 }],
+    })],
+    reactions: [rx('hit', 'op', 0, 'amp', 0.7, { rel: 0.25 }), rx('bass', 'sh', 0, 'size', 0.3, { atk: 0.03, rel: 0.4 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.4 })],
   },
 ];
 
