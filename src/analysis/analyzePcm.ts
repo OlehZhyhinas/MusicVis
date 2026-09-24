@@ -8,6 +8,7 @@ import { computeStems, TIMBRE_BANDS } from './stems';
 import { onsetEnvelope, estimateTempo, trackBeats, refineBeats, downbeatPhase } from './beats';
 import { computeChroma, resampleChroma, detectKeys } from './key';
 import { detectSections } from './structure';
+import { detectRepeats } from './repetition';
 import { computeComplexity, type ComplexityFeatures } from './complexity';
 
 export type ProgressFn = (stage: string, progress: number) => void;
@@ -160,7 +161,7 @@ export function analyzePcm(
   if (sections.length === 0) sections = [{ start: 0, end: Math.max(duration, 1e-3), label: 'verse', energy: 0 }];
   report('Done', 1);
 
-  return {
+  const result: AnalysisResult = {
     duration,
     frameRate,
     numFrames: T,
@@ -178,6 +179,8 @@ export function analyzePcm(
     sections,
     keys,
   };
+  result.repeats = detectRepeats(result);
+  return result;
 }
 
 /** Replace non-finite samples with 0 (copies only when needed). */

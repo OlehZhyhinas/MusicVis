@@ -5,6 +5,7 @@ import { analyzePcm } from '../src/analysis/analyzePcm';
 import { TimelineSampler } from '../src/analysis/TimelineSampler';
 import type { AnalysisResult, LiveAudioFrame, StemName } from '../src/types';
 import { harmonyTests } from './harmony-tests';
+import { repetitionTests } from './repetition-tests';
 
 const SR = 44100;
 const BPM = Number(process.env.BPM ?? 128);
@@ -264,6 +265,10 @@ function meanRange(x: Float32Array, fr: number, a: number, b: number): number {
 
 const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const fmtKey = (k: { tonic: number; mode: string }) => `${NAMES[k.tonic]} ${k.mode}`;
+
+function printRepeats(r: AnalysisResult): void {
+  console.log('  repeats: ' + (r.repeats ?? []).map((x, i) => `${i}:${r.sections[i].label}@${r.sections[i].start.toFixed(1)} g${x.group}${x.of >= 0 ? `<-${x.of} n${x.n} sim=${x.sim.toFixed(2)}` : ''}${x.returnSim > 0 ? ` ret=${x.returnSim.toFixed(2)}` : ''}`).join(' | '));
+}
 
 function printSummary(r: AnalysisResult): void {
   console.log(`  bpm=${r.bpm.toFixed(2)} beats=${r.beats.length} downbeats=${r.downbeats.length} frames=${r.numFrames} @ ${r.frameRate.toFixed(2)} fps`);
@@ -548,6 +553,13 @@ for (const kind of ['sine', 'piano'] as const) {
   printSummary(r);
   console.log('  truth: ' + song.parts.map((p) => `${p.kind}@${p.start.toFixed(1)}`).join(' '));
   validate('4-minute', r);
+  printRepeats(r);
+  {
+    const at = (t: number) => r.sections.findIndex((x) => x.start <= t + 2 && x.end > t + 2);
+    const rp = r.repeats ?? [];
+    const [verse, d1, d2] = [30.3, 75.3, 150.3].map(at);
+    check('4-minute repeats', !!rp[d2] && rp[d2].group === rp[d1].group && rp[d2].n >= 1 && rp[d1].group !== rp[verse].group, rp.map((x) => `${x.group}<-${x.of}`).join(' '));
+  }
   check('4-minute runtime', ms < 4000, `${(ms / 1000).toFixed(2)} s`);
 }
 
@@ -564,6 +576,12 @@ for (const kind of ['sine', 'piano'] as const) {
   const r = analyzePcm(song.left, song.right, SR);
   console.log(`\nPop-form synthetic song (${song.duration.toFixed(1)} s), labels informational:`);
   printSummary(r);
+  printRepeats(r);
+  // Repetition: the second verse and chorus return the first ones (sections found near the truth).
+  const at = (t: number) => r.sections.findIndex((x) => x.start <= t + 2 && x.end > t + 2);
+  const rp = r.repeats ?? [];
+  const [v1, c1, v2, c2] = [15.3, 45.3, 75.3, 105.3].map(at);
+  check('pop repeats', !!rp[v2] && !!rp[c2] && rp[v2].of === v1 && rp[c2].of === c1 && rp[c1].of === -1 && rp[c1].group !== rp[v1].group && rp[v1].returnSim > 0, rp.map((x) => `${x.group}<-${x.of}`).join(' '));
   console.log('  truth: ' + song.parts.map((p) => `${p.kind}@${p.start.toFixed(1)}`).join(' '));
   validate('pop', r);
 }
@@ -603,6 +621,9 @@ for (const kind of ['sine', 'piano'] as const) {
 
 console.log('\n# Harmony map');
 harmonyTests(check);
+// ---------------------------------------------------------------- repetition (feature level)
+console.log('\nRepetition (feature-level synthetic songs):');
+repetitionTests(check);
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -2,8 +2,9 @@
 // once per animation frame. Cursor-based lookups (amortized O(1) during normal
 // playback, binary search after jumps); no per-frame allocation.
 
-import type { AnalysisResult, KeySegment, LiveAudioFrame, MusicState, Section, StemName } from '../types';
+import type { AnalysisResult, KeySegment, LiveAudioFrame, MusicState, Section, SectionRepeat, StemName } from '../types';
 import { STEM_NAMES } from '../types';
+import { detectRepeats } from './repetition';
 
 const BEAT_TAU = 0.15;
 const BAR_TAU = 0.3;
@@ -80,6 +81,8 @@ export class TimelineSampler {
   private readonly keys: KeySegment[];
   /** Start times of the sections that fire dropPulse (drops, and choruses right after a build). */
   private readonly dropStarts: number[];
+  /** Repetition per section (from the result, or detected here for results analysed without it). */
+  private readonly repeats: SectionRepeat[];
 
   private synced = false;
   private lastTime = 0;
@@ -107,6 +110,8 @@ export class TimelineSampler {
       const sec = this.sections[i];
       if (sec.label === 'drop' || (sec.label === 'chorus' && this.sections[i - 1].label === 'build')) this.dropStarts.push(sec.start);
     }
+    const rep = result.repeats && result.repeats.length === this.sections.length ? result.repeats : null;
+    this.repeats = rep ?? (result.sections.length > 0 ? detectRepeats(result) : [{ group: 0, of: -1, n: 0, sim: 0, returnSim: 0 }]);
     this.keys = result.keys.length > 0 ? result.keys : [{ start: 0, end: dur, tonic: 0, mode: 'major', confidence: 0 }];
     const zeroStems = (): Record<StemName, number> => ({ drums: 0, bass: 0, vocals: 0, other: 0 });
     this.state = {
@@ -310,6 +315,14 @@ export class TimelineSampler {
     s.sectionProgress = prog < 0 ? 0 : prog > 1 ? 1 : prog;
     s.prevSectionLabel = si > 0 ? this.sections[si - 1].label : undefined;
     s.sectionChanged = events && si !== prevSec;
+    const rp = this.repeats[si];
+    if (rp) {
+      s.repeatGroup = rp.group;
+      s.repeatOf = rp.of;
+      s.repeatIndex = rp.n;
+      s.repeatSim = rp.sim;
+      s.repeatReturnSim = rp.returnSim;
+    }
     if (s.sectionChanged) {
       const prevLabel = this.sections[prevSec]?.label;
       if (sec.label === 'drop' || (sec.label === 'chorus' && prevLabel === 'build')) s.dropPulse = 1;

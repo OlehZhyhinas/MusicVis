@@ -67,6 +67,22 @@ export interface AnalysisResult {
 
   sections: Section[]; // contiguous, cover [0, duration]
   keys: KeySegment[]; // contiguous, cover [0, duration]
+  /** Repetition structure, one entry per section (src/analysis/repetition.ts); absent in older results. */
+  repeats?: SectionRepeat[];
+}
+
+/** How a section relates to the rest of the song (src/analysis/repetition.ts). */
+export interface SectionRepeat {
+  /** Repetition group: sections that are the same music share it (0, 1, 2... by first appearance). */
+  group: number;
+  /** Index of the group's first section, or -1 when this section is the first appearance. */
+  of: number;
+  /** Occurrence within the group: 0 the first appearance, 1 the first return... */
+  n: number;
+  /** 0..1 how closely this section repeats an earlier one (0 for a first appearance). */
+  sim: number;
+  /** 0..1 how closely the group comes back later (the best later return; 0 when it never does). */
+  returnSim: number;
 }
 
 /** Messages to/from the analysis worker. */
@@ -157,6 +173,12 @@ export interface MusicState {
   barSeconds?: number;
   /** Type of the section before the current one (undefined at the start or when unknown). */
   prevSectionLabel?: SectionLabel;
+  /** Repetition of the current section (src/analysis/repetition.ts): group, first section of the group (-1 when this is it), occurrence (0 = first), similarity to the earlier one, and how closely it comes back later. */
+  repeatGroup?: number;
+  repeatOf?: number;
+  repeatIndex?: number;
+  repeatSim?: number;
+  repeatReturnSim?: number;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */
