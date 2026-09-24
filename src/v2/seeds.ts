@@ -34,8 +34,9 @@ import {
 import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
+import { GROOVE_SCHEMA } from './genes/groove';
 
-export const SEED_VERSION = 33;
+export const SEED_VERSION = 34;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -110,6 +111,8 @@ interface Def {
   drift?: Record<string, number>;
   /** Harmony: symmetry that follows the chord progression (src/v2/genes/harmony.ts); omitted = none. */
   harmony?: Record<string, number>;
+  /** Timing feel for the motion (src/v2/genes/groove.ts); omitted = none. */
+  groove?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -129,6 +132,7 @@ function build(d: Def): Seed {
   if (d.choreo) g.choreo = { p: { ...defaultParams(CHOREO_SCHEMA), ...d.choreo } };
   if (d.drift) g.drift = { p: { ...defaultParams(DRIFT_SCHEMA), ...d.drift } };
   if (d.harmony) g.harmony = { p: { ...defaultParams(HARMONY_SCHEMA), ...d.harmony } };
+  if (d.groove) g.groove = { p: { ...defaultParams(GROOVE_SCHEMA), ...d.groove } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -1350,4 +1354,28 @@ const HARMONY: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY].map(build);
+// Q01.. showcase the groove gene (src/v2/genes/groove.ts): the motion takes the music's timing feel,
+// swung, laid back, machine-tight or loose, as measured from the song.
+const GROOVE: Def[] = [
+  {
+    // A row of lanterns sways on the bar and their trails float upward, drawing the swing as a loping
+    // wave: in swung music every sway lands late on the off-beat and a small off-beat pulse pops on
+    // the "and"; a laid-back backbeat drags the whole row behind the grid; human playing nudges each
+    // lantern on the hits, while a machine-tight track makes the row tick in crisp half-beat steps.
+    origin: 'Q01', name: 'Shuffle Lanterns', energy: [0.2, 0.75], scheme: 'analogous', hue: 0.08,
+    color: { adapt: 0.4, bloom: 1.1, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.9, floor: 1 },
+    chain: [op('translate', { vy: 0.32 }), op('noise', { amp: 0.0006, scale: 2, speed: 0.2 })],
+    bodies: [body({
+      shape: ['polygon', { n: 6, r: 0.03, round: 0.4 }],
+      place: ['row', { count: 5, y: -0.38, wander: 0 }],
+      motion: ['sway', { amp: 0.07, period: 1, tilt: 0.6 }],
+      material: ['glow', { gain: 0.45, width: 0.007, base: 0.3, halo: 0.2 }],
+      emit: ['trail', { tip: 0.5 }],
+    })],
+    reactions: [rx('bass', 'ma', 0, 'gain', 0.35, { atk: 0.03, rel: 0.3 }), rx('swing', 'mo', 0, 'amp', 0.4, { atk: 0.5, rel: 1.5 })],
+    groove: { swing: 1.2, sub: 8, sway: 0.03, off: 0.6, lean: 0.7, crisp: 0.7, tick: 2, jitter: 0.6, accent: 0.4 },
+  },
+];
+
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE].map(build);

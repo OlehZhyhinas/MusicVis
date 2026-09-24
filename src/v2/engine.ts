@@ -13,6 +13,8 @@ import { packTunnel } from './genes/tunnel';
 import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
 import type { AnalysisResult, MusicState, Section, StemName } from '../types';
+import { grooveClock, grooveOffset, type GrooveOffset } from './genes/groove';
+import type { GrooveStats } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
 import { Fluid } from '../render/fluid';
@@ -132,6 +134,8 @@ export interface Frame {
   barPulse: number; bpm: number;
   /** Harmony map: tension 0..1 and the resolve / chord change / modulation pulses. */
   tension: number; resolve: number; chordPulse: number; modPulse: number;
+  /** Timing feel (swing, push, humanity, syncopation; neutral when not analysed). */
+  groove: GrooveStats;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
   surge: number;
 }
@@ -144,6 +148,7 @@ export class Signals {
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
     tension: 0, resolve: 0, chordPulse: 0, modPulse: 0,
+    groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
   };
   spinStep = 0;
   clock = 0;
@@ -210,6 +215,11 @@ export class Signals {
     F.resolve = num(state.resolvePulse, 0);
     F.chordPulse = num(state.chordPulse, 0);
     F.modPulse = num(state.modulationPulse, 0);
+    const gr = state.groove;
+    F.groove.swing = num(gr?.swing, 0);
+    F.groove.push = num(gr?.push, 0);
+    F.groove.humanity = num(gr?.humanity, 0);
+    F.groove.synco = num(gr?.synco, 0);
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     this.sectionPulse *= Math.exp(-dt * 1.5);
     if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
@@ -339,6 +349,10 @@ export class Signals {
       case 'resolve': return F.resolve;
       case 'chordchange': return F.chordPulse;
       case 'modulation': return F.modPulse;
+      case 'swing': return F.groove.swing;
+      case 'push': return Math.abs(F.groove.push);
+      case 'humanity': return F.groove.humanity;
+      case 'synco': return F.groove.synco;
     }
   }
 
@@ -1098,6 +1112,8 @@ export class Stage {
     const PE = (k: string) => s.P('em', bi, b.emit.p, k, EMIT_SCHEMAS[b.emit.kind]);
     const gain = PA('gain');
     this.clk = this.bodyClock(s, b, bi, sdt);
+    // Groove: a grid-locked clock takes the music's timing feel (swing, lean, crisp ticks).
+    if (s.genome.groove && this.clk.lock) grooveClock(s.genome.groove, F.groove, this.clk);
     // Colour mapping: the body's base hue (plus the age drift) and slot 20 (kind, detail, height, amount).
     const cm = b.color;
     const PC = (k: string) => s.P('cm', bi, cm.p, k, MAPPING_SCHEMAS[cm.kind]);
@@ -1124,6 +1140,16 @@ export class Stage {
     // Copies: placement, then motion.
     const copies = this.placeCopies(s, b, bi, sdt);
     this.applyMotion(s, b, bi, copies, sdt);
+    if (s.genome.groove) {
+      // Groove: sway, off-beat pulse, crisp ticks, onset nudges and syncopated accents.
+      const go = grooveOffset(s.genome.groove, F.groove, { beat: F.beats, period: 60 / Math.max(1, F.bpm), dt: sdt, onset: F.onset[0] }, s.mem, `b${bi}.g`, this.grooveOff);
+      for (const c of copies) {
+        c.x += go.dx;
+        c.y += go.dy;
+        c.a += go.da;
+        c.s *= go.s;
+      }
+    }
     this.mapHues(s, b, bi, copies, sdt);
     const n = Math.min(COPY_SLOTS, copies.length);
     for (let i = 0; i < COPY_SLOTS; i++) {
@@ -1264,6 +1290,7 @@ export class Stage {
     }
   }
 
+  private grooveOff: GrooveOffset = { dx: 0, dy: 0, da: 0, s: 1 };
   private clk: BodyClock = { mul: 1, s: 1, lock: true, bars: 0, spin: 0, barPhase: 0, beatPhase: 0 };
   private respBody = { s: null as Slot | null, bi: 0, b: null as BodyGene | null };
 

@@ -35,6 +35,7 @@ import { MOSAIC_SCHEMA } from '../src/v2/genes/mosaic';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 import { harmonyGeneTests } from './harmony-gene-tests';
+import { grooveGeneTests } from './groove-gene-tests';
 import { driftTests } from './drift-tests';
 import { slimeTests } from './slime-tests';
 import { flockTests } from './flock-tests';
@@ -1537,6 +1538,10 @@ landscapeChecks(check);
 
 choreoTests(check);
 harmonyGeneTests(check);
+
+// -------------------------------------------------- groove gene
+
+grooveGeneTests(check);
 driftTests(check);
 slimeTests(check);
 flockTests(check);

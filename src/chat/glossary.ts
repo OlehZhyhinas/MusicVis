@@ -49,7 +49,9 @@ drop=structural drop. loud=overall loudness. melody=melody activity. build=tensi
 surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on
 section change. tension=harmonic tension 0..1(chord far from home key/dissonant). resolve=pulse when
 harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=pulse per chord change.
-modulation=pulse on a key change.
+modulation=pulse on a key change. swing=how swung the playing is(0 straight..1 triplet). push=how far
+the backbeat leans off the grid(laid back or pushed). humanity=how loose/human the timing is. synco=
+syncopation density(hits on weak off-beats).
 `;
 
 /**
@@ -174,6 +176,7 @@ export const ENTRIES: Record<string, string> = {
   // ------------------------------------------------------------- gene
   'gene.choreo': "CHOREO(optional, knows the song ahead): before drops the camera pushes in and leans, colour drains, light dims; slams on the drop, settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle. Each section type gets its own framing; frame=how far framings push/pan/lean; shot=which set of framings; glide=bars into new framing(0=cut); dolly=slow push-in across each section; scene=hue shift per section type. arc=zoom swell per phrase(phrase=bars).",
   'gene.harmony': 'HARMONY(optional, follows the chord progression): consonance=symmetric+calm; rising harmonic tension breaks symmetry: brk=how far mirror/tile/polar/kaleido folds slide out of register; warp=lopsided whole-frame warp, style 0 lean,1 off-centre swirl,2 buckle; a resolution to the home chord snaps it back: snap=kick+flash strength, settle=seconds to click back(short=click,long=wobble). walk=palette hue shift as chords move from home; kick=zoom pulse per chord change; modHue=hue turn per fifth on key change; modTurn=world roll per fifth(turns); calm=consonance mutes colour, tension saturates.',
+  'gene.groove': 'GROOVE(optional): motion takes the music\'s timing feel. Swung music: spins/sways/pulses land late on the off-beat(swing=share of the measured swing, sub 8|16=which pairs); sway=sideways lilt over 2 beats; off=pulse on the swung off-beat; lean=laid-back/pushed backbeat drags/leads motion; quantized music ticks(crisp=hold-then-snap, tick=ticks/beat); human timing: jitter=nudges on each hit; accent=kicks on syncopated hits.',
   'gene.drift': 'DRIFT(optional, performance layer): the preset travels through gene space over the song, each section a small mutation of the last; step=how far per section; morph=bars to morph(0=cut); kinds 0 params only,1 shapes change on drops,2 any section; what 0 all,1 form,2 colour,3 motion; ret=returning section type goes back to its earlier look; bound=max distance from the saved preset; seed=which journey. The saved preset stays the home.',
 };
 

@@ -14,6 +14,7 @@ import {
 import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
+import { crossGroove, jitterGroove, randomGroove } from './genes/groove';
 
 export type Rng = () => number;
 
@@ -769,6 +770,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (drift) child.drift = drift;
     const harmony = crossHarmony(D.harmony, R.harmony, rng);
     if (harmony) child.harmony = harmony;
+    const groove = crossGroove(D.groove, R.groove, rng);
+    if (groove) child.groove = groove;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1128,6 +1131,18 @@ const MUTATORS: [number, string, Mutator][] = [
   [1.2, 'jitter-harmony', (g, rng, amt) => {
     if (!g.harmony) return false;
     jitterHarmony(g.harmony, rng, amt);
+    return true;
+  }],
+  // Groove (motion takes the music's timing feel): rarely gained (or lost), nudged when present.
+  [0.5, 'groove', (g, rng) => {
+    if (!g.groove) g.groove = randomGroove(rng);
+    else if (rng() < 0.3) delete g.groove;
+    else jitterGroove(g.groove, rng);
+    return true;
+  }],
+  [1, 'jitter-groove', (g, rng, amt) => {
+    if (!g.groove) return false;
+    jitterGroove(g.groove, rng, amt);
     return true;
   }],
 ];

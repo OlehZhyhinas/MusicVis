@@ -47,6 +47,7 @@ import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 import { HARMONY_COST_MS, repairHarmony, validateHarmony, type HarmonyGene } from './genes/harmony';
+import { GROOVE_COST_MS, repairGroove, validateGroove, type GrooveGene } from './genes/groove';
 export { FLAME_VARIATIONS };
 export type { FlameVar };
 
@@ -526,7 +527,9 @@ export interface CarrierGene {
 // barpulse: a pulse on each downbeat; section: a pulse on each section change; bar: a slow wave across the bar.
 // Harmony map (src/analysis/harmony.ts): tension = harmonic tension 0..1; resolve = a pulse on a resolution to the
 // tonic (sized by the tension released); chordchange = a pulse on each chord change; modulation = a pulse on a key change.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation'] as const;
+// Groove (src/analysis/groove.ts): swing = how swung the playing is (0 straight .. 1 triplet); push = how far the
+// backbeat leans off the grid (either way); humanity = how loose the timing is; synco = syncopation density.
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,
@@ -593,6 +596,8 @@ export interface Genome {
   drift?: DriftGene;
   /** Optional: follows the chord progression, tension breaks symmetry, resolutions snap it back (src/v2/genes/harmony.ts). */
   harmony?: HarmonyGene;
+  /** Optional: motion takes the music's timing feel (src/v2/genes/groove.ts). */
+  groove?: GrooveGene;
 }
 
 export const MAX_CHAIN = 6;
@@ -942,6 +947,7 @@ export function repair(input: unknown): Genome {
   if (isObj(g.choreo)) out.choreo = repairChoreo(g.choreo);
   if (isObj(g.drift)) out.drift = repairDrift(g.drift);
   if (isObj(g.harmony)) out.harmony = repairHarmony(g.harmony);
+  if (isObj(g.groove)) out.groove = repairGroove(g.groove);
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -1181,6 +1187,7 @@ export function validate(g: Genome): string[] {
   if (g.choreo !== undefined) errs.push(...validateChoreo(g.choreo));
   if (g.drift !== undefined) errs.push(...validateDrift(g.drift));
   if (g.harmony !== undefined) errs.push(...validateHarmony(g.harmony));
+  if (g.groove !== undefined) errs.push(...validateGroove(g.groove));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {
@@ -1383,6 +1390,7 @@ export function estimateCost(g: Genome): number {
   if (g.harmony) ms += HARMONY_COST_MS;
   // A drifting preset may play genomes up to driftCost() of its own (the planner rejects dearer
   // ones), so its cost is the worst case over any path.
+  if (g.groove) ms += GROOVE_COST_MS;
   if (g.drift) ms = driftCost(ms) + DRIFT_COST_MS;
   return ms;
 }

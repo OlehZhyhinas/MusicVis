@@ -222,6 +222,8 @@ const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed',
 const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted', 'Plotted', 'Framed', 'Directed', 'Scenic', 'Dramatic', 'Orchestrated', 'Rehearsed'];
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
 const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
+const SWUNG = ['Swung', 'Loping', 'Shuffling', 'Jazzy', 'Grooving', 'Swaggering', 'Sauntering', 'Strutting', 'Swinging', 'Bopping', 'Ambling', 'Tight'];
+const LOCKSTEP = ['Metronomic', 'Quantized', 'Precise', 'Gridlocked', 'Exacting', 'Machined', 'Robotic', 'Mechanical', 'Punctual', 'Calibrated', 'Clipped', 'Clockbound'];
 const SHIFTING = ['Journeying', 'Morphing', 'Mutating', 'Evolving', 'Shapeshifting', 'Protean', 'Metamorphic', 'Transforming', 'Changeling', 'Chameleon', 'Fluxing', 'Migrant'];
 const HARMONIC = ['Harmonic', 'Cadential', 'Resolving', 'Tonal', 'Consonant', 'Chordal', 'Modulating', 'Diatonic', 'Suspended', 'Chromatic', 'Tempered', 'Tuned'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
@@ -364,6 +366,13 @@ function traits(g: Genome): Trait[] {
     const dp = g.drift.p;
     add('shifting', SHIFTING, clamp01(0.4 + dp.step * 0.4 + dp.bound * 0.5 + dp.kinds * 0.1));
   }
+  // Groove: motion with the music's timing feel, named swung or lockstep by what it leans on.
+  if (g.groove) {
+    const gp = g.groove.p;
+    const loose = gp.swing * 0.4 + gp.sway * 6 + gp.jitter * 0.3 + gp.off * 0.2;
+    if (loose >= gp.crisp * 0.8) add('swung', SWUNG, clamp01(0.4 + loose * 0.4));
+    else add('lockstep', LOCKSTEP, clamp01(0.4 + gp.crisp * 0.4));
+  }
 
   list.sort((a, b) => b.weight - a.weight);
   return list;
@@ -406,7 +415,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, flocking: FLOCKING, teeming: TEEMING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
-  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED,
+  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED, swung: SWUNG, lockstep: LOCKSTEP,
   harmonic: HARMONIC,
 };
 
