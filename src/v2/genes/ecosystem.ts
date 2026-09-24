@@ -113,7 +113,7 @@ export function ecoStep(s: EcoState, pres: ArrayLike<number>, drop: number, p: R
   const dD = grow(D, 0, (0.35 + 1.3 * p.predation * O) * feast);
   const dB = grow(B, 1, 0.5 + 0.9 * F * (0.4 + p.graze));
   const dV = grow(V, 2, 0.7 + 0.3 * F);
-  const dO = grow(O, 3, 1 + 0.5 * F) - 0.35 * p.predation * D * O * (0.5 + pr(0)) * (1 + 1.5 * Math.max(0, drop));
+  const dO = grow(O, 3, 1 + 0.5 * F) - 0.25 * p.predation * D * O * (0.5 + pr(0)) * (1 + 1.5 * Math.max(0, drop));
   const dF = 0.9 * p.bloom * V * (0.3 + pr(2)) * (1 - F) - 0.7 * p.graze * B * F - 0.04 * F;
   const lim = (x: number) => Math.min(1, Math.max(ECO_FLOOR, x));
   s.pop = [lim(D + dD * dt), lim(B + dB * dt), lim(V + dV * dt), lim(O + dO * dt)];

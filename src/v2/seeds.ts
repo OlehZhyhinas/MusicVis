@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 37;
+export const SEED_VERSION = 38;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1283,6 +1283,20 @@ const ECOSYSTEM: Def[] = [
       emit: ['ecosystem', { count: 16384, wD: 0.35, wB: 0.3, wV: 0.45, wO: 0.9, glyph: 0, size: 3, trail: 0.6, predation: 0.6, bloom: 0.6, graze: 0.5, growth: 0.7, starve: 0.4, decay: 0.985, speed: 1, field: 0.6, hues: 0, body: 0 }],
     })],
     reactions: [rx('loud', 'ma', 0, 'gain', 0.25, { atk: 0.05, rel: 0.3 }), rx('drop', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 1 })],
+  },
+  {
+    // An underwater lagoon: clouds of tiny plankton points (the other instruments) drift on a slow current
+    // through a glowing meadow of algae the vocal pollinators seed, while a few drum hunters cut through
+    // the swarm and scatter it. Everything is carried by a soft fluid, so the plankton smears into
+    // luminous currents; a vocal passage floods the water with bloom, a drum-heavy stretch thins the swarm.
+    origin: 'B02', name: 'Plankton Lagoon', energy: [0.1, 0.65], scheme: 'analogous', hue: 0.5,
+    color: { adapt: 0.3, bloom: 1.2, vignette: 0.5, contrast: 0.05 }, carrier: 'fluid', car: { halfLife: 0.6, floor: 1.2, amount: 0.8, vort: 20, fnoise: 0.4 },
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      material: ['glow', { gain: 0.9, width: 0.01 }],
+      emit: ['ecosystem', { count: 49152, wD: 0.12, wB: 0.15, wV: 0.35, wO: 1, glyph: 1, size: 3, trail: 0.2, predation: 0.5, bloom: 0.9, graze: 0.3, growth: 0.8, starve: 0.3, decay: 0.994, speed: 0.6, field: 1, hues: 1, body: 0 }],
+    })],
+    reactions: [rx('vocals', 'em', 0, 'bloom', 0.3, { atk: 0.2, rel: 1.5 }), rx('hit', 'em', 0, 'speed', 0.5, { atk: 0.01, rel: 0.4 }), rx('loud', 'ma', 0, 'gain', 0.2, { atk: 0.05, rel: 0.4 })],
   },
 ];
 

@@ -79,7 +79,11 @@ void main() {
     float lo = sp == 0 ? 0.0 : uCut[sp - 1];
     int a0 = int(lo * float(uN));
     int a1 = max(a0 + 1, int(uCut[sp] * float(uN)));
-    vec2 np = vec2(hash12(vec2(rnd, rnd2) * 97.1 + 3.1), hash12(vec2(rnd2, rnd) * 53.7 + 7.7));
+    // No live parent: hatch at one of the species' three nests (colonies grow outward from them).
+    float nk = floor(rnd * 3.0);
+    vec2 nest = vec2(hash12(vec2(float(sp) * 7.3 + nk, 1.9)), hash12(vec2(nk * 5.1, float(sp) * 3.7 + 4.2)));
+    float ang = rnd2 * TAU, rad = 0.07 * sqrt(hash12(vec2(rnd2, rnd) * 53.7 + 7.7));
+    vec2 np = nest + vec2(cos(ang) / uAspect, sin(ang)) * rad;
     for (int k = 0; k < 4; k++) {
       float r = hash12(vec2(float(k) * 13.1 + rnd * 71.3, rnd2 * 33.9 + float(k)));
       int j = min(a1 - 1, a0 + int(r * float(a1 - a0)));
@@ -118,6 +122,8 @@ void main() {
       float d = 0.04;
       float l = sense(pos, h + 0.8, d, 2), r = sense(pos, h - 0.8, d, 2);
       h += clamp((r - l) * 1.5, -0.6, 0.6) * tf;
+      // ...and school: a gentle pull toward other plankton keeps the swarm in clouds.
+      h += steer(sense(pos, h, d, 3), sense(pos, h + 0.5, d, 3), sense(pos, h - 0.5, d, 3), rnd) * 0.05 * tf;
       spd = 0.0012 * (0.5 + 0.8 * uEnv.w);
     }
     pos = fract(pos + dirOf(h) * spd * uSpeed * uF60);

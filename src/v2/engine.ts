@@ -2332,7 +2332,7 @@ export class Stage {
     const p: Record<string, number> = {};
     for (const k of Object.keys(sch)) p[k] = s.P('em', bi, b.emit.p, k, sch);
     const F = this.sig.F;
-    const pres = [0, 1, 2, 3].map((i) => F.gate[i] * (0.55 + 0.45 * Math.min(1, F.stem[i] * 2)));
+    const pres = [0, 1, 2, 3].map((i) => F.gate[i] * (0.7 + 0.3 * Math.min(1, F.stem[i] * 2)));
     this.eco.step({
       dt: sdt, time: this.sig.clock, aspect: F.aspect, count: b.emit.p.count, cuts: ecoCuts(p), pres, env: F.stem,
       strike: F.onset[0] + 0.4 * F.beatPulse * F.gate[0], drop: F.drop, p,
@@ -2405,7 +2405,7 @@ export class Stage {
       const fill = Math.min(1, Math.max(0.15, (1 - s.decay) * 8));
       this.eco.draw({
         gain, fieldScale: ecoFieldScale(b.emit.p), field: PE('field'), size: PE('size'), trail: PE('trail'), glyph: b.emit.p.glyph, hues: b.emit.p.hues,
-        bright: gain * 1.2 * fill, strike: F.onset[0], cols: s.cols,
+        bright: gain * fill * Math.min(1.2, Math.sqrt(16384 / Math.max(1, this.eco.count))), strike: F.onset[0], cols: s.cols,
       });
       s.fb.write.bind();
     }
