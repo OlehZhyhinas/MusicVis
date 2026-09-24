@@ -257,7 +257,7 @@ export class LiveMode {
       if (!device.deviceId.startsWith(TEST_DEVICE_PREFIX)) saveSetting(DEVICE_KEY, device.deviceId);
       this.seenNewSongs = 0;
       this.pendingNewSong = false;
-      this.transport.setLive(true);
+      this.transport.setLive(true, device.label);
       this.host.onStart();
       this.host.onNewSong(next.analyzer.songComplexity);
       // Device names become available once permission was granted.

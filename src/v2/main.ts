@@ -20,13 +20,21 @@ import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
-import { hydrateIcons, icon } from '../ui/icons';
+import { hydrateIcons } from '../ui/icons';
+import { PresetBar } from '../ui/presetBar';
+import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
+import { AutoHide } from '../ui/autoHide';
+import { applyLayout, computeLayout } from '../ui/layout';
+
+const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
+const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
 
 const EVOLVE_SECS = 30;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function main(): Promise<void> {
   hydrateIcons();
+  const popovers = new Popovers();
   const appRoot = $<HTMLElement>('app');
   const canvas = $<HTMLCanvasElement>('viz-canvas');
   const emptyStateEl = $<HTMLElement>('playlist-empty');
@@ -38,14 +46,11 @@ async function main(): Promise<void> {
   const playlistPanelEl = $<HTMLElement>('playlist-panel');
   const helpOverlay = $<HTMLElement>('help-overlay');
   const presetLabel = $<HTMLElement>('preset-label');
+  const faintId = $<HTMLElement>('faint-id');
+  const moreMenu = $<HTMLElement>('more-menu');
+  const volPop = $<HTMLElement>('vol-pop');
   const presetGoto = $<HTMLFormElement>('preset-goto');
   const presetGotoInput = $<HTMLInputElement>('preset-goto-input');
-  const likeBtn = $<HTMLButtonElement>('v2-like');
-  const dislikeBtn = $<HTMLButtonElement>('v2-dislike');
-  const scoreEl = $<HTMLElement>('v2-score');
-  const evolveBtn = $<HTMLButtonElement>('v2-evolve');
-  const statusEl = $<HTMLElement>('v2-status');
-  const barEl = $<HTMLElement>('v2-bar');
 
   let volume = loadSetting<number>('volume', 0.8);
   let hudOn = loadSetting<boolean>('v2.hudOn', false);
@@ -55,6 +60,7 @@ async function main(): Promise<void> {
   let genesOn = loadSetting<boolean>('v2.genesOn', true);
   let muted = false;
   hudEl.hidden = statsEl.hidden = !hudOn;
+  appRoot.classList.toggle('hud-on', hudOn);
 
   let eng: Engine;
   try {
@@ -72,6 +78,11 @@ async function main(): Promise<void> {
 
   function resizeCanvas(): void {
     eng.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
+    relayout();
+  }
+  function relayout(): void {
+    applyLayout(appRoot, computeLayout(null));
+    popovers.place();
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
@@ -118,7 +129,19 @@ async function main(): Promise<void> {
   function showLabel(): void {
     const m = current();
     if (!m) return;
-    presetLabel.textContent = `${m.id} · ${m.name} · ${m.type} · ${m.energy}`;
+    $('pl-id').textContent = m.id;
+    $('pl-name').textContent = m.name;
+    const tags = $('pl-tags');
+    tags.innerHTML = '';
+    for (const [t, c] of [[m.type, ''], [m.energy, m.energy === 'energetic' ? 'var(--warn)' : 'var(--ok)']]) {
+      const el = document.createElement('span');
+      el.className = 'tag';
+      if (c) el.style.setProperty('--c', c);
+      el.textContent = t;
+      tags.append(el);
+    }
+    presetLabel.dataset.preset = `${m.id} · ${m.name} · ${m.type} · ${m.energy}`;
+    faintId.textContent = m.id;
     presetLabel.classList.add('show');
     window.clearTimeout(labelTimer);
     labelTimer = window.setTimeout(() => presetLabel.classList.remove('show'), 3500);
@@ -127,36 +150,38 @@ async function main(): Promise<void> {
 
   function updateBar(): void {
     const m = current();
-    scoreEl.innerHTML = m ? `${Math.round(fitness(m) * 100)} · <span class="v2-up">${icon('up', 12)}</span>${m.likes} <span class="v2-down">${icon('down', 12)}</span>${m.dislikes}` : '';
-    evolveBtn.classList.toggle('active', evolveOn);
-    evolveBtn.setAttribute('aria-pressed', String(evolveOn));
     const b = evo.breeding > 0 || screener.runner.busy;
-    statusEl.textContent = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
+    const status = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
+    presetBar.update(m ? { id: m.id, name: m.name, type: m.type, energy: m.energy, likes: m.likes, dislikes: m.dislikes, score: fitness(m) } : null, status, evolveOn);
   }
 
   function vote(like: boolean): void {
     const m = current();
     if (!m) return;
     evo.vote(m.id, like, evo.nicheFor(songCx));
-    const btn = like ? likeBtn : dislikeBtn;
-    btn.classList.remove('v2-voted');
-    void btn.offsetWidth;
-    btn.classList.add('v2-voted');
+    presetBar.voted(like);
     updateBar();
     if (!like && evolveOn) choose('evolve', 1.2, false, true);
   }
 
-  likeBtn.addEventListener('click', () => vote(true));
-  dislikeBtn.addEventListener('click', () => vote(false));
-  evolveBtn.addEventListener('click', () => setEvolve(!evolveOn));
-  $('v2-open-browser').addEventListener('click', () => browser.toggle());
+  const presetBar = new PresetBar({
+    onLike: () => vote(true),
+    onDislike: () => vote(false),
+    onNext: () => nextPreset(),
+    onEvolve: () => setEvolve(!evolveOn),
+    onPresets: () => browser.toggle(),
+    thumb: (id) => evo.thumb(id),
+  });
+  function nextPreset(): void {
+    choose(evolveOn ? 'evolve' : 'next', 1.2, true, true);
+  }
 
   function setEvolve(on: boolean): void {
     evolveOn = on;
     evolveTimer = 0;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? `Evolve mode: a new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Evolve mode off: presets change on drops, new songs and N.');
+    showToast(on ? `Evolve mode on: a new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Evolve mode off: presets change on drops, new songs and N.');
   }
 
   const browser = new PresetBrowser(evo, {
@@ -191,6 +216,13 @@ async function main(): Promise<void> {
     onDirty: () => updateBar(),
   });
   editor.onClose = () => setGenes(false);
+  function toggleGenes(): void {
+    // Gene editor: shown with the HUD; K with the HUD off opens both.
+    if (!hudOn) {
+      setHud(true);
+      setGenes(true);
+    } else setGenes(!(genesOn && hudOn));
+  }
   function setGenes(on: boolean): void {
     genesOn = on;
     saveSetting('v2.genesOn', on);
@@ -214,17 +246,11 @@ async function main(): Promise<void> {
   let songLoaded = false;
   let loadToken = 0;
 
-  const transport = new Transport(transportEl, appRoot, {
+  const transport = new Transport(transportEl, {
     onPlayPause: () => togglePlay(),
     onPrev: () => goPrev(),
     onNext: () => goNext(),
-    onShuffleToggle: () => {
-      shuffle = !shuffle;
-      playlist.setShuffle(shuffle);
-      transport.setShuffleUi(shuffle);
-      saveSetting('shuffle', shuffle);
-      playlistPanel.render(playlist);
-    },
+    onShuffleToggle: () => toggleShuffle(),
     onRepeatCycle: () => {
       repeat = repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off';
       playlist.setRepeat(repeat);
@@ -245,12 +271,55 @@ async function main(): Promise<void> {
       muted = !muted;
       applyVolume();
     },
-    onNextPreset: () => choose(evolveOn ? 'evolve' : 'next', 1.2, true, true),
     onFullscreen: () => toggleFullscreen(),
-    onHudToggle: () => setHud(!hudOn),
     onPlaylistToggle: () => playlistPanel.toggle(),
-    onHelpToggle: () => setHelpVisible(!!helpOverlay.hidden),
+    onMore: (anchor) => openMore(anchor),
+    onVolumePopover: (anchor) => popovers.toggle(volPop, anchor),
   });
+  function toggleShuffle(): void {
+    shuffle = !shuffle;
+    playlist.setShuffle(shuffle);
+    transport.setShuffleUi(shuffle);
+    saveSetting('shuffle', shuffle);
+    playlistPanel.render(playlist);
+  }
+  function moreItems(): MenuItem[] {
+    const phone = appRoot.classList.contains('phone');
+    const narrow = window.innerWidth < 900;
+    return [
+      'View',
+      { icon: 'hud', label: 'HUD', kbd: 'H', on: () => hudOn, run: () => setHud(!hudOn), keep: true },
+      { icon: 'genes', label: 'Gene editor', kbd: 'K', run: () => toggleGenes() },
+      { icon: 'list', label: 'Playlist', kbd: 'P', run: () => playlistPanel.toggle() },
+      { icon: 'fullscreen', label: 'Fullscreen', kbd: 'F', run: () => toggleFullscreen() },
+      'Preset',
+      { icon: 'hash', label: 'Go to preset…', kbd: 'G', run: () => setGotoVisible(true) },
+      { icon: 'skip', label: 'Next preset', kbd: 'N', run: () => nextPreset() },
+      { icon: 'grid', label: 'Preset browser', kbd: 'B', run: () => browser.toggle() },
+      ...(phone || narrow
+        ? ([
+            'Playback',
+            ...(phone
+              ? [
+                  { icon: 'evolve', label: 'Evolve mode', kbd: 'E', on: () => evolveOn, run: () => setEvolve(!evolveOn), keep: true },
+                  { icon: 'volume', label: 'Volume', kbd: 'M', run: () => popovers.show(volPop, null) },
+                ]
+              : []),
+            { icon: 'mic', label: 'Live input', run: () => liveMode.setOpen(true) },
+          ] as MenuItem[])
+        : []),
+      'Help',
+      { icon: 'search', label: 'All commands…', kbd: '/', run: () => setHelpVisible(true) },
+      { icon: 'keyboard', label: 'Keyboard shortcuts', kbd: '?', run: () => setHelpVisible(true) },
+      { icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
+      { icon: 'github', label: 'MusicVis on GitHub', href: GITHUB_URL },
+    ];
+  }
+  function openMore(anchor: HTMLElement | null): void {
+    renderMenu(moreMenu, moreItems(), () => popovers.close());
+    moreMenu.dataset.align = 'panel';
+    popovers.toggle(moreMenu, anchor);
+  }
   // Live input: starting it pauses the file; a track or stop ends it.
   const liveMode = new LiveMode(
     {
@@ -276,7 +345,7 @@ async function main(): Promise<void> {
       },
     },
     transport,
-    [$<HTMLElement>('pl-live'), $<HTMLElement>('pl-live-empty')],
+    [$<HTMLElement>('pl-live'), $<HTMLElement>('pl-live-empty'), $<HTMLElement>('tp-mic')],
   );
 
   transport.setVolumeUi(volume, muted);
@@ -309,6 +378,10 @@ async function main(): Promise<void> {
     },
     onAdd: () => fileInput.click(),
   });
+  playlistPanel.onCollapse = (c) => {
+    transport.setPlaylistOpen(!c);
+    updateNowPlaying();
+  };
   playlistPanel.setCollapsed(!playlist.isEmpty);
 
   playlist.onChange = () => {
@@ -317,12 +390,20 @@ async function main(): Promise<void> {
     if (cur && cur.status === 'analyzing') transport.setTrackLoading(cur.progress);
     else if (cur && (cur.status === 'ready' || cur.status === 'error')) transport.setTrackLoading(null);
     emptyStateEl.hidden = !playlist.isEmpty;
+    updateNowPlaying();
     if (playlist.isEmpty && !liveMode.active) {
       transport.hide();
       playlistPanel.setCollapsed(false);
     }
   };
 
+  function updateNowPlaying(): void {
+    const all = playlist.all;
+    const cur = playlist.currentTrack;
+    const i = cur ? all.indexOf(cur) : -1;
+    transport.setNowPlaying(cur?.title ?? '', cur ? `Track ${i + 1} of ${all.length}` : `${all.length} tracks`);
+    transport.setPlaylistBadge(playlistPanel.isCollapsed && all.length ? all.length : null);
+  }
   function applyVolume(): void {
     if (player) player.volume = muted ? 0 : volume;
     transport.setVolumeUi(volume, muted);
@@ -330,6 +411,7 @@ async function main(): Promise<void> {
   function setHud(on: boolean): void {
     hudOn = on;
     hudEl.hidden = statsEl.hidden = !on;
+    appRoot.classList.toggle('hud-on', on);
     saveSetting('v2.hudOn', on);
     editor.setShown(on && genesOn);
   }
@@ -471,6 +553,7 @@ async function main(): Promise<void> {
       return;
     }
     if (ev.key === 'Escape') {
+      if (popovers.close()) return;
       setHelpVisible(false);
       if (browser.open) browser.setOpen(false);
       return;
@@ -497,14 +580,9 @@ async function main(): Promise<void> {
       case 'f': case 'F': toggleFullscreen(); break;
       case 'h': case 'H': setHud(!hudOn); break;
       case 'p': case 'P': playlistPanel.toggle(); break;
-      case 'n': case 'N': choose(evolveOn ? 'evolve' : 'next', 1.2, true, true); break;
-      case 'k': case 'K':
-        // Gene editor: shown with the HUD; K with the HUD off opens both.
-        if (!hudOn) {
-          setHud(true);
-          setGenes(true);
-        } else setGenes(!(genesOn && hudOn));
-        break;
+      case 'n': case 'N': nextPreset(); break;
+      case 'k': case 'K': toggleGenes(); break;
+      case 's': case 'S': toggleShuffle(); break;
       case 'l': case 'L': vote(true); break;
       case 'd': case 'D': vote(false); break;
       case 'e': case 'E': setEvolve(!evolveOn); break;
@@ -517,6 +595,8 @@ async function main(): Promise<void> {
         muted = !muted;
         applyVolume();
         break;
+      default:
+        return;
     }
   });
 
@@ -588,8 +668,7 @@ async function main(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
-  // The transport bar is revealed with the playlist; the vote bar stays.
-  barEl.hidden = false;
+  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || !helpOverlay.hidden || !presetGoto.hidden);
 }
 
 main().catch((err) => {

@@ -62,6 +62,8 @@ export class PlaylistPanel {
     this.render(playlist);
   }
 
+  onCollapse: ((collapsed: boolean) => void) | null = null;
+
   get isCollapsed(): boolean {
     return this.collapsed;
   }
@@ -70,6 +72,7 @@ export class PlaylistPanel {
     this.collapsed = collapsed;
     this.panelEl.hidden = false;
     this.panelEl.classList.toggle('pl-collapsed', collapsed);
+    this.onCollapse?.(collapsed);
   }
 
   toggle(): void {

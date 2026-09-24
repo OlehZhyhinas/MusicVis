@@ -1,3 +1,8 @@
+// The transport: a full-width seek row (section colours, hover label) above
+// now-playing / playback / options. In live mode the seek row becomes the LIVE
+// badge, input level, detected section and tempo. It also drives the 2 px
+// progress line that stays visible while the UI is auto-hidden.
+
 import type { Section, SectionLabel } from '../types';
 import type { RepeatMode } from '../audio/Playlist';
 import { setIcon } from './icons';
@@ -11,238 +16,294 @@ export interface TransportCallbacks {
   onSeek(time: number): void;
   onVolumeChange(v: number): void;
   onMuteToggle(): void;
-  onNextPreset(): void;
   onFullscreen(): void;
-  onHudToggle(): void;
   onPlaylistToggle(): void;
-  onHelpToggle(): void;
+  onMore(anchor: HTMLElement): void;
+  onVolumePopover(anchor: HTMLElement): void;
 }
 
-const SECTION_COLORS: Record<SectionLabel, string> = {
-  intro: '#5b6b8c',
-  verse: '#5f8fd1',
-  build: '#c9a24b',
-  chorus: '#8bd17f',
-  drop: '#ff6b6b',
-  breakdown: '#a06bd1',
-  outro: '#6b7280',
-};
-
-const SEEK_RESOLUTION = 1000;
-const AUTO_HIDE_MS = 2500;
-
-function formatTime(t: number): string {
+export function formatTime(t: number): string {
   if (!isFinite(t) || t < 0) t = 0;
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const q = <T extends HTMLElement>(root: ParentNode, sel: string) => root.querySelector(sel) as T;
+
 export class Transport {
   private root: HTMLElement;
-  private appRoot: HTMLElement;
   private playBtn: HTMLButtonElement;
-  private seek: HTMLInputElement;
-  private seekWrap: HTMLElement;
-  private sectionsEl: HTMLElement;
-  private seekHover: HTMLElement;
+  private seek: HTMLElement;
+  private segs: HTMLElement;
+  private segsPlayed: HTMLElement;
+  private tip: HTMLElement;
   private timeEl: HTMLElement;
   private durationEl: HTMLElement;
+  private titleEl: HTMLElement;
+  private subEl: HTMLElement;
   private volume: HTMLInputElement;
-  private muteBtn: HTMLButtonElement;
-  private presetBtn: HTMLButtonElement;
-  private hudBtn: HTMLButtonElement;
-  private fsBtn: HTMLButtonElement;
+  private volumePop: HTMLInputElement | null;
+  private volumeNum: HTMLElement | null;
+  private muteBtns: HTMLElement[];
   private prevBtn: HTMLButtonElement;
   private nextBtn: HTMLButtonElement;
   private shuffleBtn: HTMLButtonElement;
   private repeatBtn: HTMLButtonElement;
   private playlistBtn: HTMLButtonElement;
-  private helpBtn: HTMLButtonElement;
+  private badge: HTMLElement;
+  private line: HTMLElement | null;
+  private lineSegs: HTMLElement | null;
+  private lineWrap: HTMLElement | null;
+
+  private liveRow: HTMLElement;
+  private liveMeter: HTMLElement;
+  private liveSection: HTMLElement;
+  private liveBpm: HTMLElement;
+  private liveShown = { level: -1, label: '', bpm: '' };
 
   private duration = 0;
   private sections: Section[] = [];
   private dragging = false;
-  private hideTimer: ReturnType<typeof setTimeout> | null = null;
+  private dragFrac = 0;
   private loading = false;
   private live = false;
-  private liveEl: HTMLElement | null = null;
-  private liveMeter: HTMLElement | null = null;
-  private liveSection: HTMLElement | null = null;
-  private liveBpm: HTMLElement | null = null;
-  private liveShown = { level: -1, label: '', bpm: '' };
+  private playing = false;
+  private shuffleOn = false;
+  private repeatMode: RepeatMode = 'off';
+  private lastFrac = -1;
+  private trackTitle = '';
+  private trackSub = '';
 
-  constructor(root: HTMLElement, appRoot: HTMLElement, callbacks: TransportCallbacks) {
+  constructor(root: HTMLElement, private cb: TransportCallbacks) {
     this.root = root;
-    this.appRoot = appRoot;
+    this.playBtn = q(root, '#tp-playpause');
+    this.seek = q(root, '#tp-seek');
+    this.segs = q(root, '#tp-segs');
+    this.segsPlayed = q(root, '#tp-segs-played');
+    this.tip = q(root, '#tp-seek-tip');
+    this.timeEl = q(root, '#tp-time');
+    this.durationEl = q(root, '#tp-duration');
+    this.titleEl = q(root, '#tp-title');
+    this.subEl = q(root, '#tp-sub');
+    this.volume = q(root, '#tp-volume');
+    this.volumePop = document.getElementById('vol-range') as HTMLInputElement | null;
+    this.volumeNum = document.getElementById('vol-num');
+    this.muteBtns = [q(root, '#tp-mute'), document.getElementById('vol-mute')].filter((x): x is HTMLElement => !!x);
+    this.prevBtn = q(root, '#tp-prev');
+    this.nextBtn = q(root, '#tp-next');
+    this.shuffleBtn = q(root, '#tp-shuffle');
+    this.repeatBtn = q(root, '#tp-repeat');
+    this.playlistBtn = q(root, '#tp-playlist');
+    this.badge = q(root, '#tp-badge');
+    this.liveRow = q(root, '#tp-live');
+    this.liveMeter = q(root, '#tp-live-level');
+    this.liveSection = q(root, '#tp-live-section');
+    this.liveBpm = q(root, '#tp-live-bpm');
+    this.lineWrap = document.getElementById('progress-line');
+    this.line = this.lineWrap;
+    this.lineSegs = document.getElementById('progress-line-segs');
 
-    this.playBtn = root.querySelector('#tp-playpause')!;
-    this.seek = root.querySelector('#tp-seek')!;
-    this.seekWrap = root.querySelector('#tp-seek-wrap')!;
-    this.sectionsEl = root.querySelector('#tp-sections')!;
-    this.seekHover = root.querySelector('#tp-seek-hover')!;
-    this.timeEl = root.querySelector('#tp-time')!;
-    this.durationEl = root.querySelector('#tp-duration')!;
-    this.volume = root.querySelector('#tp-volume')!;
-    this.muteBtn = root.querySelector('#tp-mute')!;
-    this.presetBtn = root.querySelector('#tp-preset')!;
-    this.hudBtn = root.querySelector('#tp-hud')!;
-    this.fsBtn = root.querySelector('#tp-fullscreen')!;
-    this.prevBtn = root.querySelector('#tp-prev')!;
-    this.nextBtn = root.querySelector('#tp-next')!;
-    this.shuffleBtn = root.querySelector('#tp-shuffle')!;
-    this.repeatBtn = root.querySelector('#tp-repeat')!;
-    this.playlistBtn = root.querySelector('#tp-playlist')!;
-    this.helpBtn = root.querySelector('#tp-help')!;
+    this.playBtn.addEventListener('click', () => cb.onPlayPause());
+    this.prevBtn.addEventListener('click', () => cb.onPrev());
+    this.nextBtn.addEventListener('click', () => cb.onNext());
+    this.shuffleBtn.addEventListener('click', () => cb.onShuffleToggle());
+    this.repeatBtn.addEventListener('click', () => cb.onRepeatCycle());
+    this.playlistBtn.addEventListener('click', () => cb.onPlaylistToggle());
+    q(root, '#tp-fullscreen').addEventListener('click', () => cb.onFullscreen());
+    const more = q(root, '#tp-more');
+    more.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      cb.onMore(more);
+    });
+    const volBtn = q(root, '#tp-volbtn');
+    volBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      cb.onVolumePopover(volBtn);
+    });
+    for (const b of this.muteBtns) b.addEventListener('click', () => cb.onMuteToggle());
+    for (const r of [this.volume, this.volumePop]) r?.addEventListener('input', () => cb.onVolumeChange(Number(r.value)));
 
-    this.playBtn.addEventListener('click', () => callbacks.onPlayPause());
-    this.prevBtn.addEventListener('click', () => callbacks.onPrev());
-    this.nextBtn.addEventListener('click', () => callbacks.onNext());
-    this.shuffleBtn.addEventListener('click', () => callbacks.onShuffleToggle());
-    this.repeatBtn.addEventListener('click', () => callbacks.onRepeatCycle());
-    this.playlistBtn.addEventListener('click', () => callbacks.onPlaylistToggle());
-    this.helpBtn.addEventListener('click', () => callbacks.onHelpToggle());
-
-    this.seek.addEventListener('mousedown', () => {
+    // Seek: pointer drag on the section bar, keys when focused.
+    const fracAt = (x: number) => {
+      const r = this.seek.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (x - r.left) / Math.max(1, r.width)));
+    };
+    this.seek.addEventListener('pointerdown', (ev) => {
+      if (this.loading || this.duration <= 0) return;
       this.dragging = true;
+      this.seek.setPointerCapture(ev.pointerId);
+      this.dragFrac = fracAt(ev.clientX);
+      this.paint(this.dragFrac);
+      this.timeEl.textContent = formatTime(this.dragFrac * this.duration);
     });
-    this.seek.addEventListener('input', () => {
-      if (this.duration > 0) {
-        this.timeEl.textContent = formatTime(this.fractionToTime(Number(this.seek.value)));
-      }
+    this.seek.addEventListener('pointermove', (ev) => {
+      const f = fracAt(ev.clientX);
+      this.showTip(f);
+      if (!this.dragging) return;
+      this.dragFrac = f;
+      this.paint(f);
+      this.timeEl.textContent = formatTime(f * this.duration);
     });
-    const commitSeek = () => {
+    const end = () => {
+      if (!this.dragging) return;
       this.dragging = false;
-      if (this.duration > 0) {
-        callbacks.onSeek(this.fractionToTime(Number(this.seek.value)));
-      }
+      if (this.duration > 0) cb.onSeek(this.dragFrac * this.duration);
     };
-    this.seek.addEventListener('change', commitSeek);
-    this.seek.addEventListener('mouseup', commitSeek);
-
-    this.seekWrap.addEventListener('mousemove', (ev) => this.onSeekHover(ev));
-    this.seekWrap.addEventListener('mouseleave', () => {
-      this.seekHover.hidden = true;
+    this.seek.addEventListener('pointerup', end);
+    this.seek.addEventListener('pointercancel', end);
+    this.seek.addEventListener('pointerleave', () => {
+      if (!this.dragging) this.tip.hidden = true;
     });
-
-    this.volume.addEventListener('input', () => callbacks.onVolumeChange(Number(this.volume.value)));
-    this.muteBtn.addEventListener('click', () => callbacks.onMuteToggle());
-    this.presetBtn.addEventListener('click', () => callbacks.onNextPreset());
-    this.hudBtn.addEventListener('click', () => callbacks.onHudToggle());
-    this.fsBtn.addEventListener('click', () => callbacks.onFullscreen());
-
-    this.installAutoHide();
+    this.seek.addEventListener('keydown', (ev) => {
+      if (this.duration <= 0 || this.loading) return;
+      const cur = Math.max(0, this.lastFrac) * this.duration;
+      let t: number | null = null;
+      if (ev.key === 'ArrowLeft' && !ev.shiftKey) t = cur - 5;
+      else if (ev.key === 'ArrowRight' && !ev.shiftKey) t = cur + 5;
+      else if (ev.key === 'Home') t = 0;
+      else if (ev.key === 'End') t = this.duration - 1;
+      if (t === null) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      cb.onSeek(Math.max(0, Math.min(this.duration, t)));
+    });
   }
 
-  private fractionToTime(v: number): number {
-    return (v / SEEK_RESOLUTION) * this.duration;
+  /** True while the seek knob is held (auto-hide waits). */
+  get busy(): boolean {
+    return this.dragging;
   }
 
-  private onSeekHover(ev: MouseEvent): void {
-    const rect = this.seekWrap.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-    const t = frac * this.duration;
-    const section = this.sections.find((s) => t >= s.start && t < s.end);
-    this.seekHover.hidden = false;
-    this.seekHover.style.left = `${frac * 100}%`;
-    this.seekHover.textContent = section ? `${section.label} · ${formatTime(t)}` : formatTime(t);
+  private showTip(f: number): void {
+    if (this.duration <= 0 || this.live) return;
+    const t = f * this.duration;
+    const s = this.sections.find((x) => t >= x.start && t < x.end);
+    this.tip.hidden = false;
+    this.tip.innerHTML = s ? `<span class="dot" style="color:var(--s-${s.label})"></span>${s.label} · ${formatTime(t)}` : formatTime(t);
+    this.tip.style.left = `${f * 100}%`;
   }
 
-  private installAutoHide(): void {
-    const reveal = () => {
-      this.root.classList.remove('tp-hidden');
-      this.appRoot.classList.remove('cursor-hidden');
-      if (this.hideTimer !== null) clearTimeout(this.hideTimer);
-      this.hideTimer = setTimeout(() => {
-        if (!this.dragging) {
-          this.root.classList.add('tp-hidden');
-          this.appRoot.classList.add('cursor-hidden');
-        }
-      }, AUTO_HIDE_MS);
-    };
-    document.addEventListener('mousemove', reveal);
-    document.addEventListener('touchstart', reveal, { passive: true });
-    reveal();
+  private paint(f: number): void {
+    const p = `${(f * 100).toFixed(2)}%`;
+    this.seek.style.setProperty('--p', p);
+    this.lineWrap?.style.setProperty('--p', p);
+    this.seek.setAttribute('aria-valuenow', String(Math.round(f * this.duration)));
+    this.seek.setAttribute('aria-valuetext', formatTime(f * this.duration));
   }
 
   show(): void {
     this.root.hidden = false;
+    document.getElementById('app')?.classList.add('has-transport');
   }
 
   hide(): void {
     this.root.hidden = true;
+    document.getElementById('app')?.classList.remove('has-transport');
+  }
+
+  get visible(): boolean {
+    return !this.root.hidden;
   }
 
   setSections(sections: Section[], duration: number): void {
     this.sections = sections;
     this.duration = duration;
     this.durationEl.textContent = formatTime(duration);
-    this.sectionsEl.innerHTML = '';
-    for (const s of sections) {
-      const end = isFinite(s.end) ? s.end : duration;
-      const widthPct = duration > 0 ? ((end - s.start) / duration) * 100 : 0;
-      const seg = document.createElement('div');
-      seg.className = 'tp-section-seg';
-      seg.style.width = `${widthPct}%`;
-      seg.style.background = SECTION_COLORS[s.label] ?? '#666';
-      seg.title = s.label;
-      this.sectionsEl.appendChild(seg);
+    this.seek.setAttribute('aria-valuemax', String(Math.round(duration)));
+    const html = sections
+      .map((s) => {
+        const e = isFinite(s.end) ? s.end : duration;
+        const w = duration > 0 ? Math.max(0, e - s.start) / duration : 0;
+        return `<i style="flex:${w.toFixed(4)};--c:var(--s-${s.label})"></i>`;
+      })
+      .join('');
+    this.segs.innerHTML = html;
+    this.segsPlayed.innerHTML = html;
+    if (this.lineSegs) this.lineSegs.innerHTML = `<div class="segs">${html}</div><div class="segs played">${html}</div>`;
+    this.line?.classList.toggle('ready', sections.length > 0);
+  }
+
+  setNowPlaying(title: string, sub: string): void {
+    this.trackTitle = title;
+    this.trackSub = sub;
+    if (!this.live) {
+      this.titleEl.textContent = title;
+      this.titleEl.title = title;
+      if (!this.loading) this.subEl.textContent = sub;
     }
+  }
+
+  /** Track count shown on the playlist button (null hides it). */
+  setPlaylistBadge(n: number | null): void {
+    this.badge.hidden = !n;
+    this.badge.textContent = n ? String(n) : '';
+  }
+
+  setPlaylistOpen(open: boolean): void {
+    this.playlistBtn.classList.toggle('on', open);
+    this.playlistBtn.setAttribute('aria-pressed', String(open));
   }
 
   updatePlayback(currentTime: number, duration: number, playing: boolean): void {
     if (this.live) return;
     this.duration = duration;
-    setIcon(this.playBtn, playing ? 'pause' : 'play');
+    if (playing !== this.playing) {
+      this.playing = playing;
+      setIcon(this.playBtn, playing ? 'pause' : 'play');
+      this.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    }
     if (!this.dragging && !this.loading) {
-      this.seek.value = duration > 0 ? String((currentTime / duration) * SEEK_RESOLUTION) : '0';
-      this.timeEl.textContent = formatTime(currentTime);
+      const f = duration > 0 ? currentTime / duration : 0;
+      if (Math.abs(f - this.lastFrac) > 0.0004) {
+        this.lastFrac = f;
+        this.paint(f);
+      }
+      const txt = formatTime(currentTime);
+      if (this.timeEl.textContent !== txt) this.timeEl.textContent = txt;
     }
   }
 
   /** Shows load/analysis progress (0..1) in place of the time readout, or clears it when null. */
   setTrackLoading(progress: number | null): void {
     this.loading = progress !== null;
-    this.seek.disabled = this.loading;
+    this.seek.classList.toggle('disabled', this.loading);
     if (progress !== null && !this.live) {
       this.timeEl.textContent = `${Math.round(progress * 100)}%`;
+      this.subEl.textContent = `Analyzing ${Math.round(progress * 100)}%`;
+    } else if (!this.live) {
+      this.subEl.textContent = this.trackSub;
     }
   }
 
   /**
-   * Live-input mode: the seek bar / section strip give way to a live indicator
-   * (input level, current section, tempo) and the time readout says "Live".
+   * Live-input mode: the seek row gives way to the LIVE badge, input level,
+   * detected section and tempo; track controls are disabled and play becomes Stop.
    */
-  setLive(on: boolean): void {
+  setLive(on: boolean, device = 'Live input'): void {
     this.live = on;
     this.root.classList.toggle('tp-live', on);
-    if (on && !this.liveEl) {
-      const el = document.createElement('div');
-      el.id = 'tp-live-info';
-      el.innerHTML =
-        '<span class="tp-live-badge">LIVE</span>' +
-        '<span class="tp-live-meter" title="Input level"><span class="tp-live-meter-fill"></span></span>' +
-        '<span class="tp-live-section" title="Section (detected live)"></span>' +
-        '<span class="tp-live-bpm" title="Tempo (detected live)"></span>';
-      this.seekWrap.appendChild(el);
-      this.liveEl = el;
-      this.liveMeter = el.querySelector('.tp-live-meter-fill');
-      this.liveSection = el.querySelector('.tp-live-section');
-      this.liveBpm = el.querySelector('.tp-live-bpm');
-    }
+    document.getElementById('app')?.classList.toggle('live-on', on);
+    this.liveRow.hidden = !on;
+    for (const b of [this.shuffleBtn, this.prevBtn, this.nextBtn, this.repeatBtn]) b.disabled = on;
     if (on) {
-      this.timeEl.textContent = 'Live';
-      this.durationEl.textContent = '';
-      setIcon(this.playBtn, 'stop');
+      setIcon(this.playBtn, 'stop', 14);
       this.playBtn.setAttribute('aria-label', 'Stop live input');
       this.playBtn.title = 'Stop live input';
+      this.titleEl.textContent = device;
+      this.subEl.textContent = 'Live input';
       this.liveShown = { level: -1, label: '', bpm: '' };
     } else {
-      this.playBtn.setAttribute('aria-label', 'Play/Pause');
-      this.playBtn.title = '';
+      this.playing = false;
+      setIcon(this.playBtn, 'play', 18);
+      this.playBtn.setAttribute('aria-label', 'Play');
+      this.playBtn.title = 'Play / pause (Space)';
+      this.titleEl.textContent = this.trackTitle;
+      this.subEl.textContent = this.trackSub;
       this.durationEl.textContent = formatTime(this.duration);
-      this.timeEl.textContent = formatTime(0);
     }
+    this.setShuffleUi(this.shuffleOn);
+    this.setRepeatUi(this.repeatMode);
   }
 
   get isLive(): boolean {
@@ -251,38 +312,57 @@ export class Transport {
 
   /** Per-frame live readout (cheap: only touches the DOM when something visible changed). */
   updateLive(levelDb: number, section: SectionLabel, bpm: number, locked: boolean): void {
-    if (!this.live || !this.liveMeter || !this.liveSection || !this.liveBpm) return;
+    if (!this.live) return;
     const level = Math.round(Math.max(0, Math.min(1, (levelDb + 60) / 60)) * 100);
     if (level !== this.liveShown.level) {
       this.liveShown.level = level;
-      this.liveMeter.style.width = `${level}%`;
-      this.liveMeter.classList.toggle('hot', levelDb > -3);
+      this.liveMeter.style.setProperty('--v', `${level}%`);
     }
     if (section !== this.liveShown.label) {
       this.liveShown.label = section;
       this.liveSection.textContent = section;
-      this.liveSection.style.background = SECTION_COLORS[section] ?? '#666';
+      this.liveSection.style.setProperty('--c', `var(--s-${section})`);
     }
     const b = level <= 0 ? '' : locked ? `${Math.round(bpm)} BPM` : `~${Math.round(bpm)} BPM`;
     if (b !== this.liveShown.bpm) {
       this.liveShown.bpm = b;
       this.liveBpm.textContent = b;
-      this.liveBpm.classList.toggle('tp-live-unlocked', !locked);
+      this.liveBpm.classList.toggle('dim', !locked);
+      this.liveBpm.title = locked ? 'Tempo, locked' : 'Tempo, still locking';
     }
   }
 
   setVolumeUi(v: number, muted: boolean): void {
-    this.volume.value = String(v);
-    setIcon(this.muteBtn, muted || v === 0 ? 'mute' : 'volume');
+    const shown = muted ? 0 : v;
+    for (const r of [this.volume, this.volumePop]) {
+      if (!r) continue;
+      r.value = String(shown);
+      r.style.setProperty('--v', `${Math.round(shown * 100)}%`);
+    }
+    if (this.volumeNum) this.volumeNum.textContent = String(Math.round(shown * 100));
+    const ic = muted || v === 0 ? 'mute' : 'volume';
+    for (const b of [...this.muteBtns, q(this.root, '#tp-volbtn')]) {
+      setIcon(b, ic);
+      if (b.id !== 'tp-volbtn') {
+        b.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+        b.title = `${muted ? 'Unmute' : 'Mute'} (M)`;
+      }
+    }
   }
 
   setShuffleUi(on: boolean): void {
-    this.shuffleBtn.classList.toggle('active', on);
+    this.shuffleOn = on;
+    this.shuffleBtn.classList.toggle('act', on && !this.live);
+    this.shuffleBtn.setAttribute('aria-pressed', String(on));
+    this.shuffleBtn.title = `Shuffle ${on ? 'on' : 'off'} (S)`;
+    this.shuffleBtn.setAttribute('aria-label', `Shuffle ${on ? 'on' : 'off'}`);
   }
 
   setRepeatUi(mode: RepeatMode): void {
-    this.repeatBtn.classList.toggle('active', mode !== 'off');
+    this.repeatMode = mode;
+    this.repeatBtn.classList.toggle('act', mode !== 'off' && !this.live);
     setIcon(this.repeatBtn, mode === 'one' ? 'repeat1' : 'repeat');
     this.repeatBtn.title = `Repeat: ${mode}`;
+    this.repeatBtn.setAttribute('aria-label', `Repeat: ${mode}`);
   }
 }

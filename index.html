@@ -25,7 +25,13 @@
       <div id="hud" hidden></div>
       <div id="v2-stats" hidden></div>
 
-      <div id="preset-label" aria-live="polite"></div>
+      <div id="wordmark" class="chrome"><span class="logo" data-icon="radio" data-icon-size="14"></span>MusicVis</div>
+
+      <div id="preset-label" class="plabel glass" aria-live="polite">
+        <span class="id" id="pl-id"></span>
+        <b id="pl-name"></b>
+        <div class="row" id="pl-tags"></div>
+      </div>
 
       <aside id="v2-genes" class="panel" aria-label="Gene editor" hidden></aside>
 
@@ -33,19 +39,6 @@
         <label for="preset-goto-input">Go to preset</label>
         <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. G0-E07 or G3-0012" />
       </form>
-
-      <div id="v2-bar" class="panel">
-        <button id="v2-like" class="v2-vote" aria-label="Like this preset (L)" title="Like (L)" data-icon="up"></button>
-        <button id="v2-dislike" class="v2-vote" aria-label="Dislike this preset (D)" title="Dislike (D)" data-icon="down"></button>
-        <span id="v2-score" title="Score · likes / dislikes"></span>
-        <span class="v2-sep"></span>
-        <button id="v2-evolve" class="tp-btn-text" aria-pressed="false" title="Evolve mode: rotate candidates every 30 s (E)">Evolve</button>
-        <button id="v2-open-browser" class="tp-btn-text" title="Preset browser (B)">Presets</button>
-        <span id="v2-status"></span>
-        <span class="v2-sep"></span>
-        <a id="v2-github" class="v2-link" href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener" title="Source code on GitHub">GitHub</a>
-        <a id="v2-bug" class="v2-link" href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener" title="Report a bug on GitHub">Report a bug</a>
-      </div>
 
       <aside id="v2-browser" class="panel" hidden>
         <div class="v2b-header">
@@ -106,33 +99,74 @@
         </button>
       </aside>
 
-      <div id="transport" class="panel" hidden>
-        <button id="tp-playlist" class="tp-btn" aria-label="Toggle playlist" data-icon="list"></button>
-        <button id="tp-shuffle" class="tp-btn" aria-label="Shuffle" data-icon="shuffle"></button>
-        <button id="tp-prev" class="tp-btn" aria-label="Previous track" data-icon="prev"></button>
-        <button id="tp-playpause" class="tp-btn" aria-label="Play/Pause" data-icon="play"></button>
-        <button id="tp-next" class="tp-btn" aria-label="Next track" data-icon="next"></button>
-        <button id="tp-repeat" class="tp-btn" aria-label="Repeat" data-icon="repeat"></button>
-
-        <div id="tp-time" class="tp-time">0:00</div>
-
-        <div id="tp-seek-wrap">
-          <div id="tp-sections"></div>
-          <input id="tp-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
-          <div id="tp-seek-hover" hidden></div>
+      <div id="bottom">
+        <div id="preset-bar" class="pbar glass chrome" aria-label="Current preset">
+          <img id="pb-thumb" class="th" alt="" width="56" height="36" />
+          <div class="col who">
+            <div class="row"><span class="id" id="pb-id"></span><b id="pb-name" class="ell"></b></div>
+            <span id="pb-meta" class="ell"></span>
+          </div>
+          <span class="div pb-wide"></span>
+          <div class="vote">
+            <button id="v2-like" class="ib sm" aria-label="Like this preset (L)" title="Like (L)" data-icon="up" data-icon-size="16"></button><span class="n" id="v2-likes">0</span>
+            <button id="v2-dislike" class="ib sm" aria-label="Dislike this preset (D)" title="Dislike (D)" data-icon="down" data-icon-size="16"></button><span class="n" id="v2-dislikes">0</span>
+            <span class="score pb-wide" id="v2-score" title="Score: Wilson lower bound of likes"></span>
+          </div>
+          <span class="div pb-wide"></span>
+          <button id="pb-next" class="ib sm pb-wide" aria-label="Next preset" title="Next preset (N)" data-icon="skip" data-icon-size="16"></button>
+          <button id="v2-evolve" class="evo pb-wide" aria-pressed="false" title="Evolve mode (E): a new candidate every 30 s"><span data-icon="evolve" data-icon-size="16"></span><span>Evolve</span><span class="tog" aria-hidden="true"></span></button>
+          <span id="v2-status" class="status pb-wide" aria-live="polite"></span>
+          <button id="v2-open-browser" class="btn" title="Preset browser (B)" aria-label="Presets" data-icon="grid" data-icon-size="16"><span class="lbl">Presets</span><span class="kbd">B</span></button>
         </div>
 
-        <div id="tp-duration" class="tp-time">0:00</div>
-
-        <button id="tp-mute" class="tp-btn" aria-label="Mute" data-icon="volume"></button>
-        <input id="tp-volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
-
-        <button id="tp-preset" class="tp-btn-text" aria-label="Next preset">Next preset</button>
-
-        <button id="tp-hud" class="tp-btn-text" aria-label="Toggle HUD">HUD</button>
-        <button id="tp-fullscreen" class="tp-btn" aria-label="Fullscreen" data-icon="fullscreen"></button>
-        <button id="tp-help" class="tp-btn" aria-label="Keyboard shortcuts" data-icon="help"></button>
+        <div id="transport" class="tp glass chrome" hidden>
+          <div class="tp-seek">
+            <span class="t" id="tp-time">0:00</span>
+            <div id="tp-seek" class="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+              <div class="segs" id="tp-segs"></div>
+              <div class="segs played" id="tp-segs-played"></div>
+              <div class="knob"></div>
+              <div class="tip" id="tp-seek-tip" hidden></div>
+            </div>
+            <span class="t r" id="tp-duration">0:00</span>
+          </div>
+          <div class="tp-seek tp-live-row" id="tp-live" hidden>
+            <span class="tag live"><span class="dot"></span>LIVE</span>
+            <div class="meter level h6" title="Input level"><i id="tp-live-level" style="--v: 0%"></i></div>
+            <span class="tag solid" id="tp-live-section" title="Section, detected live"></span>
+            <span class="mono tp-bpm" id="tp-live-bpm"></span>
+          </div>
+          <div class="np"><b id="tp-title"></b><span id="tp-sub"></span></div>
+          <div class="ctr">
+            <button id="tp-shuffle" class="ib" aria-label="Shuffle" title="Shuffle (S)" data-icon="shuffle"></button>
+            <button id="tp-prev" class="ib" aria-label="Previous track" title="Previous track (Shift ←)" data-icon="prev"></button>
+            <button id="tp-playpause" class="play" aria-label="Play" title="Play / pause (Space)" data-icon="play"></button>
+            <button id="tp-next" class="ib" aria-label="Next track" title="Next track (Shift →)" data-icon="next"></button>
+            <button id="tp-repeat" class="ib" aria-label="Repeat" title="Repeat" data-icon="repeat"></button>
+          </div>
+          <div class="opt">
+            <button id="tp-mute" class="ib vol-inline" aria-label="Mute" title="Mute (M)" data-icon="volume"></button>
+            <input id="tp-volume" class="rng vol-inline" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
+            <button id="tp-volbtn" class="ib vol-compact" aria-label="Volume" title="Volume (M mutes)" aria-haspopup="true" data-icon="volume"></button>
+            <span class="div tp-optdiv"></span>
+            <button id="tp-mic" class="ib tp-wide" aria-label="Live input" title="Live input" data-icon="mic"></button>
+            <button id="tp-playlist" class="ib" aria-label="Playlist" title="Playlist (P)" data-icon="list"><span class="badge" id="tp-badge" hidden></span></button>
+            <button id="tp-fullscreen" class="ib tp-wide" aria-label="Fullscreen" title="Fullscreen (F)" data-icon="fullscreen"></button>
+            <button id="tp-more" class="ib" aria-label="More" title="More" aria-haspopup="menu" data-icon="more"></button>
+          </div>
+        </div>
       </div>
+
+      <div id="more-menu" class="menu glass strong pop-layer" role="menu" aria-label="More" hidden></div>
+      <div id="vol-pop" class="volpop glass strong row pop-layer" aria-label="Volume" hidden>
+        <button id="vol-mute" class="ib sm" aria-label="Mute" title="Mute (M)" data-icon="volume" data-icon-size="16"></button>
+        <input id="vol-range" class="rng" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
+        <span class="mono dim" id="vol-num">80</span>
+      </div>
+
+      <div id="progress-line" aria-hidden="true"><div id="progress-line-segs"></div></div>
+      <div id="faint-id" class="mono" aria-hidden="true"></div>
+      <div id="reveal-hint" class="glass" hidden>Move the mouse or press any key for controls</div>
 
       <div id="help-overlay" hidden>
         <div id="help-panel" class="panel">
@@ -142,7 +176,7 @@
           </div>
           <p class="help-links">
             <a href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener">GitHub</a>
-            <a id="help-bug" href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener">Report a bug</a>
+            <a id="help-bug" data-bug href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener">Report a bug</a>
           </p>
           <dl id="help-list">
             <dt>L / D</dt>
@@ -179,28 +213,24 @@
     </div>
     <script type="module" src="/src/v2/main.ts"></script>
     <script>
-      // Bug links open GitHub's new-issue page with a template and the context
-      // needed to reproduce (current preset, page, browser).
-      (function () {
-        function prefill(ev) {
-          var label = document.getElementById('preset-label');
-          var preset = (label && label.textContent.trim()) || 'unknown';
-          var body = [
-            '**What happened**', '', '',
-            '**What you expected**', '', '',
-            '**Steps to reproduce**', '1. ', '',
-            '---',
-            'Preset: ' + preset,
-            'Page: ' + location.origin + location.pathname,
-            'Browser: ' + navigator.userAgent,
-          ].join('\n');
-          ev.currentTarget.href = 'https://github.com/OlehZhyhinas/MusicVis/issues/new?labels=bug&body=' + encodeURIComponent(body);
-        }
-        ['v2-bug', 'help-bug'].forEach(function (id) {
-          var a = document.getElementById(id);
-          if (a) a.addEventListener('click', prefill);
-        });
-      })();
+      // Report-a-bug links (data-bug) open GitHub's new-issue page with a
+      // template and the context needed to reproduce (current preset, page, browser).
+      document.addEventListener('click', function (ev) {
+        var a = ev.target && ev.target.closest && ev.target.closest('a[data-bug]');
+        if (!a) return;
+        var label = document.getElementById('preset-label');
+        var preset = (label && (label.getAttribute('data-preset') || label.textContent.trim())) || 'unknown';
+        var body = [
+          '**What happened**', '', '',
+          '**What you expected**', '', '',
+          '**Steps to reproduce**', '1. ', '',
+          '---',
+          'Preset: ' + preset,
+          'Page: ' + location.origin + location.pathname,
+          'Browser: ' + navigator.userAgent,
+        ].join('\n');
+        a.href = 'https://github.com/OlehZhyhinas/MusicVis/issues/new?labels=bug&body=' + encodeURIComponent(body);
+      }, true);
     </script>
   </body>
 </html>

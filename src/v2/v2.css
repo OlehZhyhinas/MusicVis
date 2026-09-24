@@ -1,78 +1,5 @@
 /* App-specific styles on top of the shared stylesheet. */
 
-#v2-bar {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  z-index: 36;
-  font-size: 13px;
-  color: var(--fg-dim);
-  opacity: 0.55;
-  transition: opacity 0.3s ease;
-}
-#v2-bar:hover,
-#v2-bar:focus-within {
-  opacity: 1;
-}
-#app.cursor-hidden #v2-bar {
-  opacity: 0.18;
-}
-
-/* The V2 bar sits top-right, so start the playlist panel below it. */
-#playlist-panel {
-  top: 64px;
-}
-@media (max-width: 640px) {
-  #playlist-panel {
-    top: 60px;
-  }
-}
-
-.v2-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--panel-border);
-}
-
-.v2-vote {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  font-size: 16px;
-  line-height: 1;
-  padding: 5px 8px;
-  cursor: pointer;
-}
-.v2-vote:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-.v2-vote.v2-voted {
-  animation: v2-pop 0.45s ease;
-}
-@keyframes v2-pop {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.35); background: rgba(127, 216, 255, 0.35); }
-  100% { transform: scale(1); }
-}
-
-#v2-score {
-  font-variant-numeric: tabular-nums;
-  min-width: 70px;
-}
-#v2-status {
-  font-size: 12px;
-  min-width: 70px;
-}
-#v2-evolve.active {
-  background: rgba(127, 216, 255, 0.22);
-  border-color: rgba(127, 216, 255, 0.5);
-  color: #dff5ff;
-}
-
 #v2-stats {
   position: absolute;
   left: 16px;
@@ -93,9 +20,9 @@
 
 #v2-browser {
   position: absolute;
-  top: 60px;
+  top: 16px;
   right: 14px;
-  bottom: 90px;
+  bottom: 190px;
   width: min(560px, calc(100vw - 28px));
   display: flex;
   flex-direction: column;
@@ -349,11 +276,6 @@
 }
 
 @media (max-width: 640px) {
-  #v2-bar {
-    left: 14px;
-    right: 14px;
-    flex-wrap: wrap;
-  }
   #v2-browser {
     top: 100px;
   }
@@ -365,7 +287,7 @@
   position: absolute;
   top: 14px;
   left: 14px;
-  bottom: 92px;
+  bottom: 190px;
   width: min(330px, calc(100vw - 28px));
   display: flex;
   flex-direction: column;
@@ -763,21 +685,6 @@
     top: 100px;
   }
 }
-
-/* GitHub and bug-report links (V2 bar and help overlay) */
-.v2-link {
-  color: var(--fg-dim);
-  font-size: 12px;
-  text-decoration: none;
-  padding: 3px 6px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-.v2-link:hover,
-.v2-link:focus-visible {
-  color: var(--fg);
-  background: rgba(255, 255, 255, 0.08);
-}
 .help-links {
   display: flex;
   gap: 14px;
@@ -796,5 +703,4 @@
 }
 .v2-up, .v2b-up { color: var(--ok); }
 .v2-down, .v2b-down { color: var(--neg); }
-#v2-score { display: inline-flex; align-items: center; gap: 4px; }
 .vg-head .tp-btn { width: 26px; height: 26px; }
