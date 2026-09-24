@@ -61,6 +61,8 @@ Palette kind(3 hue slots around song key): analogous(close),complementary(opposi
 Colour mapping(per body, drives hue): fixed(1 hue),instrument(each copy=its slot),pitch(chroma around key),melody(follows melody),height(vertical pos),age(hue drifts w/time; rate=palette turns/bar),speed(faster=more hue shift). amount=driver's swing; detail=shape's own shading variance.
 Tone(whole-scene post): sat=saturation; exposure=brightness; bloom=glow bleed; adapt=eye-adapt speed; vignette=edge darkening; ca=chromatic aberration; reflect/reflectY=mirror bottom of frame; tonemap=filmic or flame(log-density).
 
+CHOREO(optional, whole song, uses the known future of the song): before each drop the camera pushes in and leans, colour drains and light dims, then it slams on the drop and settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle.
+
 FEEL(per body, response curve+clock): flow=levels follow music continuously; step=sampled+held on clock grid(staccato).
 atk/rel=rise/fall time(s); thr=signal below ignored; sens=sensitivity. div=clock unit in beats(0.5..16). lock: 1=locked to song grid(mechanical), 0=free-running(organic).
 
@@ -97,6 +99,7 @@ aggressive/harder: feel atk down; reactions gain up; motion=hits/pulse; tone.con
 punchier/on the beat: feel.lock=1; feel div=beat/bar; motion=pulse/hits; reaction src=beat/hit fast atk.
 react to bass: reaction src=bass ->material gain, shape size, or motion amp.
 react to vocals: reaction src=vocals ->color mapping amount or place wander.
+build-up to the drop/cinematic: add choreo; push/drain/punch up; lead=bars of tension.
 on the drop: reaction src=drop/surge ->tone.exposure or carrier.halfLife, fast atk.
 longer trails: carrier.halfLife x1.5-3.
 shorter trails/no trails: carrier.halfLife x0.3-0.5, or emit=cover high amt, or carrier=none.

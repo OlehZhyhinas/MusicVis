@@ -64,8 +64,10 @@ function freshGenome(): Genome {
     ...Array.from({ length: 24 }, (_, i) => `E${String(i + 1).padStart(2, '0')}`),
     ...Array.from({ length: M_COUNT }, (_, i) => `M${String(i + 1).padStart(2, '0')}`),
   ];
-  check('seeds.count', SEEDS.length === 34 && M_COUNT === 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
-  check('seeds.order', JSON.stringify(origins) === JSON.stringify(expected), origins.join(','));
+  // Feature seeds (C01.. choreography, and other prefixes) follow the original E and M seeds.
+  const base = origins.filter((o) => /^[EM]\d/.test(o));
+  check('seeds.count', base.length === 34 && M_COUNT === 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
+  check('seeds.order', JSON.stringify(origins.slice(0, 34)) === JSON.stringify(expected) && new Set(origins).size === origins.length, origins.join(','));
   const badValid: string[] = [];
   const badIdem: string[] = [];
   const badTrip: string[] = [];
@@ -82,7 +84,7 @@ function freshGenome(): Genome {
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || `repair(seed) === seed for all ${SEEDS.length}`);
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || `all ${SEEDS.length} survive JSON + repair unchanged`);
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 6, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION === 7, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;

@@ -9,6 +9,7 @@
 
 import type { ParamSpec, Params, Schema } from '../genome';
 import type { MusicState } from '../../types';
+import { registerGenomeGene } from '../geneRegistry';
 
 const P = (min: number, max: number, def: number): ParamSpec => ({ min, max, def });
 const C = (choices: number[], def: number): ParamSpec => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
@@ -31,6 +32,14 @@ export const CHOREO_SCHEMA: Schema = {
   punch: P(0, 1, 0.6),
   relax: C([0.5, 1, 2, 4], 1),
 };
+
+registerGenomeGene({
+  key: 'choreo',
+  title: 'Choreography',
+  schemas: CHOREO_SCHEMA,
+  optional: true,
+  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars',
+});
 
 export interface ChoreoGene {
   p: Params;
@@ -196,6 +205,64 @@ export function releaseEnv(c: ChoreoGene, cue: ChoreoCue): number {
 export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: ChoreoPose = { ...IDENTITY_POSE }): ChoreoPose {
   Object.assign(out, IDENTITY_POSE);
   if (!c) return out;
-  void cue;
+  const p = c.p;
+  // Tension: the camera creeps in and rolls, colour drains and the light dims toward the drop.
+  const ramp = buildRamp(c, cue);
+  // Release: on the drop the tension snaps back, and the punch slams in and settles over `relax` bars.
+  const env = releaseEnv(c, cue);
+  out.zoom = 1 + p.push * ramp + PUNCH_ZOOM * p.punch * env;
+  out.roll = p.roll * TAU * ramp;
+  out.sat = (1 - 0.85 * p.drain * ramp) * (1 + PUNCH_SAT * p.punch * env);
+  out.exposure = (1 - p.dim * ramp) * (1 + PUNCH_EXPOSURE * p.punch * env);
+  return out;
+}
+
+const TAU = Math.PI * 2;
+const PUNCH_ZOOM = 0.15;
+const PUNCH_SAT = 0.35;
+const PUNCH_EXPOSURE = 0.4;
+
+/** Weighted blend of poses (slots crossfading); weights need not sum to 1. */
+export function blendPoses(poses: readonly ChoreoPose[], weights: readonly number[], out: ChoreoPose = { ...IDENTITY_POSE }): ChoreoPose {
+  let wsum = 0;
+  for (const w of weights) wsum += w;
+  Object.assign(out, IDENTITY_POSE);
+  if (wsum <= 1e-6) return out;
+  out.zoom = out.roll = out.tx = out.ty = out.sat = out.exposure = 0;
+  poses.forEach((q, i) => {
+    const w = weights[i] / wsum;
+    out.zoom += q.zoom * w;
+    out.roll += q.roll * w;
+    out.tx += q.tx * w;
+    out.ty += q.ty * w;
+    out.sat += q.sat * w;
+    out.exposure += q.exposure * w;
+  });
+  return out;
+}
+
+/**
+ * The 2D camera of a pose as the final pass uses it: screen uv -> scene uv is
+ * uv' = 0.5 + M (uv - 0.5) + t. Written as M minus the identity (out[0..3], row-major) and t
+ * (out[4..5]), so zero uniforms are the identity. The zoom is raised as far as a roll needs to keep
+ * the frame covered, and the pan is clamped so no screen corner samples outside the scene.
+ */
+export function cameraUniforms(pose: ChoreoPose, aspect: number, out: Float32Array = new Float32Array(6)): Float32Array {
+  const a = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  const c = Math.cos(pose.roll);
+  const sn = Math.sin(pose.roll);
+  const cover = Math.abs(c) + Math.abs(sn) * Math.max(a, 1 / a);
+  const s = Math.max(1, pose.zoom, sn === 0 ? 1 : cover * (1 + 1e-6));
+  const m00 = c / s, m01 = -sn / a / s, m10 = (a * sn) / s, m11 = c / s;
+  const ex = 0.5 * (Math.abs(m00) + Math.abs(m01));
+  const ey = 0.5 * (Math.abs(m10) + Math.abs(m11));
+  const lx = Math.max(0, 0.5 - ex - 1e-6);
+  const ly = Math.max(0, 0.5 - ey - 1e-6);
+  out[0] = m00 - 1;
+  out[1] = m01;
+  out[2] = m10;
+  out[3] = m11 - 1;
+  out[4] = clamp(pose.tx, -lx, lx);
+  out[5] = clamp(pose.ty, -ly, ly);
   return out;
 }

@@ -350,6 +350,9 @@ void main() {
 export const FINAL_FS = HEAD + COMMON + FS_IN + /* glsl */ `
 uniform sampler2D uScene, uBloom, uAvg;
 uniform float uBloomStr, uExposure, uCA, uVignette, uTonemap, uFrame, uKey, uAdapt, uContrast;
+// Camera (v2 choreography): scene uv = 0.5 + (I + uCamM) (uv - 0.5) + uCamT; zero = identity.
+uniform vec4 uCamM;
+uniform vec2 uCamT;
 out vec4 o;
 vec3 aces(vec3 x) {
   const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -357,14 +360,15 @@ vec3 aces(vec3 x) {
 }
 void main() {
   vec2 d = vUv - 0.5;
+  vec2 uv = 0.5 + vec2((1.0 + uCamM.x) * d.x + uCamM.y * d.y, uCamM.z * d.x + (1.0 + uCamM.w) * d.y) + uCamT;
   vec3 col;
   if (uCA > 0.0005) {
     vec2 off = d * uCA;
-    col = vec3(texture(uScene, vUv + off).r, texture(uScene, vUv).g, texture(uScene, vUv - off).b);
+    col = vec3(texture(uScene, uv + off).r, texture(uScene, uv).g, texture(uScene, uv - off).b);
   } else {
-    col = texture(uScene, vUv).rgb;
+    col = texture(uScene, uv).rgb;
   }
-  col += texture(uBloom, vUv).rgb * uBloomStr;
+  col += texture(uBloom, uv).rgb * uBloomStr;
   float avg = max(texture(uAvg, vec2(0.5)).r, 1e-4);
   col *= uExposure * clamp(pow(uKey / avg, uAdapt), 0.4, 4.0);
   // Soft black point: suppress low-level haze so structures stand out.

@@ -3,12 +3,13 @@
 import { COST_BUDGET_MS, cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
 import { crossover, mulberry32, mutate } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
+import { Population } from '../src/v2/population';
 import { ADJ_POOLS, nameFor } from '../src/v2/naming';
 import { TimelineSampler } from '../src/analysis/TimelineSampler';
 import type { AnalysisResult, LiveAudioFrame, Section } from '../src/types';
 import {
-  CHOREO_COST_MS, CHOREO_SCHEMA, IDENTITY_POSE, buildRamp, choreoPose, cueOf, releaseEnv, repairChoreo, validateChoreo,
-  type ChoreoCue, type ChoreoGene,
+  CHOREO_COST_MS, CHOREO_SCHEMA, IDENTITY_POSE, blendPoses, buildRamp, cameraUniforms, choreoPose, cueOf, releaseEnv, repairChoreo, validateChoreo,
+  type ChoreoCue, type ChoreoGene, type ChoreoPose,
 } from '../src/v2/genes/choreo';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -77,9 +78,10 @@ export function choreoTests(check: Check): void {
     const rng = mulberry32(4242);
     const bad: string[] = [];
     let none = 0, carried = 0, one = 0, both = 0;
+    const plain = SEEDS.filter((x) => !x.genome.choreo);
     for (let i = 0; i < 600; i++) {
-      const a = SEEDS[Math.floor(rng() * SEEDS.length)].genome;
-      const b = SEEDS[Math.floor(rng() * SEEDS.length)].genome;
+      const a = plain[Math.floor(rng() * plain.length)].genome;
+      const b = plain[Math.floor(rng() * plain.length)].genome;
       const mode = i % 3;
       const pa = mode >= 1 ? withChoreo(a) : a;
       const pb = mode === 2 ? withChoreo(b, repairChoreo({ p: { push: 0.3, lead: 2, drain: 0 } })) : b;
@@ -111,7 +113,8 @@ export function choreoTests(check: Check): void {
     let gained = 0, lost = 0;
     const bad: string[] = [];
     for (let i = 0; i < 2000; i++) {
-      const src = i % 2 ? SEEDS[i % SEEDS.length].genome : withChoreo(SEEDS[i % SEEDS.length].genome);
+      const base = SEEDS[i % SEEDS.length].genome;
+      const src = i % 2 && !base.choreo ? base : withChoreo(base);
       const g = mutate(src, rng, 0.3 + 2 * rng());
       const errs = validate(g);
       if (errs.length) bad.push(`#${i}:${errs.join(';')}`);
@@ -128,6 +131,25 @@ export function choreoTests(check: Check): void {
     check('choreo.name-pool', pool.length >= 8 && pool.every((w) => !others.includes(w)), pool.join(','));
     const plain = cloneGenome(SEEDS[6].genome);
     check('choreo.name-deterministic', nameFor(withChoreo(plain)) === nameFor(withChoreo(plain)), nameFor(withChoreo(plain)));
+  }
+
+  // Showcase seeds: C01.. carry a choreography; a population saved before them gains them exactly once.
+  {
+    const cs = SEEDS.filter((x) => /^C\d\d$/.test(x.origin));
+    check('choreo.seeds', cs.length >= 1 && cs.every((x) => !!x.genome.choreo && validate(x.genome).length === 0 && estimateCost(x.genome) < COST_BUDGET_MS),
+      cs.map((x) => `${x.origin} ${x.name} ${estimateCost(x.genome).toFixed(2)}ms`).join(', '));
+    const base = Population.seeded(1);
+    for (const x of cs) base.members.delete(`G0-${x.origin}`);
+    base.get('G0-E07')!.likes = 2;
+    const kid = base.addChild(crossover(SEEDS[4].genome, SEEDS[21].genome, mulberry32(5)), [base.get('G0-E05')!, base.get('G0-E22')!], 2);
+    base.vote(kid.id, true);
+    const loaded = Population.fromJSON(JSON.parse(JSON.stringify({ ...base.toJSON(), seedVersion: 6 })));
+    const before = JSON.stringify(loaded.list().sort((a, b) => a.id.localeCompare(b.id)));
+    const added = loaded.upgradeSeeds(9);
+    const rest = JSON.stringify(loaded.list().filter((m) => !cs.some((x) => m.id === `G0-${x.origin}`)).sort((a, b) => a.id.localeCompare(b.id)));
+    check('choreo.migrate-once', JSON.stringify(added) === JSON.stringify(cs.map((x) => `G0-${x.origin}`)) && loaded.upgradeSeeds(10).length === 0 && before === rest
+      && loaded.get(kid.id)!.likes === 1 && loaded.get('G0-E07')!.likes === 2 && cs.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome)),
+      `added ${added.join(',')}; votes, seeds and bred children untouched`);
   }
 
   // Look-ahead from the offline analysis.
@@ -154,6 +176,37 @@ export function choreoTests(check: Check): void {
     check('choreo.release-env', e[0] === 1 && Math.abs(e[1] - 0.25) < 1e-9 && e[2] === 0 && e[3] === 0, e.map((x) => x.toFixed(3)).join(','));
     const none = choreoPose(undefined, cue(1));
     const live = cueOf({ bpm: 120 } as never);
+    // Anticipation and release poses.
+    const g = repairChoreo({ p: { lead: 4, curve: 1, push: 0.2, roll: 0.01, drain: 1, dim: 0.5, punch: 1, relax: 1 } });
+    const far = choreoPose(g, cue(100));
+    const mid = choreoPose(g, cue(4));
+    const peak = choreoPose(g, cue(1e-6));
+    const hit = choreoPose(g, cue(100, 0));
+    const after = choreoPose(g, cue(100, 2));
+    check('choreo.pose-far', JSON.stringify(far) === JSON.stringify(IDENTITY_POSE), 'far from a drop: identity');
+    check('choreo.pose-build', Math.abs(mid.zoom - 1.1) < 1e-6 && Math.abs(peak.zoom - 1.2) < 1e-4 && peak.sat < 0.2 && Math.abs(peak.exposure - 0.5) < 1e-4
+      && Math.abs(peak.roll - 0.01 * 2 * Math.PI) < 1e-4 && mid.sat > peak.sat,
+      `mid zoom ${mid.zoom.toFixed(3)} sat ${mid.sat.toFixed(2)}; peak zoom ${peak.zoom.toFixed(3)} sat ${peak.sat.toFixed(2)} exp ${peak.exposure.toFixed(2)}`);
+    check('choreo.pose-release', Math.abs(hit.zoom - 1.15) < 1e-6 && hit.sat > 1.3 && hit.exposure > 1.3 && hit.roll === 0 && JSON.stringify(after) === JSON.stringify(IDENTITY_POSE),
+      `drop zoom ${hit.zoom.toFixed(3)} sat ${hit.sat.toFixed(2)} exp ${hit.exposure.toFixed(2)}, settled after relax`);
+    const bl = blendPoses([peak, far], [1, 1]);
+    check('choreo.blend', Math.abs(bl.zoom - (peak.zoom + 1) / 2) < 1e-9 && JSON.stringify(blendPoses([], [])) === JSON.stringify(IDENTITY_POSE), `half-way zoom ${bl.zoom.toFixed(3)}`);
+
+    // The camera never shows the scene's edge.
+    const ident = cameraUniforms(IDENTITY_POSE, 16 / 9);
+    const rng = mulberry32(31337);
+    let worst = 0;
+    for (let i = 0; i < 2000; i++) {
+      const pose: ChoreoPose = { zoom: 1 + rng() * 0.5, roll: (rng() - 0.5) * 0.3, tx: (rng() - 0.5), ty: (rng() - 0.5), sat: 1, exposure: 1 };
+      const a = [16 / 9, 9 / 16, 1, 21 / 9, 4 / 3][i % 5];
+      const m = cameraUniforms(pose, a);
+      for (const [dx, dy] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) {
+        const u = 0.5 + (1 + m[0]) * dx + m[1] * dy + m[4];
+        const v = 0.5 + m[2] * dx + (1 + m[3]) * dy + m[5];
+        worst = Math.max(worst, -u, u - 1, -v, v - 1);
+      }
+    }
+    check('choreo.camera-covers', ident.every((x) => Math.abs(x) < 1e-12) && worst <= 1e-9, `identity uniforms zero; worst corner overshoot ${worst.toExponential(1)}`);
     check('choreo.no-gene-identity', JSON.stringify(none) === JSON.stringify(IDENTITY_POSE) && live.timeToDrop === Infinity && live.barSeconds === 2, 'no gene or no look-ahead: identity pose');
   }
 }

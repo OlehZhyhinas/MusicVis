@@ -693,7 +693,8 @@ async function main(): Promise<void> {
     if (evolveOn) {
       if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop') {
+    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo) {
+      // A choreographed preset stays on: it composes its own release on the drop.
       choose('drop', 0.35);
     }
 

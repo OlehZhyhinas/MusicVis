@@ -13,6 +13,7 @@ import { Fluid } from '../render/fluid';
 import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, canRenderTo, createTexture, formats } from '../render/gl';
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
+import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type ChoreoPose } from './genes/choreo';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
@@ -602,6 +603,10 @@ export class Stage {
   private pu: ParticleUpdate;
   flash = 0;
   frame = 0;
+  /** Choreography: each slot's pose this frame, their blend, and the final pass camera. */
+  private poses = new WeakMap<Slot, ChoreoPose>();
+  private pose: ChoreoPose = { ...IDENTITY_POSE };
+  private cam = new Float32Array(6);
 
   constructor(private eng: Engine, readonly opts: StageOptions) {
     const gl = eng.gl;
@@ -702,6 +707,16 @@ export class Stage {
 
     for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot);
 
+    // Choreography over the song timeline (look-ahead from the offline analysis).
+    const cue = cueOf(state);
+    for (const s of slots) {
+      let q = this.poses.get(s);
+      if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
+      choreoPose(s.genome.choreo, cue, q);
+    }
+    blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
+    cameraUniforms(this.pose, this.w / this.h, this.cam);
+
     // Composite every live slot into the HDR scene.
     this.scene!.bind();
     gl.clearColor(0, 0, 0, 1);
@@ -714,7 +729,7 @@ export class Stage {
       this.setCommon(p, s, sdt, false);
       p.tex('uFb', s.fb.read.t)
         .f1('uWeight', s.weight)
-        .f1('uSat', 1 - 0.45 * F.build)
+        .f1('uSat', (1 - 0.45 * F.build) * this.poses.get(s)!.sat)
         .f1('uSweep', F.keyPulse)
         .f1('uReflectY', g.tone.p.reflectY);
       eng.fs.draw();
@@ -2155,7 +2170,7 @@ export class Stage {
     }
     const actB = 0.55 + 0.6 * F.act;
     const bloomStr = (pp.bloom * actB * (0.32 + 0.3 * F.build + this.flash * 0.8 + F.drop * 0.6)) / this.bloom.levels * 1.6;
-    const exposure = pp.exposure * (0.78 + 0.12 * F.beatPulse * F.act + 0.2 * F.drop + 0.15 * F.build + this.flash * 0.25);
+    const exposure = pp.exposure * (0.78 + 0.12 * F.beatPulse * F.act + 0.2 * F.drop + 0.15 * F.build + this.flash * 0.25) * this.pose.exposure;
     eng.pFinal
       .use()
       .tex('uScene', this.scene!.t)
@@ -2169,6 +2184,8 @@ export class Stage {
       .f1('uCA', pp.ca + F.drop * 0.015 * F.act + this.flash * 0.005)
       .f1('uVignette', pp.vignette)
       .f1('uTonemap', 1)
+      .f4('uCamM', this.cam[0], this.cam[1], this.cam[2], this.cam[3])
+      .f2('uCamT', this.cam[4], this.cam[5])
       .f1('uFrame', this.frame % 1024);
     eng.fs.draw();
   }

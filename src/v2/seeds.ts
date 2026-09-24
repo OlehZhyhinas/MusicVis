@@ -31,8 +31,9 @@ import {
   type BodyGene, type CarrierKind, type DeformKind, type EmitKind, type FeelKind, type MappingKind, type FlameXformGene, type Genome, type MaterialKind,
   type MotionKind, type OpGene, type OpKind, type PlaceKind, type ReactionGene, type Scheme, type ShapeKind, type Signal,
 } from './genome';
+import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -101,6 +102,8 @@ interface Def {
   chain?: OpGene[];
   bodies: BodyGene[];
   reactions?: ReactionGene[];
+  /** Choreography over the song timeline (src/v2/genes/choreo.ts); omitted = none. */
+  choreo?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -117,6 +120,7 @@ function build(d: Def): Seed {
     reactions: d.reactions ?? [],
     energy: d.energy,
   };
+  if (d.choreo) g.choreo = { p: { ...defaultParams(CHOREO_SCHEMA), ...d.choreo } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -655,4 +659,24 @@ const MILKDROP: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP].map(build);
+// C01.. showcase the choreography gene: the picture is composed over the song's timeline from the
+// offline analysis (anticipation before a known drop, the release on it).
+const CHOREO: Def[] = [
+  {
+    // A spinning waveform ring folded six ways and streamed outward. Over the last eight bars before
+    // a drop the camera creeps in and leans, the colour drains and the light dims; on the drop it
+    // snaps back with a slam of colour and light that settles over two bars.
+    origin: 'C01', name: 'Drop Countdown', energy: [0.45, 1], scheme: 'split', hue: 0.08,
+    color: { bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.955,
+    chain: [op('zoom', { rate: 0.012, radial: 1 }), op('rotate', { lock: 0.0625 }), op('kaleido', { n: 6, lock: 0.0625 }, 1, 'view')],
+    bodies: [body({
+      shape: ['curve', { form: 1, radius: 0.14, amp: 0.3 }],
+      material: ['line', { gain: 1, width: 2 }],
+      color: ['age', { rate: 0.125 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.5), rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.05, rel: 0.4 })],
+    choreo: { lead: 8, curve: 2.5, push: 0.25, roll: 0.015, drain: 0.8, dim: 0.35, punch: 1, relax: 2 },
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO].map(build);
