@@ -22,6 +22,7 @@ import { Phenotype } from './phenotype';
 import { Fingerprinter } from './fingerprintRender';
 import { ExploreControls, loadExploreMode } from './exploreUi';
 import { EXPLORE_LABEL } from './novelty';
+import { PresetMap, ViewSwitch, loadPresetView, type PresetView } from './mapView';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
 import { ChatPane } from '../chat/chatPane';
@@ -125,6 +126,7 @@ async function main(): Promise<void> {
     eng.show(m.genome, secs);
     evolveTimer = 0;
     browser.markCurrent(m.id);
+    presetMap.markCurrent();
     editor.load(m);
     updateBar();
     showLabel();
@@ -212,6 +214,28 @@ async function main(): Promise<void> {
     browser.refresh();
     showToast(`Exploration: ${EXPLORE_LABEL[m]}`, 'evolve', 4000, ExploreControls.hint(m));
   });
+  // Map view: a spring graph of looks, in place of the list.
+  const presetMap = new PresetMap({
+    members: () => browser.members(),
+    currentId: () => currentId,
+    distance: (a, b) => (a.fp && b.fp ? pheno.distance(a.fp, b.fp) : NaN),
+    novelty: (m) => pheno.novelty(m),
+    thumb: (id) => evo.thumb(id),
+    open: (id) => {
+      play(id, 1.2, true);
+      dock.open('genes');
+      if (!hudOn) setHud(true);
+    },
+  });
+  $('v2b-list').before(presetMap.host);
+  const presetView = new ViewSwitch(explore.tools, loadPresetView(), (v) => applyPresetView(v));
+  function applyPresetView(v: PresetView): void {
+    $('v2b-list').hidden = v === 'map';
+    presetMap.setShown(v === 'map' && dock.tab === 'presets');
+  }
+  // The browser's filters (type, energy, show hidden) apply to the map too.
+  $('v2-browser').querySelector('.filters')!.addEventListener('click', () => setTimeout(() => presetMap.sync(), 0));
+  $('v2-browser').querySelector('.filters')!.addEventListener('change', () => setTimeout(() => presetMap.sync(), 0));
   const editor = new GeneEditor($<HTMLElement>('v2-genes'), {
     eng,
     evo,
@@ -249,6 +273,7 @@ async function main(): Promise<void> {
   }
   evo.onChange = () => {
     browser.refresh();
+    presetMap.sync();
     updateBar();
   };
 
@@ -411,6 +436,7 @@ async function main(): Promise<void> {
   dock.onChange = (tab) => {
     relayout();
     browser.setOpen(tab === 'presets');
+    applyPresetView(presetView.view);
     editor.setShown(tab === 'genes');
     chat.setShown(tab === 'genes');
     transport.setPlaylistOpen(tab === 'playlist');
@@ -685,7 +711,7 @@ async function main(): Promise<void> {
   else relayout();
 
   // Debug / test handle.
-  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, play, choose, current, editor };
+  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, presetMap, play, choose, current, editor };
 
   const hud = new Hud(hudEl);
   let lastTime = performance.now();

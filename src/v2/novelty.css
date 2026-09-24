@@ -21,3 +21,54 @@
 .prs .nov.hi {
   color: var(--acc);
 }
+
+/* Map view (a spring graph of looks) */
+.v2b-map {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: radial-gradient(circle at 50% 45%, rgba(127, 216, 255, 0.05), transparent 70%), rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.v2b-map canvas {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+.v2b-map .map-ctl {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.v2b-map .map-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  right: 10px;
+  font-size: 10px;
+  pointer-events: none;
+}
+.v2b-map .map-tip {
+  position: absolute;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  background: var(--panel-strong);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  z-index: 2;
+}
+.v2b-map .map-tip .id {
+  font: 500 11px var(--mono);
+  color: var(--acc);
+}

@@ -212,6 +212,11 @@ export class PresetBrowser {
     row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
+  /** The presets the current filters show (the map view uses the same set). */
+  members(): Member[] {
+    return this.filtered();
+  }
+
   private filtered(): Member[] {
     const type = this.typeSel.value as Species | '';
     const energy = this.energy;

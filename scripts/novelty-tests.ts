@@ -7,6 +7,7 @@ import {
   blockFlow, clipPart, fpDistance, frameFeatures, validFingerprint,
 } from '../src/v2/fingerprint';
 import { Population, fitness } from '../src/v2/population';
+import { SpringLayout } from '../src/v2/springLayout';
 import { Phenotype } from '../src/v2/phenotype';
 import {
   EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, parseExploreMode,
@@ -196,7 +197,61 @@ export async function noveltyTestsAsync(check: Check): Promise<void> {
   }
 }
 
+function layoutTests(check: Check): void {
+  // Two clusters of looks (distance 0.3 inside, 2.5 across) end up apart on the map.
+  const n = 60;
+  const ids = Array.from({ length: n }, (_, i) => `G1-${String(i).padStart(4, '0')}`);
+  const group = (i: number) => (i < n / 2 ? 0 : 1);
+  const dist = (i: number, j: number) => (group(i) === group(j) ? 0.3 + ((i * 7 + j * 3) % 5) * 0.02 : 2.5);
+  const L = new SpringLayout();
+  L.setGraph(ids, dist);
+  const t0 = performance.now();
+  L.settle(2000);
+  const ms = performance.now() - t0;
+  const d = (a: number, b: number) => Math.hypot(L.nodes[a].x - L.nodes[b].x, L.nodes[a].y - L.nodes[b].y);
+  let inside = 0, across = 0, ni = 0, na = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (group(i) === group(j)) { inside += d(i, j); ni++; } else { across += d(i, j); na++; }
+  }
+  inside /= ni;
+  across /= na;
+  // Neighbourhoods survive: each node's nearest node on the map is from its own cluster.
+  let same = 0;
+  for (let i = 0; i < n; i++) {
+    let bj = -1, bd = Infinity;
+    for (let j = 0; j < n; j++) if (j !== i && d(i, j) < bd) { bd = d(i, j); bj = j; }
+    if (group(bj) === group(i)) same++;
+  }
+  const finite = L.nodes.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  // Incremental: a child that looks like node 5 appears next to it; the old nodes keep their places.
+  const before = L.nodes.map((p) => [p.x, p.y]);
+  const ids2 = [...ids, 'G2-0100'];
+  const dist2 = (i: number, j: number) => (i === n || j === n ? ((i === n ? j : i) === 5 ? 0.05 : dist(5, i === n ? j : i) + 0.05) : dist(i, j));
+  const { added } = L.setGraph(ids2, dist2);
+  const child = L.get('G2-0100')!;
+  const nearest = Math.hypot(child.x - L.nodes[5].x, child.y - L.nodes[5].y);
+  const kept = before.every(([x, y], i) => L.nodes[i].x === x && L.nodes[i].y === y);
+  const reheated = !L.settled && L.alpha <= 0.25;
+  // A node without a fingerprint links to its parents.
+  const ids3 = [...ids2, 'G3-0200'];
+  const dist3 = (i: number, j: number) => (i === n + 1 || j === n + 1 ? NaN : dist2(i, j));
+  L.setGraph(ids3, dist3, (i) => (i === n + 1 ? [40] : []));
+  const orphanEdges = L.edges.filter((e) => e.a === n + 1 || e.b === n + 1).length;
+  L.settle(400);
+  check('map.layout', finite && across > inside * 1.5 && same >= n * 0.95 && added.length === 1 && nearest < 60 && kept && reheated && orphanEdges === 1,
+    `2 clusters of 30: mean spacing ${inside.toFixed(0)} inside vs ${across.toFixed(0)} across, ${same}/${n} nearest map neighbours in the same cluster; settled in ${ms.toFixed(0)} ms; a new look-alike child appears ${nearest.toFixed(0)} px from its twin, old nodes stay put, gentle re-heat; unfingerprinted nodes hang off their parents`);
+  // Scale: 500 nodes step fast enough to keep the visualizer smooth.
+  const big = Array.from({ length: 500 }, (_, i) => `G1-${String(i).padStart(4, '0')}`);
+  const B = new SpringLayout();
+  B.setGraph(big, (i, j) => 0.4 + (Math.abs(Math.sin(i * 12.9898 + j * 78.233)) + Math.abs(Math.sin(j * 12.9898 + i * 78.233))) * 0.8);
+  const t1 = performance.now();
+  for (let i = 0; i < 50; i++) B.step();
+  const per = (performance.now() - t1) / 50;
+  check('map.layout-scale', per < 6, `500 nodes, ${B.edges.length} springs: ${per.toFixed(2)} ms per step`);
+}
+
 export function noveltyTests(check: Check): void {
+  layoutTests(check);
   // ------------------------------------------------ reference clip
   {
     const a = new ReferenceClip(), b = new ReferenceClip();
