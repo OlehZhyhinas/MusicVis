@@ -58,7 +58,8 @@ export function presentKeys(g: Genome): string[] {
   for (const o of g.chain) keys.push(entryKey('op', o.op));
   keys.push(entryKey('carrier', g.carrier.kind), entryKey('palette', g.palette.kind));
   for (const spec of genomeGenes()) if (E.geneValue(g, spec.key)) keys.push(`gene.${spec.key}`);
-  return [...new Set(keys)];
+  // 'none' kinds need no note.
+  return [...new Set(keys)].filter((k) => !k.endsWith('.none'));
 }
 
 /** Entry keys of kinds a request names ("make it a star", "kaleidoscope", "add sparks"). */
@@ -118,7 +119,7 @@ Edits (applied in order):
 {"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes (listed below)
 Paths: bN.<locus>.<param> (loci: shape place motion deform material emit feel color), bN.fuse.<p>, bN.fuseShape.<p>, bN.drawOpJ.<p> (w = strength), bN.xformJ.<p> (var.<name> = variation weight), opJ.<p> (w = strength), carrier.<p>, palette.<p>, tone.<p>, reactionJ.<p>.
 Colours: to change the colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}. Body hues (bN.color.hue) are offsets added to the palette: leave them alone, or set them to 0 so the body takes the palette colour. Never give a body hue a colour name for a whole-picture colour change.
-Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the message is not a request to change the visuals (a question, small talk, anything else), answer briefly in "say" and send an empty edits list. If a request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
+In the preset, each parameter shows its range as [min..max] or its choices as {a|b|...}; no range means 0..1; switches show off/on; a few settings stay hidden until their parent is on (tone relief, huemap; carrier water, sharpen; fluid carrier params). Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the message is not a request to change the visuals (a question, small talk, anything else), answer briefly in "say" and send an empty edits list. If a request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
 To switch a gene's kind use the kind op ({"op":"kind","path":"b0.emit","kind":"none"}), never set.
 
 ${INTRO.trim()}
@@ -142,20 +143,49 @@ const r3 = (v: number) => {
   return String(Number(v.toPrecision(a >= 1 ? 3 : 2)));
 };
 function rangeText(s: ParamSpec): string {
-  if (s.choices) return s.choices.length <= 8 ? `{${s.choices.map(r3).join(',')}}` : `{${r3(s.min)}..${r3(s.max)}}`;
+  if (s.choices) {
+    // Fractional turn rates and the like: the span is enough, values snap to the nearest choice.
+    if (s.choices.length > 6 || s.choices.some((c) => !Number.isInteger(c))) return `{${r3(s.min)}..${r3(s.max)}}`;
+    return `{${s.choices.map(r3).join(',')}}`;
+  }
+  // The common 0..1 range goes unsaid (the prompt says so).
+  if (s.min === 0 && s.max === 1) return '';
   return `[${r3(s.min)}..${r3(s.max)}]`;
+}
+
+/**
+ * Parameters that only matter while another is on or the kind uses them: left out of the preset
+ * text until then (they can still be set).
+ */
+const DEPENDS: Record<string, Record<string, string[]>> = {
+  tone: { relief: ['bump', 'light', 'gloss', 'metal'], huemap: ['bands', 'drift', 'poster'], reflect: ['reflectY'] },
+  carrier: { water: ['wsize'], sharpen: ['grain'] },
+};
+const FLUID_ONLY = ['amount', 'vort', 'fnoise', 'fscale', 'famt'];
+function hiddenParam(g: Genome, t: E.Target, key: string): boolean {
+  if (t.t === 'carrier' && FLUID_ONLY.includes(key) && g.carrier.kind !== 'fluid' && g.carrier.kind !== 'flow') return true;
+  const dep = DEPENDS[t.t];
+  if (!dep) return false;
+  for (const [parent, kids] of Object.entries(dep)) {
+    if (!kids.includes(key)) continue;
+    const s = E.schemaAt(g, t);
+    if (s?.[parent] && E.getParam(g, t, parent) === 0) return true;
+  }
+  return false;
 }
 
 /** Parameters of one target as "key=value[range]" (choice names where they exist). */
 function paramsText(g: Genome, t: E.Target, ctx: string): string {
   const s = E.schemaAt(g, t);
   if (!s) return '';
-  const controls = E.paramControls(s, (k) => E.getParam(g, t, k), ctx);
+  const controls = E.paramControls(s, (k) => E.getParam(g, t, k), ctx).filter((c) => !hiddenParam(g, t, c.key));
   return controls.map((c) => {
     if (c.options) {
       const named = c.options.find((o) => o.value === c.value)?.label;
       const labels = c.options.map((o) => o.label);
-      const numeric = labels.every((l, i) => l === String(c.options![i].value));
+      // Labels that are only the number with a unit or a fraction (clock divisions, turn rates) add nothing.
+      const numeric = labels.every((l, i) => l === String(c.options![i].value) || /^[−-]?[\d½/ .]+(beats?|bars?)?$/.test(l));
+      if (labels.length === 2 && labels[0] === 'off' && labels[1] === 'on') return `${c.key}=${named}`;
       return numeric ? `${c.key}=${r3(c.value)}${rangeText(c.spec)}` : `${c.key}=${named}{${labels.join('|')}}`;
     }
     return `${c.key}=${r3(c.value)}${rangeText(c.spec)}`;

@@ -58,6 +58,8 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   const hue = applyEdits(g, [{ op: 'set', path: 'palette.hue', value: 'blue' }], ctx);
   check('colour names set absolute hues against the key', Math.abs(hue.genome.palette.p.hue - (0.62 - 0.1)) < 1e-6, String(hue.genome.palette.p.hue));
 
+  const kn = applyEdits(g, [{ op: 'set', path: 'b0.motion.spin.rate', value: 0.5 }, { op: 'set', path: `op0.${g.chain[0]?.op ?? 'zoom'}.w`, value: 0.5 }], ctx);
+  check('a kind spelled into a path switches to it and sets the param', kn.genome.bodies[0].motion.kind === 'spin' && kn.genome.bodies[0].motion.p.rate === 0.5 && (!g.chain[0] || kn.genome.chain[0].w === 0.5), kn.errors.join(' | '));
   const k = applyEdits(g, [{ op: 'kind', path: 'b0.material', kind: 'glow' }, { op: 'set', path: 'b0.material.width', value: 0.03 }], ctx);
   check('a kind switch then a param of the new kind', k.genome.bodies[0].material.kind === 'glow' && k.genome.bodies[0].material.p.width === 0.03, k.errors.join(' | '));
 }
@@ -118,7 +120,7 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   check('the path pattern admits every real parameter path', allOk && re.test('testWave.amp') && !re.test('bogus path'));
   const t = genomeText(g, 0.2);
   check('genome text lists every body and the palette', t.includes('b0.shape=') && t.includes('palette=') && t.includes('tone '), `${t.length} chars`);
-  check('system prompt within budget', systemPrompt().length < 12000, `${systemPrompt().length} chars`);
+  check('system prompt within budget', systemPrompt().length < 13000, `${systemPrompt().length} chars`);
   const pk = presentKeys(g);
   check('gene notes cover the preset\'s kinds', pk.includes(`shape.${g.bodies[0].shape.kind}`) && pk.includes(`carrier.${g.carrier.kind}`) && notesText(pk).length > 0, pk.join(' '));
   check('requests pull in the kinds they name', mentionedKeys('make it a star').includes('shape.star') && mentionedKeys('kaleidoscope please').includes('op.kaleido') && mentionedKeys('add sparks').includes('emit.sparks'));

@@ -79,6 +79,35 @@ export function parseKindPath(path: string): E.Target | null {
   return null;
 }
 
+/**
+ * A parameter path with a kind name in it: 'b0.motion.spin.rate' or 'op0.rotate.rate'. Returns the
+ * plain path and, when the named kind is not the one expressed, the kind switch it implies.
+ */
+function kindInPath(g: Genome, path: string): { path: string; switchTo?: { target: E.Target; kind: string } } | null {
+  let m = /^b(\d)\.(shape|place|motion|deform|material|emit|color)\.([A-Za-z0-9]+)\.([A-Za-z0-9]+)$/.exec(path);
+  if (m && LOCUS_KINDS[m[2] as Locus].includes(m[3]) && g.bodies[+m[1]]) {
+    const locus = m[2] as Locus;
+    const cur = (g.bodies[+m[1]][locus] as { kind: string }).kind;
+    const plain = `b${m[1]}.${locus}.${m[4]}`;
+    return cur === m[3] ? { path: plain } : { path: plain, switchTo: { target: { t: 'locus', b: +m[1], locus }, kind: m[3] } };
+  }
+  m = /^op(\d)\.([A-Za-z0-9_]+)\.([A-Za-z0-9]+)$/.exec(path);
+  if (m && (OP_KINDS as string[]).includes(m[2]) && g.chain[+m[1]]) {
+    const plain = `op${m[1]}.${m[3]}`;
+    return g.chain[+m[1]].op === m[2] ? { path: plain } : { path: plain, switchTo: { target: { t: 'op', j: +m[1] }, kind: m[2] } };
+  }
+  m = /^(carrier|palette)\.([A-Za-z0-9]+)\.([A-Za-z0-9]+)$/.exec(path);
+  if (m) {
+    const t = { t: m[1] } as E.Target;
+    const kinds = m[1] === 'carrier' ? CARRIER_KINDS : PALETTE_KINDS;
+    if ((kinds as readonly string[]).includes(m[2])) {
+      const cur = m[1] === 'carrier' ? g.carrier.kind : g.palette.kind;
+      return cur === m[2] ? { path: `${m[1]}.${m[3]}` } : { path: `${m[1]}.${m[3]}`, switchTo: { target: t, kind: m[2] } };
+    }
+  }
+  return null;
+}
+
 /** Every parameter path the genome has now, with its spec. */
 export function paramPaths(g: Genome): { path: string; spec: ParamSpec; value: number }[] {
   const out: { path: string; spec: ParamSpec; value: number }[] = [];
@@ -193,13 +222,29 @@ export function applyEdits(gIn: Genome, edits: Edit[], ctx: ApplyContext): Appli
     touched.push(touch);
     changes.push(what);
   };
-  for (const e of edits) {
+  for (let e of edits) {
     if (!e || typeof e !== 'object' || typeof (e as { op?: unknown }).op !== 'string') {
       errors.push(`${JSON.stringify(e)} is not an edit`);
       continue;
     }
     switch (e.op) {
       case 'set': case 'mul': {
+        // Paths with the kind spelled in (b0.motion.spin.rate, op0.rotate.rate) are what the model
+        // means by "that kind's parameter": switch to the kind if needed, then use the plain path.
+        const kp = kindInPath(g, e.path);
+        if (kp) {
+          if (kp.switchTo) {
+            const r = E.switchKind(g, kp.switchTo.target, kp.switchTo.kind);
+            if (!r.ok) {
+              errors.push(`${describeEdit(e)} failed: ${r.reason ?? 'cannot switch kind'}`);
+              continue;
+            }
+            g = r.genome;
+            touched.push(E.targetId(kp.switchTo.target));
+            changes.push(`${E.targetId(kp.switchTo.target)} → ${kp.switchTo.kind}`);
+          }
+          e = { ...e, path: kp.path };
+        }
         const pp = parsePath(e.path);
         // A kind name given as a value ({"op":"set","path":"b0.emit.x","value":"cover"}) means a kind switch.
         if (e.op === 'set' && typeof e.value === 'string' && pp?.target.t === 'locus' && LOCUS_KINDS[pp.target.locus].includes(e.value.trim())) {
