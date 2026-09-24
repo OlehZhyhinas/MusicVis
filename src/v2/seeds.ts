@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 13;
+export const SEED_VERSION = 14;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -774,6 +774,23 @@ const AVS: Def[] = [
       material: ['line', { gain: 1.1, width: 1.8, halo: 0.2 }],
     })],
     reactions: [rx('hit', 'car', 0, 'floor', 0.6, { rel: 0.15 }), rx('bass', 'car', 0, 'water', 0.3, { atk: 0.03, rel: 0.4 })],
+  },
+  {
+    // Duo, Brainstorm: two thick waveform bars drawn in XOR, so where they cross the trail they
+    // punch negative holes in it, jump to new places on the beat, and a grid of cosine ripples,
+    // re-rolled on the hits, tears the blue-and-red picture apart.
+    origin: 'A07', name: 'Brainstorm (after Duo)', energy: [0.4, 1], scheme: 'complementary', hue: 0.6,
+    color: { sat: 0.95, adapt: 0.35, bloom: 1.1, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.45, blur: 0.15 },
+    chain: [op('ripple', { amp: 0.0022, freq: 12, speed: 1.2, radial: 0 }), op('swirl', { amt: 0.006, k: 3 }), op('zoom', { rate: 0.003 })],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.45 }],
+      place: ['mirror', { axis: 1, x: 0, y: 0.2 }],
+      motion: ['hits', { amt: 1 }],
+      material: ['line', { gain: 1.2, width: 3, halo: 0.1, blend: 3 }],
+      feel: ['step', { div: 1 }],
+      color: ['melody', { hue: 0, amount: 0.5 }],
+    })],
+    reactions: [rx('hit', 'op', 0, 'amp', 0.6, { rel: 0.3 }), rx('bass', 'op', 1, 'amt', 0.4, { atk: 0.03, rel: 0.5 }), rx('beat', 'ma', 0, 'gain', 0.3, { rel: 0.2 })],
   },
 ];
 

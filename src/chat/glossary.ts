@@ -14,7 +14,7 @@ aurora: fall=ray falloff; wav=waviness.
 terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=downbeat flash.
 edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.
 flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
-superscope(3D point curve, AVS style): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 3D lissajous,5 ring tunnel; p/q=frequencies; audio=push by waveform or spectrum(spec); spinX/spinY=3D tumble turns/bar; persp=depth; n=points. Never fuses.
+superscope(3D point curve): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 lissajous,5 ring tunnel; p/q=frequencies; audio=wave/spectrum(spec) push; spinX/spinY=tumble turns/bar; persp=depth; n=points.
 beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.
 scene(ray-marched 3D scene,1/preset): scene 0 melting primitives; cam 0 orbit; res=internal resolution(cost); size=object scale; blend=how much shapes melt together; speed=animation+camera speed; pulse=bass swell; kick=camera jolt on drum hits; vary=how much each song section reshuffles it; rim/ao/fog/glow=lighting. Material picks the look(line=neon edges, glow=haze, chrome=reflective).
 Field shapes(plasma,aurora,terrain,edge,beams,scene)+flame draw 1 copy regardless of place count.
@@ -37,7 +37,7 @@ DEFORM (+ up to 3 draw-space ops/body: swirl,twist,ripple,noise,rotate,zoom,mirr
 none. arms: tapered curling arms reaching per instrument+loudness; curl=amount; turn=bars/direction change.
 wobble: wobbling outline lobes; rate=turns/bar, swells w/bass. noise: organic outline jitter. twist: rotation grows w/distance from centre, breathes w/loudness.
 
-MATERIAL (all have gain=brightness): line: glow outline; width(px); halo=glow spread. fill: soft=edge softness; outline=cell outline; core=inner gradient; clip=hide below height.
+MATERIAL (all: gain=brightness; blend onto picture 0 add,1 max,2 subtract,3 xor,4 screen,5 interlace): line: glow outline; width(px); halo=glow spread. fill: soft=edge softness; outline=cell outline; core=inner gradient; clip=hide below height.
 glow: soft blob, grows w/level; base=brightness at silence. dots: stippled fill. textured: tex 0 craters,1 stripes(sunset),2 windows. chrome: mirror-like; chrome 0 plastic..1 mirror.
 fill/textured/chrome hold steady brightness; line/glow/dots accumulate into the trail.
 
@@ -58,7 +58,7 @@ v_<name>(flame variation): bends space via that flame function; w=blend; s=scale
 CARRIER: warp(feedback+chain), fluid(velocity-advected), flow(flow-field), none(no persistence).
 halfLife=trail length(s to fade to half). floor: black-level cut/frame(higher=trails vanish faster). blur: softens image.
 amount/vort/fnoise/fscale/famt: fluid advection+vorticity/turbulence. sharpen: edges sharpen/flats fade, grows reaction-diffusion texture. border: coloured edge frame injected each frame, swells w/bass, carried inward.
-water(AVS water ripple, 0=off): beat drops spread rings that refract the carried picture, big drop on drops; wsize=drop radius.
+water(0=off): beat drops spread ripples refracting the picture; wsize=drop radius.
 
 COLOUR:
 Palette kind(3 hue slots around song key): analogous(close),complementary(opposite),triad(3 even),split(complement+neighbours),mono(near 1 hue),free(3 slots). hue=1st slot's offset from key; spread=how far slots spread.

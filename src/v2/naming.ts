@@ -186,6 +186,7 @@ const ORBITAL = ['Orbital', 'Rotational', 'Planetary', 'Gyroscopic', 'Celestial'
 const TILED = ['Tiled', 'Patterned', 'Gridded', 'Partitioned', 'Modular', 'Checkered', 'Quilted', 'Paved', 'Banded', 'Striped', 'Sectioned', 'Latticed'];
 const FRACTAL = ['Fractal', 'Feathered', 'Recursive', 'Filigreed', 'Ornate', 'Intricate', 'Lacelike', 'Branching', 'Dendritic', 'Fernlike', 'Iterative', 'Crystalline'];
 const LIQUID = ['Liquid', 'Flowing', 'Marbled', 'Fluid', 'Molten', 'Viscous', 'Syrupy', 'Watery', 'Silken', 'Glossy', 'Oozing', 'Sloshing'];
+const LAYERED = ['Collaged', 'Overlaid', 'Superimposed', 'Stacked', 'Composited', 'Interlaced', 'Negative', 'Solarized', 'Stenciled', 'Cutout', 'Sandwiched', 'Laminated'];
 const TRAILING = ['Lingering', 'Trailing', 'Persistent', 'Ghosting', 'Smoldering', 'Lasting', 'Enduring', 'Smeared', 'Streaked', 'Cometlike', 'Residual', 'Fading'];
 const SURGING = ['Surging', 'Pulsing', 'Kicking', 'Pounding', 'Rushing', 'Bursting', 'Beating', 'Thumping', 'Driving', 'Percussive', 'Charging', 'Punchy'];
 const CALM = ['Hushed', 'Slow', 'Gentle', 'Still', 'Serene', 'Quiet', 'Placid', 'Tranquil', 'Soft', 'Languid', 'Dreamy', 'Sedate'];
@@ -297,6 +298,7 @@ function traits(g: Genome): Trait[] {
   }
 
   if (g.carrier.kind === 'fluid') add('liquid', LIQUID, 0.8);
+  if (g.bodies.some((b) => b.material.p.blend > 0)) add('layered', LAYERED, 0.5);
   if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.05) add('rippling', RIPPLING, 0.4 + 0.5 * g.carrier.p.water);
   if (g.carrier.p.halfLife > 3) add('trailing', TRAILING, clamp01((g.carrier.p.halfLife - 3) / 10));
 
@@ -374,7 +376,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
-  staged: STAGED, embossed: EMBOSSED,
+  staged: STAGED, embossed: EMBOSSED, layered: LAYERED,
 };
 
 /**

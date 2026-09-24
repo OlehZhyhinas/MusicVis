@@ -1467,6 +1467,44 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 
 raymarchChecks(check);
 
+// -------------------------------------------------- AVS genes: blend mode (material.blend)
+
+{
+  const seed = seedByOrigin('E13');
+  const noField = cloneGenome(seed) as unknown as { bodies: { material: { p: Record<string, number> } }[] };
+  for (const b of noField.bodies) delete b.material.p.blend;
+  const fixed = repair(noField);
+  check('blend.default-add', fixed.bodies.every((b) => b.material.p.blend === 0) && buildSources(fixed).feedback === buildSources(seed).feedback && !buildSources(fixed).feedback.includes('c = blendInto('), 'old bodies add, shaders unchanged');
+  const bad: string[] = [];
+  for (const mode of [1, 2, 3, 4, 5]) {
+    const g = cloneGenome(seed);
+    g.bodies[0].material.p.blend = mode;
+    const r = repair(g);
+    const src = buildSources(r);
+    if (validate(r).length) bad.push(`${mode}:${validate(r)[0]}`);
+    if (!(src.feedback + src.composite).includes(`blendInto(c, body_`)) bad.push(`${mode}:no wrap`);
+    if (structuralKey(r) === structuralKey(seed)) bad.push(`${mode}:same key`);
+    if (!(estimateCost(r) > estimateCost(seed))) bad.push(`${mode}:cost`);
+  }
+  const wild = repair({ ...cloneGenome(seed), bodies: [{ ...cloneGenome(seed).bodies[0], material: { kind: 'glow', p: { blend: 9 } } }] });
+  check('blend.modes', !bad.length && wild.bodies[0].material.p.blend === 5, bad.join(' | ') || 'modes 1-5 wrap the body call, change the structure, cost a little; out-of-range clamps');
+  const rng = mulberry32(1357);
+  let on = 0;
+  for (let i = 0; i < 400; i++) if (randomBody(rng).material.p.blend > 0) on++;
+  const a07 = SEEDS.find((x) => x.origin === 'A07');
+  const cbad: string[] = [];
+  const bySpecies = new Map<string, Genome>();
+  for (const e of SEEDS.filter((x) => x.origin.startsWith('E'))) if (!bySpecies.has(classify(e.genome).primary)) bySpecies.set(classify(e.genome).primary, e.genome);
+  const xg = cloneGenome(seed);
+  xg.bodies[0].material.p.blend = 2;
+  for (const e of bySpecies.values()) for (const [a, b] of [[xg, e], [e, xg]]) {
+    const c = crossover(a, b, rng);
+    if (validate(c).length) cbad.push(validate(c)[0]);
+    if (!buildSources(c).feedback.includes('void main')) cbad.push('glsl');
+  }
+  check('blend.breeds', on > 20 && on < 110 && !cbad.length && !!a07 && a07.genome.bodies[0].material.p.blend === 3, cbad.slice(0, 4).join(' | ') || `${on}/400 random bodies blend non-additively; crossovers valid; A07 draws in xor`);
+}
+
 // -------------------------------------------------- 16. example crossovers
 
 {

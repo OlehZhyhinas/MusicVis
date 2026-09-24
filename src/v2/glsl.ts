@@ -10,6 +10,7 @@ import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
 import { BEAMS_GLSL } from './genes/beams';
 import { WATER_GLSL } from './genes/water';
+import { BLEND_GLSL, blendCall } from './genes/blend';
 import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
@@ -965,7 +966,7 @@ ${placeCode}  return c;
   const draws = cls === 'field' || drawsSdf(b);
   return {
     code,
-    call: (coord: string) => (draws ? `  c = body_${sfx}(${coord}, c);\n` : ''),
+    call: (coord: string) => blendCall(draws ? `  c = body_${sfx}(${coord}, c);\n` : '', b.material.p.blend ?? 0),
     fbMask: fbMask ? `fbMask_${sfx}` : null,
   };
 }
@@ -987,7 +988,7 @@ export function buildSources(g: Genome): Sources {
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
   if (g.tone.p.reflect > 0.5) defs.push('REFLECT');
   if (g.tone.p.tonemap > 0.5) defs.push('LOG_TONE');
-  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL;
+  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL + BLEND_GLSL;
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
   const viewOps = g.chain.map((o, i) => (o.stage === 'view' ? opCode(o, i) : '')).join('');
@@ -1243,9 +1244,11 @@ export const WAVE_FS = HEAD + /* glsl */ `
 in float vSide;
 in vec3 vCol;
 in float vK;
-uniform float uDash, uSoft;
+uniform float uDash, uSoft, uLines;
 out vec4 o;
 void main() {
+  // Interlace blend: only every other scanline.
+  if (uLines > 0.5 && fract(gl_FragCoord.y * 0.5) < 0.5) discard;
   float s = 1.0 - vSide * vSide;
   float prof = mix(s * s + pow(s, 10.0) * 0.4, sqrt(max(s, 0.0)) * 0.6, uSoft);
   float dash = uDash > 0.5 ? smoothstep(0.5, 0.2, abs(fract(vK / uDash) - 0.5) * 2.0) : 1.0;

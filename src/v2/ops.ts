@@ -190,6 +190,8 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   const k = kind ?? weightedKind(locus, rng);
   const p = randomParams(locusSchema(locus, k), rng, 0.45);
   if (locus === 'material') p.gain = 0.6 + 0.8 * rng();
+  // Most bodies add their light; a few blend another way (AVS effect-list modes).
+  if (locus === 'material') p.blend = rng() < 0.15 ? 1 + Math.floor(rng() * 5) : 0;
   if (locus === 'emit' && k === 'sparks') p.count = Math.min(p.count, 32768);
   if (locus === 'emit' && k === 'slime') p.count = Math.min(p.count, 262144);
   if (locus === 'shape' && k === 'flame') p.count = pick(rng, [65536, 131072, 262144]);

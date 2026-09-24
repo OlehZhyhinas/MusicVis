@@ -6,6 +6,7 @@
 // compiled programs are shared.
 
 import { packSuperscope } from './genes/superscope';
+import { resetCurveBlend, setCurveBlend } from './genes/blend';
 import { Water } from './genes/waterSim';
 import { reliefUniforms } from './genes/relief';
 import type { MusicState, StemName } from '../types';
@@ -445,6 +446,8 @@ interface CurveDraw {
   copies: number[][];
   deform: number;
   dp: [number, number, number, number];
+  /** Blend mode (genes/blend.ts). */
+  blend: number;
 }
 
 /** One genome running at a Stage: its feedback buffer and JS-side state. */
@@ -2010,6 +2013,7 @@ export class Stage {
       copies: list,
       deform: dk,
       dp: [s.bd[o + 28], s.bd[o + 29], s.bd[o + 30], s.bd[o + 31]],
+      blend: b.material.p.blend ?? 0,
     });
   }
 
@@ -2097,10 +2101,13 @@ export class Stage {
       .i1('uDrBase', c.body * 3)
       .i1('uDrN', Math.round(bd[o + 50]));
     gl.bindVertexArray(eng.lineVao);
+    const lines = c.blend ? setCurveBlend(gl, c.blend) : false;
+    p.f1('uLines', lines ? 1 : 0);
     for (const cp of c.copies) {
       p.f4('uT', cp[0], cp[1], cp[2], cp[3]).f2('uFlip', cp[4], cp[5]).f1('uDash', c.dash).f1('uSoft', c.soft);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, c.n * 2);
     }
+    if (c.blend) resetCurveBlend(gl);
   }
 
   /** Physarum: sense, move, deposit, diffuse and decay (genes/physarumGpu.ts). */

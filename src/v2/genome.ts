@@ -34,6 +34,7 @@ import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
+import { BLEND_COST, BLEND_SCHEMA } from './genes/blend';
 import { SCENE_NO_REACT, SCENE_SCHEMA, sceneCost } from './genes/raymarch';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
@@ -274,7 +275,8 @@ export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
 
 export const MATERIAL_KINDS = ['line', 'fill', 'glow', 'dots', 'textured', 'chrome'] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];
-const MAT_COMMON: Schema = { gain: P(0.02, 3, 1) };
+// blend: how the body goes onto the picture below it (AVS effect-list modes, genes/blend.ts).
+const MAT_COMMON: Schema = { gain: P(0.02, 3, 1), ...BLEND_SCHEMA };
 export const MATERIAL_SCHEMAS: Record<MaterialKind, Schema> = {
   // Thin glowing outline (width in pixels at 1080p), brighter with loudness.
   line: { ...MAT_COMMON, width: P(0.8, 3, 1.3), halo: P(0, 1, 0.12) },
@@ -1132,7 +1134,8 @@ export function bodyKey(b: BodyGene): string {
   const metaball = b.shape.kind === 'dot' && (b.place.p.fuse ?? 0) > 0 ? 'm' : '';
   const fuse = b.fuse ? `+${b.fuse.p.mode}${b.fuse.shape.kind}${b.fuse.p.inside}` : '';
   const emit = b.emit.kind === 'cover' ? 'c' : b.emit.kind === 'sparks' ? (b.emit.p.top > 0.5 ? 'st' : 's') : '';
-  return `${b.shape.kind}:${place}${metaball}:${b.deform.kind}:${b.material.kind}${b.material.kind === 'textured' ? b.material.p.tex : ''}:${bodyLayer(b)}${emit}${fuse}`;
+  const blend = b.material.p.blend ? `~${b.material.p.blend}` : '';
+  return `${b.shape.kind}:${place}${metaball}:${b.deform.kind}:${b.material.kind}${b.material.kind === 'textured' ? b.material.p.tex : ''}${blend}:${bodyLayer(b)}${emit}${fuse}`;
 }
 
 /** Everything that changes the compiled shaders (numeric params are uniforms). */
@@ -1287,7 +1290,7 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
   if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.001) ms += WATER_COST;
   if (g.tone.p.relief > 0.001) ms += 0.12; // four extra feedback samples in the composite
-  for (const b of g.bodies) ms += bodyCost(b);
+  for (const b of g.bodies) ms += bodyCost(b) + (b.material.p.blend ? BLEND_COST : 0);
   if (g.choreo) ms += CHOREO_COST_MS;
   return ms;
 }
