@@ -31,6 +31,8 @@ float hash12(vec2 p) {
 const UPDATE_FS = HEAD + HASH + /* glsl */ `
 uniform sampler2D uAgents, uTrail;
 uniform float uAspect, uSA, uSD, uTurn, uStep, uTime, uBirth;
+// A drop this frame: 1 scatter everywhere, 2 every agent re-born at the body.
+uniform int uBurst;
 // Birth places: the body's copies (uv x, uv y, radius in screen heights), uN of them.
 uniform vec3 uCopy[6];
 uniform int uN;
@@ -56,7 +58,10 @@ void main() {
   pos = fract(pos + vec2(cos(h) / uAspect, sin(h)) * uStep);
   // Re-born at one of the body's copies, heading outward from its centre.
   float rb = hash12(vec2(ij) * 1.37 + vec2(fract(uTime * 0.21) * 977.3, s.w * 37.1));
-  if (uN > 0 && rb < uBirth) {
+  if (uBurst == 1) {
+    pos = vec2(hash12(vec2(ij) * 0.731 + uTime), hash12(vec2(ij) * 1.113 - uTime));
+    h = rb * TAU;
+  } else if (uN > 0 && (rb < uBirth || uBurst == 2)) {
     float r2 = hash12(vec2(ij) + vec2(rb * 311.1, uTime));
     vec3 c = uCopy[min(int(r2 * float(uN)), uN - 1)];
     float a = hash12(vec2(r2 * 91.7, rb * 53.3)) * TAU;
@@ -101,7 +106,7 @@ void main() {
 const DIFFUSE_FS = HEAD + SHOW + /* glsl */ `
 uniform sampler2D uTrail, uFb;
 uniform vec2 uTexel;
-uniform float uDecay, uDiffuse, uFeed;
+uniform float uDecay, uDiffuse, uFeed, uCut;
 in vec2 vUv;
 out vec4 o;
 void main() {
@@ -112,7 +117,7 @@ void main() {
   // Feed: light in the feedback above the network's own (the bodies, the carried picture) joins the trail.
   vec3 ex = max(texture(uFb, vUv).rgb - showCol(c), 0.0);
   float feed = uFeed * max(ex.r, max(ex.g, ex.b));
-  o = vec4(mix(c, b / 9.0, uDiffuse) * uDecay + feed, 0.0, 0.0, 1.0);
+  o = vec4(mix(c, b / 9.0, uDiffuse) * uDecay * uCut + feed, 0.0, 0.0, 1.0);
 }`;
 
 export interface SlimeStep {
@@ -139,6 +144,8 @@ export interface SlimeStep {
   gain: number;
   scale: number;
   cols: Float32Array;
+  /** A drop this frame: 0 none, 1 scatter, 2 re-born at the body. */
+  burst: number;
 }
 
 export class Physarum {
@@ -236,7 +243,8 @@ export class Physarum {
       .f1('uStep', u.step * f60)
       .f1('uTime', u.time)
       .f1('uBirth', 1 - Math.pow(1 - Math.min(1, u.birth), u.dt))
-      .i1('uN', Math.min(6, u.nCopies));
+      .i1('uN', Math.min(6, u.nCopies))
+      .i1('uBurst', u.burst);
     if (u.nCopies > 0) gl.uniform3fv(this.pUpdate.loc('uCopy'), u.copies);
     this.fs.draw();
     ag.swap();
@@ -257,7 +265,8 @@ export class Physarum {
       .f1('uDecay', Math.pow(u.decay, f60))
       .f1('uDiffuse', Math.min(1, u.diffuse * f60))
       .tex('uFb', u.fb)
-      .f1('uFeed', u.feed * f60);
+      .f1('uFeed', u.feed * f60)
+      .f1('uCut', u.burst === 1 ? 0.05 : u.burst === 2 ? 0.35 : 1);
     this.setShow(this.pDiffuse, u.gain, u.scale, u.cols);
     this.fs.draw();
     tr.swap();

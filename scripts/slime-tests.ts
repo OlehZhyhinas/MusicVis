@@ -1,7 +1,7 @@
 // Tests for the physarum (slime) emission gene (src/v2/genes/physarum.ts). Called from v2-test.ts.
 
 import {
-  COST_BUDGET_MS, EMIT_KINDS, EMIT_SCHEMAS, SPECIES, classify, cloneGenome, defaultParams, estimateCost, repair, validate,
+  COST_BUDGET_MS, EMIT_KINDS, EMIT_SCHEMAS, SPECIES, classify, cloneGenome, defaultParams, estimateCost, reactable, repair, validate,
   type Genome,
 } from '../src/v2/genome';
 import { crossover, mulberry32, mutate, randomGenome } from '../src/v2/ops';
@@ -124,6 +124,12 @@ export function slimeTests(check: Check): void {
     // Shapes seed networks: every showcase body feeds the trail; one is born inside a distance-field shape.
     const seeding = ps.filter((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime' && b.emit.p.feed > 0 && b.emit.p.birth > 0));
     const shaped = ps.some((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime' && b.emit.p.birth >= 0.1 && ['star', 'polygon', 'segment', 'solid'].includes(b.shape.kind)));
+    const drops = new Set(ps.flatMap((x) => x.genome.bodies.filter((b) => b.emit.kind === 'slime').map((b) => b.emit.p.onDrop)));
+    check('slime.on-drop', JSON.stringify(SLIME_SCHEMA.onDrop.choices) === '[0,1,2]' && drops.has(1) && drops.has(2) && !reactable(SLIME_SCHEMA).includes('onDrop'),
+      `showcase drop modes ${[...drops].join(',')}; reactable: ${reactable(SLIME_SCHEMA).join(',')}`);
+    const keys = ps.flatMap((x) => x.genome.reactions.filter((r) => r.g === 'em').map((r) => r.k));
+    check('slime.reaction-targets', ['steer', 'deposit', 'birth', 'feed', 'step'].every((k) => reactable(SLIME_SCHEMA).includes(k) && keys.includes(k)),
+      `showcase emission reactions: ${keys.join(',')}`);
     check('slime.shapes-seed', seeding.length === ps.length && shaped && SLIME_SCHEMA.feed.max > 0 && SLIME_SCHEMA.birth.max > 0,
       `${seeding.length}/${ps.length} showcase bodies feed the trail and give birth; a shape seeds one: ${shaped}`);
     const base = Population.seeded(1);

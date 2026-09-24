@@ -2152,9 +2152,10 @@ export class Stage {
     const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
     this.slime.step({
       dt: sdt, time: this.sig.clock, aspect: F.aspect, count: b.emit.p.count,
-      sa: P('sa'), sd: P('sd'), turn: P('turn'), step: P('step'), deposit: P('deposit'), decay: P('decay'), diffuse: P('diffuse'),
+      sa: P('sa'), sd: P('sd'), turn: P('steer'), step: P('step'), deposit: P('deposit'), decay: P('decay'), diffuse: P('diffuse'),
       feed: P('feed'), fb: s.fb.read.t, birth: P('birth'), copies: pl, nCopies: n,
       gain: gain * SLIME_GAIN, scale: slimeDisplayScale(b.emit.p), cols: s.cols,
+      burst: F.dropStart ? b.emit.p.onDrop : 0,
     });
   }
 

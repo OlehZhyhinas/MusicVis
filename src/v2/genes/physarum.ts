@@ -2,7 +2,7 @@
 // genome operators and the tests can use it; the GPU simulation lives in physarumGpu.ts.
 //
 // Many agents walk a trail map. Each one senses the trail ahead-left, ahead and ahead-right (sensor
-// angle sa, distance sd), turns toward the strongest (turn), steps forward (step) and deposits
+// angle sa, distance sd), turns toward the strongest (steer), steps forward (step) and deposits
 // (deposit); the trail diffuses (diffuse) and fades (decay) every frame, so the walkers grow vein
 // networks. The body seeds them twice over: its light in the feedback feeds the trail (feed), and a
 // share of the agents is re-born at its copies (birth). The trail is laid into the body's feedback in
@@ -11,6 +11,7 @@
 import type { ParamSpec, Schema } from '../genome';
 
 const P = (min: number, max: number, def: number, extra: Partial<ParamSpec> = {}): ParamSpec => ({ min, max, def, ...extra });
+const C = (choices: number[], def: number): ParamSpec => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
 
 export const SLIME_SCHEMA: Schema = {
   // Agents at 1280x720 trail resolution (scaled with the trail area on smaller stages).
@@ -18,8 +19,8 @@ export const SLIME_SCHEMA: Schema = {
   // Sensor angle (radians either side of the heading) and distance (scene units, screen height 1).
   sa: P(0.1, 1.4, 0.45),
   sd: P(0.003, 0.05, 0.015),
-  // Turn per step (radians) and step length (scene units per frame at 60 fps).
-  turn: P(0.05, 1.2, 0.4),
+  // Steering per step (radians) and step length (scene units per frame at 60 fps).
+  steer: P(0.05, 1.2, 0.4),
   step: P(0.0005, 0.006, 0.0015),
   // Trail laid per agent per frame; trail kept per frame (60 fps); blur mixed in per frame.
   deposit: P(0.05, 1, 0.3),
@@ -31,6 +32,9 @@ export const SLIME_SCHEMA: Schema = {
   // shapes seed networks; birth: agents re-born at the body's copies, fraction of all agents per second.
   feed: P(0, 1, 0.5),
   birth: P(0, 0.5, 0.05),
+  // On a drop: 0 nothing, 1 the agents scatter over the screen and the network regrows from the haze,
+  // 2 every agent is re-born at the body and bursts out along the fading old veins.
+  onDrop: C([0, 1, 2], 1),
 };
 
 /** Reference trail area the agent count is expressed at. */
