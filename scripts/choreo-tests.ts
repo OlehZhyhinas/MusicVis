@@ -150,6 +150,13 @@ export function choreoTests(check: Check): void {
     check('choreo.migrate-once', JSON.stringify(added) === JSON.stringify(cs.map((x) => `G0-${x.origin}`)) && loaded.upgradeSeeds(10).length === 0 && before === rest
       && loaded.get(kid.id)!.likes === 1 && loaded.get('G0-E07')!.likes === 2 && cs.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome)),
       `added ${added.join(',')}; votes, seeds and bred children untouched`);
+    // A seed-version-7 population (C01 already there, with a vote) gains only C02.
+    const v7 = Population.seeded(1);
+    v7.members.delete('G0-C02');
+    v7.get('G0-C01')!.likes = 4;
+    const l7 = Population.fromJSON(JSON.parse(JSON.stringify({ ...v7.toJSON(), seedVersion: 7 })));
+    const add7 = l7.upgradeSeeds(9);
+    check('choreo.migrate-v7', JSON.stringify(add7) === '["G0-C02"]' && l7.get('G0-C01')!.likes === 4 && l7.upgradeSeeds(10).length === 0, `added ${add7.join(',')}`);
   }
 
   // Look-ahead from the offline analysis.

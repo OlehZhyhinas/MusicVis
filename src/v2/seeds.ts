@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 9;
+export const SEED_VERSION = 10;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -701,6 +701,21 @@ const CHOREO: Def[] = [
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.5), rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.05, rel: 0.4 })],
     choreo: { lead: 8, curve: 2.5, push: 0.25, roll: 0.015, drain: 0.8, dim: 0.35, punch: 1, relax: 2 },
+  },
+  {
+    // A hexagon keyboard lit by the chroma, shot like a film: each section type has its own camera
+    // set-up and colour (verses cool and wide, choruses warm and close, the drop hottest), the camera
+    // glides into it over two bars and dollies slowly in across the section; a short build-up leans
+    // in before a drop and it lands with a soft punch.
+    origin: 'C02', name: 'Scene Director', energy: [0.3, 0.85], scheme: 'analogous', hue: 0.55,
+    color: { adapt: 0.35, bloom: 1.05 }, carrier: 'warp', decay: 0.93,
+    bodies: [body({
+      shape: ['polygon', { n: 6, r: 0.4965 / 5 }],
+      place: ['grid', { lattice: 1, scale: 5, jitter: 0, density: 1, lit: 0.6, links: 0, twinkle: 0.3, lock: 0.0625 }],
+      material: ['fill', { gain: 2.2, soft: 0.1, outline: 1, core: 1 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.25 })],
+    choreo: { lead: 4, curve: 1.5, push: 0.12, roll: -0.01, drain: 0.4, dim: 0.2, punch: 0.5, relax: 1, frame: 0.85, shot: 0.37, glide: 2, dolly: 0.08, scene: 0.35 },
   },
 ];
 
