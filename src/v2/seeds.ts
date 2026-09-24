@@ -736,4 +736,45 @@ const PHYSICS: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS].map(build);
+// ------------------------------------------------------------ Winamp AVS classics
+// A01.. re-create presets from the AVS 'Community Picks' / 'Winamp 5 Picks' packs in the same
+// vocabulary: superscopes as superscope bodies, Dynamic Movement as the chain, Water / Water Bump as
+// the carrier's ripple field, Blur and Fade as carrier blur and half-life. Credited to the authors.
+
+const AVS: Def[] = [
+  {
+    // UnConeD, Silk Strings: a ribbon of fine threads, each a smooth 3D curve, loops through space
+    // while the camera drifts round it; the threads fan apart and twist around each other with the
+    // instruments, and the blurred additive glow is mapped into a single dark wine hue.
+    origin: 'A01', name: 'Silk Strings (after UnConeD)', energy: [0.15, 0.7], scheme: 'mono', hue: 0.9,
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.25, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.35, blur: 0.25 },
+    chain: [op('zoom', { rate: 0.0015 })],
+    bodies: [body({
+      shape: ['superscope', { family: 4, p: 1, q: 2, size: 0.28, audio: 0.25, spec: 0, spinX: 0.0625, spinY: 0.125, persp: 0.55, n: 1024 }],
+      place: ['orbit', { count: 6, radius: 0.02, rate: 0.125 }],
+      material: ['line', { gain: 0.7, width: 0.9, halo: 0.1 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+      feel: ['flow', { atk: 0.05, rel: 0.6 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('melody', 'pl', 0, 'radius', 0.3, { atk: 0.1, rel: 0.8 }),
+      rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.5 }),
+    ],
+  },
+  {
+    // Tonic, One More (black and white contest): a plain waveform line, heavily blurred and wiped on
+    // every beat, sinks into a grey pool whose ripples (two stacked water passes) bend it into liquid
+    // rings; the bass stirs the water harder.
+    origin: 'A03', name: 'One More (after Tonic)', energy: [0.3, 0.85], scheme: 'mono', hue: 0.6,
+    color: { sat: 0.08, exposure: 0.9, adapt: 0.3, bloom: 1, contrast: 0.06, vignette: 0.35 }, carrier: 'warp',
+    car: { halfLife: 0.3, blur: 0.4, water: 0.85, wsize: 0.025 },
+    chain: [op('zoom', { rate: 0.004, radial: 1 })],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.32 }],
+      material: ['line', { gain: 1.1, width: 1.8, halo: 0.2 }],
+    })],
+    reactions: [rx('hit', 'car', 0, 'floor', 0.6, { rel: 0.15 }), rx('bass', 'car', 0, 'water', 0.3, { atk: 0.03, rel: 0.4 })],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS].map(build);

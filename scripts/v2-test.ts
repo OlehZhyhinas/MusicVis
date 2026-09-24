@@ -1415,6 +1415,53 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('water.breeds', strayed === 0 && randomOn > 3 && randomOn < 60 && reacts === 1 && !bad.length, bad.slice(0, 4).join(' | ') || `strayed=${strayed} random-on=${randomOn}/300, reactable, ${bySpecies.size * 2} crossovers valid`);
 }
 
+// -------------------------------------------------- AVS seeds (A01..)
+
+{
+  const as = SEEDS.filter((x) => x.origin.startsWith('A'));
+  const badMeta = as.filter((x) => !/^A\d\d$/.test(x.origin) || !/\(after [^)]+\)$/.test(x.name) || x.name.length > 60 || x.genome.reactions.length < 1 || !(x.genome.energy[1] - x.genome.energy[0] >= 0.15));
+  check('avs.meta', as.length >= 2 && !badMeta.length, badMeta.map((x) => x.origin).join(',') || `${as.length} AVS seeds: ${as.map((x) => x.name).join(', ')}`);
+  const bad: string[] = [];
+  for (const x of as) {
+    const errs = validate(x.genome);
+    if (errs.length) bad.push(`${x.origin}:${errs[0]}`);
+    if (!(estimateCost(x.genome) < COST_BUDGET_MS)) bad.push(`${x.origin}:cost ${estimateCost(x.genome).toFixed(2)}`);
+    if (JSON.stringify(repair(JSON.parse(JSON.stringify(x.genome)))) !== JSON.stringify(x.genome)) bad.push(`${x.origin}:round-trip`);
+    if (!buildSources(x.genome).feedback.includes('void main')) bad.push(`${x.origin}:glsl`);
+  }
+  // The AVS genes are on the seeds that showcase them.
+  const uses = (o: string, f: (g: Genome) => boolean) => { const x = as.find((y) => y.origin === o); return !x || f(x.genome); };
+  if (!uses('A01', (g) => g.bodies.some((b) => b.shape.kind === 'superscope'))) bad.push('A01 without a superscope');
+  if (!uses('A03', (g) => g.carrier.p.water > 0)) bad.push('A03 without water');
+  check('avs.valid-in-range-budget', !bad.length, bad.join(' | ') || 'valid, round-trip, under budget, buildable, genes present');
+  const bySpecies = new Map<string, Genome>();
+  for (const e of SEEDS.filter((x) => x.origin.startsWith('E'))) if (!bySpecies.has(classify(e.genome).primary)) bySpecies.set(classify(e.genome).primary, e.genome);
+  const rng = mulberry32(4242);
+  const cbad: string[] = [];
+  let crosses = 0;
+  for (const x of as) for (const e of bySpecies.values()) for (const [a, b] of [[x.genome, e], [e, x.genome]]) for (let k = 0; k < 3; k++) {
+    const c = crossover(a, b, rng);
+    crosses++;
+    if (validate(c).length) cbad.push(`${x.origin}:${validate(c)[0]}`);
+    if (!(estimateCost(c) < COST_BUDGET_MS)) cbad.push(`${x.origin}:cost`);
+    if (validate(mutate(c, rng, 1.5)).length) cbad.push(`${x.origin}:mutant`);
+  }
+  check('avs.crossover-every-species', !cbad.length, cbad.slice(0, 6).join(' | ') || `${crosses} crossovers (and mutants) valid and under budget`);
+  // Migration: a population from before the AVS seeds gains them exactly once; nothing else changes.
+  const base = Population.seeded(1);
+  for (const x of as) base.members.delete(`G0-${x.origin}`);
+  base.seedVersion = SEED_VERSION - 1;
+  base.get('G0-M03')!.likes = 2;
+  const kid = base.addChild(crossover(seedByOrigin('E05'), seedByOrigin('M07'), mulberry32(5)), [base.get('G0-E05')!, base.get('G0-M07')!], 2);
+  base.vote(kid.id, true);
+  const loaded = Population.fromJSON(JSON.parse(JSON.stringify({ ...base.toJSON(), seedVersion: SEED_VERSION - 1 })));
+  const before = JSON.stringify(loaded.list().sort((a, b) => a.id.localeCompare(b.id)));
+  const added = loaded.upgradeSeeds(11);
+  const after = JSON.stringify(loaded.list().filter((m) => !/^G0-A\d/.test(m.id)).sort((a, b) => a.id.localeCompare(b.id)));
+  check('migrate.adds-avs-once', JSON.stringify(added) === JSON.stringify(as.map((x) => `G0-${x.origin}`)) && loaded.upgradeSeeds(12).length === 0, `added ${added.join(',')}`);
+  check('migrate.avs-leaves-rest', before === after && loaded.get('G0-M03')!.likes === 2 && loaded.get(kid.id)!.likes === 1 && as.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome)), 'existing members untouched, new seeds arrive with their genomes');
+}
+
 // -------------------------------------------------- 16. example crossovers
 
 {
