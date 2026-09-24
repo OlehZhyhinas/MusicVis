@@ -308,6 +308,7 @@ export class TimelineSampler {
     const span = sec.end - sec.start;
     const prog = span > 0 ? (time - sec.start) / span : 0;
     s.sectionProgress = prog < 0 ? 0 : prog > 1 ? 1 : prog;
+    s.prevSectionLabel = si > 0 ? this.sections[si - 1].label : undefined;
     s.sectionChanged = events && si !== prevSec;
     if (s.sectionChanged) {
       const prevLabel = this.sections[prevSec]?.label;

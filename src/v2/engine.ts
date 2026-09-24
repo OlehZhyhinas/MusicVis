@@ -687,6 +687,17 @@ export class Stage {
     if (F.dropStart) this.flash = 0.4 + 0.6 * F.act;
 
     const slots = this.slots.filter((s) => s.weight > 0.001);
+
+    // Choreography over the song timeline (look-ahead from the offline analysis).
+    const cue = cueOf(state);
+    for (const s of slots) {
+      let q = this.poses.get(s);
+      if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
+      choreoPose(s.genome.choreo, cue, q);
+    }
+    blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
+    cameraUniforms(this.pose, this.w / this.h, this.cam);
+
     for (const s of slots) this.tick(s, sdt);
 
     // Fluid, particles, flame: owned by the heaviest slot that uses them.
@@ -717,16 +728,6 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
 
     for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot);
-
-    // Choreography over the song timeline (look-ahead from the offline analysis).
-    const cue = cueOf(state);
-    for (const s of slots) {
-      let q = this.poses.get(s);
-      if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
-      choreoPose(s.genome.choreo, cue, q);
-    }
-    blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
-    cameraUniforms(this.pose, this.w / this.h, this.cam);
 
     // Composite every live slot into the HDR scene.
     this.scene!.bind();
@@ -803,7 +804,7 @@ export class Stage {
     // Palette
     const tp = g.tone.p;
     const sat = s.P('col', 0, tp, 'sat', TONE_SCHEMA) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
-    paletteColors(g.palette, F.keyHue + s.P('pal', 0, g.palette.p, 'hue', PALETTE_SCHEMAS[g.palette.kind]), sat, s.cols);
+    paletteColors(g.palette, F.keyHue + s.P('pal', 0, g.palette.p, 'hue', PALETTE_SCHEMAS[g.palette.kind]) + (this.poses.get(s)?.hue ?? 0), sat, s.cols);
 
     // Carrier decay
     const car = g.carrier;

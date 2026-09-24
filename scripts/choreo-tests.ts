@@ -8,7 +8,7 @@ import { ADJ_POOLS, nameFor } from '../src/v2/naming';
 import { TimelineSampler } from '../src/analysis/TimelineSampler';
 import type { AnalysisResult, LiveAudioFrame, Section } from '../src/types';
 import {
-  CHOREO_COST_MS, CHOREO_SCHEMA, IDENTITY_POSE, blendPoses, buildRamp, cameraUniforms, choreoPose, cueOf, releaseEnv, repairChoreo, validateChoreo,
+  CHOREO_COST_MS, CHOREO_SCHEMA, IDENTITY_POSE, blendPoses, glideAmount, sceneFraming, buildRamp, cameraUniforms, choreoPose, cueOf, releaseEnv, repairChoreo, validateChoreo,
   type ChoreoCue, type ChoreoGene, type ChoreoPose,
 } from '../src/v2/genes/choreo';
 
@@ -158,10 +158,11 @@ export function choreoTests(check: Check): void {
     const at = (t: number) => {
       smp.reset();
       const s = smp.sample(t, 0.016, true, LIVE);
-      return { ttd: s.timeToDrop!, since: s.sinceDrop!, bar: s.barSeconds! };
+      return { ttd: s.timeToDrop!, since: s.sinceDrop!, bar: s.barSeconds!, prev: s.prevSectionLabel };
     };
     const a = at(15), b = at(25), c = at(55), d = at(85), e = at(5);
     check('choreo.lookahead', Math.abs(a.ttd - 5) < 1e-6 && a.since === Infinity && Math.abs(b.since - 5) < 1e-6 && Math.abs(b.ttd - 35) < 1e-6
+      && b.prev === 'build' && e.prev === undefined && c.prev === 'verse'
       && Math.abs(c.ttd - 5) < 1e-6 && d.ttd === Infinity && Math.abs(d.since - 25) < 1e-6 && Math.abs(e.ttd - 15) < 1e-6 && a.bar === 2,
       `t15 ttd=${a.ttd} t25 since=${b.since} ttd=${b.ttd} t55 ttd=${c.ttd} t85 ttd=${d.ttd} since=${d.since} bar=${a.bar}s`);
   }
@@ -169,7 +170,7 @@ export function choreoTests(check: Check): void {
   // Envelopes.
   {
     const c = repairChoreo({ p: { lead: 4, curve: 1, relax: 2 } });
-    const cue = (ttd: number, since = Infinity): ChoreoCue => ({ timeToDrop: ttd, sinceDrop: since, barSeconds: 2 });
+    const cue = (ttd: number, since = Infinity): ChoreoCue => ({ timeToDrop: ttd, sinceDrop: since, barSeconds: 2, label: 'verse', prevLabel: null, sinceSection: 0, sectionLen: 30 });
     const r = [buildRamp(c, cue(9)), buildRamp(c, cue(8)), buildRamp(c, cue(4)), buildRamp(c, cue(0.001))];
     check('choreo.build-ramp', r[0] === 0 && r[1] === 0 && Math.abs(r[2] - 0.5) < 1e-9 && r[3] > 0.99, r.map((x) => x.toFixed(3)).join(','));
     const e = [releaseEnv(c, cue(Infinity, 0)), releaseEnv(c, cue(Infinity, 2)), releaseEnv(c, cue(Infinity, 4)), releaseEnv(c, cue(Infinity, Infinity))];
@@ -197,7 +198,7 @@ export function choreoTests(check: Check): void {
     const rng = mulberry32(31337);
     let worst = 0;
     for (let i = 0; i < 2000; i++) {
-      const pose: ChoreoPose = { zoom: 1 + rng() * 0.5, roll: (rng() - 0.5) * 0.3, tx: (rng() - 0.5), ty: (rng() - 0.5), sat: 1, exposure: 1 };
+      const pose: ChoreoPose = { zoom: 1 + rng() * 0.5, roll: (rng() - 0.5) * 0.3, tx: (rng() - 0.5), ty: (rng() - 0.5), sat: 1, exposure: 1, hue: 0 };
       const a = [16 / 9, 9 / 16, 1, 21 / 9, 4 / 3][i % 5];
       const m = cameraUniforms(pose, a);
       for (const [dx, dy] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) {
@@ -207,6 +208,22 @@ export function choreoTests(check: Check): void {
       }
     }
     check('choreo.camera-covers', ident.every((x) => Math.abs(x) < 1e-12) && worst <= 1e-9, `identity uniforms zero; worst corner overshoot ${worst.toExponential(1)}`);
+    // Scenes: a framing per section type, reached by a cut or a glide; a dolly across each section.
+    const sc = repairChoreo({ p: { frame: 1, shot: 0.37, glide: 2, dolly: 0.1, scene: 0.5, push: 0, punch: 0, drain: 0, dim: 0 } });
+    const at = (label: 'verse' | 'chorus' | 'drop', prevLabel: 'verse' | 'chorus' | 'build' | null, sinceSection: number, sectionLen = 32): ChoreoPose =>
+      choreoPose(sc, { timeToDrop: Infinity, sinceDrop: Infinity, barSeconds: 2, label, prevLabel, sinceSection, sectionLen });
+    const ch1 = sceneFraming(sc, 'chorus'), ch2 = sceneFraming(sc, 'chorus'), vs = sceneFraming(sc, 'verse');
+    const off = sceneFraming(defaults(), 'drop');
+    const shots = new Set([0.1, 0.3, 0.5, 0.7, 0.9].map((shot) => sceneFraming(repairChoreo({ p: { frame: 1, shot } }), 'chorus').tx.toFixed(4)));
+    check('choreo.scene-framing', JSON.stringify(ch1) === JSON.stringify(ch2) && ch1.tx !== vs.tx && ch1.hue === 0.2 && vs.hue === 0 && ch1.zoom >= 1 && ch1.zoom <= 1.35
+      && JSON.stringify(off) === JSON.stringify(IDENTITY_POSE) && shots.size === 5,
+      `chorus zoom ${ch1.zoom.toFixed(3)} pan ${ch1.tx.toFixed(3)},${ch1.ty.toFixed(3)} hue ${ch1.hue}; verse pan ${vs.tx.toFixed(3)}; frame 0 identity; 5 shots differ`);
+    const g0 = at('chorus', 'verse', 0), g1 = at('chorus', 'verse', 2), g2 = at('chorus', 'verse', 4), g3 = at('chorus', 'verse', 20);
+    check('choreo.glide', Math.abs(g0.tx - vs.tx) < 1e-9 && Math.abs(g2.tx - ch1.tx) < 1e-9 && Math.abs(g1.tx - (vs.tx + ch1.tx) / 2) < 1e-9 && g3.tx === ch1.tx
+      && glideAmount(repairChoreo({ p: { glide: 0 } }), { ...cue(1), sinceSection: 0 }) === 1,
+      `pan ${g0.tx.toFixed(3)} -> ${g1.tx.toFixed(3)} -> ${g2.tx.toFixed(3)} over 2 bars; glide 0 is a cut`);
+    const d0 = at('drop', 'build', 4), d1 = at('drop', 'build', 16), d2 = at('drop', 'build', 32);
+    check('choreo.dolly', d1.zoom > d0.zoom && Math.abs(d2.zoom / d0.zoom - 1.1 / (1 + 0.1 * 4 / 32)) < 1e-9, `zoom ${d0.zoom.toFixed(3)} -> ${d1.zoom.toFixed(3)} -> ${d2.zoom.toFixed(3)} across the section`);
     check('choreo.no-gene-identity', JSON.stringify(none) === JSON.stringify(IDENTITY_POSE) && live.timeToDrop === Infinity && live.barSeconds === 2, 'no gene or no look-ahead: identity pose');
   }
 }

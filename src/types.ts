@@ -155,6 +155,8 @@ export interface MusicState {
   sinceDrop?: number;
   /** Seconds per bar at the song's tempo. */
   barSeconds?: number;
+  /** Type of the section before the current one (undefined at the start or when unknown). */
+  prevSectionLabel?: SectionLabel;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */

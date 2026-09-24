@@ -8,7 +8,7 @@
 // This file imports only types from genome.ts so genome.ts can import it without a cycle.
 
 import type { ParamSpec, Params, Schema } from '../genome';
-import type { MusicState } from '../../types';
+import type { MusicState, SectionLabel } from '../../types';
 import { registerGenomeGene } from '../geneRegistry';
 
 const P = (min: number, max: number, def: number): ParamSpec => ({ min, max, def });
@@ -21,6 +21,11 @@ const C = (choices: number[], def: number): ParamSpec => ({ min: Math.min(...cho
  * drain: desaturation at the peak; dim: exposure dip at the peak.
  * Release on the drop:
  * punch: the slam on the drop (a zoom kick, a saturation and exposure flash); relax: bars it takes to settle.
+ * Scenes (one framing per section type, so every chorus is shot the same way):
+ * frame: how far each section's framing departs from the plain view (push, pan, lean); shot: which
+ * set of framings (a seed); glide: bars the camera takes to move into a new section's framing
+ * (0 = a hard cut on the boundary); dolly: a slow push-in across each section, reset at the next;
+ * scene: hue shift per section type (verse, chorus, drop... each its own colour).
  */
 export const CHOREO_SCHEMA: Schema = {
   lead: C([2, 4, 8, 16], 8),
@@ -31,6 +36,11 @@ export const CHOREO_SCHEMA: Schema = {
   dim: P(0, 0.6, 0.25),
   punch: P(0, 1, 0.6),
   relax: C([0.5, 1, 2, 4], 1),
+  frame: P(0, 1, 0),
+  shot: P(0, 1, 0.5),
+  glide: C([0, 1, 2, 4], 0),
+  dolly: P(0, 0.15, 0),
+  scene: P(0, 0.5, 0),
 };
 
 registerGenomeGene({
@@ -38,7 +48,7 @@ registerGenomeGene({
   title: 'Choreography',
   schemas: CHOREO_SCHEMA,
   optional: true,
-  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars',
+  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars; scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene)',
 });
 
 export interface ChoreoGene {
@@ -159,6 +169,12 @@ export interface ChoreoCue {
   sinceDrop: number;
   /** Seconds per bar. */
   barSeconds: number;
+  /** The current section's type, and the previous one's (null at the start or unknown). */
+  label: SectionLabel;
+  prevLabel: SectionLabel | null;
+  /** Seconds since the current section began, and its length (Infinity when open-ended). */
+  sinceSection: number;
+  sectionLen: number;
 }
 
 /** What the choreography does to the picture this frame (identity: zoom 1, roll 0, sat 1, exposure 1). */
@@ -169,9 +185,10 @@ export interface ChoreoPose {
   ty: number;
   sat: number; // saturation multiplier
   exposure: number; // exposure multiplier
+  hue: number; // palette hue shift, turns
 }
 
-export const IDENTITY_POSE: Readonly<ChoreoPose> = { zoom: 1, roll: 0, tx: 0, ty: 0, sat: 1, exposure: 1 };
+export const IDENTITY_POSE: Readonly<ChoreoPose> = { zoom: 1, roll: 0, tx: 0, ty: 0, sat: 1, exposure: 1, hue: 0 };
 
 /** The cue a MusicState carries (sampled songs only; live input has no look-ahead). */
 export function cueOf(state: MusicState): ChoreoCue {
@@ -179,10 +196,17 @@ export function cueOf(state: MusicState): ChoreoCue {
   const bar = state.barSeconds && state.barSeconds > 0 ? state.barSeconds : 240 / bpm;
   const ttd = state.timeToDrop;
   const sd = state.sinceDrop;
+  const sec = state.section;
+  const since = sec && Number.isFinite(sec.start) ? state.time - sec.start : 0;
+  const len = sec && Number.isFinite(sec.end) && sec.end > sec.start ? sec.end - sec.start : Infinity;
   return {
     timeToDrop: typeof ttd === 'number' && ttd >= 0 ? ttd : Infinity,
     sinceDrop: typeof sd === 'number' && sd >= 0 ? sd : Infinity,
     barSeconds: bar,
+    label: sec?.label ?? 'verse',
+    prevLabel: state.prevSectionLabel ?? null,
+    sinceSection: Number.isFinite(since) && since > 0 ? since : 0,
+    sectionLen: len,
   };
 }
 
@@ -214,10 +238,68 @@ export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: Chore
   out.roll = p.roll * TAU * ramp;
   out.sat = (1 - 0.85 * p.drain * ramp) * (1 + PUNCH_SAT * p.punch * env);
   out.exposure = (1 - p.dim * ramp) * (1 + PUNCH_EXPOSURE * p.punch * env);
+
+  // Scene: this section type's framing, reached by a cut or a glide from the previous section's.
+  const f = sceneFraming(c, cue.label, SCRATCH_A);
+  const g = glideAmount(c, cue);
+  if (g < 1) {
+    const q = cue.prevLabel ? sceneFraming(c, cue.prevLabel, SCRATCH_B) : IDENTITY_POSE;
+    f.zoom = q.zoom + (f.zoom - q.zoom) * g;
+    f.roll = q.roll + (f.roll - q.roll) * g;
+    f.tx = q.tx + (f.tx - q.tx) * g;
+    f.ty = q.ty + (f.ty - q.ty) * g;
+    f.hue = q.hue + (f.hue - q.hue) * g;
+  }
+  // Dolly: a slow push across the section (over its length, or 16 bars when it is open-ended).
+  const span = Number.isFinite(cue.sectionLen) ? cue.sectionLen : 16 * cue.barSeconds;
+  const dolly = 1 + p.dolly * clamp(cue.sinceSection / Math.max(span, 1e-3), 0, 1);
+  out.zoom *= f.zoom * dolly;
+  out.roll += f.roll;
+  out.tx = f.tx;
+  out.ty = f.ty;
+  out.hue = f.hue;
   return out;
 }
 
 const TAU = Math.PI * 2;
+const SCRATCH_A: ChoreoPose = { ...IDENTITY_POSE };
+const SCRATCH_B: ChoreoPose = { ...IDENTITY_POSE };
+const LABELS: SectionLabel[] = ['intro', 'verse', 'build', 'chorus', 'drop', 'breakdown', 'outro'];
+/** Hue shift per section type at full `scene` (turns): calm sections cool, loud ones warm and far. */
+const SCENE_HUE: Record<SectionLabel, number> = { intro: -0.3, verse: 0, build: 0.15, chorus: 0.4, drop: 0.6, breakdown: -0.2, outro: -0.4 };
+
+/** A 0..1 hash of a few numbers (stable across runs and platforms). */
+function hash01(a: number, b: number): number {
+  let h = Math.imul(Math.floor(a * 9973) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 1, 0xc2b2ae35);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2c1b3c6d);
+  h ^= h >>> 12;
+  h = Math.imul(h, 0x297a2d39);
+  h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+}
+
+/** The framing a choreography gives a section type (identity when `frame` and `scene` are 0). */
+export function sceneFraming(c: ChoreoGene, label: SectionLabel, out: ChoreoPose = { ...IDENTITY_POSE }): ChoreoPose {
+  Object.assign(out, IDENTITY_POSE);
+  const p = c.p;
+  const li = Math.max(0, LABELS.indexOf(label));
+  const r = (k: number) => hash01(p.shot, li * 8 + k);
+  // Push in first (so there is room to pan), then pan and lean within the room the push leaves.
+  out.zoom = 1 + p.frame * 0.35 * r(0);
+  out.tx = p.frame * (r(1) - 0.5) * 0.3;
+  out.ty = p.frame * (r(2) - 0.5) * 0.3;
+  out.roll = p.frame * (r(3) * 2 - 1) * 0.012 * TAU;
+  out.hue = p.scene * SCENE_HUE[label];
+  return out;
+}
+
+/** 0..1 progress of the move into the current section's framing (1 = arrived; a cut is always 1). */
+export function glideAmount(c: ChoreoGene, cue: ChoreoCue): number {
+  if (c.p.glide <= 0) return 1;
+  const x = clamp(cue.sinceSection / (c.p.glide * cue.barSeconds), 0, 1);
+  return x * x * (3 - 2 * x);
+}
 const PUNCH_ZOOM = 0.15;
 const PUNCH_SAT = 0.35;
 const PUNCH_EXPOSURE = 0.4;
@@ -228,7 +310,7 @@ export function blendPoses(poses: readonly ChoreoPose[], weights: readonly numbe
   for (const w of weights) wsum += w;
   Object.assign(out, IDENTITY_POSE);
   if (wsum <= 1e-6) return out;
-  out.zoom = out.roll = out.tx = out.ty = out.sat = out.exposure = 0;
+  out.zoom = out.roll = out.tx = out.ty = out.sat = out.exposure = out.hue = 0;
   poses.forEach((q, i) => {
     const w = weights[i] / wsum;
     out.zoom += q.zoom * w;
@@ -237,6 +319,7 @@ export function blendPoses(poses: readonly ChoreoPose[], weights: readonly numbe
     out.ty += q.ty * w;
     out.sat += q.sat * w;
     out.exposure += q.exposure * w;
+    out.hue += q.hue * w;
   });
   return out;
 }
