@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 17;
+export const SEED_VERSION = 18;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -874,6 +874,40 @@ const RAYMARCH: Def[] = [
     })],
     reactions: [
       rx('bass', 'sh', 0, 'size', 0.15, { atk: 0.02, rel: 0.4 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // The camera weaves between the melting shapes, banking into its turns and lunging forward on drum
+    // hits; only the rims and the glow of near misses are lit, so the shapes read as neon outlines that
+    // smear into long trails.
+    origin: 'R02', name: 'Neon Passage', energy: [0.4, 1], scheme: 'split', hue: 0.8,
+    color: { adapt: 0.3, bloom: 1.3 }, carrier: 'warp', decay: 0.95,
+    bodies: [body({
+      shape: ['scene', { scene: 0, cam: 1, res: 0.5, size: 0.9, blend: 0.35, speed: 0.55, pulse: 0.6, kick: 0.8, vary: 1, rim: 1, ao: 0.4, fog: 0.5, glow: 0.7, roam: 0.4 }],
+      material: ['line', { gain: 1.1 }],
+      color: ['age', { rate: 0.125, detail: 1 }],
+    })],
+    reactions: [
+      rx('drums', 'sh', 0, 'kick', 0.25, { atk: 0.01, rel: 0.15 }),
+      rx('bass', 'sh', 0, 'glow', 0.3, { atk: 0.02, rel: 0.3 }),
+      rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // A dolly zoom on a chrome cluster: every four bars the camera pulls back while the lens zooms in,
+    // so the shapes hold their size and the space around them stretches; drum hits punch it in and the
+    // bass swells the melted chrome.
+    origin: 'R03', name: 'Vertigo Chrome', energy: [0.15, 0.7], scheme: 'complementary', hue: 0.1,
+    color: { adapt: 0.4, bloom: 1.1 }, carrier: 'warp', decay: 0.85,
+    bodies: [body({
+      shape: ['scene', { scene: 0, cam: 2, res: 0.7, size: 1.1, blend: 0.85, speed: 0.3, pulse: 0.7, kick: 0.5, vary: 0.8, rim: 0.7, ao: 0.8, fog: 0.3, glow: 0.15, roam: 0.8 }],
+      material: ['chrome', { gain: 1.1, chrome: 1 }],
+      color: ['fixed', { hue: 0, detail: 0.6 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'size', 0.12, { atk: 0.02, rel: 0.4 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
       rx('section', 'sh', 0, 'vary', 0.3, { atk: 0.05, rel: 1.5 }),
     ],

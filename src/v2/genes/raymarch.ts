@@ -19,19 +19,19 @@ const C = (choices: number[], def: number) => ({ min: Math.min(...choices), max:
 
 /** Scene kinds: 0 smooth-union primitives. */
 export const SCENE_KINDS = ['primitives'] as const;
-/** Camera kinds: 0 orbit. */
-export const SCENE_CAMS = ['orbit'] as const;
+/** Camera kinds: 0 orbit, 1 flythrough, 2 dolly zoom. */
+export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
 
 /**
  * scene: what is ray-marched (SCENE_KINDS); cam: how the camera moves (SCENE_CAMS);
  * res: internal resolution as a fraction of the stage (cost goes with its square);
  * size: object scale (bass pulses it by `pulse`); blend: smooth-union radius; speed: animation and
- * camera speed; kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
+ * camera speed; roam: how far the camera travels (orbit swing, flight path, dolly depth); kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
  * rim / ao / fog / glow: lighting terms.
  */
 export const SCENE_SCHEMA: Schema = {
   scene: C([0], 0),
-  cam: C([0], 0),
+  cam: C([0, 1, 2], 0),
   res: C([0.35, 0.5, 0.7], 0.5),
   size: P(0.4, 1.6, 1),
   blend: P(0, 1, 0.5),
@@ -43,6 +43,7 @@ export const SCENE_SCHEMA: Schema = {
   ao: P(0, 1, 0.6),
   fog: P(0, 1, 0.4),
   glow: P(0, 1, 0.3),
+  roam: P(0, 1, 0.5),
 };
 /** Structural switches reactions may not touch. */
 export const SCENE_NO_REACT = ['scene', 'cam', 'res'];
@@ -209,22 +210,63 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
   // Drum hits jolt the camera toward the scene and roll it slightly.
   const kick = set('kick', Math.max(get('kick') * Math.exp(-sdt * 7), F.onset[0] * F.gate[0] * P('kick')));
   const side = set('side', F.onset[0] > 0.6 && get('kick') < 0.05 ? -get('side', 1) : get('side', 1));
-  // Orbit camera.
-  const ang = set('ang', (get('ang') + sdt * F.speed * (0.05 + 0.5 * speed)) % (TAU * 64));
-  const elev = 0.35 + 0.3 * Math.sin(T * 0.11);
-  const dist = (5.6 - 1.4 * kick) * (0.6 + 0.4 * P('size'));
   out.fill(0);
-  out[0] = Math.cos(ang) * Math.cos(elev) * dist;
-  out[1] = Math.sin(elev) * dist;
-  out[2] = Math.sin(ang) * Math.cos(elev) * dist;
-  out[3] = 1.6; // focal length
-  out[4] = 0; out[5] = 0; out[6] = 0;
-  out[7] = 0.12 * kick * side;
+  camera(out, c, T, kick, side);
   out[8] = T; out[9] = size; out[10] = P('blend'); out[11] = seed;
   out[12] = P('rim'); out[13] = P('ao'); out[14] = P('fog'); out[15] = P('glow');
   out[16] = c.raw.scene; out[17] = c.raw.cam;
   out[10] = (0.03 + 1.07 * P('blend')) * size;
   placePrims(out, T, size, seed);
+}
+
+/**
+ * The camera (uScn 0-1: position, focal length, target, roll).
+ *   orbit  circles the scene, rising and sinking by roam; drum hits push it in.
+ *   fly    weaves a looping path around and between the objects looking along it, banking into the turns;
+ *          drum hits lunge it forward along the path.
+ *   dolly  faces the scene and dollies in and out over four bars while the focal length follows, so
+ *          the subject holds its size and the space behind it stretches (the vertigo shot); drum hits
+ *          punch it in.
+ */
+function camera(out: Float32Array, c: SceneCtx, T: number, kick: number, side: number): void {
+  const { F, sdt, P, mem } = c;
+  const k = (s: string) => `${c.key}${s}`;
+  const get = (s: string, init = 0) => mem[k(s)] ?? (mem[k(s)] = init);
+  const set = (s: string, v: number) => (mem[k(s)] = v);
+  const speed = P('speed'), roam = P('roam');
+  const base = 0.6 + 0.4 * P('size');
+  // How far the objects reach from the centre at their largest (paths keep clear of it).
+  const ext = P('size') * 1.75 * (1 + 0.38 * P('pulse'));
+  const ang = set('ang', (get('ang') + sdt * F.speed * (0.05 + 0.5 * speed)) % (TAU * 64));
+  let px: number, py: number, pz: number, tx = 0, ty = 0, tz = 0, f = 1.6, roll = 0.12 * kick * side;
+  if (c.raw.cam === 1) {
+    // The path phase runs with the tempo; kicks add a burst of travel.
+    const s = set('fly', (get('fly') + sdt * F.speed * (0.08 + 0.4 * speed) + kick * sdt * 2.5) % (TAU * 64));
+    const R = (ext + 0.6) / 0.7 + 1.5 * roam * base;
+    const at = (u: number): [number, number, number] => [R * Math.sin(u), 0.35 * R * Math.sin(3 * u + 0.7), 0.75 * R * Math.cos(u) + 0.25 * R * Math.sin(2 * u)];
+    [px, py, pz] = at(s);
+    const [ax, ay, az] = at(s + 0.35);
+    // Look ahead, drawn a little toward the centre so the objects stay in view.
+    tx = ax * 0.3; ty = ay * 0.3; tz = az * 0.3;
+    const [bx, , bz] = at(s + 0.7);
+    roll += 0.5 * Math.max(-1, Math.min(1, ((bx - ax) * (az - pz) - (bz - az) * (ax - px)) / (R * R * 0.05)));
+    f = 1.3 + 0.4 * kick;
+  } else if (c.raw.cam === 2) {
+    const w = 0.5 - 0.5 * Math.cos((F.bars / 4) * TAU);
+    const d = ext + 1 + (1.2 + 4.5 * roam * w) * base;
+    const dist = d - 0.8 * kick * base;
+    const a = ang * 0.3;
+    px = Math.cos(a) * dist; py = 0.8 * base; pz = Math.sin(a) * dist;
+    f = (1.6 * d) / (ext + 2.2 * base);
+  } else {
+    const elev = 0.35 + 0.6 * roam * Math.sin(T * 0.11);
+    const dist = ext + 1.6 + 1.6 * base * (1 - 0.6 * kick);
+    px = Math.cos(ang) * Math.cos(elev) * dist;
+    py = Math.sin(elev) * dist;
+    pz = Math.sin(ang) * Math.cos(elev) * dist;
+  }
+  out[0] = px; out[1] = py; out[2] = pz; out[3] = f;
+  out[4] = tx; out[5] = ty; out[6] = tz; out[7] = roll;
 }
 
 /** Five primitives on slow Lissajous paths, each tumbling; the section seed picks kinds and phases. */

@@ -9,7 +9,8 @@ import { SEEDS } from '../src/v2/seeds';
 import { Population } from '../src/v2/population';
 import { nameFor, nounKind, NOUN_POOLS } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
-import { SCENE_SCHEMA, sceneCost } from '../src/v2/genes/raymarch';
+import { SCENE_SCHEMA, SCENE_VEC4, packScene, sceneCost } from '../src/v2/genes/raymarch';
+import type { Frame } from '../src/v2/engine';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -63,6 +64,36 @@ export function raymarchChecks(check: Check): void {
   const fixed = repair(heavy);
   check('scene.cost', hi > lo * 3 && fixed.bodies[0].shape.p.res < 0.7 && estimateCost(repair({ ...cloneGenome(r01), chain: [] })) < COST_BUDGET_MS,
     `res 0.35 ${lo.toFixed(2)} ms, 0.7 ${hi.toFixed(2)} ms; heavy genome repaired to res ${fixed.bodies[0].shape.p.res}`);
+
+  // Cameras: each mode moves differently, stays finite, and never ends up inside a primitive's bound.
+  const camBad: string[] = [];
+  const paths: number[][] = [];
+  for (const cam of SCENE_SCHEMA.cam.choices!) for (const [roam, size] of [[1, 1.6], [0, 1.6], [0, 0.4]]) {
+    const p = { ...r01.bodies[0].shape.p, cam, roam, size, pulse: 1, kick: 1 };
+    const out = new Float32Array(SCENE_VEC4 * 4);
+    const mem: Record<string, number> = {};
+    const F = { speed: 1, act: 1, loud: 1, beatPulse: 0, gate: new Float32Array([1, 1, 1, 1]), stem: new Float32Array(4), onset: new Float32Array(4), sectionIndex: 0, bars: 0 } as unknown as Frame;
+    let minGap = 1e9;
+    const path: number[] = [];
+    for (let i = 0; i < 1800; i++) {
+      F.bars = i / 120;
+      F.sectionIndex = Math.floor(i / 400);
+      F.stem[1] = i % 50 < 10 ? 1 : 0;
+      F.onset[0] = i % 30 === 0 ? 1 : 0;
+      F.beatPulse = (i % 30) / 30;
+      packScene(out, { F, sdt: 1 / 60, P: (k) => p[k], raw: p, mem, key: 'b0.' });
+      if (![...out].every(Number.isFinite)) { camBad.push(`cam ${cam}: not finite`); break; }
+      for (let j = 0; j < 5; j++) {
+        const o = (8 + j) * 4;
+        minGap = Math.min(minGap, Math.hypot(out[0] - out[o], out[1] - out[o + 1], out[2] - out[o + 2]) - 1.35 * out[o + 3]);
+      }
+      if (i % 300 === 0) path.push(+out[0].toFixed(2), +out[2].toFixed(2), +out[3].toFixed(2));
+    }
+    if (!(minGap > 0.05)) camBad.push(`cam ${cam} roam ${roam} size ${size}: inside a shape (gap ${minGap.toFixed(2)})`);
+    paths.push(path);
+  }
+  const distinct = new Set(paths.filter((_, i) => i % 3 === 0).map((x) => x.join())).size === SCENE_SCHEMA.cam.choices!.length;
+  check('scene.cameras', !camBad.length && distinct, camBad.join(' | ') || `${SCENE_SCHEMA.cam.choices!.length} camera modes move differently and keep clear of the shapes (3 settings each)`);
 
   // Random scene genes are in range; scene bodies breed with every species (both ways) and mutate validly.
   const rng = mulberry32(31337);
