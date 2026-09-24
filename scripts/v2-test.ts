@@ -1379,6 +1379,42 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('superscope.breeds', !bad.length && kept > 10 && random > 5, bad.slice(0, 6).join(' | ') || `${crosses} crossovers over ${bySpecies.size} species valid, ${kept} kept the scope; ${random}/400 random bodies are scopes`);
 }
 
+// -------------------------------------------------- AVS genes: water ripple carrier
+
+{
+  const old = cloneGenome(seedByOrigin('E05')) as unknown as { carrier: { p: Record<string, number> } };
+  delete old.carrier.p.water; delete old.carrier.p.wsize;
+  const fixed = repair(old);
+  check('water.default-off', fixed.carrier.p.water === 0 && fixed.carrier.p.wsize === CARRIER_SCHEMA.wsize.def && !validate(fixed).length, JSON.stringify({ w: fixed.carrier.p.water, s: fixed.carrier.p.wsize }));
+  const on = cloneGenome(fixed);
+  on.carrier.p.water = 0.7;
+  const wild = repair({ ...cloneGenome(on), carrier: { kind: 'warp', p: { ...on.carrier.p, water: 5, wsize: -1 } } });
+  check('water.clamps', wild.carrier.p.water === 1 && wild.carrier.p.wsize === CARRIER_SCHEMA.wsize.min, JSON.stringify({ w: wild.carrier.p.water, s: wild.carrier.p.wsize }));
+  const offNone = cloneGenome(on);
+  offNone.carrier.kind = 'none';
+  check('water.cost', estimateCost(on) > estimateCost(fixed) && estimateCost(offNone) < estimateCost(on) && estimateCost(on) < COST_BUDGET_MS, `${estimateCost(fixed).toFixed(2)} -> ${estimateCost(on).toFixed(2)} ms`);
+  const src = buildSources(on).feedback;
+  check('water.glsl', src.includes('waterSlope(vUv)') && src.includes('uniform sampler2D uWater'), 'feedback reads the ripple slope');
+  const r = mulberry32(2718);
+  let strayed = 0, randomOn = 0, reacts = 0;
+  for (let i = 0; i < 300; i++) {
+    const g = mutate(i % 2 ? on : seedByOrigin('M07'), r, 2);
+    for (const k of ['water', 'wsize']) if (!(g.carrier.p[k] >= CARRIER_SCHEMA[k].min && g.carrier.p[k] <= CARRIER_SCHEMA[k].max)) strayed++;
+    if (randomGenome(r).carrier.p.water > 0) randomOn++;
+  }
+  if (reactable(CARRIER_SCHEMA).includes('water')) reacts = 1;
+  // Crossed with a seed of every species, both ways, the ripple survives in range and under budget.
+  const bad: string[] = [];
+  const bySpecies = new Map<string, Genome>();
+  for (const e of SEEDS) if (!bySpecies.has(classify(e.genome).primary)) bySpecies.set(classify(e.genome).primary, e.genome);
+  for (const e of bySpecies.values()) for (const [a, b] of [[on, e], [e, on]]) {
+    const c = crossover(a, b, r);
+    if (validate(c).length) bad.push(validate(c)[0]);
+    if (!(estimateCost(c) < COST_BUDGET_MS)) bad.push('cost');
+  }
+  check('water.breeds', strayed === 0 && randomOn > 3 && randomOn < 60 && reacts === 1 && !bad.length, bad.slice(0, 4).join(' | ') || `strayed=${strayed} random-on=${randomOn}/300, reactable, ${bySpecies.size * 2} crossovers valid`);
+}
+
 // -------------------------------------------------- 16. example crossovers
 
 {

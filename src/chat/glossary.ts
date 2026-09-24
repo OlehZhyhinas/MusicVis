@@ -57,6 +57,7 @@ v_<name>(flame variation): bends space via that flame function; w=blend; s=scale
 CARRIER: warp(feedback+chain), fluid(velocity-advected), flow(flow-field), none(no persistence).
 halfLife=trail length(s to fade to half). floor: black-level cut/frame(higher=trails vanish faster). blur: softens image.
 amount/vort/fnoise/fscale/famt: fluid advection+vorticity/turbulence. sharpen: edges sharpen/flats fade, grows reaction-diffusion texture. border: coloured edge frame injected each frame, swells w/bass, carried inward.
+water(AVS water ripple, 0=off): beat drops spread rings that refract the carried picture, big drop on drops; wsize=drop radius.
 
 COLOUR:
 Palette kind(3 hue slots around song key): analogous(close),complementary(opposite),triad(3 even),split(complement+neighbours),mono(near 1 hue),free(3 slots). hue=1st slot's offset from key; spread=how far slots spread.

@@ -8,6 +8,7 @@
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
 import { BEAMS_GLSL } from './genes/beams';
+import { WATER_GLSL } from './genes/water';
 import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
@@ -1007,6 +1008,7 @@ uniform float uFluidAmt, uBlur, uDecaySub, uFlowAmt, uFlowScale;
 uniform float uSharpen, uGrain, uSharpNoise, uBorder, uBorderW;
 uniform vec3 uBorderCol;
 out vec4 o;
+${WATER_GLSL}
 vec3 prevAt(vec2 uv) {
   vec3 c = texture(uPrev, uv).rgb;
   if (uBlur > 0.0) {
@@ -1036,7 +1038,12 @@ void main() {
 #ifdef USE_FLUID
   suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
 #endif
+  // Water: the carried picture is read through the ripple field's slope (refraction).
+  vec2 wsl = uWaterAmt > 0.0 ? waterSlope(vUv) : vec2(0.0);
+  suv += clamp(wsl, -0.5, 0.5) * uWaterAmt * 0.005;
   vec3 pv = prevAt(suv);
+  // Glint on the slopes facing the light, scaled by the per-frame fade so it holds steady instead of piling up.
+  if (uWaterAmt > 0.0) pv += mix(uColA, vec3(1.0), 0.3) * min(max(dot(wsl, vec2(-0.6, 0.8)), 0.0), 0.5) * uWaterAmt * uLayerK * 0.6;
   // With a border, whatever the warp pulls in from beyond the edge is the border colour (clamped
   // sampling), so escaping flow fills with it and the fractal set stays dark.
   if (uBorder > 0.001) {

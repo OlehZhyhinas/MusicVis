@@ -310,6 +310,7 @@ export function randomGenome(rng: Rng): Genome {
   // Sharpening and the border are strong looks: most random genomes leave them off.
   g.carrier.p.sharpen = rng() < 0.12 ? 0.1 + 0.3 * rng() : 0;
   g.carrier.p.border = rng() < 0.12 ? 0.3 + 0.7 * rng() : 0;
+  g.carrier.p.water = rng() < 0.08 ? 0.3 + 0.7 * rng() : 0;
   const nr = randInt(rng, 1, 3);
   for (let i = 0; i < nr; i++) {
     const r = randomReaction(g, rng);

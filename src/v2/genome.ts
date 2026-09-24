@@ -33,6 +33,7 @@ import { repair as repairV2, upgradeV2 } from './legacy';
 import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
+import { WATER_COST, WATER_PARAMS } from './genes/water';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
@@ -463,6 +464,9 @@ export const CARRIER_SCHEMA: Schema = {
   // A coloured frame drawn into the feedback every frame (MilkDrop's outer border), swelling with
   // the bass; the warp carries it inward.
   border: P(0, 1, 0),
+  // AVS Water / Water Bump: a ripple height field that drops rings on the beats and refracts the
+  // carried picture (water = strength, 0 off; wsize = drop radius). See genes/water.ts.
+  ...WATER_PARAMS,
 };
 export interface CarrierGene {
   kind: CarrierKind;
@@ -836,7 +840,7 @@ export function repair(input: unknown): Genome {
     if (bodies.length >= MAX_BODIES) break;
     const b = repairBody(raw);
     if (UNIQUE_SHAPES.includes(b.shape.kind) && used.has(b.shape.kind)) continue;
-    if (b.fuse && UNIQUE_SHAPES.includes(b.fuse.shape.kind) && (used.has(b.fuse.shape.kind) || b.fuse.shape.kind === b.shape.kind)) delete b.fuse;
+    if (b.fuse && UNIQUE_SHAPES.includes(b.fuse.shape.kind) && (used.has(b.fuse.shape.kind) || b.fuse.shape.kind === b.shape.kind)) dropFuse(b);
     // One particle system per genome: a second sparks body leaves a plain trail.
     if (b.emit.kind === 'sparks') {
       if (sparks) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
@@ -944,12 +948,18 @@ function fitBudget(g: Genome): void {
   }
   for (const b of g.bodies) {
     if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
-    if (b.fuse) delete b.fuse;
+    if (b.fuse) dropFuse(b);
   }
   // Physics fields with a fixture count shed fixtures last.
   for (const b of g.bodies) {
     while (b.shape.kind === 'beams' && b.shape.p.count > 1 && estimateCost(g) > COST_BUDGET_MS * 0.95) b.shape.p.count--;
   }
+}
+
+/** Removes a body's fused shape; a curve that painted over the trail through it goes back to a plain trail. */
+function dropFuse(b: BodyGene): void {
+  delete b.fuse;
+  if (SHAPE_CLASS[b.shape.kind] !== 'sdf' && b.emit.kind === 'cover') b.emit = { kind: 'trail', p: repairParams({ tip: b.emit.p.tip }, EMIT_SCHEMAS.trail) };
 }
 
 function round4(x: number): number {
@@ -1193,6 +1203,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
   if (g.carrier.kind === 'flow') s.rain += 0.4;
   // A sharpened carrier grows its own pattern field; a border feeds one from the edges.
   if (g.carrier.kind !== 'none') s.plasma += 3 * g.carrier.p.sharpen + 1.6 * g.carrier.p.border;
+  if (g.carrier.kind !== 'none') s.ink += 1.2 * g.carrier.p.water;
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -1254,6 +1265,7 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.p.blur > 0) ms += 0.2;
   if (g.carrier.kind !== 'none' && g.carrier.p.sharpen > 0.001) ms += 0.45;
   if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
+  if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.001) ms += WATER_COST;
   for (const b of g.bodies) ms += bodyCost(b);
   if (g.choreo) ms += CHOREO_COST_MS;
   return ms;

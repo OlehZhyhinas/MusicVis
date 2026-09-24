@@ -294,6 +294,7 @@ function traits(g: Genome): Trait[] {
   }
 
   if (g.carrier.kind === 'fluid') add('liquid', LIQUID, 0.8);
+  if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.05) add('rippling', RIPPLING, 0.4 + 0.5 * g.carrier.p.water);
   if (g.carrier.p.halfLife > 3) add('trailing', TRAILING, clamp01((g.carrier.p.halfLife - 3) / 10));
 
   const surgeSignals = new Set(['bass', 'drums', 'beat', 'surge', 'drop', 'hit']);

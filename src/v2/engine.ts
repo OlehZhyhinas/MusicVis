@@ -6,6 +6,7 @@
 // compiled programs are shared.
 
 import { packSuperscope } from './genes/superscope';
+import { Water } from './genes/waterSim';
 import type { MusicState, StemName } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
@@ -605,6 +606,8 @@ export class Stage {
   private bloom: Bloom;
   private avgLum: PingPong;
   fluid: Fluid | null = null;
+  water: Water | null = null;
+  private waterBeat = -1;
   particles: Particles | null = null;
   slime: Physarum | null = null;
   flame: Flame | null = null;
@@ -645,6 +648,7 @@ export class Stage {
     }
     this.fluid?.resize(w / h);
     this.slime?.resize(w, h);
+    this.water?.resize(w / h);
     for (const s of this.slots) {
       s.fb.dispose();
       (s as { fb: PingPong }).fb = this.makeFb();
@@ -711,6 +715,24 @@ export class Stage {
       const cp = fluidSlot.genome.carrier.p;
       this.fluid.dissipation = 0.6;
       this.fluid.step(sdt, this.sig.clock, cp.fnoise * (0.3 + 0.7 * F.act) * (0.3 + 0.7 * F.stem[3]) * 0.5 * sdt * 60, cp.vort, F.aspect);
+    }
+    // Water ripples (AVS Water Bump): drops on the beats, a big one on each drop, damped by the trail length.
+    const waterSlot = slots.filter((s) => s.genome.carrier.kind !== 'none' && s.genome.carrier.p.water > 0.001).sort((a, b) => b.weight - a.weight)[0];
+    if (waterSlot && eng.hq) {
+      if (!this.water) {
+        this.water = new Water(gl, eng.fs);
+        this.water.resize(this.w / this.h);
+      }
+      const cp = waterSlot.genome.carrier.p;
+      const r = waterSlot.P('car', 0, cp, 'wsize', CARRIER_SCHEMA);
+      if (F.beatIndex !== this.waterBeat) {
+        this.waterBeat = F.beatIndex;
+        const hx = Math.sin(F.beatIndex * 12.9898 + 1.7) * 43758.5453;
+        const hy = Math.sin(F.beatIndex * 78.233 + 4.1) * 12543.1234;
+        this.water.drop(0.15 + 0.7 * (hx - Math.floor(hx)), 0.15 + 0.7 * (hy - Math.floor(hy)), r * (0.8 + 0.6 * F.stem[1]), 0.4 + 1.2 * F.stem[1] + 0.4 * F.stem[0]);
+      }
+      if (F.dropStart) this.water.drop(0.5, 0.5, r * 3, 2.5);
+      this.water.step(Math.min(0.994, 0.972 + 0.006 * Math.log2(1 + cp.halfLife * 4)), F.aspect);
     }
     const partSlot = slots.filter((s) => s.sparks >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (partSlot && eng.hq) this.updateParticles(partSlot, sdt, !!fluidSlot);
@@ -2114,6 +2136,9 @@ export class Stage {
         .f1('uBorderW', 0.004 + 0.01 * F.stem[1] * border)
         .f3('uBorderCol', (cc[a] + (cc[b] - cc[a]) * f) * lvl, (cc[a + 1] + (cc[b + 1] - cc[a + 1]) * f) * lvl, (cc[a + 2] + (cc[b + 2] - cc[a + 2]) * f) * lvl);
     } else p.f1('uBorder', 0);
+    const water = g.carrier.kind === 'none' ? 0 : s.P('car', 0, cp, 'water', CARRIER_SCHEMA);
+    const wt = this.water?.tex;
+    p.tex('uWater', wt ?? eng.black).f1('uWaterAmt', wt && water > 0.001 ? water : 0).f2('uWaterTexel', this.water ? 1 / this.water.w : 0, this.water ? 1 / this.water.h : 0);
     eng.fs.draw();
 
     gl.enable(gl.BLEND);
@@ -2258,6 +2283,7 @@ export class Stage {
     this.bloom.dispose();
     this.avgLum.dispose();
     this.fluid?.dispose();
+    this.water?.dispose();
     this.particles?.dispose();
     this.slime?.dispose();
     this.flame?.dispose();
