@@ -23,6 +23,7 @@ import {
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
 import { slimeDisplayScale } from './genes/physarum';
+import { packBeams } from './genes/beams';
 
 /**
  * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
@@ -1622,7 +1623,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge':
+      case 'plasma': case 'terrain': case 'edge': case 'beams':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1713,6 +1714,11 @@ export class Stage {
         E[o + 2] = m[key('sc')];
         E[o + 4] = 0; E[o + 5] = P('density'); E[o + 6] = P('peaks');
         E[o + 8] = P('terrain'); E[o + 9] = P('flash');
+        break;
+      }
+      case 'beams': {
+        const bf = { bars: this.clk.bars, loud: F.loud, melodic: this.sig.melodic(), drop: F.drop, speed: F.speed };
+        packBeams(E, o, o - 56, P, sh.p, bf, m, key, copies[0]?.y ?? 0, (k, raw) => this.resp(k, raw), sdt);
         break;
       }
     }

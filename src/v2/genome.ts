@@ -32,6 +32,7 @@ import { FLAME_VARIATIONS, type FlameVar } from './variations';
 import { repair as repairV2, upgradeV2 } from './legacy';
 import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
+import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
@@ -123,7 +124,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -136,6 +137,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   dot: 'sdf', polygon: 'sdf', star: 'sdf', segment: 'sdf', solid: 'sdf', bars: 'sdf',
   curve: 'curve', plasma: 'field', aurora: 'field', terrain: 'field', edge: 'field', flame: 'flame',
   superscope: 'curve',
+  beams: 'field',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame'];
@@ -162,6 +164,8 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   flame: { count: C([65536, 131072, 262144, 524288], 262144), zoom: P(0.1, 0.45, 0.22), rounds: I(1, 2, 2), flow: P(0, 2, 0), breathe: P(0, 0.4, 0) },
   // AVS superscope: a 3D parametric point curve pushed by the audio, tumbling in perspective (genes/superscope.ts).
   superscope: SUPERSCOPE_SCHEMA,
+  // Volumetric concert beams through haze (see genes/beams.ts).
+  beams: BEAMS_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -942,6 +946,10 @@ function fitBudget(g: Genome): void {
     if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
     if (b.fuse) delete b.fuse;
   }
+  // Physics fields with a fixture count shed fixtures last.
+  for (const b of g.bodies) {
+    while (b.shape.kind === 'beams' && b.shape.p.count > 1 && estimateCost(g) > COST_BUDGET_MS * 0.95) b.shape.p.count--;
+  }
 }
 
 function round4(x: number): number {
@@ -1137,6 +1145,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
       case 'solid': s.wire += 2.6 * w * shapeW; break;
       case 'plasma': s.plasma += 2.6 * w; break;
       case 'aurora': s.aurora += 2.6 * w; break;
+      case 'beams': s.aurora += 2.4 * w; s.spectrum += 0.6; break;
       case 'terrain': s.terrain += 2.6 * w; break;
       case 'edge': (sp.mode === 2 ? (s.rain += 2.6) : (s.terrain += 2.6)); if (sp.side === 1 || sp.side === 2) s.rain += 0.6; break;
       case 'dot':
@@ -1254,6 +1263,7 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
+  beams: 0.3,
 };
 const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05 };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
@@ -1296,7 +1306,7 @@ export function bodyCost(b: BodyGene): number {
     return ms;
   }
   if (cls === 'field') {
-    const base = b.shape.kind === 'terrain' ? 0.25 + (b.shape.p.terrain > 0.001 ? 0.3 : 0) : FIELD_COST[b.shape.kind] ?? 0.3;
+    const base = b.shape.kind === 'terrain' ? 0.25 + (b.shape.p.terrain > 0.001 ? 0.3 : 0) : b.shape.kind === 'beams' ? beamsCost(b.shape.p) : FIELD_COST[b.shape.kind] ?? 0.3;
     ms += base + deformCost(b) + (b.fuse ? 0.2 + SDF_COST[b.fuse.shape.kind] : 0);
     return ms;
   }

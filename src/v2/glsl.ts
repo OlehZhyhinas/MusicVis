@@ -7,6 +7,7 @@
 
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
+import { BEAMS_GLSL } from './genes/beams';
 import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
@@ -443,6 +444,7 @@ vec3 FLD(vec2 p) {
   c += mix(pal(A.y), vec3(1.0), 0.3) * glow(y - h, 0.003) * (0.4 + 0.8 * uLoud);
   return c * A.x * uAccum;
 }`,
+  beams: BEAMS_GLSL,
   terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);

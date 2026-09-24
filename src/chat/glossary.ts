@@ -15,7 +15,8 @@ terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=down
 edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.
 flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
 superscope(3D point curve, AVS style): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 3D lissajous,5 ring tunnel; p/q=frequencies; audio=push by waveform or spectrum(spec); spinX/spinY=3D tumble turns/bar; persp=depth; n=points. Never fuses.
-Field shapes(plasma,aurora,terrain,edge)+flame draw 1 copy regardless of place count.
+beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.
+Field shapes(plasma,aurora,terrain,edge,beams)+flame draw 1 copy regardless of place count.
 
 PLACE:
 point: fixed spot. orbit: copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.

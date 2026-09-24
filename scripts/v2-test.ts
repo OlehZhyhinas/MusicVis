@@ -32,6 +32,7 @@ import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 import { slimeTests } from './slime-tests';
+import { physicsChecks } from './v2-physics';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -85,7 +86,7 @@ function freshGenome(): Genome {
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || `repair(seed) === seed for all ${SEEDS.length}`);
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || `all ${SEEDS.length} survive JSON + repair unchanged`);
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 7, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION === 8, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;
@@ -337,6 +338,8 @@ function freshGenome(): Genome {
       const f = makeFuse(body, other, rng, mode);
       if (!f) continue;
       const g = repair({ v: 5, chain: [randomOp(rng, 'swirl')], bodies: [f], carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [{ src: 'bass', g: 'fu', i: 0, k: 'k', gain: 0.5 }], energy: [0.2, 0.8] });
+      // The budget may legitimately drop a fused shape from an expensive random body.
+      if (!g.bodies[0].fuse && estimateCost({ ...g, bodies: [f] }) > COST_BUDGET_MS * 0.95) continue;
       n++;
       const errs = validate(g);
       if (errs.length) bad.push(`${a}+${b}/${mode}:${errs.join(';')}`);
@@ -1395,6 +1398,7 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 
 choreoTests(check);
 slimeTests(check);
+physicsChecks(check);
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);
