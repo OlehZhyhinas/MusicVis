@@ -232,9 +232,12 @@ function wander(g: Genome, rng: () => number, amt: number, groups: readonly Drif
 /** Share of a parameter's range one unit of step moves it (one standard deviation). */
 const WANDER = 0.1;
 
+/** The kinds of every body locus (what a jump must change). */
+const bodyKinds = (g: Genome) => g.bodies.map((b) => LOCI.map((l) => (b[l] as { kind: string }).kind).join('/')).join('+');
+
 /** How far a section type moves (times step), and how much of the wander bound it may use. */
 const LABEL_STEP: Record<SectionLabel, number> = { intro: 0.5, verse: 1, build: 1, chorus: 1, drop: 1.8, breakdown: 2, outro: 0.6 };
-const LABEL_BOUND: Record<SectionLabel, number> = { intro: 0.4, verse: 0.7, build: 0.7, chorus: 0.75, drop: 0.9, breakdown: 1, outro: 0.5 };
+const LABEL_BOUND: Record<SectionLabel, number> = { intro: 0.4, verse: 0.7, build: 0.7, chorus: 0.75, drop: 1, breakdown: 1, outro: 0.5 };
 /** Candidates tried per section before it falls back to a safe genome. */
 const TRIES = 8;
 /** Mutation rounds per unit of step. */
@@ -305,6 +308,7 @@ export function planDrift(homeIn: Genome, sections: readonly Section[]): DriftPl
     let genome: Genome | null = null;
     if (i === 0) genome = home; // the song opens on the saved preset
     const allowKinds = p.kinds === 2 || (p.kinds === 1 && sec.label === 'drop');
+    const jump = p.kinds === 1 && sec.label === 'drop';
     for (let t = 0; !genome && t < TRIES; t++) {
       // A few rounds of mutation (more for a bigger step), each cut back to what the drift allows.
       const amt = p.step * LABEL_STEP[sec.label] * (1 - t / (TRIES * 1.5));
@@ -313,6 +317,8 @@ export function planDrift(homeIn: Genome, sections: readonly Section[]): DriftPl
       cand = wander(cand, rng, amt, groups);
       if (driftDistance(cand, prev) < 1e-4) continue; // every change fell on something the drift keeps
       if (!allowKinds && structuralKey(cand) !== structuralKey(prev)) continue; // a threshold crossed: shaders would change
+      // A drop with kinds allowed on drops only is a jump: insist on a new body kind while tries remain.
+      if (jump && t < TRIES - 2 && bodyKinds(cand) === bodyKinds(prev)) continue;
       if (parent && p.ret > 0) cand = repair(blendToward(cand, parent, p.ret));
       if (sec.label === 'outro') cand = repair(blendToward(cand, home, Math.max(p.ret, 0.5)));
       if (ok(cand)) genome = cand;

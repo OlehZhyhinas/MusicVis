@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 39;
+export const SEED_VERSION = 40;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1318,6 +1318,23 @@ const DRIFT: Def[] = [
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { atk: 0.01, rel: 0.3 }), rx('bass', 'op', 1, 'amt', 0.3, { atk: 0.05, rel: 0.5 })],
     drift: { step: 0.55, kinds: 0, what: 0, ret: 0.85, morph: 4, bound: 0.2, seed: 0.31 },
+  },
+  {
+    // Six stars spin on a ring and stream inward. Section by section their size, spikes, spin and glow
+    // wander; on each drop the shapes themselves jump to a new kind (and back toward the old one when
+    // the section type returns), so the drop reads as a costume change of the same dancers.
+    origin: 'W02', name: 'Costume Change', energy: [0.35, 1], scheme: 'triad', hue: 0.05,
+    color: { bloom: 1.2, vignette: 0.45, adapt: 0.4 }, carrier: 'warp', decay: 0.985,
+    chain: [op('zoom', { rate: -0.012 }), op('rotate', { lock: -0.0625 })],
+    bodies: [body({
+      shape: ['star', { n: 6, r: 0.09, inner: 0.45 }],
+      place: ['ring', { n: 6, radius: 0.28 }],
+      motion: ['spin', { rate: 0.125 }],
+      material: ['line', { gain: 0.9, width: 1.5, halo: 0.3 }],
+      color: ['instrument', { amount: 0.8, detail: 0.5 }],
+    })],
+    reactions: [rx('drums', 'sh', 0, 'r', 0.3, { atk: 0.01, rel: 0.25 }), rx('bass', 'pl', 0, 'radius', 0.25, { atk: 0.05, rel: 0.4 })],
+    drift: { step: 0.8, kinds: 1, what: 1, ret: 0.9, morph: 2, bound: 0.3, seed: 0.9 },
   },
 ];
 
