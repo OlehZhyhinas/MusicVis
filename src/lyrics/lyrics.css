@@ -1,0 +1,27 @@
+/* Lyrics: the playlist row status tag, the HUD source line and the on-screen lyric overlay. */
+
+.trk .st .trk-lyr {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--r-tag);
+  font: 500 9.5px/14px var(--mono);
+  letter-spacing: 0.02em;
+  color: var(--tx3);
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+.trk .st .trk-lyr[data-s='synced'] {
+  color: var(--acc);
+  background: var(--acc-tint);
+}
+.trk .st .trk-lyr[data-s='plain'] {
+  color: var(--ok);
+  background: rgba(126, 226, 168, 0.12);
+}
+.trk .st .trk-lyr[data-s='offline'] {
+  color: var(--warn);
+}
+.trk .st .trk-lyr[data-s='pending'] {
+  opacity: 0.7;
+}

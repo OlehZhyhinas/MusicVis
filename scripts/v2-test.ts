@@ -41,6 +41,7 @@ import { ecosystemTests } from './ecosystem-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
+import { lyricsTests } from './lyrics-tests';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -1593,6 +1594,7 @@ physicsChecks(check);
 
 noveltyTests(check);
 await noveltyTestsAsync(check);
+await lyricsTests(check);
 
 // -------------------------------------------------- MilkDrop mining: cells (Voronoi field)
 

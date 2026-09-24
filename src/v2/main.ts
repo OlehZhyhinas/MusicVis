@@ -35,6 +35,8 @@ import { AutoHide } from '../ui/autoHide';
 import { applyLayout, computeLayout } from '../ui/layout';
 import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
+import { LyricsLibrary } from '../lyrics/library';
+import '../lyrics/lyrics.css';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
@@ -296,6 +298,9 @@ async function main(): Promise<void> {
   // --------------------------------------------------------- player
 
   const playlist = new Playlist();
+  // Lyrics: looked up automatically for every added song (LRCLIB), shown in the playlist rows.
+  const lyrics = new LyricsLibrary();
+  lyrics.onChange = () => playlistPanel.render(playlist);
   playlist.setShuffle(shuffle);
   playlist.setRepeat(repeat);
   let audioCtx: AudioContext | null = null;
@@ -339,6 +344,7 @@ async function main(): Promise<void> {
   }
   function clearPlaylist(): void {
     playlist.clear();
+    lyrics.clear();
     player?.pause();
     songLoaded = false;
     sampler = null;
@@ -430,6 +436,7 @@ async function main(): Promise<void> {
     onRemove: (id) => {
       const wasCurrent = playlist.currentTrack?.id === id;
       playlist.removeTrack(id);
+      lyrics.remove(id);
       if (wasCurrent) {
         const next = playlist.currentTrack;
         if (next) void playTrack(next);
@@ -442,6 +449,7 @@ async function main(): Promise<void> {
     },
     onClear: () => clearPlaylist(),
     onAdd: () => fileInput.click(),
+    lyricStatus: (id) => lyrics.status(id),
   });
   let wasEmpty = playlist.isEmpty;
   function updateEmpty(): void {
@@ -549,6 +557,7 @@ async function main(): Promise<void> {
       }
       if (!liveAnalyser) liveAnalyser = new LiveAnalyser(audioCtx, player.output);
       playlist.selectTrack(track.id);
+      lyrics.prioritize(track.id);
       songLoaded = false;
       sampler = null;
       if ('mediaSession' in navigator && 'MediaMetadata' in window) {
@@ -588,6 +597,7 @@ async function main(): Promise<void> {
     onFiles: (files) => {
       const wasEmpty = playlist.isEmpty;
       const added = playlist.addFiles(files);
+      for (const t of added) lyrics.add(t.id, t.file);
       if (wasEmpty && added.length > 0) void playTrack(added[0]);
     },
   });
