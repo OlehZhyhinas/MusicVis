@@ -16,7 +16,22 @@
       <canvas id="viz-canvas"></canvas>
 
       <div id="drop-overlay" aria-hidden="true">
-        <div class="drop-overlay-inner">Drop to add</div>
+        <div class="dropbox">
+          <span class="drop-ic" data-icon="upload" data-icon-size="36"></span>
+          <b>Drop to add</b>
+          <span class="muted" id="drop-count">Audio files join the end of the playlist and start analysing</span>
+        </div>
+      </div>
+
+      <div id="startup-error" class="empty-card glass strong" role="alert" hidden>
+        <div class="big-ic big-ic-err" data-icon="alert" data-icon-size="30"></div>
+        <h2 id="se-title">This browser can’t run the visuals</h2>
+        <p id="se-text">MusicVis needs WebGL2. Try a recent Chrome, Edge, Firefox or Safari, or turn on hardware acceleration in the browser settings.</p>
+        <div class="row fr-actions">
+          <button id="se-retry" class="btn primary" data-icon="reset" data-icon-size="16"><span>Try again</span></button>
+          <a class="btn ghost sm" data-bug href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener" title="Opens a new GitHub issue prefilled with a template, the current preset, page and browser" data-icon="bug" data-icon-size="14"><span>Report a bug</span></a>
+          <a class="btn ghost sm" href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener" data-icon="github" data-icon-size="14"><span>GitHub</span></a>
+        </div>
       </div>
 
       <input id="file-input" type="file" accept="audio/*" multiple hidden />

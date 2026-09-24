@@ -266,7 +266,9 @@ export class Transport {
 
   /** Shows load/analysis progress (0..1) in place of the time readout, or clears it when null. */
   setTrackLoading(progress: number | null): void {
+    const was = this.loading;
     this.loading = progress !== null;
+    if (was && !this.loading && !this.live) this.timeEl.textContent = formatTime(Math.max(0, this.lastFrac) * this.duration);
     this.seek.classList.toggle('disabled', this.loading);
     if (progress !== null && !this.live) {
       this.timeEl.textContent = `${Math.round(progress * 100)}%`;

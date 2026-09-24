@@ -11,7 +11,7 @@ import { icon } from '../ui/icons';
 export interface BrowserCallbacks {
   play(id: string): void;
   currentId(): string | null;
-  toast(msg: string, kind?: 'info' | 'error' | 'ok'): void;
+  toast(msg: string, kind?: 'info' | 'error' | 'ok', detail?: string): void;
   /** A child was picked: close the browser (the dock). */
   onClose?(): void;
 }
@@ -367,7 +367,7 @@ export class PresetBrowser {
       this.selected.clear();
       this.cb.toast(`Imported ${n} presets.`, 'ok');
     } catch (err) {
-      this.cb.toast(`Import failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      this.cb.toast('Import failed', 'error', err instanceof Error ? err.message : String(err));
     }
   }
 }

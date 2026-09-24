@@ -694,36 +694,6 @@ img.th:not([src]) {
   }
 }
 
-/* Drop overlay */
-#drop-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 6, 10, 0.55);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.15s ease,
-    visibility 0.15s ease;
-  z-index: 50;
-  pointer-events: none;
-}
-
-#drop-overlay.active {
-  opacity: 1;
-  visibility: visible;
-}
-
-.drop-overlay-inner {
-  padding: 28px 44px;
-  border: 2px dashed var(--accent);
-  border-radius: 16px;
-  font-size: 20px;
-  color: var(--accent);
-}
-
 .tp-btn,
 .tp-btn-text {
   background: transparent;
@@ -765,41 +735,6 @@ img.th:not([src]) {
 .tp-btn.active {
   background: var(--acc-tint);
   color: var(--acc);
-}
-
-/* Toasts */
-.toast-container {
-  position: absolute;
-  top: 16px;
-  right: calc(16px + var(--dock-w, 0px) + var(--dock-gap, 0px));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 100;
-}
-
-.toast {
-  padding: 10px 16px;
-  border-radius: 10px;
-  background: rgba(20, 20, 26, 0.9);
-  border: 1px solid var(--panel-border);
-  font-size: 13px;
-  opacity: 0;
-  transform: translateY(-6px);
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
-  max-width: 320px;
-}
-
-.toast-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.toast-error {
-  border-color: rgba(255, 107, 107, 0.4);
-  color: #ffd4d4;
 }
 
 /* ============================================================ app layers */
@@ -2045,4 +1980,133 @@ img.th:not([src]) {
 }
 #app.phone #ov-hints {
   display: none;
+}
+
+/* ============================================================ toasts */
+.toasts {
+  position: absolute;
+  top: 16px;
+  right: calc(16px + var(--dock-w, 0px) + var(--dock-gap, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 80;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border-radius: 14px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  pointer-events: auto;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast.out {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.toast .ti {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 15%, transparent);
+}
+.toast b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.toast p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--tx2);
+  overflow-wrap: anywhere;
+}
+.toast.err {
+  border-color: rgba(255, 107, 129, 0.45);
+}
+#app.phone .toasts {
+  left: 16px;
+  right: 16px;
+}
+#app.phone .toast {
+  width: auto;
+}
+#app.phone .toast:nth-child(n + 3) {
+  display: none;
+}
+
+/* drop overlay */
+#drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 6, 10, 0.6);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 90;
+  pointer-events: none;
+}
+#drop-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+.dropbox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 64px;
+  margin: 16px;
+  border-radius: 28px;
+  border: 2px dashed var(--acc);
+  background: rgba(127, 216, 255, 0.06);
+  text-align: center;
+}
+.dropbox b {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.dropbox .muted {
+  font-size: 13px;
+}
+.drop-ic {
+  color: var(--acc);
+}
+
+/* blocking startup error */
+#startup-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -55%);
+  width: min(520px, calc(100% - 32px));
+  padding: 36px 32px;
+  z-index: 60;
+}
+#startup-error h2 {
+  font-size: 26px;
+}
+.big-ic-err {
+  background: rgba(255, 107, 129, 0.14);
+  color: var(--neg);
+}
+#app.fatal > :not(#startup-error):not(#wordmark):not(.toasts) {
+  display: none !important;
+}
+#app.fatal #wordmark {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }

@@ -66,7 +66,8 @@ async function main(): Promise<void> {
     eng = new Engine(canvas);
   } catch (err) {
     console.error(err);
-    showToast('This browser cannot run the visuals (WebGL2 required).', 'error', 10000);
+    showStartupError(true);
+    showToast('Failed to start MusicVis', 'error', 0, 'WebGL2 is required.');
     return;
   }
   const store = new Store();
@@ -180,13 +181,13 @@ async function main(): Promise<void> {
     evolveTimer = 0;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? `Evolve mode on: a new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Evolve mode off: presets change on drops, new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `A new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Presets change on drops, new songs and N.');
   }
 
   const browser = new PresetBrowser(evo, {
     play: (id) => play(id, 1.2, true),
     currentId: () => currentId,
-    toast: (msg, kind) => showToast(msg, kind ?? 'info'),
+    toast: (msg, kind, detail) => showToast(msg, kind ?? 'info', 5000, detail),
     // The browser and the playlist share the right side: hide the playlist
     // while the browser is open and bring it back when the browser closes.
     onClose: () => {
@@ -509,7 +510,7 @@ async function main(): Promise<void> {
       if (token !== loadToken) return;
       console.error(err);
       transport.setTrackLoading(null);
-      showToast(`Failed to load "${track.title}": ${err instanceof Error ? err.message : 'could not load this track.'}`, 'error');
+      showToast(`Failed to load “${track.title}”`, 'error', 0, err instanceof Error ? err.message : 'Could not load this track.');
     }
   }
 
@@ -713,7 +714,20 @@ async function main(): Promise<void> {
   new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen);
 }
 
+/** Blocking card instead of the app (no WebGL2, or startup failed). */
+function showStartupError(webgl: boolean): void {
+  hydrateIcons(document.getElementById('startup-error')!);
+  if (!webgl) {
+    document.getElementById('se-title')!.textContent = 'MusicVis could not start';
+    document.getElementById('se-text')!.textContent = 'Something went wrong while starting. Try again, and if it keeps happening, report a bug.';
+  }
+  document.getElementById('app')!.classList.add('fatal');
+  document.getElementById('startup-error')!.hidden = false;
+  document.getElementById('se-retry')!.addEventListener('click', () => location.reload());
+}
+
 main().catch((err) => {
   console.error(err);
-  showToast('Failed to start MusicVis V2.', 'error', 10000);
+  showStartupError(false);
+  showToast('Failed to start MusicVis', 'error', 0, err instanceof Error ? err.message : undefined);
 });

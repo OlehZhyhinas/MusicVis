@@ -268,7 +268,7 @@ export class LiveMode {
     try {
       await requestInputPermission();
     } catch (err) {
-      showToast(describeInputError(err), 'error', 8000);
+      showToast('Microphone access failed', 'error', 0, describeInputError(err));
     }
     await this.refresh();
   }
@@ -276,7 +276,7 @@ export class LiveMode {
   async start(deviceId: string): Promise<void> {
     if (this.starting) return;
     if (!liveInputSupported()) {
-      showToast(window.isSecureContext ? 'This browser does not support live audio input.' : 'Live input needs a secure (https) page.', 'error');
+      showToast('Live input unavailable', 'error', 0, window.isSecureContext ? 'This browser does not support live audio input.' : 'Live input needs a secure (https) page.');
       return;
     }
     this.starting = true;
@@ -291,7 +291,7 @@ export class LiveMode {
           if (this.input !== next) return;
           this.input = null;
           this.finishStop();
-          showToast(`${reason} Live input stopped.`, 'error', 7000);
+          showToast('Live input stopped', 'error', 0, reason);
         },
       });
       const prev = this.input;
@@ -305,10 +305,10 @@ export class LiveMode {
       this.host.onNewSong(next.analyzer.songComplexity);
       // Device names become available once permission was granted.
       if (!prev) void this.refresh();
-      showToast(`Live input: ${device.label}`);
+      showToast(`Live input: ${device.label}`, 'live');
     } catch (err) {
       console.error(err);
-      showToast(describeInputError(err), 'error', 8000);
+      showToast('Live input failed', 'error', 0, describeInputError(err));
     } finally {
       this.starting = false;
       this.statusEl.textContent = '';
