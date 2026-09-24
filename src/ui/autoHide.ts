@@ -54,6 +54,7 @@ export class AutoHide {
     this.hidden = true;
     this.app.classList.add('ui-hidden', 'cursor-hidden');
     if (this.hintEl && this.hints < HINT_TIMES) {
+      this.hintEl.textContent = this.app.classList.contains('phone') ? 'Tap for controls' : 'Move the mouse or press any key for controls';
       this.hints++;
       saveSetting('revealHints', this.hints);
       this.hintEl.hidden = false;

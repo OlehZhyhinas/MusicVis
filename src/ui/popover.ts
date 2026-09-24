@@ -81,14 +81,15 @@ export class Popovers {
     const c = this.cur;
     if (!c) return;
     const el = c.el;
-    const phone = isPhone();
+    const a = c.anchor;
+    const panel = a?.closest<HTMLElement>('.tp, .pbar, .dock, .first-run') ?? null;
+    const inSheetDock = !!panel?.classList.contains('dock') && !!document.getElementById('app')?.classList.contains('dock-sheet');
+    const phone = isPhone() || inSheetDock;
     el.classList.toggle('sheet', phone);
     if (phone) {
       el.style.left = el.style.right = el.style.bottom = el.style.top = '';
       return;
     }
-    const a = c.anchor;
-    const panel = a?.closest<HTMLElement>('.tp, .pbar, .dock, .first-run') ?? null;
     const W = window.innerWidth;
     const H = window.innerHeight;
     if (!a) {

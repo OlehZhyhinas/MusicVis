@@ -1203,15 +1203,13 @@ img.th:not([src]) {
 .pbar .who {
   min-width: 90px;
 }
-/* between phone and laptop: drop the extras that live in More anyway */
-@media (min-width: 600px) and (max-width: 899px) {
-  .tp-wide,
-  #pb-next,
-  .pbar .score,
-  .pbar .div.pb-wide,
-  .pbar .status {
-    display: none !important;
-  }
+/* narrow transport: drop the extras that live in More anyway */
+#app.narrow .tp-wide,
+#app.narrow #pb-next,
+#app.narrow .pbar .score,
+#app.narrow .pbar .div.pb-wide,
+#app.narrow .pbar .status {
+  display: none !important;
 }
 
 /* ================================================================ phone */
@@ -1446,7 +1444,7 @@ img.th:not([src]) {
   border-color: var(--acc);
   color: var(--tx2);
 }
-#app.phone .dock {
+#app.dock-sheet .dock {
   top: auto;
   left: 0;
   right: 0;
@@ -1456,12 +1454,12 @@ img.th:not([src]) {
   border-radius: 22px 22px 0 0;
   padding-bottom: 28px;
 }
-#app.phone .dock > .grab {
+#app.dock-sheet .dock > .grab {
   display: block;
   margin: -6px auto 0;
 }
-#app.phone.dock-open #bottom,
-#app.phone.dock-open #wordmark {
+#app.dock-sheet.dock-open #bottom,
+#app.dock-sheet.dock-open #wordmark {
   display: none;
 }
 
@@ -1557,8 +1555,8 @@ img.th:not([src]) {
   }
 }
 
-#app.phone.dock-open #first-run,
-#app.phone.dock-open #empty-tools {
+#app.dock-sheet.dock-open #first-run,
+#app.dock-sheet.dock-open #empty-tools {
   display: none;
 }
 
@@ -1670,7 +1668,7 @@ img.th:not([src]) {
   font-size: 10px;
   color: var(--tx3);
 }
-#app.phone.dock-open #hud {
+#app.dock-sheet.dock-open #hud {
   display: none;
 }
 #app.phone.hud-on .plabel {
@@ -2109,4 +2107,8 @@ img.th:not([src]) {
   display: flex !important;
   opacity: 1 !important;
   visibility: visible !important;
+}
+/* first run: the card is the focus; the preset bar still names the preset */
+#app.is-empty .plabel {
+  display: none;
 }

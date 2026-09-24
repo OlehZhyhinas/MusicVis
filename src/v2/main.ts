@@ -284,7 +284,7 @@ async function main(): Promise<void> {
   }
   function moreItems(): MenuItem[] {
     const phone = appRoot.classList.contains('phone');
-    const narrow = window.innerWidth < 900;
+    const narrow = appRoot.classList.contains('narrow');
     return [
       'View',
       { icon: 'hud', label: 'HUD', kbd: 'H', on: () => hudOn, run: () => setHud(!hudOn), keep: true },
@@ -651,7 +651,7 @@ async function main(): Promise<void> {
 
   // The dock starts open on its last tab (a sheet on phones, so not there).
   updateEmpty();
-  if (window.innerWidth >= 600) dock.open(dock.lastTab);
+  if (!computeLayout(dock.lastTab).sheet) dock.open(dock.lastTab);
   else relayout();
 
   // Debug / test handle.
