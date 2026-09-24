@@ -2,7 +2,7 @@
 // kept in its own file so parallel gene work does not collide in the main test script.
 
 import {
-  COST_BUDGET_MS, SHAPE_SCHEMAS, estimateCost, inRange, repair, validate,
+  COST_BUDGET_MS, SHAPE_SCHEMAS, bodyCost, estimateCost, inRange, repair, validate,
   type BodyGene, type Genome, type ShapeKind,
 } from '../src/v2/genome';
 import { crossover, mulberry32, mutate, randomBody, randomGene } from '../src/v2/ops';
@@ -64,7 +64,8 @@ function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, noun: st
         // can (its shed parameter at the minimum) and the rest is another layer's cost, which
         // screening rejects as too slow.
         const mine = g.bodies.find((b) => b.shape.kind === kind);
-        if (mine && !(estimateCost(g) < COST_BUDGET_MS) && !(shed && mine.shape.p[shed] === schema[shed].min)) xbad.push(`${s.origin}:cost ${estimateCost(g).toFixed(2)}`);
+        const heavierLayer = mine && g.bodies.some((b) => b !== mine && bodyCost(b) > bodyCost(mine));
+        if (mine && !(estimateCost(g) < COST_BUDGET_MS) && !(shed && mine.shape.p[shed] === schema[shed].min) && !heavierLayer) xbad.push(`${s.origin}:cost ${estimateCost(g).toFixed(2)}`);
         if (g.bodies.some((b) => b.shape.kind === kind)) carried++;
         buildSources(g);
       }
