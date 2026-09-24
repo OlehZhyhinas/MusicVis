@@ -487,36 +487,59 @@ const MILKDROP: Def[] = [
     reactions: [rx('bass', 'op', 1, 'rate', 0.35, { atk: 0.05, rel: 0.8 }), rx('other', 'car', 0, 'sharpen', 0.1, { atk: 0.1, rel: 0.5 })],
   },
   {
-    // Eo.S., glowsticks v2 05 and proton lights: four dotted sticks swing around the centre in the
-    // dark, reversing on the beat count and speeding up with the volume, leaving fading light trails.
-    origin: 'M03', name: 'Glowsticks (after Eo.S.)', energy: [0.35, 0.9], scheme: 'split', hue: 0.08,
-    color: { adapt: 0.3, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', decay: 0.98,
+    // Eo.S., glowsticks v2 05 and proton lights: glowing sticks swing along looping paths in the dark,
+    // reversing every bar, and their fading light trails build ribbons; the loudness widens the loops,
+    // the bass lengthens the sticks and the beat flares them.
+    origin: 'M03', name: 'Glowsticks (after Eo.S.)', energy: [0.35, 0.9], scheme: 'analogous', hue: 0.5,
+    color: { adapt: 0.3, bloom: 1.3, vignette: 0.5, contrast: 0.06 }, carrier: 'warp', car: { halfLife: 0.3 },
     chain: [op('zoom', { rate: 0.002 })],
     bodies: [body({
-      shape: ['segment', { len: 0.3, w: 0.004 }],
-      place: ['orbit', { count: 4, radius: 0.1, rate: 0.5, follow: 0 }],
+      shape: ['segment', { len: 0.3, w: 0.005 }],
+      place: ['outline', { count: 3, path: 2, radius: 0.14, rate: 0.25 }],
       motion: ['spin', { rate: 0.5, alt: 1 }],
-      material: ['glow', { gain: 1.4, width: 0.006, base: 0.2 }],
-      emit: ['trail', { tip: 0.6 }],
-      feel: ['flow', { atk: 0.02, rel: 0.3, div: 2 }],
+      material: ['line', { gain: 0.7, width: 2, halo: 0.15 }],
+      emit: ['trail', { tip: 0.5 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
     })],
-    reactions: [rx('loud', 'pl', 0, 'radius', 0.3, { atk: 0.05, rel: 0.4 }), rx('bass', 'sh', 0, 'len', 0.25, { atk: 0.02, rel: 0.3 })],
+    reactions: [
+      rx('loud', 'pl', 0, 'radius', 0.25, { atk: 0.05, rel: 0.4 }), rx('bass', 'sh', 0, 'len', 0.25, { atk: 0.02, rel: 0.3 }),
+      rx('beat', 'ma', 0, 'gain', 0.3, { rel: 0.2 }),
+    ],
   },
   {
-    // fiShbRaiN, witchcraft: pens wander the screen, steered one way by the bass and the other by the
-    // treble, scribbling glowing curls that a mirrored echo doubles into four.
+    // fiShbRaiN, witchcraft: four pens wander the screen, steered by the bass one way and the treble the
+    // other, scribbling glowing curls that a slow swirl twists further; a mirrored echo doubles them.
     origin: 'M04', name: 'Witchcraft (after fiShbRaiN)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.8,
-    color: { sat: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'warp', decay: 0.955,
-    chain: [op('zoom', { rate: -0.0005 }), op('noise', { amp: 0.0006, scale: 1.3, speed: 0.3 }), op('mirror', { axis: 0 }, 1, 'view')],
-    bodies: [body({
-      shape: ['dot', { r: 0.006 }],
-      place: ['walker', { heads: 2, step: 0.16, every: 1, square: 0, wrap: 0, curve: 1.6, turn: 1.2 }],
-      motion: ['hits', { amt: 0.8 }],
-      material: ['glow', { gain: 1.3, width: 0.008 }],
-      emit: ['trail', { tip: 0.3 }],
-      feel: ['flow', { atk: 0.01, rel: 0.15 }],
-    })],
-    reactions: [rx('bass', 'pl', 0, 'curve', 0.4, { atk: 0.02, rel: 0.2 }), rx('other', 'pl', 0, 'curve', -0.4, { atk: 0.02, rel: 0.2 }), rx('loud', 'pl', 0, 'step', 0.3)],
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'warp', car: { halfLife: 0.6 },
+    chain: [
+      op('zoom', { rate: -0.0005 }),
+      op('noise', { amp: 0.0016, scale: 2.2, speed: 0.3 }),
+      op('swirl', { amt: 0.008, k: 6, wander: 0.25 }),
+      op('mirror', { axis: 0 }, 1, 'view'),
+    ],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.002 }],
+        place: ['walker', { heads: 2, step: 0.13, every: 1, square: 0, wrap: 0, curve: 2, turn: 1.5 }],
+        motion: ['hits', { amt: 0.8 }],
+        material: ['glow', { gain: 1.3, width: 0.004 }],
+        emit: ['trail', { tip: 0.3 }],
+        feel: ['flow', { atk: 0.01, rel: 0.15 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.002 }],
+        place: ['walker', { heads: 2, step: 0.09, every: 2, square: 0, wrap: 0, curve: 1.2, turn: 1.5 }],
+        motion: ['hits', { amt: 0.8 }],
+        material: ['glow', { gain: 1.3, width: 0.004 }],
+        emit: ['trail', { tip: 0.3 }],
+        feel: ['flow', { atk: 0.01, rel: 0.15 }],
+        color: ['instrument', { hue: 0.5 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'pl', 0, 'curve', 0.4, { atk: 0.02, rel: 0.2 }), rx('other', 'pl', 1, 'curve', -0.4, { atk: 0.02, rel: 0.2 }),
+      rx('loud', 'pl', 0, 'step', 0.3), rx('loud', 'pl', 1, 'step', 0.3),
+    ],
   },
   {
     // Geiss, Reaction Diffusion 2: the blur-difference warp grows worm-like Turing patterns out of a
@@ -612,6 +635,6 @@ const MILKDROP: Def[] = [
 ];
 
 /** MilkDrop re-creations released so far (in order M01..). */
-const MILKDROP_READY = 2;
+const MILKDROP_READY = 4;
 
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP.slice(0, MILKDROP_READY)].map(build);
