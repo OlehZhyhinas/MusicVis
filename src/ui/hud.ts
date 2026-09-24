@@ -4,12 +4,15 @@
 
 import { STEM_NAMES, type MusicState } from '../types';
 import { formatTime } from './transport';
+import { topTags } from '../lyrics/lexicon';
 
 const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 export interface HudExtra {
   presetName: string;
   fps: number;
+  /** Where the lyrics came from ("synced · Artist - Title"), or why there are none. */
+  lyricSource?: string;
 }
 
 export class Hud {
@@ -23,6 +26,8 @@ export class Hud {
   private preset: HTMLElement;
   private fps: HTMLElement;
   private stats: HTMLElement;
+  private lyr: HTMLElement;
+  private mood: HTMLElement;
   private shown: Record<string, string> = {};
   private slow = 0;
 
@@ -44,6 +49,8 @@ export class Hud {
       <div class="hud-rule"></div>
       <div class="row hud-line"><span class="k">preset</span><span class="ell" data-k="preset"></span></div>
       <div class="row hud-line"><span class="k">fps</span><span data-k="fps"></span></div>
+      <div class="row hud-line"><span class="k">lyrics</span><span class="ell" data-k="lyr"></span></div>
+      <div class="row hud-line"><span class="k">words</span><span class="ell" data-k="mood"></span></div>
       <div class="hud-stats" data-k="stats"></div>`;
     const q = (k: string) => el.querySelector<HTMLElement>(`[data-k="${k}"]`)!;
     this.bpm = q('bpm');
@@ -56,6 +63,8 @@ export class Hud {
     this.preset = q('preset');
     this.fps = q('fps');
     this.stats = q('stats');
+    this.lyr = q('lyr');
+    this.mood = q('mood');
   }
 
   private set(el: HTMLElement, id: string, text: string): void {
@@ -90,6 +99,14 @@ export class Hud {
     STEM_NAMES.forEach((n, i) => this.stems[i].style.setProperty('--v', `${Math.round(Math.max(0, Math.min(1, state.stems[n])) * 100)}%`));
     this.set(this.preset, 'preset', extra.presetName);
     this.set(this.fps, 'fps', extra.fps.toFixed(0));
+    this.set(this.lyr, 'lyr', extra.lyricSource ?? '–');
+    this.set(
+      this.mood,
+      'mood',
+      state.lyricTags
+        ? `${topTags({ tags: state.lyricTags }, 3, 0.15).join(' ') || '·'}  v ${(state.lyricValence ?? 0.5).toFixed(2)}  a ${(state.lyricArousal ?? 0.5).toFixed(2)}`
+        : '–',
+    );
     this.fps.style.color = extra.fps >= 50 ? 'var(--ok)' : extra.fps >= 30 ? 'var(--warn)' : 'var(--neg)';
   }
 

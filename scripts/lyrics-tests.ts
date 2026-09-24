@@ -5,6 +5,8 @@ import { readTags, readId3v2, readId3v1, readFlac, readOgg, readMp4, sniff, unsy
 import { cleanTitle, metaFromFilename, mergeMeta } from '../src/lyrics/filename';
 import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
 import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS } from '../src/lyrics/lrclib';
+import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
+import { LyricSampler } from '../src/lyrics/sampler';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -237,5 +239,74 @@ export async function lyricsTests(check: Check): Promise<void> {
     const r6 = await lookupLyrics({ title: 'Song', duration: 201 }, { fetch: mock, cache: memoryCache() });
     const r7 = await lookupLyrics({}, { fetch: mock, cache: memoryCache() });
     check('lyrics.lrclib.title-only', r5.status === 'missing' && r6.status === 'synced' && r7.status === 'missing', `${r5.status} ${r6.status} ${r7.status}`);
+  }
+
+  // --------------------------------------------------------------- lexicon
+  {
+    const cases: [string, string[]][] = [
+      ['We are burning in the fire tonight', ['fire', 'night']],
+      ['Drowning in the ocean of your tears', ['water']],
+      ['Rising up above the clouds', ['rise', 'sky']],
+      ['Falling down, breaking to the ground', ['fall']],
+      ['Racing down the highway, faster', ['speed', 'city']],
+      ['Frozen in the winter snow', ['cold']],
+      ['Diamonds and gold, a golden crown', ['gold']],
+      ['Stars in the galaxy, lost in space', ['space']],
+      ['Thunder and lightning, the storm is here', ['storm']],
+      ["Dreamin' of you", ['dream']],
+    ];
+    const bad = cases.filter(([line, want]) => {
+      const got = topTags(readLine(line), 3, 0.3);
+      return !want.every((w) => got.includes(w as never));
+    });
+    check('lyrics.lexicon.tags', !bad.length, bad.map(([l]) => `${l} -> ${topTags(readLine(l)).join(',')}`).join(' | ') || `${cases.length} lines tagged as expected`);
+    const happy = readLine('I feel so happy, dancing in the sun with a smile');
+    const sad = readLine('I cry alone, broken and lost in the pain');
+    const notHappy = readLine('I am not happy');
+    const calm = readLine('Sleep now, slow and quiet, gentle rest');
+    const wild = readLine('RUN! Fight the fire, scream and shout!');
+    check('lyrics.lexicon.valence-arousal', happy.valence > 0.75 && sad.valence < 0.25 && notHappy.valence < 0.5 && calm.arousal < 0.25 && wild.arousal > 0.8,
+      `happy ${happy.valence.toFixed(2)} sad ${sad.valence.toFixed(2)} not-happy ${notHappy.valence.toFixed(2)} calm ${calm.arousal.toFixed(2)} wild ${wild.arousal.toFixed(2)}`);
+    const neutral = readLine('la la la hmm');
+    const bounded = [happy, sad, calm, wild, neutral].every((m) => m.tags.length === TAG_COUNT && m.tags.every((x) => x >= 0 && x <= 1) && m.valence >= 0 && m.valence <= 1 && m.arousal >= 0 && m.arousal <= 1);
+    check('lyrics.lexicon.neutral+bounded', neutral.valence === 0.5 && neutral.arousal === 0.5 && neutral.weight === 0 && neutral.tags.every((x) => x === 0) && bounded && LYRIC_TAGS.length === 17,
+      JSON.stringify({ v: neutral.valence, a: neutral.arousal, w: neutral.weight }));
+    check('lyrics.lexicon.stemming', !!lookupWord('flames') && !!lookupWord("burnin'") && !!lookupWord('skies') && !!lookupWord('Oceans,') && !lookupWord('xylophonic'), 'plural, -in\', -ies, punctuation folded');
+  }
+
+  // --------------------------------------------------------------- sampler
+  {
+    const track = parseLrc('[00:02.00]Burning fire in the night\n[00:06.00]Burning, burning, fire\n[00:10.00]\n[00:30.00]Ocean waves and rain\n[00:34.00]Cold water, deep sea', 40);
+    const ls = new LyricSampler(track);
+    const fire = tagIndex('fire');
+    const water = tagIndex('water');
+    const f0 = { ...ls.sample(1, 1 / 60) };
+    let pulses = 0;
+    let maxFire = 0;
+    let t = 1;
+    for (; t < 12; t += 1 / 60) {
+      const f = ls.sample(t, 1 / 60);
+      if (f.pulse === 1) pulses++;
+      maxFire = Math.max(maxFire, f.tags[fire]);
+    }
+    const mid = ls.sample(t, 1 / 60);
+    const between = { presence: mid.presence, line: mid.text, next: mid.next, fire: mid.tags[fire] };
+    for (; t < 29; t += 1 / 60) ls.sample(t, 1 / 60);
+    const late = ls.sample(29, 1 / 60);
+    const lateP = late.presence;
+    for (t = 29; t < 38; t += 1 / 60) ls.sample(t, 1 / 60);
+    const w = ls.sample(38, 1 / 60);
+    check('lyrics.sampler.lines', f0.index === -1 && f0.next === 'Burning fire in the night' && pulses === 2 && between.line === '' && between.next === 'Ocean waves and rain' && w.index === 3,
+      JSON.stringify({ f0: f0.index, pulses, between, w: w.index }));
+    check('lyrics.sampler.meaning', maxFire > 0.4 && w.tags[water] > 0.4 && w.tags[fire] < 0.2 && between.presence > 0.3 && lateP < 0.05,
+      `fire peak ${maxFire.toFixed(2)}, water ${w.tags[water].toFixed(2)}, fire later ${w.tags[fire].toFixed(2)}, presence between ${between.presence.toFixed(2)} late ${lateP.toFixed(2)}`);
+    // A seek snaps the meaning to the new line at once.
+    ls.reset();
+    const s = ls.sample(31, 1 / 60);
+    check('lyrics.sampler.seek', s.index === 2 && s.tags[water] > 0.4 && s.progress > 0.2 && s.progress < 0.3, `water ${s.tags[water].toFixed(2)}, progress ${s.progress.toFixed(2)}`);
+    const state = {} as Parameters<LyricSampler['apply']>[0];
+    (state as { time: number }).time = 7;
+    ls.apply(state, 1 / 60);
+    check('lyrics.sampler.state', state.lyricLine === 'Burning, burning, fire' && state.lyricSynced === true && state.lyricTags!.length === TAG_COUNT && typeof state.lyricValence === 'number', JSON.stringify({ l: state.lyricLine, p: state.lyricProgress }));
   }
 }

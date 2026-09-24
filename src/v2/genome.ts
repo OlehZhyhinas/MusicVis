@@ -530,7 +530,8 @@ export interface CarrierGene {
 // tonic (sized by the tension released); chordchange = a pulse on each chord change; modulation = a pulse on a key change.
 // Groove (src/analysis/groove.ts): swing = how swung the playing is (0 straight .. 1 triplet); push = how far the
 // backbeat leans off the grid (either way); humanity = how loose the timing is; synco = syncopation density.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco'] as const;
+// Lyrics (src/lyrics): line = a pulse on each sung line; valence / arousal = the words' mood (the music's without lyrics).
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,

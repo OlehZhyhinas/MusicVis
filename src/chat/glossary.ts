@@ -52,6 +52,9 @@ harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=p
 modulation=pulse on a key change. swing=how swung the playing is(0 straight..1 triplet). push=how far
 the backbeat leans off the grid(laid back or pushed). humanity=how loose/human the timing is. synco=
 syncopation density(hits on weak off-beats).
+line=pulse per sung lyric line(vocal entry without lyrics).
+valence=mood of the words 0 sad..1 happy(music's mood without lyrics). arousal=intensity of the words
+0 calm..1 intense(music's activity without lyrics).
 `;
 
 /**
