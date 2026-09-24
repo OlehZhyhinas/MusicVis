@@ -1620,6 +1620,46 @@ await noveltyTestsAsync(check);
   check('cells.name', nounKind(cb) === 'cells' && NOUN_POOLS.cells.includes(nameFor(repair({ ...cloneGenome(m12), chain: [] })).split(' ').pop()!), nameFor(m12));
 }
 
+// -------------------------------------------------- MilkDrop mining: hue map (brightness -> palette bands)
+
+{
+  const base = seedByOrigin('E07');
+  const m14 = seedByOrigin('M14'), m15 = seedByOrigin('M15');
+  const off = repair(JSON.parse(JSON.stringify({ ...base, tone: { p: { ...base.tone.p, huemap: undefined, bands: undefined, drift: undefined, solar: undefined, poster: undefined } } })));
+  check('huemap.default-off', off.tone.p.huemap === 0 && off.tone.p.solar === 0 && off.tone.p.bands === TONE_SCHEMA.bands.def && !validate(off).length, JSON.stringify({ h: off.tone.p.huemap, s: off.tone.p.solar }));
+  const on = cloneGenome(off);
+  on.tone.p.huemap = 1;
+  const sol = cloneGenome(off);
+  sol.tone.p.solar = 0.5;
+  check('huemap.cost', Math.abs(estimateCost(on) - estimateCost(off) - 0.03) < 1e-9 && Math.abs(estimateCost(sol) - estimateCost(off) - 0.03) < 1e-9 && estimateCost(m14) < COST_BUDGET_MS && estimateCost(m15) < COST_BUDGET_MS, `${estimateCost(off).toFixed(2)} -> ${estimateCost(on).toFixed(2)} ms; M14 ${estimateCost(m14).toFixed(2)}, M15 ${estimateCost(m15).toFixed(2)}`);
+  const bad = repair({ ...cloneGenome(on), tone: { p: { ...on.tone.p, huemap: 3, bands: 0, drift: -1, solar: 9, poster: NaN } } });
+  check('huemap.repair', bad.tone.p.huemap === 1 && bad.tone.p.bands === 0.5 && bad.tone.p.drift === 0 && bad.tone.p.solar === 1 && bad.tone.p.poster === 0 && !validate(bad).length, JSON.stringify(bad.tone.p));
+  const src = buildSources(on);
+  check('huemap.glsl', src.composite.includes('c = hueMapped(max(c, 0.0));') && src.composite.includes('uniform vec4 uHueMap') && !src.feedback.includes('hueMapped'), 'the composite maps the finished picture; the feedback pass is untouched');
+  const rng = mulberry32(6161);
+  const probs: string[] = [];
+  let kept = 0, n = 0;
+  const bySp = new Map<string, Genome>();
+  for (const x of SEEDS) if (!bySp.has(classify(x.genome).primary)) bySp.set(classify(x.genome).primary, x.genome);
+  for (const [sp, other] of bySp) {
+    for (let k = 0; k < 6; k++) {
+      const c = k % 2 ? crossover(m14, other, rng) : crossover(other, m15, rng);
+      n++;
+      if (validate(c).length) probs.push(`${sp}:${validate(c)[0]}`);
+      if (c.tone.p.huemap > 0) kept++;
+      const m = mutate(c, rng, 2);
+      if (validate(m).length) probs.push(`${sp} mutated:${validate(m)[0]}`);
+    }
+  }
+  check('huemap.breeds-with-every-species', !probs.length && kept > n * 0.3, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; hue map inherited in ${kept}/${n}`);
+  const rr = mulberry32(31);
+  let hOn = 0, sOn = 0;
+  for (let i = 0; i < 300; i++) { const g = randomGenome(rr); if (g.tone.p.huemap > 0) hOn++; if (g.tone.p.solar > 0) sOn++; }
+  check('huemap.rare-in-random', hOn > 3 && hOn < 70 && sOn > 1 && sOn < 60, `${hOn}/300 hue-mapped, ${sOn}/300 solarized random genomes`);
+  const hits = SEEDS.slice(0, 24).filter((x) => ADJ_POOLS.psychedelic.includes(nameFor(repair({ ...cloneGenome(x.genome), tone: { p: { ...x.genome.tone.p, huemap: 1 } } })).split(' ')[0])).length;
+  check('huemap.name', hits >= 4 && classify(m14).label.includes('plasma'), `${hits}/24 originals named psychedelic when hue-mapped; M14 is ${classify(m14).label}`);
+}
+
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${failures} failing check(s)`);

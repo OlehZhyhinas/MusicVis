@@ -213,6 +213,7 @@ const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Mar
 const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
 const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted', 'Plotted', 'Framed', 'Directed', 'Scenic', 'Dramatic', 'Orchestrated', 'Rehearsed'];
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
+const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
 function clamp01(x: number): number {
@@ -322,6 +323,7 @@ function traits(g: Genome): Trait[] {
   if (c.vignette > 0.55) add('shadowed', SHADOWED, clamp01((c.vignette - 0.55) * 3));
   if (c.reflect === 1) add('reflected', REFLECTED, 0.8);
   if (c.relief > 0.25) add('embossed', EMBOSSED, clamp01(0.55 + c.relief * 0.45));
+  if (c.huemap > 0.3 || c.solar > 0.4) add('psychedelic', PSYCHEDELIC, clamp01(0.5 + Math.max(c.huemap, c.solar) * 0.45));
   // Colour mapping: what drives each body's hue.
   for (const b of g.bodies) {
     const k = b === g.bodies[0] ? 1 : 0.6;
@@ -380,7 +382,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
-  staged: STAGED, embossed: EMBOSSED, layered: LAYERED,
+  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, layered: LAYERED,
 };
 
 /**

@@ -8,6 +8,7 @@
 import { packSuperscope } from './genes/superscope';
 import { resetCurveBlend, setCurveBlend } from './genes/blend';
 import { Water } from './genes/waterSim';
+import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
 import type { MusicState, StemName } from '../types';
 import { Bloom } from '../render/bloom';
@@ -791,6 +792,12 @@ export class Stage {
         .f1('uReflectY', g.tone.p.reflectY);
       const rl = reliefUniforms((k) => s.P('col', 0, g.tone.p, k, TONE_SCHEMA));
       p.f4('uRelief', rl.v[0], rl.v[1], rl.v[2], rl.v[3]).f1('uMetal', rl.metal);
+      // Hue-map drift runs on the bar clock, accumulated per slot so the 48-bar wrap never jumps.
+      const db = (F.bars - (s.mem['hm.b'] ?? F.bars) + 48) % 48;
+      s.mem['hm.b'] = F.bars;
+      s.mem['hm.p'] = ((s.mem['hm.p'] ?? 0) + (db < 4 ? db : 0)) % 4096;
+      const hm = hueMapUniforms((k) => s.P('col', 0, g.tone.p, k, TONE_SCHEMA), s.mem['hm.p']);
+      p.f4('uHueMap', hm.v[0], hm.v[1], hm.v[2], hm.v[3]).f1('uPoster', hm.poster);
       eng.fs.draw();
     }
     for (const s of slots) {

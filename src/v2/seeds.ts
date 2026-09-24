@@ -712,6 +712,50 @@ const MILKDROP: Def[] = [
     })],
     reactions: [rx('drums', 'sh', 0, 'speed', 0.3, { atk: 0.02, rel: 0.3 }), rx('bar', 'sh', 0, 'var', 0.3)],
   },
+  {
+    // Mig, COLORFUL9: a wandering, slowly turning zoom grows sharpened contour patterns out of a
+    // drifting blob; the picture's brightness is mapped through the palette in hard neon bands that
+    // scroll every bar; treble adds grain and bass hits jolt the flow sideways.
+    origin: 'M14', name: 'Colorful 9 (after Mig)', energy: [0.3, 0.9], scheme: 'triad', hue: 0,
+    color: { sat: 1, exposure: 1.05, adapt: 0.25, bloom: 0.5, vignette: 0.1, huemap: 1, bands: 3, drift: 0.5, poster: 0.85 },
+    carrier: 'warp', car: { halfLife: 1.2, floor: 0.1, sharpen: 0.3, grain: 0.05 },
+    chain: [
+      op('zoom', { rate: 0.009, wander: 0.3 }),
+      op('rotate', { lock: 0, rate: 0.004, wander: 0.3 }),
+      op('translate', { vx: 0.02, vy: 0.015 }),
+    ],
+    bodies: [body({
+      shape: ['dot', { r: 0.09 }],
+      place: ['walker', { heads: 2, step: 0.16, every: 1, curve: 1.2 }],
+      material: ['fill', { gain: 0.8, soft: 0.6 }],
+      emit: ['trail'],
+    })],
+    reactions: [rx('hit', 'op', 2, 'vx', 0.5, { rel: 0.3 }), rx('other', 'car', 0, 'sharpen', 0.25, { atk: 0.05, rel: 0.4 }), rx('bass', 'col', 0, 'bands', 0.15, { atk: 0.05, rel: 0.5 })],
+  },
+  {
+    // Zylot, Crossing Over (Paint Spatter mix): a zoom that pulls hardest at the rim streams sharpened
+    // splashes outward from a waveform ring, and big discs splat on the bass; the contrast is pushed
+    // until the colours fold over (solarized) into hard fringes on black.
+    origin: 'M15', name: 'Crossing Over (after Zylot)', energy: [0.35, 0.95], scheme: 'split', hue: 0.55,
+    color: { sat: 1, exposure: 0.95, contrast: 0.04, adapt: 0.2, bloom: 0.35, vignette: 0.1, huemap: 0.8, bands: 1.5, solar: 0.35, poster: 0.8 },
+    carrier: 'warp', car: { halfLife: 0.3, floor: 0.8 },
+    chain: [op('zoom', { rate: 0.012, radial: 1 })],
+    bodies: [
+      body({
+        shape: ['curve', { form: 1, radius: 0.12, amp: 0.35 }],
+        material: ['line', { gain: 1.2, width: 2.5 }],
+        color: ['age', { rate: 0.25, detail: 0.5 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.12 }],
+        place: ['float', { count: 2, spread: 0.4, speed: 0.2 }],
+        material: ['fill', { gain: 1, soft: 0.2 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.2, thr: 0.35, sens: 1.8 }],
+      }),
+    ],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.15, { atk: 0.02, rel: 0.3 }), rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.25, thr: 0.5 })],
+  },
 ];
 
 // C01.. showcase the choreography gene: the picture is composed over the song's timeline from the

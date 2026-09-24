@@ -5,6 +5,7 @@
 // structure changes the source, so compiled programs are cached by
 // structuralKey().
 
+import { HUEMAP_GLSL } from './genes/huemap';
 import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
@@ -1097,7 +1098,7 @@ uniform sampler2D uFb;
 uniform float uWeight, uSat, uSweep, uReflectY;
 out vec4 o;
 vec3 fb(vec2 q) { return texture(uFb, q / vec2(uAspect, 1.0) + 0.5).rgb; }
-${RELIEF_GLSL}vec2 view(vec2 p) {
+${RELIEF_GLSL}${HUEMAP_GLSL}vec2 view(vec2 p) {
 ${viewOps}  return p;
 }
 ${code}
@@ -1130,7 +1131,7 @@ ${topDraw}#endif
     float sw = uSweep * exp(-pow((length(p) - front) * 5.0, 2.0));
     c = max(hueRotate(c, sw * 2.4), 0.0) * (1.0 + sw * 0.8);
   }
-  c = max(c, 0.0);
+  c = hueMapped(max(c, 0.0));
   float l2 = luma(c);
   c = max(mix(vec3(l2), c, uSat), 0.0);
   o = vec4(c * uWeight, 1.0);

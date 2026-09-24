@@ -315,6 +315,9 @@ export function randomGenome(rng: Rng): Genome {
   g.carrier.p.water = rng() < 0.08 ? 0.3 + 0.7 * rng() : 0;
   // Relief (emboss lighting) is a strong look too.
   g.tone.p.relief = rng() < 0.1 ? 0.4 + 0.6 * rng() : 0;
+  // So are hue maps and solarizing.
+  g.tone.p.huemap = rng() < 0.08 ? 0.5 + 0.5 * rng() : 0;
+  g.tone.p.solar = rng() < 0.05 ? 0.3 + 0.7 * rng() : 0;
   const nr = randInt(rng, 1, 3);
   for (let i = 0; i < nr; i++) {
     const r = randomReaction(g, rng);

@@ -414,6 +414,13 @@ export const TONE_SCHEMA: Schema = {
   light: P(0, 1, 0.375),
   gloss: P(0, 1, 0.5),
   metal: P(0, 1, 0),
+  // Hue map: brightness mapped through the palette ramp `bands` times (psychedelic contour bands);
+  // poster: flat posterized steps; drift: bands scroll through the palette; solar: solarize first.
+  huemap: P(0, 1, 0),
+  bands: P(0.5, 8, 2),
+  drift: P(0, 1, 0),
+  solar: P(0, 1, 0),
+  poster: P(0, 1, 0),
 };
 export interface ToneGene {
   p: Params;
@@ -1237,6 +1244,8 @@ export function speciesScores(g: Genome): Record<Species, number> {
   if (g.carrier.kind !== 'none') s.ink += 1.2 * g.carrier.p.water;
   // An embossed picture reads as a lit surface: liquid metal when it reflects the palette.
   s.chrome += g.tone.p.relief * (2.8 + 1.4 * g.tone.p.metal);
+  // Brightness mapped to palette bands reads as a psychedelic contour field.
+  s.plasma += 2.4 * g.tone.p.huemap + 0.8 * g.tone.p.solar;
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -1300,6 +1309,7 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
   if (g.carrier.kind !== 'none' && g.carrier.p.water > 0.001) ms += WATER_COST;
   if (g.tone.p.relief > 0.001) ms += 0.12; // four extra feedback samples in the composite
+  if (g.tone.p.huemap > 0.001 || g.tone.p.solar > 0.001) ms += 0.03;
   for (const b of g.bodies) ms += bodyCost(b) + (b.material.p.blend ? BLEND_COST : 0);
   if (g.choreo) ms += CHOREO_COST_MS;
   return ms;
