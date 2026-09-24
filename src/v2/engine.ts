@@ -620,6 +620,7 @@ export class Stage {
   private waterBeat = -1;
   particles: Particles | null = null;
   slime: Physarum | null = null;
+  private slimeOwner: Slot | null = null;
   flame: Flame | null = null;
   private pu: ParticleUpdate;
   flash = 0;
@@ -2106,6 +2107,8 @@ export class Stage {
       this.slime = new Physarum(this.eng.gl, this.eng.fs, this.eng.hdr);
       this.slime.resize(this.w, this.h);
     }
+    if (this.slimeOwner !== s) this.slime.reseed();
+    this.slimeOwner = s;
     const bi = s.slime;
     const b = s.genome.bodies[bi];
     const sch = EMIT_SCHEMAS.slime;

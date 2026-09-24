@@ -6,6 +6,7 @@ import {
 } from '../src/v2/genome';
 import { crossover, mulberry32, mutate, randomGenome } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
+import { Population } from '../src/v2/population';
 import { ADJ_POOLS, NOUN_POOLS, nameFor, nounKind } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 import { SLIME_SCHEMA, slimeAgents, slimeCost, slimeDisplayScale } from '../src/v2/genes/physarum';
@@ -113,4 +114,24 @@ export function slimeTests(check: Check): void {
     if (ADJ_POOLS.veined.some((w) => nameFor(g).split(' ').includes(w))) veined++;
   }
   check('slime.names', nounOk && veined > 10, `${nameFor(hidden)}; ${veined}/40 slime names use a veined adjective`);
+
+  // Showcase seeds: P01.. grow a network; a population saved before them gains them exactly once.
+  {
+    const ps = SEEDS.filter((x) => /^P\d\d$/.test(x.origin));
+    check('slime.seeds', ps.length >= 1 && ps.every((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime') && !validate(x.genome).length && estimateCost(x.genome) < COST_BUDGET_MS
+      && JSON.stringify(repair(JSON.parse(JSON.stringify(x.genome)))) === JSON.stringify(x.genome)),
+      ps.map((x) => `${x.origin} ${x.name} ${estimateCost(x.genome).toFixed(2)}ms (${nameFor(x.genome)})`).join(', '));
+    const base = Population.seeded(1);
+    for (const x of ps) base.members.delete(`G0-${x.origin}`);
+    base.get('G0-E07')!.likes = 2;
+    const kid = base.addChild(crossover(SEEDS[4].genome, SEEDS[21].genome, mulberry32(6)), [base.get('G0-E05')!, base.get('G0-E22')!], 2);
+    base.vote(kid.id, true);
+    const loaded = Population.fromJSON(JSON.parse(JSON.stringify({ ...base.toJSON(), seedVersion: 7 })));
+    const before = JSON.stringify(loaded.list().sort((a, b) => a.id.localeCompare(b.id)));
+    const added = loaded.upgradeSeeds(9);
+    const rest = JSON.stringify(loaded.list().filter((m) => !ps.some((x) => m.id === `G0-${x.origin}`)).sort((a, b) => a.id.localeCompare(b.id)));
+    check('slime.migrate-once', JSON.stringify(added) === JSON.stringify(ps.map((x) => `G0-${x.origin}`)) && loaded.upgradeSeeds(10).length === 0 && before === rest
+      && loaded.get(kid.id)!.likes === 1 && loaded.get('G0-E07')!.likes === 2 && ps.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome)),
+      `added ${added.join(',')}; votes, seeds and bred children untouched`);
+  }
 }

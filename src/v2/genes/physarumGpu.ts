@@ -151,6 +151,18 @@ export class Physarum {
     this.trail = new PingPong(this.gl, tw, th, [this.trailFmt], this.gl.LINEAR);
   }
 
+  /** Scatters the agents again and clears the trail (a new genome takes the simulation over). */
+  reseed(): void {
+    this.agents?.dispose();
+    this.agents = null;
+    this.side = 0;
+    for (const t of this.trail ? [this.trail.read, this.trail.write] : []) {
+      t.bind();
+      this.gl.clearColor(0, 0, 0, 0);
+      this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    }
+  }
+
   private setCount(n: number): void {
     const side = Math.max(64, Math.ceil(Math.sqrt(n)));
     if (side === this.side && this.agents) return;

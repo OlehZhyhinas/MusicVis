@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 12;
+export const SEED_VERSION = 13;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -800,4 +800,27 @@ const RAYMARCH: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH].map(build);
+// P01.. showcase the agent simulations (src/v2/genes/physarum.ts): physarum slime growing vein networks.
+const AGENTS: Def[] = [
+  {
+    // Half a million slime-mould agents sense each other's trail and grow a meandering vein network that
+    // keeps re-routing itself; the bass makes them steer harder, drum hits lay down bright bursts of
+    // trail, the vocals soften it, and four faint instrument lights drift over it.
+    origin: 'P01', name: 'Physarum Bloom', energy: [0.2, 0.8], scheme: 'analogous', hue: 0.3,
+    color: { adapt: 0.35, bloom: 1.1, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.25, floor: 1 },
+    bodies: [body({
+      shape: ['dot', { r: 0.004 }],
+      place: ['stations', { count: 4, inst: 1, xs: 0.8, wander: 0.15 }],
+      material: ['glow', { gain: 1, width: 0.012 }],
+      emit: ['slime', { count: 524288, sa: 0.6, sd: 0.008, turn: 0.3, step: 0.001, deposit: 0.3, decay: 0.93, diffuse: 0.5, body: 0.35 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+      color: ['height', { amount: 0.5 }],
+    })],
+    reactions: [
+      rx('bass', 'em', 0, 'turn', 0.15, { atk: 0.05, rel: 0.4 }), rx('hit', 'em', 0, 'deposit', 0.6, { rel: 0.3 }),
+      rx('vocals', 'em', 0, 'diffuse', 0.3, { atk: 0.1, rel: 0.8 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.3 }),
+    ],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS].map(build);
