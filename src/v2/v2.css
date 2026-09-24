@@ -763,3 +763,27 @@
     top: 100px;
   }
 }
+
+/* GitHub and bug-report links (V2 bar and help overlay) */
+.v2-link {
+  color: var(--fg-dim);
+  font-size: 12px;
+  text-decoration: none;
+  padding: 3px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.v2-link:hover,
+.v2-link:focus-visible {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+}
+.help-links {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+.help-links a {
+  color: var(--accent);
+}

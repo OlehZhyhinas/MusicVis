@@ -39,6 +39,9 @@
         <button id="v2-evolve" class="tp-btn-text" aria-pressed="false" title="Evolve mode: rotate candidates every 30 s (E)">Evolve</button>
         <button id="v2-open-browser" class="tp-btn-text" title="Preset browser (B)">Presets</button>
         <span id="v2-status"></span>
+        <span class="v2-sep"></span>
+        <a id="v2-github" class="v2-link" href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener" title="Source code on GitHub">GitHub</a>
+        <a id="v2-bug" class="v2-link" href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener" title="Report a bug on GitHub">Report a bug</a>
       </div>
 
       <aside id="v2-browser" class="panel" hidden>
@@ -134,6 +137,10 @@
             <span>Keyboard shortcuts</span>
             <button id="help-close" class="tp-btn" aria-label="Close help">&times;</button>
           </div>
+          <p class="help-links">
+            <a href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener">GitHub</a>
+            <a id="help-bug" href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener">Report a bug</a>
+          </p>
           <dl id="help-list">
             <dt>L / D</dt>
             <dd>Like / dislike this preset</dd>
@@ -168,5 +175,29 @@
       </div>
     </div>
     <script type="module" src="/src/v2/main.ts"></script>
+    <script>
+      // Bug links open GitHub's new-issue page with a template and the context
+      // needed to reproduce (current preset, page, browser).
+      (function () {
+        function prefill(ev) {
+          var label = document.getElementById('preset-label');
+          var preset = (label && label.textContent.trim()) || 'unknown';
+          var body = [
+            '**What happened**', '', '',
+            '**What you expected**', '', '',
+            '**Steps to reproduce**', '1. ', '',
+            '---',
+            'Preset: ' + preset,
+            'Page: ' + location.origin + location.pathname,
+            'Browser: ' + navigator.userAgent,
+          ].join('\n');
+          ev.currentTarget.href = 'https://github.com/OlehZhyhinas/MusicVis/issues/new?labels=bug&body=' + encodeURIComponent(body);
+        }
+        ['v2-bug', 'help-bug'].forEach(function (id) {
+          var a = document.getElementById(id);
+          if (a) a.addEventListener('click', prefill);
+        });
+      })();
+    </script>
   </body>
 </html>
