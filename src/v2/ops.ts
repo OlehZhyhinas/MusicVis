@@ -303,6 +303,9 @@ export function randomGenome(rng: Rng): Genome {
     reactions: [],
     energy: [rng() * 0.5, 0.5 + rng() * 0.5],
   };
+  // Sharpening and the border are strong looks: most random genomes leave them off.
+  g.carrier.p.sharpen = rng() < 0.12 ? 0.1 + 0.3 * rng() : 0;
+  g.carrier.p.border = rng() < 0.12 ? 0.3 + 0.7 * rng() : 0;
   const nr = randInt(rng, 1, 3);
   for (let i = 0; i < nr; i++) {
     const r = randomReaction(g, rng);
@@ -773,10 +776,13 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     child = build(repairBody(cloneBody(D.bodies[di])));
   }
   // Rare: the other parent's body as a separate second layer.
-  if (rng() < LAYER_CHANCE && addLayer(child, rng, R.bodies, true)) {
-    const layered = repair(child);
-    if (estimateCost(layered) <= COST_BUDGET_MS * 0.95 && layered.bodies.length > 1) return { genome: layered, tag: 'layered' };
-    child = build(tag === 'merged' ? body : plain);
+  // Tried on a copy, so a rejected layer leaves the child exactly as it was.
+  if (rng() < LAYER_CHANCE) {
+    const trial = cloneGenome(child);
+    if (addLayer(trial, rng, R.bodies, true)) {
+      const layered = repair(trial);
+      if (estimateCost(layered) <= COST_BUDGET_MS * 0.95 && layered.bodies.length > 1) return { genome: layered, tag: 'layered' };
+    }
   }
   return { genome: child, tag };
 }

@@ -42,6 +42,8 @@ function seedByOrigin(origin: string): Genome {
   return s.genome;
 }
 const b0 = (origin: string): BodyGene => seedByOrigin(origin).bodies[0];
+/** MilkDrop re-creations present (M01.. in order). */
+const M_COUNT = SEEDS.filter((s) => s.origin.startsWith('M')).length;
 const defs = (schema: Record<string, { def: number }>) => Object.fromEntries(Object.entries(schema).map(([k, s]) => [k, s.def]));
 
 /** A minimal valid genome (one grid of dots, empty chain) to build up structural edits from scratch. */
@@ -56,8 +58,11 @@ function freshGenome(): Genome {
 
 {
   const origins = SEEDS.map((s) => s.origin);
-  const expected = Array.from({ length: 24 }, (_, i) => `E${String(i + 1).padStart(2, '0')}`);
-  check('seeds.count', SEEDS.length === 24, `${SEEDS.length} seeds`);
+  const expected = [
+    ...Array.from({ length: 24 }, (_, i) => `E${String(i + 1).padStart(2, '0')}`),
+    ...Array.from({ length: M_COUNT }, (_, i) => `M${String(i + 1).padStart(2, '0')}`),
+  ];
+  check('seeds.count', SEEDS.length === 24 + M_COUNT && M_COUNT >= 1 && M_COUNT <= 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
   check('seeds.order', JSON.stringify(origins) === JSON.stringify(expected), origins.join(','));
   const badValid: string[] = [];
   const badIdem: string[] = [];
@@ -71,11 +76,11 @@ function freshGenome(): Genome {
     if (JSON.stringify(back) !== JSON.stringify(s.genome)) badTrip.push(s.origin);
     if (!(estimateCost(s.genome) < COST_BUDGET_MS)) over.push(`${s.origin}=${estimateCost(s.genome).toFixed(2)}`);
   }
-  check('seeds.validate', !badValid.length, badValid.join(' | ') || 'all 24 valid');
-  check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || 'repair(seed) === seed for all 24');
-  check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || 'all 24 survive JSON + repair unchanged');
+  check('seeds.validate', !badValid.length, badValid.join(' | ') || `all ${SEEDS.length} valid`);
+  check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || `repair(seed) === seed for all ${SEEDS.length}`);
+  check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || `all ${SEEDS.length} survive JSON + repair unchanged`);
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
-  check('seeds.version', SEED_VERSION === 5, `SEED_VERSION=${SEED_VERSION}`);
+  check('seeds.version', SEED_VERSION === 6, `SEED_VERSION=${SEED_VERSION}`);
 
   // The seeds are combinations of sub-genes (the decomposition the design names).
   const is = (o: string, f: (b: BodyGene, g: Genome) => boolean) => [o, f] as const;
@@ -380,7 +385,7 @@ function freshGenome(): Genome {
 
 {
   const pop = Population.seeded();
-  check('population.seeded-size', pop.size === 24, `size=${pop.size}`);
+  check('population.seeded-size', pop.size === SEEDS.length, `size=${pop.size}`);
   const p1 = pop.get('G0-E01')!;
   const p2 = pop.get('G0-E02')!;
   const child1 = pop.addChild(randomGenome(mulberry32(99)), [p1, p2]);
@@ -512,7 +517,7 @@ const em = (kind: string, p: Record<string, number> = {}, layer = 'fb') => ({ ki
   } catch (e) {
     err = (e as Error).message;
   }
-  check('migrate.v3-file-loads', !!pop && pop.size === 27, err || `size=${pop?.size}`);
+  check('migrate.v3-file-loads', !!pop && pop.size === SEEDS.length + 3, err || `size=${pop?.size}`);
   if (pop) {
     const all = pop.list();
     check('migrate.all-valid', all.every((m) => !validate(m.genome).length), all.filter((m) => validate(m.genome).length).map((m) => m.id).join(',') || 'every member valid');
@@ -522,7 +527,7 @@ const em = (kind: string, p: Record<string, number> = {}, layer = 'fb') => ({ ki
     check('migrate.descriptors-dropped', k1.descriptor === undefined, 'converted children are measured again');
     const changed = pop.upgradeSeeds();
     const e02 = pop.get('G0-E02')!;
-    check('migrate.seeds-replaced', changed.length === 24 && JSON.stringify(e02.genome) === JSON.stringify(seedByOrigin('E02')) && pop.seedVersion === SEED_VERSION, `${changed.length} seeds upgraded`);
+    check('migrate.seeds-replaced', changed.length === SEEDS.length && JSON.stringify(e02.genome) === JSON.stringify(seedByOrigin('E02')) && pop.seedVersion === SEED_VERSION, `${changed.length} seeds upgraded`);
     check('migrate.seed-votes-kept', e02.likes === 4 && e02.dislikes === 1 && e02.views === 9 && e02.watch === 321.5 && pop.get('G0-E12')!.hidden, `E02 ${e02.likes}/${e02.dislikes} views=${e02.views}`);
     check('migrate.parent-links', pop.list().every((m) => m.parents.every((id) => pop!.get(id))), 'parents resolve');
     check('migrate.idempotent', pop.upgradeSeeds().length === 0, 'second upgrade changes nothing');
@@ -674,7 +679,8 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   const g = repair(v3);
   check('colour.format3-converts', !validate(g).length && JSON.stringify(g.palette) === JSON.stringify(seedByOrigin('E13').palette) && JSON.stringify(g.tone) === JSON.stringify(seedByOrigin('E13').tone) && g.bodies[0].color.kind === 'pitch', validate(g).join(';') || JSON.stringify(g.palette));
   check('colour.format3-reactions', g.reactions.map((r) => `${r.g}.${r.k}`).join(',') === 'pal.hue,cm.hue,col.bloom', g.reactions.map((r) => `${r.g}.${r.k}`).join(','));
-  const back = [SEEDS.every((s) => JSON.stringify(repair(toV3(s.genome)).bodies.map((b) => b.color.kind)) === JSON.stringify(s.genome.bodies.map((b) => b.color.kind)))];
+  // The original seeds' mappings are the ones their placement implies (the M seeds choose theirs).
+  const back = [SEEDS.filter((s) => s.origin.startsWith('E')).every((s) => JSON.stringify(repair(toV3(s.genome)).bodies.map((b) => b.color.kind)) === JSON.stringify(s.genome.bodies.map((b) => b.color.kind)))];
   check('colour.seed-mappings-implied', back[0], SEEDS.map((s) => `${s.origin}:${s.genome.bodies[0].color.kind}`).join(' '));
 
   // Palette, mapping and tone travel separately in crossover.
@@ -1216,6 +1222,95 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   if (r3.ok) bad.push('parseGenome("nope") unexpectedly succeeded');
   else if (!r3.reason) bad.push('parseGenome("nope") failed without a reason');
   check('editor.parse-genome', !bad.length, bad.join(' | ') || 'parseGenome round-trips a genome and a {genome} wrapper, rejects garbage with a reason');
+}
+
+// ------------------------------------------- 18. MilkDrop seeds and carrier extensions
+
+{
+  const ms = SEEDS.filter((x) => x.origin.startsWith('M'));
+  const es = SEEDS.filter((x) => x.origin.startsWith('E'));
+  const ids = ms.map((x) => `G0-${x.origin}`);
+  check('milkdrop.ids', JSON.stringify(ids) === JSON.stringify(Array.from({ length: M_COUNT }, (_, i) => `G0-M${String(i + 1).padStart(2, '0')}`)), ids.join(','));
+  const badMeta = ms.filter((x) => !/\(after [^)]+\)$/.test(x.name) || x.name.length > 60 || x.genome.reactions.length < 1 || !(x.genome.energy[1] - x.genome.energy[0] >= 0.15));
+  check('milkdrop.meta', !badMeta.length, badMeta.map((x) => x.origin).join(',') || 'credited names, reactions and an energy range on every M seed');
+  const inRangeBad: string[] = [];
+  for (const x of ms) {
+    const errs = validate(x.genome);
+    if (errs.length) inRangeBad.push(`${x.origin}:${errs[0]}`);
+    if (!(estimateCost(x.genome) < COST_BUDGET_MS)) inRangeBad.push(`${x.origin}:cost ${estimateCost(x.genome).toFixed(2)}`);
+    if (JSON.stringify(repair(JSON.parse(JSON.stringify(x.genome)))) !== JSON.stringify(x.genome)) inRangeBad.push(`${x.origin}:round-trip`);
+    if (!buildSources(x.genome).feedback.includes('uSharpen')) inRangeBad.push(`${x.origin}:glsl`);
+  }
+  check('milkdrop.valid-in-range-budget', !inRangeBad.length, inRangeBad.join(' | ') || 'valid, in range, round-trip, under budget, buildable');
+  // Every M seed crossed with one seed of every species present among the originals, both ways.
+  const bySpecies = new Map<string, (typeof SEEDS)[number]>();
+  for (const e of es) {
+    const sp = classify(e.genome).primary;
+    if (!bySpecies.has(sp)) bySpecies.set(sp, e);
+  }
+  const rng = mulberry32(8080);
+  const crossBad: string[] = [];
+  let crosses = 0;
+  for (const m of ms) for (const e of bySpecies.values()) for (const [a, b] of [[m, e], [e, m]]) {
+    for (let k = 0; k < 4; k++) {
+      const c = crossover(a.genome, b.genome, rng);
+      crosses++;
+      const errs = validate(c);
+      if (errs.length) crossBad.push(`${a.origin}x${b.origin}:${errs[0]}`);
+      if (!(estimateCost(c) < COST_BUDGET_MS)) crossBad.push(`${a.origin}x${b.origin}:cost`);
+      const mu = mutate(c, rng, 1.5);
+      if (validate(mu).length) crossBad.push(`${a.origin}x${b.origin}:mutant ${validate(mu)[0]}`);
+    }
+  }
+  check('milkdrop.crossover-every-species', !crossBad.length, crossBad.slice(0, 8).join(' | ') || `${crosses} crossovers with ${bySpecies.size} species (and their mutants) valid and under budget`);
+
+  // The carrier genes: old genomes get them switched off, they cost when on, they breed in range.
+  const old = cloneGenome(seedByOrigin('E05')) as unknown as { carrier: { p: Record<string, number> } };
+  delete old.carrier.p.sharpen; delete old.carrier.p.grain; delete old.carrier.p.border;
+  const fixed = repair(old);
+  check('carrier.new-genes-default-off', fixed.carrier.p.sharpen === 0 && fixed.carrier.p.border === 0 && fixed.carrier.p.grain === CARRIER_SCHEMA.grain.def, JSON.stringify({ s: fixed.carrier.p.sharpen, b: fixed.carrier.p.border }));
+  const on = cloneGenome(fixed);
+  on.carrier.p.sharpen = 0.4;
+  on.carrier.p.border = 0.8;
+  check('carrier.new-genes-cost', Math.abs(estimateCost(on) - estimateCost(fixed) - 0.48) < 1e-9, `${estimateCost(fixed).toFixed(2)} -> ${estimateCost(on).toFixed(2)} ms`);
+  const offNone = cloneGenome(on);
+  offNone.carrier.kind = 'none';
+  check('carrier.new-genes-free-without-feedback', estimateCost(offNone) < estimateCost(on), 'no feedback, no sharpen / border cost');
+  const r2 = mulberry32(5150);
+  let strayed = 0, sharpened = 0;
+  for (let i = 0; i < 400; i++) {
+    const g = mutate(i % 2 ? on : seedByOrigin('M02'), r2, 2);
+    for (const k of ['sharpen', 'grain', 'border']) {
+      const sp = CARRIER_SCHEMA[k];
+      if (!(g.carrier.p[k] >= sp.min && g.carrier.p[k] <= sp.max)) strayed++;
+    }
+    if (g.carrier.p.sharpen > 0) sharpened++;
+  }
+  const rnd = mulberry32(777);
+  let randomOn = 0;
+  for (let i = 0; i < 300; i++) if (randomGenome(rnd).carrier.p.sharpen > 0) randomOn++;
+  check('carrier.new-genes-breed', strayed === 0 && sharpened > 300 && randomOn > 5 && randomOn < 100, `strayed=${strayed} sharpened=${sharpened}/400 random-on=${randomOn}/300`);
+
+  // Migration: a seed-version-5 population (24 seeds, votes, a hidden seed, bred children) gains
+  // M01-M10 exactly once; the original seeds and every child stay exactly as they were.
+  const base = Population.seeded(1);
+  for (const x of ms) base.members.delete(`G0-${x.origin}`);
+  base.seedVersion = 5;
+  base.get('G0-E07')!.likes = 3;
+  base.get('G0-E07')!.descriptor = [0.1, 0.2, 0.3];
+  base.get('G0-E12')!.hidden = true;
+  const kid = base.addChild(crossover(seedByOrigin('E05'), seedByOrigin('E22'), mulberry32(3)), [base.get('G0-E05')!, base.get('G0-E22')!], 2);
+  base.vote(kid.id, true);
+  const file = JSON.parse(JSON.stringify({ ...base.toJSON(), seedVersion: 5 }));
+  const loaded = Population.fromJSON(file);
+  const before = JSON.stringify(loaded.list().sort((a, b) => a.id.localeCompare(b.id)));
+  const added = loaded.upgradeSeeds(9);
+  const afterOld = JSON.stringify(loaded.list().filter((m) => !m.id.startsWith('G0-M')).sort((a, b) => a.id.localeCompare(b.id)));
+  check('migrate.adds-milkdrop-once', JSON.stringify(added) === JSON.stringify(ids) && loaded.size === base.size + M_COUNT && loaded.upgradeSeeds(10).length === 0, `added ${added.join(',')}`);
+  check('migrate.milkdrop-leaves-rest', before === afterOld && loaded.get('G0-E07')!.likes === 3 && loaded.get('G0-E07')!.descriptor?.length === 3 && loaded.get('G0-E12')!.hidden && loaded.get(kid.id)!.likes === 1, 'existing seeds (votes, descriptors, hidden) and bred children untouched');
+  check('migrate.milkdrop-genomes', ms.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome) && loaded.get(`G0-${x.origin}`)!.name === x.name), 'new seeds arrive with their genomes and names');
+  const reload = Population.fromJSON(JSON.parse(JSON.stringify(loaded.toJSON())));
+  check('migrate.milkdrop-stable', reload.upgradeSeeds().length === 0 && reload.size === loaded.size, 'a saved migrated population reloads without further changes');
 }
 
 // -------------------------------------------------- 16. example crossovers

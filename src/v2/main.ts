@@ -527,7 +527,7 @@ async function main(): Promise<void> {
   }
   updateBar();
   // Descriptors for novelty scoring, in the background.
-  window.setTimeout(() => void evo.describeMissing(24), 4000);
+  window.setTimeout(() => void evo.describeMissing(40), 4000);
 
   // Debug / test handle.
   (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, play, choose, current, editor };

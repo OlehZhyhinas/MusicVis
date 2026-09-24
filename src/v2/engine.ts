@@ -2032,6 +2032,26 @@ export class Stage {
       .f1('uDecaySub', (eng.hq ? 0.0015 : 1.5 / 255) * cp.floor * sdt * 60)
       .f1('uFlowAmt', s.P('car', 0, cp, 'famt', CARRIER_SCHEMA) * sdt * 60 * this.sig.F.speed)
       .f1('uFlowScale', cp.fscale);
+    // Sharpen: reaction-diffusion growth, seeded by grain noise that follows the high end of the mix.
+    const F = this.sig.F;
+    const sharpen = g.carrier.kind === 'none' ? 0 : s.P('car', 0, cp, 'sharpen', CARRIER_SCHEMA);
+    p.f1('uSharpen', sharpen)
+      .f1('uGrain', s.P('car', 0, cp, 'grain', CARRIER_SCHEMA))
+      .f1('uSharpNoise', sharpen * 0.2 * Math.min(1, Math.max(0, F.stem[3] * 1.4 + F.onset[0] * 0.4 - 0.45)));
+    // Border: a frame in a palette colour that walks the three slots every 16 bars, swelling with the bass.
+    const border = g.carrier.kind === 'none' ? 0 : s.P('car', 0, cp, 'border', CARRIER_SCHEMA);
+    if (border > 0.001) {
+      const t = ((F.bars / 16) % 1) * 3;
+      const k = Math.floor(t);
+      const f = t - k;
+      const cc = s.cols;
+      const a = (k % 3) * 3;
+      const b = ((k + 1) % 3) * 3;
+      const lvl = 0.35 + 0.5 * F.stem[1];
+      p.f1('uBorder', Math.min(1, border))
+        .f1('uBorderW', 0.004 + 0.01 * F.stem[1] * border)
+        .f3('uBorderCol', (cc[a] + (cc[b] - cc[a]) * f) * lvl, (cc[a + 1] + (cc[b + 1] - cc[a + 1]) * f) * lvl, (cc[a + 2] + (cc[b + 2] - cc[a + 2]) * f) * lvl);
+    } else p.f1('uBorder', 0);
     eng.fs.draw();
 
     gl.enable(gl.BLEND);

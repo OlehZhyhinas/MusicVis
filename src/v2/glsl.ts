@@ -1000,6 +1000,8 @@ in vec2 vUv;
 uniform sampler2D uPrev, uVel;
 uniform vec2 uSimTexel;
 uniform float uFluidAmt, uBlur, uDecaySub, uFlowAmt, uFlowScale;
+uniform float uSharpen, uGrain, uSharpNoise, uBorder, uBorderW;
+uniform vec3 uBorderCol;
 out vec4 o;
 vec3 prevAt(vec2 uv) {
   vec3 c = texture(uPrev, uv).rgb;
@@ -1030,7 +1032,27 @@ void main() {
 #ifdef USE_FLUID
   suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
 #endif
-  c = max(prevAt(suv) * uDecay - uDecaySub, 0.0);
+  vec3 pv = prevAt(suv);
+  if (uSharpen > 0.001) {
+    // Unsharp mask against a two-ring blur, then the 8-bit style clamp that keeps the patterns bistable.
+    vec2 rr = vec2(uGrain / uAspect, uGrain);
+    vec3 bl = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.7853982 + 0.3927;
+      vec2 off = vec2(cos(a), sin(a)) * rr;
+      bl += texture(uPrev, suv + off).rgb + texture(uPrev, suv - off * 0.5).rgb;
+    }
+    bl *= 0.0625;
+    pv += (pv - bl) * uSharpen;
+    pv = mix(pv, vec3(luma(pv)), 0.15 * uSharpen);
+    pv += (vec3(hash12(vUv * uRes + fract(uTime * 7.31) * 97.0), hash12(vUv * uRes + 13.7 + fract(uTime * 5.17) * 89.0), hash12(vUv * uRes + 41.3 + fract(uTime * 3.91) * 83.0)) - 0.5) * uSharpNoise;
+    pv = clamp(pv, 0.0, 1.0);
+  }
+  c = max(pv * uDecay - uDecaySub, 0.0);
+  if (uBorder > 0.001) {
+    vec2 e = min(vUv, 1.0 - vUv) * asp;
+    c = mix(c, uBorderCol, uBorder * smoothstep(uBorderW, uBorderW * 0.5, min(e.x, e.y)));
+  }
 ${masks}#endif
 ${fbDraw}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);
 }`;

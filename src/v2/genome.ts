@@ -441,6 +441,13 @@ export const CARRIER_SCHEMA: Schema = {
   fnoise: P(0, 0.6, 0.35),
   fscale: P(1, 4, 2),
   famt: P(0.0004, 0.003, 0.0012),
+  // Unsharp mask of the carried picture (the classic blur-difference warp trick): edges sharpen and
+  // uniform areas fade, so the feedback grows reaction-diffusion patterns. grain: its blur radius.
+  sharpen: P(0, 1, 0),
+  grain: P(0.002, 0.02, 0.006),
+  // A coloured frame drawn into the feedback every frame (MilkDrop's outer border), swelling with
+  // the bass; the warp carries it inward.
+  border: P(0, 1, 0),
 };
 export interface CarrierGene {
   kind: CarrierKind;
@@ -1138,6 +1145,8 @@ export function speciesScores(g: Genome): Record<Species, number> {
   }
   if (g.carrier.kind === 'fluid') s.ink += 2.6;
   if (g.carrier.kind === 'flow') s.rain += 0.4;
+  // A sharpened carrier grows its own pattern field; a border feeds one from the edges.
+  if (g.carrier.kind !== 'none') s.plasma += 3 * g.carrier.p.sharpen + 1.6 * g.carrier.p.border;
   for (const o of g.chain) {
     const p = o.p;
     switch (o.op) {
@@ -1196,6 +1205,8 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.kind === 'fluid') ms += 0.5;
   if (g.carrier.kind === 'flow') ms += 0.35;
   if (g.carrier.p.blur > 0) ms += 0.2;
+  if (g.carrier.kind !== 'none' && g.carrier.p.sharpen > 0.001) ms += 0.45;
+  if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
   for (const b of g.bodies) ms += bodyCost(b);
   return ms;
 }

@@ -248,7 +248,7 @@ const LABELS: Record<string, string> = {
   r: 'radius', n: 'count', w: 'strength', len: 'length', atk: 'attack', rel: 'release', thr: 'threshold', sens: 'sensitivity',
   div: 'clock', lock: 'grid lock', vx: 'velocity x', vy: 'velocity y', cx: 'centre x', cy: 'centre y', amt: 'amount',
   amp: 'amplitude', freq: 'frequency', k: 'blend', t: 'mix', q: 'quantise', s: 'scale', halfLife: 'half-life', fnoise: 'flow noise',
-  fscale: 'flow scale', famt: 'flow amount', vort: 'vorticity', ca: 'aberration', sat: 'saturation', reflectY: 'reflect y',
+  fscale: 'flow scale', famt: 'flow amount', grain: 'grain size', vort: 'vorticity', ca: 'aberration', sat: 'saturation', reflectY: 'reflect y',
   s1: 'slot 2', s2: 'slot 3', ra: 'ratio a', rb: 'ratio b', melHue: 'melody hue', xs: 'roam', inst: 'instruments',
   dx: 'drift x', dy: 'drift y', lo: 'from', hi: 'to', zoomFlow: 'zoom flow', rounds: 'rounds', bins: 'bins',
 };

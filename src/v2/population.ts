@@ -142,16 +142,16 @@ export class Population {
   }
 
   /**
-   * Seed migration. When the population's seed version is older than the
-   * code's (or a seed genome differs from the current encoding), every G0 seed
-   * gets the current genome while keeping its id, votes, views, watch time and
-   * hidden flag; missing seeds come back. Bred children (G1+) are never touched,
-   * so their parent links stay valid. A population from a newer seed version is
-   * left alone. Returns the ids of the seeds that changed.
+   * Seed migration. Seeds added since the population was saved (and any seed
+   * missing from it) are added; a G0 seed whose genome differs from the
+   * current encoding gets the current genome while keeping its id, votes,
+   * views, watch time and hidden flag. Seeds that already match are left
+   * exactly as they are. Bred children (G1+) are never touched, so their
+   * parent links stay valid. A population from a newer seed version is left
+   * alone. Returns the ids of the seeds that were added or changed.
    */
   upgradeSeeds(now = Date.now()): string[] {
     if (this.seedVersion > SEED_VERSION) return [];
-    const older = this.seedVersion < SEED_VERSION;
     const changed: string[] = [];
     for (const s of SEEDS) {
       const fresh = seedMember(s, now);
@@ -159,7 +159,7 @@ export class Population {
       if (!cur) {
         this.members.set(fresh.id, fresh);
         changed.push(fresh.id);
-      } else if (older || JSON.stringify(cur.genome) !== JSON.stringify(fresh.genome)) {
+      } else if (JSON.stringify(cur.genome) !== JSON.stringify(fresh.genome)) {
         Object.assign(cur, {
           gen: 0, origin: s.origin, parents: [], genome: fresh.genome, name: s.name,
           species: fresh.species, species2: fresh.species2, type: fresh.type, energy: fresh.energy, descriptor: undefined,

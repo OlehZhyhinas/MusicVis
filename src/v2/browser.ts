@@ -5,6 +5,7 @@
 import { SPECIES, SPECIES_LABEL, type Species } from './genome';
 import type { Evolution } from './evolve';
 import { fitness, type Member } from './population';
+import { SEEDS } from './seeds';
 
 export interface BrowserCallbacks {
   play(id: string): void;
@@ -64,7 +65,7 @@ export class PresetBrowser {
       if (f) void this.importFile(f);
     });
     $('v2b-reset').addEventListener('click', () => {
-      if (!window.confirm('Reset to the 24 seed presets? Every bred preset, vote and lineage is discarded (export first to keep them).')) return;
+      if (!window.confirm(`Reset to the ${SEEDS.length} seed presets? Every bred preset, vote and lineage is discarded (export first to keep them).`)) return;
       void this.evo.reset().then(() => {
         this.selected.clear();
         this.cb.toast('Population reset to the seed presets.');

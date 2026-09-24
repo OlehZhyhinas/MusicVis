@@ -14,9 +14,16 @@
 // strips (E01 skyline with its view-stage spectrum stretch, E03 rain), and the
 // fractal flames (E22-E24, which keep their transforms).
 //
-// SEED_VERSION goes up whenever the seeds are re-encoded; stored populations
-// and imported files with an older version get the new seed genomes (their
-// votes, views and ids are kept).
+// M01-M10 re-create ten of the best-known classic MilkDrop presets in the same
+// vocabulary (feedback warp as the chain and carrier, waveforms as curves,
+// custom shapes as bodies, the blur-sharpen warp shader and the outer border
+// as carrier genes). They are re-creations of each preset's look and music
+// response, credited to the original authors in the name.
+//
+// SEED_VERSION goes up whenever the seeds are re-encoded or new seeds are
+// added; stored populations and imported files with an older version get the
+// new seed genomes and any missing seeds (votes, views and ids are kept, and
+// bred children are never touched).
 
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FEEL_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
@@ -25,7 +32,7 @@ import {
   type MotionKind, type OpGene, type OpKind, type PlaceKind, type ReactionGene, type Scheme, type ShapeKind, type Signal,
 } from './genome';
 
-export const SEED_VERSION = 5;
+export const SEED_VERSION = 6;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -418,4 +425,193 @@ const DEFS: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = DEFS.map(build);
+// ------------------------------------------------------------ MilkDrop classics
+// Per-frame MilkDrop values map onto the chain as: zoom z -> zoom rate z - 1, rot -> rotate rate,
+// cx / cy wandering -> the ops' shared wander path, warp -> a noise op, dx / dy -> translate,
+// decay -> half-life, per-pixel rotation growing toward the centre -> swirl, video echo -> a
+// view-stage mirror or kaleido.
+
+const MILKDROP: Def[] = [
+  {
+    // Geiss, Cosmic Dust 2: a dotted scope throws dust that streams out of a slowly wandering centre
+    // (zoom 1.05) with a gentle warp; bass hits jolt the whole field sideways and the dust colour drifts.
+    origin: 'M01', name: 'Cosmic Dust 2 (after Geiss)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.72,
+    color: { sat: 0.45, adapt: 0.2, bloom: 1, vignette: 0.35, contrast: 0.06 }, carrier: 'warp', decay: 0.96,
+    chain: [
+      op('zoom', { rate: 0.05, wander: 0.3 }),
+      op('rotate', { lock: 0, rate: 0.0015, wander: 0.3 }),
+      op('noise', { amp: 0.0012, scale: 3.1, speed: 0.4 }),
+      op('translate', { vx: 0, vy: 0 }),
+    ],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.002 }],
+        place: ['point'],
+        material: ['glow', { gain: 0.35, width: 0.004 }],
+        emit: ['sparks', { count: 8192, size: 1.8, speed: 0.4, curl: 0.15, zoomFlow: 1.2, drag: 2, life: 0.3, spread: 0.1, surge: 0.6, top: 0, body: 0 }],
+        color: ['age', { hue: 0, rate: 0.125, detail: 0.6 }],
+      }),
+      body({
+        shape: ['curve', { form: 3, radius: 0.1, amp: 0.5, ra: 2, rb: 3 }],
+        material: ['dots', { gain: 0.2, spacing: 0.03 }],
+        color: ['age', { hue: 0.3, rate: 0.125, detail: 0.6 }],
+      }),
+    ],
+    reactions: [
+      rx('hit', 'op', 3, 'vx', 0.5, { rel: 0.25 }), rx('bass', 'op', 3, 'vy', -0.3, { atk: 0.02, rel: 0.3, thr: 0.5 }),
+      rx('surge', 'op', 0, 'rate', 0.25), rx('loud', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 0.2 }),
+    ],
+  },
+  {
+    // Rovastar, Loadus + Geiss, FractalDrop (Triple Mix): discs that copy the picture into themselves
+    // (an IFS of shrinking maps) turn faster the more bass there is, blurred and lightly sharpened,
+    // while the zooming feedback is folded three ways into a radiating fractal flower.
+    origin: 'M02', name: 'FractalDrop (after Rovastar & Loadus)', energy: [0.3, 0.85], scheme: 'mono', hue: 0.85,
+    color: { adapt: 0.35, bloom: 1, tonemap: 1 }, carrier: 'warp', decay: 0.9, car: { sharpen: 0.08, grain: 0.003, blur: 0.3 },
+    chain: [
+      op('zoom', { rate: 0.0099 }),
+      op('rotate', { lock: 0.0625, rate: 0 }),
+      op('kaleido', { n: 3, lock: 0 }),
+    ],
+    bodies: [
+      body({
+        shape: ['flame', { count: 262144, zoom: 0.26, rounds: 2, flow: 0, breathe: 0.2 }, [
+          xf({ aff: [0.5, 0, 0, 0.5, 0.37, 0], weight: 1, color: 0, vars: { linear: 0.6, spherical: 0.4 }, spin: 0.125, bass: 0.25, pulse: 0.05 }),
+          xf({ aff: [0.5, 0, 0, 0.5, -0.18, 0.32], weight: 0.8, color: 0.5, vars: { linear: 0.7, disc: 0.3 }, spin: -0.25, bass: 0.2 }),
+          xf({ aff: [0.5, 0, 0, 0.5, -0.18, -0.32], weight: 0.6, color: 0.9, vars: { linear: 0.8, spherical: 0.2 }, spin: 0.0625, pulse: 0.08 }),
+        ]],
+        motion: ['spin', { rate: 0.125 }],
+        material: ['glow'],
+      }),
+    ],
+    reactions: [rx('bass', 'op', 1, 'rate', 0.35, { atk: 0.05, rel: 0.8 }), rx('other', 'car', 0, 'sharpen', 0.1, { atk: 0.1, rel: 0.5 })],
+  },
+  {
+    // Eo.S., glowsticks v2 05 and proton lights: four dotted sticks swing around the centre in the
+    // dark, reversing on the beat count and speeding up with the volume, leaving fading light trails.
+    origin: 'M03', name: 'Glowsticks (after Eo.S.)', energy: [0.35, 0.9], scheme: 'split', hue: 0.08,
+    color: { adapt: 0.3, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', decay: 0.98,
+    chain: [op('zoom', { rate: 0.002 })],
+    bodies: [body({
+      shape: ['segment', { len: 0.3, w: 0.004 }],
+      place: ['orbit', { count: 4, radius: 0.1, rate: 0.5, follow: 0 }],
+      motion: ['spin', { rate: 0.5, alt: 1 }],
+      material: ['glow', { gain: 1.4, width: 0.006, base: 0.2 }],
+      emit: ['trail', { tip: 0.6 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3, div: 2 }],
+    })],
+    reactions: [rx('loud', 'pl', 0, 'radius', 0.3, { atk: 0.05, rel: 0.4 }), rx('bass', 'sh', 0, 'len', 0.25, { atk: 0.02, rel: 0.3 })],
+  },
+  {
+    // fiShbRaiN, witchcraft: pens wander the screen, steered one way by the bass and the other by the
+    // treble, scribbling glowing curls that a mirrored echo doubles into four.
+    origin: 'M04', name: 'Witchcraft (after fiShbRaiN)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.8,
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'warp', decay: 0.955,
+    chain: [op('zoom', { rate: -0.0005 }), op('noise', { amp: 0.0006, scale: 1.3, speed: 0.3 }), op('mirror', { axis: 0 }, 1, 'view')],
+    bodies: [body({
+      shape: ['dot', { r: 0.006 }],
+      place: ['walker', { heads: 2, step: 0.16, every: 1, square: 0, wrap: 0, curve: 1.6, turn: 1.2 }],
+      motion: ['hits', { amt: 0.8 }],
+      material: ['glow', { gain: 1.3, width: 0.008 }],
+      emit: ['trail', { tip: 0.3 }],
+      feel: ['flow', { atk: 0.01, rel: 0.15 }],
+    })],
+    reactions: [rx('bass', 'pl', 0, 'curve', 0.4, { atk: 0.02, rel: 0.2 }), rx('other', 'pl', 0, 'curve', -0.4, { atk: 0.02, rel: 0.2 }), rx('loud', 'pl', 0, 'step', 0.3)],
+  },
+  {
+    // Geiss, Reaction Diffusion 2: the blur-difference warp grows worm-like Turing patterns out of a
+    // faint waveform and treble grain; the centre wanders, the picture turns and bass kicks the zoom.
+    origin: 'M05', name: 'Reaction Diffusion 2 (after Geiss)', energy: [0.25, 0.85], scheme: 'analogous', hue: 0.08,
+    color: { sat: 0.85, adapt: 0.4, bloom: 1.2, contrast: 0.05 }, carrier: 'warp', decay: 0.93, car: { sharpen: 0.45, grain: 0.009 },
+    chain: [op('zoom', { rate: 0.009, wander: 0.3 }), op('rotate', { lock: 0, rate: 0.002, wander: 0.3 })],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.3 }],
+      motion: ['sway', { amp: 0.06, period: 4 }],
+      material: ['line', { gain: 1.2, width: 1.6 }],
+      color: ['age', { rate: 0.0625 }],
+    })],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.5, { atk: 0.02, rel: 0.35, thr: 0.35 }), rx('hit', 'car', 0, 'sharpen', 0.25, { rel: 0.3 })],
+  },
+  {
+    // Flexi, mindblob: a blob on a spring, pulled by the bass and the treble, stirs a liquid that folds
+    // into sharpened ribbons of two contrasting colours.
+    origin: 'M06', name: 'Mindblob (after Flexi)', energy: [0.15, 0.7], scheme: 'complementary', hue: 0.75,
+    color: { adapt: 0.35, bloom: 1.1 }, carrier: 'fluid', decay: 0.995, car: { floor: 1, amount: 1.2, vort: 34, fnoise: 0.3, sharpen: 0.12, grain: 0.006 },
+    bodies: [body({
+      shape: ['dot', { r: 0.02 }],
+      place: ['stations', { count: 2, inst: 1, xs: 0.6, jump: 0, wander: 0.15 }],
+      motion: ['circle', { radius: 0.06, period: 4 }],
+      material: ['glow', { gain: 1.1, width: 0.03 }],
+      emit: ['dye', { force: 1.3 }],
+      feel: ['flow', { atk: 0.02, rel: 0.35 }],
+    })],
+    reactions: [rx('bass', 'car', 0, 'amount', 0.3, { atk: 0.05, rel: 0.5 })],
+  },
+  {
+    // Rovastar, Fractopia: a squaring flow pulls the coloured border inward into fractal coastlines
+    // that turn slowly; the centre wanders further the more bass has played and the border swells on it.
+    origin: 'M07', name: 'Fractopia (after Rovastar)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.6,
+    color: { adapt: 0.35, bloom: 1, vignette: 0.2 }, carrier: 'warp', decay: 0.998, car: { border: 1, floor: 0.3 },
+    chain: [
+      op('v_horseshoe', { s: 1.4 }, 0.35),
+      op('rotate', { lock: -0.0625, rate: 0, wander: 0.15 }),
+      op('zoom', { rate: -0.004, wander: 0.15 }),
+    ],
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      material: ['glow', { gain: 0.25, width: 0.01 }],
+      color: ['age', { rate: 0.125 }],
+    })],
+    reactions: [rx('bass', 'op', 0, 's', 0.25, { atk: 0.1, rel: 1.2 }), rx('beat', 'car', 0, 'border', -0.3)],
+  },
+  {
+    // Rovastar + Geiss, Hurricane Nightmare: a circular waveform feeds a vortex that spins hardest at
+    // the eye and zooms hardest at the edges; loud bass winds it tighter.
+    origin: 'M08', name: 'Hurricane Nightmare (after Rovastar & Geiss)', energy: [0.45, 1], scheme: 'analogous', hue: 0.55,
+    color: { adapt: 0.35, bloom: 1.2, vignette: 0.55 }, carrier: 'warp', decay: 0.965,
+    chain: [op('zoom', { rate: 0.02, radial: 1 }), op('swirl', { amt: -0.02, k: 8 }), op('rotate', { lock: 0, rate: -0.004 })],
+    bodies: [body({
+      shape: ['curve', { form: 1, radius: 0.16, amp: 0.3 }],
+      place: ['point', { x: 0, y: -0.03 }],
+      material: ['line', { gain: 1.1, width: 2.4, halo: 0.3 }],
+      color: ['age', { rate: 0.125, detail: 0.5 }],
+    })],
+    reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.3)],
+  },
+  {
+    // Krash + Rovastar, Rainbow Orb: a rainbow waveform jumping with the loudness is spun into an orb by
+    // a fast zoom and a rotation strongest at the centre; the echo mirrors it top to bottom and the
+    // treble holds the zoom back.
+    origin: 'M09', name: 'Rainbow Orb (after Krash & Rovastar)', energy: [0.4, 1], scheme: 'triad', hue: 0,
+    color: { sat: 1, adapt: 0.35, bloom: 1.2 }, carrier: 'warp', decay: 0.975,
+    chain: [op('zoom', { rate: 0.045 }), op('swirl', { amt: 0.025, k: 2 }), op('translate', { vx: 0.03, vy: 0.03 }), op('mirror', { axis: 1 }, 1, 'view')],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.2 }],
+      place: ['point', { x: 0, y: 0.12 }],
+      material: ['line', { gain: 1, width: 2 }],
+      color: ['height', { amount: 1.5, detail: 1 }],
+    })],
+    reactions: [rx('loud', 'pl', 0, 'x', 0.5, { atk: 0.05, rel: 0.3 }), rx('other', 'op', 0, 'rate', -0.3, { atk: 0.05, rel: 0.4 }), rx('bass', 'op', 1, 'amt', 0.2, { atk: 0.05, rel: 0.4 })],
+  },
+  {
+    // Geiss, Thumb Drum: two counter-rotating vortices wander over a sharpened grey field; the mids
+    // decide how hard they stir.
+    origin: 'M10', name: 'Thumb Drum (after Geiss)', energy: [0.2, 0.7], scheme: 'mono', hue: 0.6,
+    color: { sat: 0.25, adapt: 0.3, bloom: 0.9, contrast: 0.05 }, carrier: 'warp', decay: 0.95, car: { sharpen: 0.3, grain: 0.007 },
+    chain: [
+      op('swirl', { amt: 0.012, k: 4, cx: -0.25, cy: 0.05, wander: 0.2 }),
+      op('swirl', { amt: -0.012, k: 4, cx: 0.25, cy: -0.05, wander: 0.2 }),
+      op('zoom', { rate: 0.005 }),
+    ],
+    bodies: [body({
+      shape: ['curve', { form: 1, radius: 0.22, amp: 0.35 }],
+      material: ['line', { gain: 0.9, width: 1.4 }],
+    })],
+    reactions: [rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.05, rel: 0.5 }), rx('vocals', 'op', 1, 'amt', -0.3, { atk: 0.05, rel: 0.5 }), rx('other', 'car', 0, 'sharpen', 0.2, { atk: 0.05, rel: 0.4 })],
+  },
+];
+
+/** MilkDrop re-creations released so far (in order M01..). */
+const MILKDROP_READY = 2;
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP.slice(0, MILKDROP_READY)].map(build);
