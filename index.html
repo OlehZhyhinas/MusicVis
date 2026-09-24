@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <title>MusicVis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
     <link rel="stylesheet" href="/src/v2/v2.css" />
   </head>
@@ -32,8 +35,8 @@
       </form>
 
       <div id="v2-bar" class="panel">
-        <button id="v2-like" class="v2-vote" aria-label="Like this preset (L)" title="Like (L)">&#128077;</button>
-        <button id="v2-dislike" class="v2-vote" aria-label="Dislike this preset (D)" title="Dislike (D)">&#128078;</button>
+        <button id="v2-like" class="v2-vote" aria-label="Like this preset (L)" title="Like (L)" data-icon="up"></button>
+        <button id="v2-dislike" class="v2-vote" aria-label="Dislike this preset (D)" title="Dislike (D)" data-icon="down"></button>
         <span id="v2-score" title="Score · likes / dislikes"></span>
         <span class="v2-sep"></span>
         <button id="v2-evolve" class="tp-btn-text" aria-pressed="false" title="Evolve mode: rotate candidates every 30 s (E)">Evolve</button>
@@ -51,7 +54,7 @@
             <button id="v2b-export" class="tp-btn-text" title="Download the whole population as JSON">Export</button>
             <button id="v2b-import" class="tp-btn-text" title="Replace the population with a JSON file">Import</button>
             <button id="v2b-reset" class="tp-btn-text" title="Back to the seed presets">Reset</button>
-            <button id="v2b-close" class="tp-btn" aria-label="Close preset browser">&times;</button>
+            <button id="v2b-close" class="tp-btn" aria-label="Close preset browser" data-icon="x" data-icon-size="16"></button>
           </div>
         </div>
         <div class="v2b-filters">
@@ -76,7 +79,7 @@
           <button id="v2b-clear" class="tp-btn-text" disabled>Clear</button>
         </div>
         <div id="v2b-results" hidden>
-          <div class="v2b-results-head"><span id="v2b-results-title">Children</span><button id="v2b-results-close" class="tp-btn" aria-label="Close results">&times;</button></div>
+          <div class="v2b-results-head"><span id="v2b-results-title">Children</span><button id="v2b-results-close" class="tp-btn" aria-label="Close results" data-icon="x" data-icon-size="14"></button></div>
           <div id="v2b-results-grid"></div>
         </div>
         <div id="v2b-list" role="list"></div>
@@ -89,7 +92,7 @@
             <button id="pl-add" class="tp-btn-text" aria-label="Add songs">Add</button>
             <button id="pl-live" class="tp-btn-text" aria-label="Live input" title="Live input: microphone, audio interface or virtual device">Live</button>
             <button id="pl-clear" class="tp-btn-text" aria-label="Clear playlist">Clear</button>
-            <button id="pl-close" class="tp-btn" aria-label="Close playlist">&times;</button>
+            <button id="pl-close" class="tp-btn" aria-label="Close playlist" data-icon="x" data-icon-size="16"></button>
           </div>
         </div>
         <ul id="playlist-items"></ul>
@@ -104,12 +107,12 @@
       </aside>
 
       <div id="transport" class="panel" hidden>
-        <button id="tp-playlist" class="tp-btn" aria-label="Toggle playlist">&#9776;</button>
-        <button id="tp-shuffle" class="tp-btn" aria-label="Shuffle">&#128256;</button>
-        <button id="tp-prev" class="tp-btn" aria-label="Previous track">&#9198;</button>
-        <button id="tp-playpause" class="tp-btn" aria-label="Play/Pause">&#9658;</button>
-        <button id="tp-next" class="tp-btn" aria-label="Next track">&#9197;</button>
-        <button id="tp-repeat" class="tp-btn" aria-label="Repeat">&#128257;</button>
+        <button id="tp-playlist" class="tp-btn" aria-label="Toggle playlist" data-icon="list"></button>
+        <button id="tp-shuffle" class="tp-btn" aria-label="Shuffle" data-icon="shuffle"></button>
+        <button id="tp-prev" class="tp-btn" aria-label="Previous track" data-icon="prev"></button>
+        <button id="tp-playpause" class="tp-btn" aria-label="Play/Pause" data-icon="play"></button>
+        <button id="tp-next" class="tp-btn" aria-label="Next track" data-icon="next"></button>
+        <button id="tp-repeat" class="tp-btn" aria-label="Repeat" data-icon="repeat"></button>
 
         <div id="tp-time" class="tp-time">0:00</div>
 
@@ -121,21 +124,21 @@
 
         <div id="tp-duration" class="tp-time">0:00</div>
 
-        <button id="tp-mute" class="tp-btn" aria-label="Mute">&#128266;</button>
+        <button id="tp-mute" class="tp-btn" aria-label="Mute" data-icon="volume"></button>
         <input id="tp-volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
 
         <button id="tp-preset" class="tp-btn-text" aria-label="Next preset">Next preset</button>
 
         <button id="tp-hud" class="tp-btn-text" aria-label="Toggle HUD">HUD</button>
-        <button id="tp-fullscreen" class="tp-btn" aria-label="Fullscreen">&#9974;</button>
-        <button id="tp-help" class="tp-btn" aria-label="Keyboard shortcuts">?</button>
+        <button id="tp-fullscreen" class="tp-btn" aria-label="Fullscreen" data-icon="fullscreen"></button>
+        <button id="tp-help" class="tp-btn" aria-label="Keyboard shortcuts" data-icon="help"></button>
       </div>
 
       <div id="help-overlay" hidden>
         <div id="help-panel" class="panel">
           <div id="help-header">
             <span>Keyboard shortcuts</span>
-            <button id="help-close" class="tp-btn" aria-label="Close help">&times;</button>
+            <button id="help-close" class="tp-btn" aria-label="Close help" data-icon="x" data-icon-size="16"></button>
           </div>
           <p class="help-links">
             <a href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener">GitHub</a>

@@ -1,4 +1,5 @@
 import type { Playlist, Track } from '../audio/Playlist';
+import { icon } from './icons';
 
 export interface PlaylistPanelCallbacks {
   onSelect(id: string): void;
@@ -104,7 +105,7 @@ export class PlaylistPanel {
       const remove = document.createElement('button');
       remove.className = 'pl-item-remove';
       remove.setAttribute('aria-label', `Remove ${track.title}`);
-      remove.textContent = '×';
+      remove.innerHTML = icon('x', 14);
 
       li.append(main, duration, remove);
       this.listEl.appendChild(li);

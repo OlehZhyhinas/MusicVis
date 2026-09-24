@@ -1,5 +1,6 @@
 import type { Section, SectionLabel } from '../types';
 import type { RepeatMode } from '../audio/Playlist';
+import { setIcon } from './icons';
 
 export interface TransportCallbacks {
   onPlayPause(): void;
@@ -192,7 +193,7 @@ export class Transport {
   updatePlayback(currentTime: number, duration: number, playing: boolean): void {
     if (this.live) return;
     this.duration = duration;
-    this.playBtn.innerHTML = playing ? '&#10074;&#10074;' : '&#9658;';
+    setIcon(this.playBtn, playing ? 'pause' : 'play');
     if (!this.dragging && !this.loading) {
       this.seek.value = duration > 0 ? String((currentTime / duration) * SEEK_RESOLUTION) : '0';
       this.timeEl.textContent = formatTime(currentTime);
@@ -232,7 +233,7 @@ export class Transport {
     if (on) {
       this.timeEl.textContent = 'Live';
       this.durationEl.textContent = '';
-      this.playBtn.innerHTML = '&#9632;';
+      setIcon(this.playBtn, 'stop');
       this.playBtn.setAttribute('aria-label', 'Stop live input');
       this.playBtn.title = 'Stop live input';
       this.liveShown = { level: -1, label: '', bpm: '' };
@@ -272,7 +273,7 @@ export class Transport {
 
   setVolumeUi(v: number, muted: boolean): void {
     this.volume.value = String(v);
-    this.muteBtn.innerHTML = muted || v === 0 ? '&#128263;' : '&#128266;';
+    setIcon(this.muteBtn, muted || v === 0 ? 'mute' : 'volume');
   }
 
   setShuffleUi(on: boolean): void {
@@ -281,7 +282,7 @@ export class Transport {
 
   setRepeatUi(mode: RepeatMode): void {
     this.repeatBtn.classList.toggle('active', mode !== 'off');
-    this.repeatBtn.innerHTML = mode === 'one' ? '&#128257;1' : '&#128257;';
+    setIcon(this.repeatBtn, mode === 'one' ? 'repeat1' : 'repeat');
     this.repeatBtn.title = `Repeat: ${mode}`;
   }
 }

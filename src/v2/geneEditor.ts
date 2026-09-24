@@ -15,6 +15,7 @@ import type { Engine } from './engine';
 import type { Evolution } from './evolve';
 import type { Member } from './population';
 import { loadSetting, saveSetting } from '../ui/storage';
+import { icon, setIcon, type IconName } from '../ui/icons';
 
 export interface GeneEditorDeps {
   eng: Engine;
@@ -83,8 +84,9 @@ export class GeneEditor {
 
   constructor(private root: HTMLElement, private deps: GeneEditorDeps) {
     root.textContent = '';
-    const fold = h('button', { class: 'tp-btn vg-fold', 'aria-label': 'Collapse the gene editor', title: 'Collapse' }, '▾');
-    const close = h('button', { class: 'tp-btn vg-close', 'aria-label': 'Hide the gene editor (K)', title: 'Hide (K)' }, '×');
+    const fold = h('button', { class: 'tp-btn vg-fold', 'aria-label': 'Collapse the gene editor', title: 'Collapse' });
+    const close = h('button', { class: 'tp-btn vg-close', 'aria-label': 'Hide the gene editor (K)', title: 'Hide (K)' });
+    setIcon(close, 'x', 16);
     this.who = h('span', { class: 'vg-who' });
     root.append(h('div', { class: 'vg-head' }, fold, h('span', { class: 'vg-title', text: 'Genes' }), this.who, close));
 
@@ -113,10 +115,10 @@ export class GeneEditor {
       this.collapsed = !this.collapsed;
       saveSetting('v2.genesCollapsed', this.collapsed);
       this.root.classList.toggle('vg-collapsed', this.collapsed);
-      fold.textContent = this.collapsed ? '▸' : '▾';
+      setIcon(fold, this.collapsed ? 'cright' : 'cdown', 16);
     });
     root.classList.toggle('vg-collapsed', this.collapsed);
-    fold.textContent = this.collapsed ? '▸' : '▾';
+    setIcon(fold, this.collapsed ? 'cright' : 'cdown', 16);
     close.addEventListener('click', () => this.onClose?.());
     this.revertBtn.addEventListener('click', () => this.revert());
     this.saveBtn.addEventListener('click', () => void this.save());
@@ -480,9 +482,9 @@ export class GeneEditor {
         const acts = h('span', { class: 'vg-item-acts' });
         if (sec.list === 'chain' || sec.list === 'drawOps') {
           const move = (dir: -1 | 1) => this.structural((g) => (sec.list === 'chain' ? E.moveOp(g, j, dir) : E.moveDrawOp(g, body, j, dir)), it.id);
-          acts.append(this.button('↑', () => move(-1), 'Move up', !it.canUp), this.button('↓', () => move(1), 'Move down', !it.canDown));
+          acts.append(this.iconButton('aup', () => move(-1), 'Move up', !it.canUp), this.iconButton('adown', () => move(1), 'Move down', !it.canDown));
         }
-        acts.append(this.button('×', () => this.structural((g) => {
+        acts.append(this.iconButton('x', () => this.structural((g) => {
           if (sec.list === 'chain') return E.removeOp(g, j);
           if (sec.list === 'drawOps') return E.removeDrawOp(g, body, j);
           return E.removeXform(g, body, j);
@@ -548,7 +550,7 @@ export class GeneEditor {
     const val = h('span', { class: 'vg-m-val', text: '–' });
     this.meters[j] = { src: srcBar, resp: respBar, val };
     const meter = h('span', { class: 'vg-meter', title: 'Live: source signal (top), response after the curve (bottom), driven value' }, h('span', { class: 'vg-m-bars' }, srcBar, respBar), val);
-    const rm = this.button('×', () => this.structural((x) => E.removeReaction(x, j), anchor), 'Remove reaction');
+    const rm = this.iconButton('x', () => this.structural((x) => E.removeReaction(x, j), anchor), 'Remove reaction');
     return h('div', { class: 'vg-react-head' }, h('div', { class: 'vg-react-line' }, src, h('span', { class: 'vg-arrow', text: '→' }), tsel, rm), h('div', { class: 'vg-react-line' }, meter));
   }
 
@@ -556,6 +558,13 @@ export class GeneEditor {
 
   private button(label: string, fn: () => void, title?: string, disabled = false): HTMLButtonElement {
     const b = h('button', { class: 'tp-btn-text vg-btn', title, disabled }, label);
+    b.addEventListener('click', fn);
+    return b;
+  }
+
+  private iconButton(name: IconName, fn: () => void, title: string, disabled = false): HTMLButtonElement {
+    const b = h('button', { class: 'ib xs', title, 'aria-label': title, disabled });
+    b.innerHTML = icon(name, 14);
     b.addEventListener('click', fn);
     return b;
   }

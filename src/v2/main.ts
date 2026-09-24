@@ -20,11 +20,13 @@ import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
+import { hydrateIcons, icon } from '../ui/icons';
 
 const EVOLVE_SECS = 30;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function main(): Promise<void> {
+  hydrateIcons();
   const appRoot = $<HTMLElement>('app');
   const canvas = $<HTMLCanvasElement>('viz-canvas');
   const emptyStateEl = $<HTMLElement>('playlist-empty');
@@ -125,7 +127,7 @@ async function main(): Promise<void> {
 
   function updateBar(): void {
     const m = current();
-    scoreEl.textContent = m ? `${Math.round(fitness(m) * 100)} · ▲${m.likes} ▼${m.dislikes}` : '';
+    scoreEl.innerHTML = m ? `${Math.round(fitness(m) * 100)} · <span class="v2-up">${icon('up', 12)}</span>${m.likes} <span class="v2-down">${icon('down', 12)}</span>${m.dislikes}` : '';
     evolveBtn.classList.toggle('active', evolveOn);
     evolveBtn.setAttribute('aria-pressed', String(evolveOn));
     const b = evo.breeding > 0 || screener.runner.busy;

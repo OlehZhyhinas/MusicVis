@@ -6,6 +6,7 @@ import { SPECIES, SPECIES_LABEL, type Species } from './genome';
 import type { Evolution } from './evolve';
 import { fitness, type Member } from './population';
 import { SEEDS } from './seeds';
+import { icon } from '../ui/icons';
 
 export interface BrowserCallbacks {
   play(id: string): void;
@@ -206,7 +207,7 @@ export class PresetBrowser {
       </div>
       <div class="v2b-stats">
         <div class="v2b-score" title="Wilson lower bound of liking">${(score * 100).toFixed(0)}</div>
-        <div class="v2b-votes" title="likes / dislikes · views">&#9650;${m.likes} &#9660;${m.dislikes} · ${m.views}v</div>
+        <div class="v2b-votes" title="likes / dislikes · views"><span class="v2b-up">${icon('up', 12)}</span>${m.likes} <span class="v2b-down">${icon('down', 12)}</span>${m.dislikes} · ${m.views}v</div>
       </div>`;
     return r;
   }

@@ -787,3 +787,14 @@
 .help-links a {
   color: var(--accent);
 }
+
+/* inline vote icons */
+.v2-up .ic, .v2-down .ic, .v2b-up .ic, .v2b-down .ic {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+.v2-up, .v2b-up { color: var(--ok); }
+.v2-down, .v2b-down { color: var(--neg); }
+#v2-score { display: inline-flex; align-items: center; gap: 4px; }
+.vg-head .tp-btn { width: 26px; height: 26px; }
