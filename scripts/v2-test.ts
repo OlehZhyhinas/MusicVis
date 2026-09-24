@@ -62,7 +62,7 @@ function freshGenome(): Genome {
     ...Array.from({ length: 24 }, (_, i) => `E${String(i + 1).padStart(2, '0')}`),
     ...Array.from({ length: M_COUNT }, (_, i) => `M${String(i + 1).padStart(2, '0')}`),
   ];
-  check('seeds.count', SEEDS.length === 24 + M_COUNT && M_COUNT >= 1 && M_COUNT <= 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
+  check('seeds.count', SEEDS.length === 34 && M_COUNT === 10, `${SEEDS.length} seeds (${M_COUNT} MilkDrop)`);
   check('seeds.order', JSON.stringify(origins) === JSON.stringify(expected), origins.join(','));
   const badValid: string[] = [];
   const badIdem: string[] = [];

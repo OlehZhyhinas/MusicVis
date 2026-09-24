@@ -612,39 +612,47 @@ const MILKDROP: Def[] = [
     reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 2, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.3)],
   },
   {
-    // Krash + Rovastar, Rainbow Orb: a rainbow waveform jumping with the loudness is spun into an orb by
-    // a fast zoom and a rotation strongest at the centre; the echo mirrors it top to bottom and the
-    // treble holds the zoom back.
+    // Krash + Rovastar, Rainbow Orb: a small circular waveform, shifting sideways with the loudness, is
+    // spun by a rotation strongest at the centre and streamed outward by a fast zoom, so its colour
+    // history lays down rainbow rings; the echo mirrors it and the treble holds the zoom back.
     origin: 'M09', name: 'Rainbow Orb (after Krash & Rovastar)', energy: [0.4, 1], scheme: 'triad', hue: 0,
     color: { sat: 1, adapt: 0.35, bloom: 1.2 }, carrier: 'warp', decay: 0.975,
-    chain: [op('zoom', { rate: 0.045 }), op('swirl', { amt: 0.025, k: 2 }), op('translate', { vx: 0.03, vy: 0.03 }), op('mirror', { axis: 1 }, 1, 'view')],
+    chain: [
+      op('zoom', { rate: 0.03 }),
+      op('swirl', { amt: 0.03, k: 1 }),
+      op('swirl', { amt: 0.03, k: 1 }),
+      op('swirl', { amt: 0.03, k: 1 }),
+      op('mirror', { axis: 0 }, 1, 'view'),
+    ],
     bodies: [body({
-      shape: ['curve', { form: 0, amp: 0.2 }],
-      place: ['point', { x: 0, y: 0.12 }],
+      shape: ['curve', { form: 1, radius: 0.08, amp: 0.3 }],
       material: ['line', { gain: 1, width: 2 }],
-      color: ['height', { amount: 1.5, detail: 1 }],
+      color: ['age', { rate: 0.5, detail: 1 }],
     })],
-    reactions: [rx('loud', 'pl', 0, 'x', 0.5, { atk: 0.05, rel: 0.3 }), rx('other', 'op', 0, 'rate', -0.3, { atk: 0.05, rel: 0.4 }), rx('bass', 'op', 1, 'amt', 0.2, { atk: 0.05, rel: 0.4 })],
+    reactions: [
+      rx('loud', 'pl', 0, 'x', 0.25, { atk: 0.05, rel: 0.3 }), rx('other', 'op', 0, 'rate', -0.3, { atk: 0.05, rel: 0.4 }),
+      rx('bass', 'op', 1, 'amt', -0.2, { atk: 0.05, rel: 0.4 }),
+    ],
   },
   {
-    // Geiss, Thumb Drum: two counter-rotating vortices wander over a sharpened grey field; the mids
-    // decide how hard they stir.
+    // Geiss, Thumb Drum: a circular waveform seeds fingerprint-like sharpened stripes that two
+    // counter-rotating vortices keep stirring over a grey field; the mids decide how hard they stir.
     origin: 'M10', name: 'Thumb Drum (after Geiss)', energy: [0.2, 0.7], scheme: 'mono', hue: 0.6,
-    color: { sat: 0.25, adapt: 0.3, bloom: 0.9, contrast: 0.05 }, carrier: 'warp', decay: 0.95, car: { sharpen: 0.3, grain: 0.007 },
+    color: { sat: 0.25, exposure: 0.8, adapt: 0.3, bloom: 0.9, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.2, sharpen: 0.3, grain: 0.006 },
     chain: [
-      op('swirl', { amt: 0.012, k: 4, cx: -0.25, cy: 0.05, wander: 0.2 }),
-      op('swirl', { amt: -0.012, k: 4, cx: 0.25, cy: -0.05, wander: 0.2 }),
+      op('swirl', { amt: 0.02, k: 4, cx: -0.25, cy: 0.05, wander: 0.2 }),
+      op('swirl', { amt: -0.02, k: 4, cx: 0.25, cy: -0.05, wander: 0.2 }),
       op('zoom', { rate: 0.005 }),
     ],
     bodies: [body({
       shape: ['curve', { form: 1, radius: 0.22, amp: 0.35 }],
       material: ['line', { gain: 0.9, width: 1.4 }],
     })],
-    reactions: [rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.05, rel: 0.5 }), rx('vocals', 'op', 1, 'amt', -0.3, { atk: 0.05, rel: 0.5 }), rx('other', 'car', 0, 'sharpen', 0.2, { atk: 0.05, rel: 0.4 })],
+    reactions: [
+      rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.05, rel: 0.5 }), rx('vocals', 'op', 1, 'amt', -0.3, { atk: 0.05, rel: 0.5 }),
+      rx('other', 'car', 0, 'sharpen', 0.2, { atk: 0.05, rel: 0.4 }),
+    ],
   },
 ];
 
-/** MilkDrop re-creations released so far (in order M01..). */
-const MILKDROP_READY = 8;
-
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP.slice(0, MILKDROP_READY)].map(build);
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP].map(build);
