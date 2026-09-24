@@ -26,6 +26,8 @@ const C = (choices: number[], def: number): ParamSpec => ({ min: Math.min(...cho
  * set of framings (a seed); glide: bars the camera takes to move into a new section's framing
  * (0 = a hard cut on the boundary); dolly: a slow push-in across each section, reset at the next;
  * scene: hue shift per section type (verse, chorus, drop... each its own colour).
+ * Phrases: arc: a push-in that swells across each phrase and eases back as the next one begins;
+ * phrase: the phrase length in bars.
  */
 export const CHOREO_SCHEMA: Schema = {
   lead: C([2, 4, 8, 16], 8),
@@ -41,6 +43,8 @@ export const CHOREO_SCHEMA: Schema = {
   glide: C([0, 1, 2, 4], 0),
   dolly: P(0, 0.15, 0),
   scene: P(0, 0.5, 0),
+  arc: P(0, 0.12, 0),
+  phrase: C([4, 8, 16], 8),
 };
 
 registerGenomeGene({
@@ -48,7 +52,7 @@ registerGenomeGene({
   title: 'Choreography',
   schemas: CHOREO_SCHEMA,
   optional: true,
-  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars; scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene)',
+  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars; scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene); arc = a push-in that swells across each phrase of phrase bars and eases back as the next begins',
 });
 
 export interface ChoreoGene {
@@ -175,6 +179,8 @@ export interface ChoreoCue {
   /** Seconds since the current section began, and its length (Infinity when open-ended). */
   sinceSection: number;
   sectionLen: number;
+  /** Continuous bar position in the song (bar index + phase); 0 when unknown. */
+  bars: number;
 }
 
 /** What the choreography does to the picture this frame (identity: zoom 1, roll 0, sat 1, exposure 1). */
@@ -207,6 +213,7 @@ export function cueOf(state: MusicState): ChoreoCue {
     prevLabel: state.prevSectionLabel ?? null,
     sinceSection: Number.isFinite(since) && since > 0 ? since : 0,
     sectionLen: len,
+    bars: state.barIndex >= 0 && Number.isFinite(state.barPhase) ? state.barIndex + state.barPhase : 0,
   };
 }
 
@@ -253,7 +260,7 @@ export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: Chore
   // Dolly: a slow push across the section (over its length, or 16 bars when it is open-ended).
   const span = Number.isFinite(cue.sectionLen) ? cue.sectionLen : 16 * cue.barSeconds;
   const dolly = 1 + p.dolly * clamp(cue.sinceSection / Math.max(span, 1e-3), 0, 1);
-  out.zoom *= f.zoom * dolly;
+  out.zoom *= f.zoom * dolly * (1 + p.arc * phraseArc(c, cue));
   out.roll += f.roll;
   out.tx = f.tx;
   out.ty = f.ty;
@@ -292,6 +299,14 @@ export function sceneFraming(c: ChoreoGene, label: SectionLabel, out: ChoreoPose
   out.roll = p.frame * (r(3) * 2 - 1) * 0.012 * TAU;
   out.hue = p.scene * SCENE_HUE[label];
   return out;
+}
+
+/** 0..1 swell across the current phrase: rises for most of it, eases back over its last bars. */
+export function phraseArc(c: ChoreoGene, cue: ChoreoCue): number {
+  if (c.p.arc <= 0 || !(cue.bars > 0)) return 0;
+  const x = (cue.bars / c.p.phrase) % 1;
+  const sm = (t: number) => t * t * (3 - 2 * t);
+  return x < 0.85 ? sm(x / 0.85) : 1 - sm((x - 0.85) / 0.15);
 }
 
 /** 0..1 progress of the move into the current section's framing (1 = arrived; a cut is always 1). */
