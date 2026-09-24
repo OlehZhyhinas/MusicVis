@@ -147,6 +147,14 @@ export interface MusicState {
   dropPulse: number;
   /** 0..1, rises through 'build' sections toward the boundary. */
   buildIntensity: number;
+
+  // --- Look-ahead (precomputed songs only; live input leaves these undefined) ---
+  /** Seconds until the next drop starts (a section that fires dropPulse); Infinity when none is coming. */
+  timeToDrop?: number;
+  /** Seconds since the most recent drop started; Infinity before the first one. */
+  sinceDrop?: number;
+  /** Seconds per bar at the song's tempo. */
+  barSeconds?: number;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */

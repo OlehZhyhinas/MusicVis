@@ -197,6 +197,7 @@ const SPARKING = ['Sparking', 'Crackling', 'Fizzing', 'Spitting', 'Sputtering', 
 const GRADED = ['Graded', 'Layered', 'Tiered', 'Stratified', 'Terraced', 'Shaded', 'Ombre', 'Banked', 'Tapered', 'Sloped', 'Ranked', 'Scaled'];
 const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Marching', 'Pulsed', 'Chopped', 'Stuttering', 'Measured', 'Tapping', 'Syncopated'];
 const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
+const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted', 'Plotted', 'Framed', 'Directed', 'Scenic', 'Dramatic', 'Orchestrated', 'Rehearsed'];
 const GENERIC_ADJ = ['Drifting', 'Quiet', 'Restless', 'Steady', 'Roaming', 'Vagrant'];
 
 function clamp01(x: number): number {
@@ -313,6 +314,12 @@ function traits(g: Genome): Trait[] {
     }
   }
 
+  // Choreography: a picture composed over the song timeline, named by how strongly it is staged.
+  if (g.choreo) {
+    const cp = g.choreo.p;
+    add('staged', STAGED, clamp01(0.35 + cp.push * 1.5 + cp.drain * 0.2 + cp.punch * 0.2));
+  }
+
   list.sort((a, b) => b.weight - a.weight);
   return list;
 }
@@ -354,6 +361,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
+  staged: STAGED,
 };
 
 /**

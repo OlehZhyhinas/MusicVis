@@ -31,6 +31,7 @@
 import { FLAME_VARIATIONS, type FlameVar } from './variations';
 import { repair as repairV2, upgradeV2 } from './legacy';
 
+import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
 export type { FlameVar };
 
@@ -521,6 +522,8 @@ export interface Genome {
   tone: ToneGene;
   reactions: ReactionGene[];
   energy: [number, number]; // complexity range the preset suits
+  /** Optional: composes the picture over the song timeline (src/v2/genes/choreo.ts). */
+  choreo?: ChoreoGene;
 }
 
 export const MAX_CHAIN = 6;
@@ -850,6 +853,7 @@ export function repair(input: unknown): Genome {
     hi = c + 0.075;
   }
   const out: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [round4(lo), round4(hi)] };
+  if (isObj(g.choreo)) out.choreo = repairChoreo(g.choreo);
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -1031,6 +1035,7 @@ export function validate(g: Genome): string[] {
   if (!PALETTE_KINDS.includes(g.palette?.kind)) errs.push('palette kind');
   else chk(g.palette.p, PALETTE_SCHEMAS[g.palette.kind], 'palette');
   chk(g.tone?.p, TONE_SCHEMA, 'tone');
+  if (g.choreo !== undefined) errs.push(...validateChoreo(g.choreo));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {
@@ -1212,6 +1217,7 @@ export function estimateCost(g: Genome): number {
   if (g.carrier.kind !== 'none' && g.carrier.p.sharpen > 0.001) ms += 0.45;
   if (g.carrier.kind !== 'none' && g.carrier.p.border > 0.001) ms += 0.03;
   for (const b of g.bodies) ms += bodyCost(b);
+  if (g.choreo) ms += CHOREO_COST_MS;
   return ms;
 }
 

@@ -29,6 +29,7 @@ import {
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
+import { choreoTests } from './choreo-tests';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -1342,6 +1343,10 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
     console.log(`${a.name} x ${b.name} -> ${nameFor(child.genome, [a.name, b.name])}  [${child.tag}] ${short(child.genome.bodies[0])}`);
   }
 }
+
+// -------------------------------------------------- choreography
+
+choreoTests(check);
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);

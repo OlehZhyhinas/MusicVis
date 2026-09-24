@@ -11,6 +11,7 @@ import {
   type BodyGene, type FlameVar, type FlameXformGene, type Gene, type GeneGroup, type Genome, type Locus, type OpGene,
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema, type ShapeGene, type ShapeKind,
 } from './genome';
+import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
 
 export type Rng = () => number;
 
@@ -743,6 +744,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     const child: Genome = { v: 5, chain, bodies, carrier, palette, tone, reactions: [], energy: [0, 1] };
     const t = rng();
     child.energy = [D.energy[0] + (R.energy[0] - D.energy[0]) * t, D.energy[1] + (R.energy[1] - D.energy[1]) * t];
+    const choreo = crossChoreo(D.choreo, R.choreo, rng);
+    if (choreo) child.choreo = choreo;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1066,6 +1069,18 @@ const MUTATORS: [number, string, Mutator][] = [
   [0.8, 'energy', (g, rng) => {
     const d = gauss(rng) * 0.12;
     g.energy = [g.energy[0] + d, g.energy[1] + d + gauss(rng) * 0.05];
+    return true;
+  }],
+  // Choreography over the song timeline: rarely gained (or lost), nudged when present.
+  [0.6, 'choreo', (g, rng) => {
+    if (!g.choreo) g.choreo = randomChoreo(rng);
+    else if (rng() < 0.3) delete g.choreo;
+    else jitterChoreo(g.choreo, rng);
+    return true;
+  }],
+  [1.5, 'jitter-choreo', (g, rng, amt) => {
+    if (!g.choreo) return false;
+    jitterChoreo(g.choreo, rng, amt);
     return true;
   }],
 ];

@@ -78,6 +78,8 @@ export class TimelineSampler {
   private readonly dbBeatIdx: Int32Array; // beat index of each downbeat
   private readonly sections: Section[];
   private readonly keys: KeySegment[];
+  /** Start times of the sections that fire dropPulse (drops, and choruses right after a build). */
+  private readonly dropStarts: number[];
 
   private synced = false;
   private lastTime = 0;
@@ -100,6 +102,11 @@ export class TimelineSampler {
     }
     const dur = Math.max(result.duration, 1e-3);
     this.sections = result.sections.length > 0 ? result.sections : [{ start: 0, end: dur, label: 'verse', energy: 0 }];
+    this.dropStarts = [];
+    for (let i = 1; i < this.sections.length; i++) {
+      const sec = this.sections[i];
+      if (sec.label === 'drop' || (sec.label === 'chorus' && this.sections[i - 1].label === 'build')) this.dropStarts.push(sec.start);
+    }
     this.keys = result.keys.length > 0 ? result.keys : [{ start: 0, end: dur, tonic: 0, mode: 'major', confidence: 0 }];
     const zeroStems = (): Record<StemName, number> => ({ drums: 0, bass: 0, vocals: 0, other: 0 });
     this.state = {
@@ -140,6 +147,9 @@ export class TimelineSampler {
       sectionChanged: false,
       dropPulse: 0,
       buildIntensity: 0,
+      timeToDrop: Infinity,
+      sinceDrop: Infinity,
+      barSeconds: this.beatPeriod * (result.beatsPerBar > 0 ? result.beatsPerBar : 4),
     };
   }
 
@@ -308,6 +318,17 @@ export class TimelineSampler {
       s.buildIntensity = p * p;
     } else {
       s.buildIntensity = jumped ? 0 : s.buildIntensity * Math.exp(-dt / BUILD_DECAY_TAU);
+    }
+
+    // --- Look-ahead: the next and the last drop ---
+    s.timeToDrop = Infinity;
+    s.sinceDrop = Infinity;
+    for (const d of this.dropStarts) {
+      if (d > time) {
+        s.timeToDrop = d - time;
+        break;
+      }
+      s.sinceDrop = time - d;
     }
 
     this.synced = true;
