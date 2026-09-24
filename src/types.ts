@@ -149,34 +149,6 @@ export interface MusicState {
   buildIntensity: number;
 }
 
-export type VisualMode = 'enhanced' | 'classic' | 'hybrid';
-
-export interface VisualizerOptions {
-  /** Particle count, power of 4 friendly (e.g. 262144, 1048576). */
-  particleCount: number;
-  /** Internal render scale relative to device pixels, 0.25..1. */
-  renderScale: number;
-}
-
-/** Implemented by src/render/Visualizer.ts */
-export interface IVisualizer {
-  resize(cssWidth: number, cssHeight: number, dpr: number): void;
-  render(state: MusicState): void;
-  setMode(mode: VisualMode): void;
-  getMode(): VisualMode;
-  /** Switch preset now (with a blend). Manual switch. */
-  nextPreset(): void;
-  /**
-   * A new track started playing. The visualizer picks a preset suited to the
-   * song (songComplexity) with a smooth blend. Presets otherwise only change
-   * on a detected drop or via nextPreset().
-   */
-  newSong(songComplexity: number): void;
-  getPresetName(): string;
-  setOptions(opts: Partial<VisualizerOptions>): void;
-  dispose(): void;
-}
-
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */
 export interface LiveAudioFrame {
   bass: number;
@@ -202,9 +174,6 @@ export interface LiveAudioFrame {
  *                                 }
  * src/audio/LiveAnalyser.ts       export class LiveAnalyser { constructor(ctx: AudioContext, input: AudioNode); read(dt: number): LiveAudioFrame }
  * src/audio/Player.ts             AudioBuffer playback with play/pause/seek/currentTime, exposes `output: AudioNode`
- * src/render/Visualizer.ts        export class Visualizer implements IVisualizer {
- *                                   constructor(canvas: HTMLCanvasElement, audio: { context: AudioContext; source: AudioNode }, opts?: Partial<VisualizerOptions>)
- *                                 }
- *                                 `audio.source` is only for butterchurn (classic/hybrid modes).
- * src/main.ts                     UI + glue
+ * src/v2/engine.ts               WebGL2 renderer for V2 genomes
+ * src/v2/main.ts                  UI + glue
  */

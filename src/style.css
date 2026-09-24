@@ -327,17 +327,6 @@ body {
   accent-color: var(--accent);
 }
 
-select#tp-mode,
-select#tp-particles {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--fg);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  padding: 5px 6px;
-  font-size: 12px;
-  flex: none;
-}
-
 /* Current preset shown in the transport, e.g. "E07 · Oscilloscope" */
 .tp-preset-name {
   font-size: 12px;
@@ -886,7 +875,6 @@ select#tp-particles {
     padding: 8px 10px;
   }
 
-  select#tp-mode,
   #transport .tp-btn-text {
     display: none;
   }

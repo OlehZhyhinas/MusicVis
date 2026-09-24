@@ -1,4 +1,4 @@
-import type { Section, SectionLabel, VisualMode } from '../types';
+import type { Section, SectionLabel } from '../types';
 import type { RepeatMode } from '../audio/Playlist';
 
 export interface TransportCallbacks {
@@ -10,9 +10,7 @@ export interface TransportCallbacks {
   onSeek(time: number): void;
   onVolumeChange(v: number): void;
   onMuteToggle(): void;
-  onModeChange(mode: VisualMode): void;
   onNextPreset(): void;
-  onParticleCountChange(count: number): void;
   onFullscreen(): void;
   onHudToggle(): void;
   onPlaylistToggle(): void;
@@ -51,9 +49,7 @@ export class Transport {
   private durationEl: HTMLElement;
   private volume: HTMLInputElement;
   private muteBtn: HTMLButtonElement;
-  private modeSel: HTMLSelectElement;
   private presetBtn: HTMLButtonElement;
-  private particlesSel: HTMLSelectElement;
   private hudBtn: HTMLButtonElement;
   private fsBtn: HTMLButtonElement;
   private prevBtn: HTMLButtonElement;
@@ -88,9 +84,7 @@ export class Transport {
     this.durationEl = root.querySelector('#tp-duration')!;
     this.volume = root.querySelector('#tp-volume')!;
     this.muteBtn = root.querySelector('#tp-mute')!;
-    this.modeSel = root.querySelector('#tp-mode')!;
     this.presetBtn = root.querySelector('#tp-preset')!;
-    this.particlesSel = root.querySelector('#tp-particles')!;
     this.hudBtn = root.querySelector('#tp-hud')!;
     this.fsBtn = root.querySelector('#tp-fullscreen')!;
     this.prevBtn = root.querySelector('#tp-prev')!;
@@ -132,11 +126,7 @@ export class Transport {
 
     this.volume.addEventListener('input', () => callbacks.onVolumeChange(Number(this.volume.value)));
     this.muteBtn.addEventListener('click', () => callbacks.onMuteToggle());
-    this.modeSel.addEventListener('change', () => callbacks.onModeChange(this.modeSel.value as VisualMode));
     this.presetBtn.addEventListener('click', () => callbacks.onNextPreset());
-    this.particlesSel.addEventListener('change', () =>
-      callbacks.onParticleCountChange(Number(this.particlesSel.value)),
-    );
     this.hudBtn.addEventListener('click', () => callbacks.onHudToggle());
     this.fsBtn.addEventListener('click', () => callbacks.onFullscreen());
 
@@ -283,14 +273,6 @@ export class Transport {
   setVolumeUi(v: number, muted: boolean): void {
     this.volume.value = String(v);
     this.muteBtn.innerHTML = muted || v === 0 ? '&#128263;' : '&#128266;';
-  }
-
-  setModeUi(mode: VisualMode): void {
-    this.modeSel.value = mode;
-  }
-
-  setParticleCountUi(count: number): void {
-    this.particlesSel.value = String(count);
   }
 
   setShuffleUi(on: boolean): void {

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 // Relative base so the build works under https://<user>.github.io/MusicVis/
-// Two pages: V1 at the root, V2 (evolving presets) at /v2/.
+// The app lives at the root; /v2/ is a redirect kept for old links.
 export default defineConfig({
   base: './',
   build: {

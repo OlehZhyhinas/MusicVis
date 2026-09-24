@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="dark" />
     <title>MusicVis</title>
     <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/v2/v2.css" />
   </head>
   <body>
     <div id="app">
@@ -16,15 +17,67 @@
       </div>
 
       <input id="file-input" type="file" accept="audio/*" multiple hidden />
+      <input id="v2-import-input" type="file" accept="application/json,.json" hidden />
 
       <div id="hud" hidden></div>
+      <div id="v2-stats" hidden></div>
 
       <div id="preset-label" aria-live="polite"></div>
 
+      <aside id="v2-genes" class="panel" aria-label="Gene editor" hidden></aside>
+
       <form id="preset-goto" class="panel" hidden>
         <label for="preset-goto-input">Go to preset</label>
-        <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. E07 or C-3fa2" />
+        <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. G0-E07 or G3-0012" />
       </form>
+
+      <div id="v2-bar" class="panel">
+        <button id="v2-like" class="v2-vote" aria-label="Like this preset (L)" title="Like (L)">&#128077;</button>
+        <button id="v2-dislike" class="v2-vote" aria-label="Dislike this preset (D)" title="Dislike (D)">&#128078;</button>
+        <span id="v2-score" title="Score · likes / dislikes"></span>
+        <span class="v2-sep"></span>
+        <button id="v2-evolve" class="tp-btn-text" aria-pressed="false" title="Evolve mode: rotate candidates every 30 s (E)">Evolve</button>
+        <button id="v2-open-browser" class="tp-btn-text" title="Preset browser (B)">Presets</button>
+        <span id="v2-status"></span>
+      </div>
+
+      <aside id="v2-browser" class="panel" hidden>
+        <div class="v2b-header">
+          <span class="v2b-title">Presets <span id="v2b-count"></span></span>
+          <div class="v2b-actions">
+            <button id="v2b-export" class="tp-btn-text" title="Download the whole population as JSON">Export</button>
+            <button id="v2b-import" class="tp-btn-text" title="Replace the population with a JSON file">Import</button>
+            <button id="v2b-reset" class="tp-btn-text" title="Back to the 24 seed presets">Reset</button>
+            <button id="v2b-close" class="tp-btn" aria-label="Close preset browser">&times;</button>
+          </div>
+        </div>
+        <div class="v2b-filters">
+          <select id="v2b-type" aria-label="Filter by type"></select>
+          <select id="v2b-energy" aria-label="Filter by energy">
+            <option value="">All energy</option>
+            <option value="calm">Calm</option>
+            <option value="energetic">Energetic</option>
+          </select>
+          <select id="v2b-sort" aria-label="Sort">
+            <option value="score">Best score</option>
+            <option value="newest">Newest</option>
+            <option value="gen">Generation</option>
+          </select>
+          <label class="v2b-check"><input id="v2b-hidden" type="checkbox" /> hidden</label>
+        </div>
+        <div class="v2b-select-bar">
+          <span id="v2b-selected">Select two to breed, one to mutate</span>
+          <button id="v2b-breed" class="tp-btn-text" disabled>Breed</button>
+          <button id="v2b-mutate" class="tp-btn-text" disabled>Mutate</button>
+          <button id="v2b-hide" class="tp-btn-text" disabled>Hide</button>
+          <button id="v2b-clear" class="tp-btn-text" disabled>Clear</button>
+        </div>
+        <div id="v2b-results" hidden>
+          <div class="v2b-results-head"><span id="v2b-results-title">Children</span><button id="v2b-results-close" class="tp-btn" aria-label="Close results">&times;</button></div>
+          <div id="v2b-results-grid"></div>
+        </div>
+        <div id="v2b-list" role="list"></div>
+      </aside>
 
       <aside id="playlist-panel" class="panel" hidden>
         <div id="playlist-header">
@@ -68,20 +121,7 @@
         <button id="tp-mute" class="tp-btn" aria-label="Mute">&#128266;</button>
         <input id="tp-volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
 
-        <select id="tp-mode" aria-label="Visual mode">
-          <option value="enhanced">Enhanced</option>
-          <option value="classic">Classic MilkDrop</option>
-          <option value="hybrid">Hybrid</option>
-        </select>
-
         <button id="tp-preset" class="tp-btn-text" aria-label="Next preset">Next preset</button>
-        <span id="tp-preset-name" class="tp-preset-name" title=""></span>
-
-        <select id="tp-particles" aria-label="Particle count">
-          <option value="65536">64K</option>
-          <option value="262144">256K</option>
-          <option value="1048576">1M</option>
-        </select>
 
         <button id="tp-hud" class="tp-btn-text" aria-label="Toggle HUD">HUD</button>
         <button id="tp-fullscreen" class="tp-btn" aria-label="Fullscreen">&#9974;</button>
@@ -95,6 +135,16 @@
             <button id="help-close" class="tp-btn" aria-label="Close help">&times;</button>
           </div>
           <dl id="help-list">
+            <dt>L / D</dt>
+            <dd>Like / dislike this preset</dd>
+            <dt>E</dt>
+            <dd>Evolve mode on / off</dd>
+            <dt>B</dt>
+            <dd>Preset browser (breed, mutate, export)</dd>
+            <dt>N</dt>
+            <dd>Next preset</dd>
+            <dt>G</dt>
+            <dd>Go to preset by ID</dd>
             <dt>Space</dt>
             <dd>Play / pause</dd>
             <dt>&larr; / &rarr;</dt>
@@ -105,12 +155,8 @@
             <dd>Fullscreen</dd>
             <dt>H</dt>
             <dd>Toggle HUD</dd>
-            <dt>N</dt>
-            <dd>Next preset</dd>
-            <dt>G</dt>
-            <dd>Go to preset by ID</dd>
-            <dt>1 / 2 / 3</dt>
-            <dd>Enhanced / Classic / Hybrid mode</dd>
+            <dt>K</dt>
+            <dd>Gene editor panel (shown with the HUD): edit the playing preset live</dd>
             <dt>M</dt>
             <dd>Mute</dd>
             <dt>P</dt>
@@ -121,6 +167,6 @@
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/v2/main.ts"></script>
   </body>
 </html>

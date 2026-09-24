@@ -1,4 +1,4 @@
-// V2 page: the V1 player (playlist, transport, HUD, analysis) driving the
+// The app: the shared player (playlist, transport, HUD, analysis) driving the
 // genome engine, plus voting, evolve mode and the preset browser.
 
 import type { MusicState } from '../types';
@@ -243,15 +243,13 @@ async function main(): Promise<void> {
       muted = !muted;
       applyVolume();
     },
-    onModeChange: () => {},
     onNextPreset: () => choose(evolveOn ? 'evolve' : 'next', 1.2, true, true),
-    onParticleCountChange: () => {},
     onFullscreen: () => toggleFullscreen(),
     onHudToggle: () => setHud(!hudOn),
     onPlaylistToggle: () => playlistPanel.toggle(),
     onHelpToggle: () => setHelpVisible(!!helpOverlay.hidden),
   });
-  // Live input: same flow as V1 (starting it pauses the file; a track or stop ends it).
+  // Live input: starting it pauses the file; a track or stop ends it.
   const liveMode = new LiveMode(
     {
       ensureContext: () => {
@@ -588,7 +586,7 @@ async function main(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
-  // The transport bar is revealed with the playlist, like V1; the vote bar stays.
+  // The transport bar is revealed with the playlist; the vote bar stays.
   barEl.hidden = false;
 }
 

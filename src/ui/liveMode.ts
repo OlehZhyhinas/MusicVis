@@ -1,4 +1,4 @@
-// Live input mode, shared by V1 and V2: the "Live input" buttons, the device
+// Live input mode: the "Live input" buttons, the device
 // picker, starting / stopping capture, the transport readout, and the policy
 // for telling the visualizer that a new song started.
 

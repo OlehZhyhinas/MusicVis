@@ -1,8 +1,4 @@
-/* V2 additions on top of the V1 stylesheet. */
-
-.v2-hidden {
-  display: none !important;
-}
+/* App-specific styles on top of the shared stylesheet. */
 
 #v2-bar {
   position: absolute;
@@ -34,18 +30,6 @@
   #playlist-panel {
     top: 60px;
   }
-}
-
-#v2-back {
-  color: var(--fg-dim);
-  text-decoration: none;
-  font-size: 12px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--panel-border);
-}
-#v2-back:hover {
-  color: var(--fg);
 }
 
 .v2-sep {

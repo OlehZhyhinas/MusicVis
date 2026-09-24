@@ -1,4 +1,4 @@
-// The seed population: V1's 24 hand-made presets (E01-E24) re-expressed in the
+// The seed population: the original 24 hand-made presets (E01-E24) re-expressed in the
 // sub-gene vocabulary, so breeding can mix their ideas (a snake's walk with a
 // polyhedron's shape, the moon's arms on a flame, ink dye from a star grid).
 //
@@ -28,7 +28,7 @@ import {
 export const SEED_VERSION = 5;
 
 export interface Seed {
-  origin: string; // V1 preset id, e.g. 'E07'
+  origin: string; // source preset id, e.g. 'E07'
   name: string;
   genome: Genome;
 }

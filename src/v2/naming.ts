@@ -334,7 +334,7 @@ function pickAdjective(g: Genome, parentNames: readonly string[]): string {
  * Builds a descriptive name for the genome. `parentNames` (each an existing
  * "Adjective Noun[...]" name) lets an inherited word survive into the child
  * whenever it still applies; pass none for a genome with no lineage (seeds
- * use their own V1 names and never call this). Deterministic in the genome
+ * use their own hand-given names and never call this). Deterministic in the genome
  * and parent names alone: repeated calls, or a re-import, give the same name
  * (duplicate resolution against a live population is layered on separately).
  */

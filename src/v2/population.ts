@@ -16,7 +16,7 @@ const CROSS_TAGS: MemberTag[] = ['fused', 'morph', 'merged', 'layered', 'edited'
 export interface Member {
   id: string; // "G0-E07" for seeds, "G{gen}-{nnnn}" for children
   gen: number;
-  origin?: string; // V1 preset id for seeds
+  origin?: string; // source preset id for seeds
   parents: string[];
   created: number; // ms since epoch
   name: string;
