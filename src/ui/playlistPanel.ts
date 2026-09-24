@@ -4,12 +4,21 @@
 import type { Playlist, Track } from '../audio/Playlist';
 import { icon } from './icons';
 import { formatTime } from './transport';
+import { lyricStatusLabel } from '../lyrics/library';
+import type { LyricStatus } from '../lyrics/types';
 
 export interface PlaylistPanelCallbacks {
   onSelect(id: string): void;
   onRemove(id: string): void;
   onClear(): void;
   onAdd(): void;
+  /** The track's lyrics lookup status (shown as a small tag in its row). */
+  lyricStatus?(id: string): LyricStatus | undefined;
+}
+
+function lyricHtml(s: LyricStatus | undefined): string {
+  const l = lyricStatusLabel(s);
+  return l ? `<span class="trk-lyr" data-s="${s}" title="${esc(l.title)}">${esc(l.label)}</span>` : '';
 }
 
 function esc(s: string): string {
@@ -34,8 +43,10 @@ function statusHtml(track: Track, current: boolean): string {
 export class PlaylistPanel {
   private listEl: HTMLElement;
   private summaryEl: HTMLElement;
+  private callbacks: PlaylistPanelCallbacks;
 
   constructor(panelEl: HTMLElement, playlist: Playlist, callbacks: PlaylistPanelCallbacks) {
+    this.callbacks = callbacks;
     this.listEl = panelEl.querySelector('#playlist-items')!;
     this.summaryEl = panelEl.querySelector('#pl-summary')!;
     panelEl.querySelector('#pl-add')!.addEventListener('click', () => callbacks.onAdd());
@@ -70,7 +81,7 @@ export class PlaylistPanel {
         const lead = cur ? '<span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>' : String(i + 1);
         return `<li class="trk${cur ? ' cur' : ''}" role="listitem" tabindex="0" data-id="${esc(t.id)}"${cur ? ' aria-current="true"' : ''}>
           <span class="lead">${lead}</span>
-          <div class="grow"><b>${esc(t.title)}</b><div class="st">${statusHtml(t, cur)}</div></div>
+          <div class="grow"><b>${esc(t.title)}</b><div class="st">${statusHtml(t, cur)}${lyricHtml(this.callbacks.lyricStatus?.(t.id))}</div></div>
           <span class="dur">${t.duration != null && isFinite(t.duration) ? formatTime(t.duration) : '–:––'}</span>
           <button class="ib xs trk-remove" aria-label="Remove ${esc(t.title)}" title="Remove">${icon('x', 14)}</button>
         </li>`;
