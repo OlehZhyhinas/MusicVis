@@ -32,8 +32,9 @@ import {
   type MotionKind, type OpGene, type OpKind, type PlaceKind, type ReactionGene, type Scheme, type ShapeKind, type Signal,
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
+import { DRIFT_SCHEMA } from './genes/drift';
 
-export const SEED_VERSION = 29;
+export const SEED_VERSION = 30;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -104,6 +105,8 @@ interface Def {
   reactions?: ReactionGene[];
   /** Choreography over the song timeline (src/v2/genes/choreo.ts); omitted = none. */
   choreo?: Record<string, number>;
+  /** Drift through gene space over the song (src/v2/genes/drift.ts); omitted = none. */
+  drift?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -121,6 +124,7 @@ function build(d: Def): Seed {
     energy: d.energy,
   };
   if (d.choreo) g.choreo = { p: { ...defaultParams(CHOREO_SCHEMA), ...d.choreo } };
+  if (d.drift) g.drift = { p: { ...defaultParams(DRIFT_SCHEMA), ...d.drift } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -1247,4 +1251,25 @@ const ECOSYSTEM: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM].map(build);
+// W01.. showcase the drift gene: the preset travels through gene space as the song unfolds, one
+// small mutation per section, returning to a section type's earlier look when it comes back.
+const DRIFT: Def[] = [
+  {
+    // A pendulum harmonograph folded eight ways and streamed slowly outward. Every section nudges its
+    // ratios, radius, trail and colours a little further along one journey through the song; the second
+    // chorus comes back almost exactly to the first chorus' figure, the breakdown wanders furthest, and
+    // each new look morphs in over four bars.
+    origin: 'W01', name: 'Tidal Mandala', energy: [0.2, 0.8], scheme: 'split', hue: 0.6,
+    color: { bloom: 1, vignette: 0.5, adapt: 0.35 }, carrier: 'warp', decay: 0.97,
+    chain: [op('zoom', { rate: 0.014, radial: 0.5 }), op('swirl', { amt: 0.004, k: 4 }), op('kaleido', { n: 8, lock: 0.0625 }, 1, 'view')],
+    bodies: [body({
+      shape: ['curve', { form: 5, radius: 0.3, amp: 0.22, ra: 2, rb: 3 }],
+      material: ['line', { gain: 0.8, width: 1.3, halo: 0.2 }],
+      color: ['age', { rate: 0.0625, detail: 0.7 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { atk: 0.01, rel: 0.3 }), rx('bass', 'op', 1, 'amt', 0.3, { atk: 0.05, rel: 0.5 })],
+    drift: { step: 0.55, kinds: 0, what: 0, ret: 0.85, morph: 4, bound: 0.2, seed: 0.31 },
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT].map(build);

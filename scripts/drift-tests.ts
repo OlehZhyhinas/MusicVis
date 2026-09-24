@@ -7,7 +7,7 @@ import { SEEDS } from '../src/v2/seeds';
 import { ADJ_POOLS, nameFor } from '../src/v2/naming';
 import { genomeGene } from '../src/v2/geneRegistry';
 import type { Section } from '../src/types';
-import { DRIFT_COST_MS, DRIFT_HEADROOM, DRIFT_SCHEMA, crossDrift, repairDrift, validateDrift, type DriftGene } from '../src/v2/genes/drift';
+import { DRIFT_COST_MS, DRIFT_SCHEMA, driftCost, crossDrift, repairDrift, validateDrift, type DriftGene } from '../src/v2/genes/drift';
 import { blendToward, driftDistance, morphGenome, performedAt, planDrift, stopAt, stripDrift } from '../src/v2/genes/driftPath';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -52,7 +52,7 @@ export function driftTests(check: Check): void {
   {
     const base = plain[5];
     const g = withDrift(base);
-    const expect = estimateCost(base) * (1 + DRIFT_HEADROOM) + DRIFT_COST_MS;
+    const expect = driftCost(estimateCost(base)) + DRIFT_COST_MS;
     check('drift.cost', Math.abs(estimateCost(g) - expect) < 1e-6, `${estimateCost(base).toFixed(3)} -> ${estimateCost(g).toFixed(3)}`);
     let bad = '';
     for (const s of SEEDS.slice(0, 40)) {
@@ -169,6 +169,16 @@ export function driftTests(check: Check): void {
     check('drift.no-sections', emptySong.stops.length === 1 && JSON.stringify(emptySong.stops[0].genome) === JSON.stringify(stripDrift(home)), 'an unanalysed song plays home');
     const x = blendToward(plan.stops[3].genome, stripDrift(home), 1);
     check('drift.blend-full', JSON.stringify(x) === JSON.stringify(stripDrift(home)), 'blendToward(t=1) is the target');
+  }
+
+  // Showcase seeds: W01.. carry a drift, and their paths move, stay valid and within budget.
+  {
+    const ws = SEEDS.filter((s) => s.origin.startsWith('W'));
+    const bad = ws.filter((s) => {
+      const plan = planDrift(s.genome, SONG);
+      return !s.genome.drift || plan.stops.filter((st) => st.dist > 0.005).length < 3 || plan.stops.some((st) => validate(st.genome).length || estimateCost(st.genome) > COST_BUDGET_MS);
+    });
+    check('drift.seeds', ws.length >= 1 && !bad.length && SEEDS.every((s) => s.origin.startsWith('W') || !s.genome.drift), `${ws.map((s) => s.origin).join(',')} ${bad.map((s) => s.origin).join(',')}`);
   }
 
   // Breeding: crossover and mutation keep the gene valid; children of drift-less parents stay drift-less.

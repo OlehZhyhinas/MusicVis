@@ -18,7 +18,7 @@ import {
 } from '../genome';
 import { mulberry32, mutate } from '../ops';
 import type { Section, SectionLabel } from '../../types';
-import { DRIFT_HEADROOM, type DriftGene } from './drift';
+import { driftCost, type DriftGene } from './drift';
 
 export type DriftGroup = 'form' | 'colour' | 'motion';
 
@@ -221,6 +221,8 @@ function wander(g: Genome, rng: () => number, amt: number, groups: readonly Drif
       const s = r.schema[k];
       if (!continuous(s) || rng() > 0.5) continue;
       const v = r.obj.p[k];
+      // A dormant feature (a param resting at its minimum, e.g. blur, sharpen, relief 0) stays off.
+      if (v <= s.min) continue;
       if (s.log && s.min > 0) r.obj.p[k] = Math.min(s.max, Math.max(s.min, Math.max(v, s.min) * Math.exp(gauss() * Math.log(s.max / s.min) * WANDER * amt)));
       else r.obj.p[k] = Math.min(s.max, Math.max(s.min, v + gauss() * (s.max - s.min) * WANDER * amt));
     }
@@ -280,7 +282,7 @@ export function planDrift(homeIn: Genome, sections: readonly Section[]): DriftPl
   const song = songHash(sections);
   const hh = genomeHash(homeIn);
   const homeCost = estimateCost(home);
-  const maxCost = homeCost * (1 + DRIFT_HEADROOM) + 1e-6;
+  const maxCost = driftCost(homeCost) + 1e-6;
   const secs = sections.length ? sections : [{ start: 0, end: Infinity, label: 'verse' as SectionLabel, energy: 0.5 }];
   const stops: DriftStop[] = [];
   const homeKey = structuralKey(home);
@@ -310,7 +312,7 @@ export function planDrift(homeIn: Genome, sections: readonly Section[]): DriftPl
       for (let k = 0, n = 1 + Math.round(amt * ROUNDS); k < n; k++) cand = limit(mutate(cand, rng, Math.min(1, amt)), prev, home, allowKinds, groups);
       cand = wander(cand, rng, amt, groups);
       if (driftDistance(cand, prev) < 1e-4) continue; // every change fell on something the drift keeps
-      if (!allowKinds && structuralKey(cand) !== structuralKey(prev)) continue; // a threshold crossed: shaders would change // every mutation fell on something the drift keeps
+      if (!allowKinds && structuralKey(cand) !== structuralKey(prev)) continue; // a threshold crossed: shaders would change
       if (parent && p.ret > 0) cand = repair(blendToward(cand, parent, p.ret));
       if (sec.label === 'outro') cand = repair(blendToward(cand, home, Math.max(p.ret, 0.5)));
       if (ok(cand)) genome = cand;

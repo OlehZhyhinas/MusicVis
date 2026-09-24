@@ -44,7 +44,7 @@ import { SCENE_NO_REACT, SCENE_SCHEMA, sceneCost } from './genes/raymarch';
 import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
-import { DRIFT_COST_MS, DRIFT_HEADROOM, repairDrift, validateDrift, type DriftGene } from './genes/drift';
+import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 export { FLAME_VARIATIONS };
 export type { FlameVar };
 
@@ -1365,9 +1365,9 @@ export function estimateCost(g: Genome): number {
   if (g.tone.p.huemap > 0.001 || g.tone.p.solar > 0.001) ms += 0.03;
   for (const b of g.bodies) ms += bodyCost(b) + (b.material.p.blend ? BLEND_COST : 0);
   if (g.choreo) ms += CHOREO_COST_MS;
-  // A drifting preset may play genomes up to DRIFT_HEADROOM dearer than itself (the planner rejects
-  // dearer ones), so its cost is the worst case over any path.
-  if (g.drift) ms = ms * (1 + DRIFT_HEADROOM) + DRIFT_COST_MS;
+  // A drifting preset may play genomes up to driftCost() of its own (the planner rejects dearer
+  // ones), so its cost is the worst case over any path.
+  if (g.drift) ms = driftCost(ms) + DRIFT_COST_MS;
   return ms;
 }
 

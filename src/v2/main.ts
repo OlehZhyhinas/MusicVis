@@ -570,6 +570,7 @@ async function main(): Promise<void> {
       if (token !== loadToken) return;
       player.load(buffer);
       sampler = new TimelineSampler(result);
+      eng.setSong(result.sections);
       songCx = result.songComplexity ?? 0.5;
       eng.setSongComplexity(songCx);
       if (!evolveOn) choose('new', 1.5);
@@ -768,8 +769,8 @@ async function main(): Promise<void> {
     if (evolveOn) {
       if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo) {
-      // A choreographed preset stays on: it composes its own release on the drop.
+    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo && !eng.current()?.drift) {
+      // A choreographed or drifting preset stays on: it composes its own release on the drop.
       choose('drop', 0.35);
     }
 

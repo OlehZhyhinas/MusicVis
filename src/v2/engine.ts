@@ -12,7 +12,7 @@ import { packMosaic } from './genes/mosaic';
 import { packTunnel } from './genes/tunnel';
 import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
-import type { MusicState, StemName } from '../types';
+import type { MusicState, Section, StemName } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
 import { Fluid } from '../render/fluid';
@@ -37,6 +37,7 @@ import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
 import { packCymatics } from './genes/cymatics';
+import { DriftDriver } from './genes/driftPlay';
 
 /**
  * A body's musical clock this frame (from its feel gene): mul scales its periodic motion, s = div / 4
@@ -512,11 +513,18 @@ export class Slot {
   readonly scn = new Float32Array(SCENE_VEC4 * 4);
   sceneT: Target | null = null;
 
+  /** The genome the slot stands for (saved, edited, shown in the editor); `genome` is what renders (a drift may differ). */
+  home: Genome;
+  /** structuralKey(genome). */
+  key: string;
+
   constructor(
     public genome: Genome,
     readonly progs: GenomePrograms,
     readonly fb: PingPong,
   ) {
+    this.home = genome;
+    this.key = structuralKey(genome);
     this.nb = genome.bodies.length;
     this.bd = new Float32Array(this.nb * BODY_VEC4 * 4);
     this.cp = new Float32Array(this.nb * COPY_SLOTS * 4);
@@ -531,8 +539,9 @@ export class Slot {
   }
 
   /** Swaps in a genome with the same structure (same programs, same uniform layout): parameters only. */
-  retarget(g: Genome): void {
+  retarget(g: Genome, key?: string): void {
     this.genome = g;
+    if (key !== undefined) this.key = key;
     this.sparks = g.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = g.bodies.findIndex((b) => b.emit.kind === 'slime');
     this.flock = g.bodies.findIndex((b) => b.emit.kind === 'flock');
@@ -2553,7 +2562,9 @@ export class Engine {
   private to: Slot | null = null;
   private blendT = 1;
   private blendDur = 1;
-  private pending: { g: Genome; secs: number } | null = null;
+  private pending: { g: Genome; secs: number; home?: Genome; drift?: boolean } | null = null;
+  /** The drift performance layer (genes/drift.ts): which genome to render for the home genome. */
+  readonly drift = new DriftDriver();
   private timerExt: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null = null;
   private queries: WebGLQuery[] = [];
   private pendingQueries: WebGLQuery[] = [];
@@ -2609,7 +2620,12 @@ export class Engine {
   }
 
   current(): Genome | null {
-    return this.pending?.g ?? this.to?.genome ?? null;
+    return this.pending?.home ?? this.pending?.g ?? this.to?.home ?? null;
+  }
+
+  /** The loaded song's sections, for the drift's plan (null: none, e.g. live input). */
+  setSong(sections: readonly Section[] | null): void {
+    this.drift.setSong(sections);
   }
 
   /**
@@ -2621,13 +2637,17 @@ export class Engine {
   edit(g: Genome, secs = 0.3): 'inplace' | 'compile' {
     const copy = cloneGenome(g);
     const key = structuralKey(copy);
+    if (this.pending?.drift) this.pending = null;
     if (this.pending && structuralKey(this.pending.g) === key) {
       this.pending.g = copy;
+      this.pending.home = copy;
       return 'compile';
     }
-    if (this.to && structuralKey(this.to.genome) === key) {
+    if (this.to && structuralKey(this.to.home) === key) {
+      // Same structure as the home genome: swap it in place (a drifting one re-plans next frame).
       this.pending = null;
-      this.to.retarget(copy);
+      this.to.home = copy;
+      if (this.to.key === key) this.to.retarget(copy);
       return 'inplace';
     }
     this.show(copy, secs);
@@ -2656,7 +2676,7 @@ export class Engine {
   }
 
   playing(): Genome | null {
-    return this.to?.genome ?? null;
+    return this.to?.home ?? null;
   }
 
   failed(g: Genome): string | null {
@@ -2676,9 +2696,10 @@ export class Engine {
     const dt = state.dt > 0 ? Math.min(state.dt, 0.1) : 1 / 60;
     this.adapt(dt);
 
+    this.driveDrift(state);
     if (this.pending) {
       const pg = this.cache.get(this.pending.g, !this.to);
-      if (pg) this.doSwitch(this.pending.g, pg, this.pending.secs);
+      if (pg) this.doSwitch(this.pending.g, pg, this.pending.secs, this.pending.home, this.pending.drift);
       else if (this.cache.failed(this.pending.g)) this.pending = null;
     }
     const st = this.main;
@@ -2699,7 +2720,31 @@ export class Engine {
     this.stats.cpuMs += (performance.now() - t0 - this.stats.cpuMs) * 0.05;
   }
 
-  private doSwitch(g: Genome, progs: GenomePrograms, secs: number): void {
+  /**
+   * Drift performance layer: renders the home genome's planned path. A genome of the slot's structure
+   * is swapped in place (uniforms); another structure compiles (ahead of the boundary when it can)
+   * and crossfades in. User switches waiting to compile take precedence.
+   */
+  private driveDrift(state: MusicState): void {
+    const s = this.to;
+    if (!s || (this.pending && !this.pending.drift)) return;
+    if (!s.home.drift && s.genome === s.home) return;
+    const f = this.drift.frame(s.home, state);
+    if (f.upcoming) this.cache.request(f.upcoming);
+    if (f.key === s.key) {
+      this.pending = null;
+      if (s.genome !== f.genome) s.retarget(f.genome, f.key);
+      return;
+    }
+    if (this.pending?.drift && structuralKey(this.pending.g) === f.key) {
+      this.pending.g = f.genome;
+      return;
+    }
+    this.pending = { g: f.genome, secs: f.xfade, home: s.home, drift: true };
+    this.cache.request(f.genome);
+  }
+
+  private doSwitch(g: Genome, progs: GenomePrograms, secs: number, home: Genome = g, drift = false): void {
     this.pending = null;
     const st = this.main;
     if (this.from) {
@@ -2710,6 +2755,7 @@ export class Engine {
       this.from = keep;
     } else this.from = this.to;
     const s = st.makeSlot(g, progs);
+    s.home = home;
     st.slots.push(s);
     if (this.from && secs > 0.05) {
       st.seedFrom(s, 0.5);
@@ -2724,7 +2770,7 @@ export class Engine {
       s.weight = 1;
       this.blendT = 1;
     }
-    this.onSwitched?.(g);
+    if (!drift) this.onSwitched?.(g);
   }
 
   private adapt(dt: number): void {

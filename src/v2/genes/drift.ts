@@ -54,9 +54,16 @@ export interface DriftGene {
 export const DRIFT_COST_MS = 0.02;
 /**
  * Cost headroom a path genome may take over the home genome (fraction). The planner rejects any
- * section genome costing more, so the home cost times (1 + headroom) is the worst case over the path.
+ * section genome costing more than driftCost(home), which is therefore the worst case over the path.
  */
 export const DRIFT_HEADROOM = 0.15;
+/** At least this much headroom (ms), so cheap presets can still drift a little dearer. */
+export const DRIFT_HEADROOM_MS = 0.3;
+
+/** The most a path genome of a home genome costing `homeMs` may cost (planner limit, charged cost). */
+export function driftCost(homeMs: number): number {
+  return homeMs + Math.max(homeMs * DRIFT_HEADROOM, DRIFT_HEADROOM_MS);
+}
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
