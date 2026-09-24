@@ -8,6 +8,7 @@
 import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
+import { CELLS_GLSL } from './genes/cells';
 import { BEAMS_GLSL } from './genes/beams';
 import { WATER_GLSL } from './genes/water';
 import { BLEND_GLSL, blendCall } from './genes/blend';
@@ -449,6 +450,7 @@ vec3 FLD(vec2 p) {
   return c * A.x * uAccum;
 }`,
   beams: BEAMS_GLSL,
+  cells: CELLS_GLSL,
   terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);

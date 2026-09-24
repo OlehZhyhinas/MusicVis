@@ -17,7 +17,8 @@ flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8
 superscope(3D point curve): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 lissajous,5 ring tunnel; p/q=frequencies; audio=wave/spectrum(spec) push; spinX/spinY=tumble turns/bar; persp=depth; n=points.
 beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.
 scene(ray-marched 3D scene,1/preset): scene 0 melting primitives; cam 0 orbit; res=internal resolution(cost); size=object scale; blend=how much shapes melt together; speed=animation+camera speed; pulse=bass swell; kick=camera jolt on drum hits; vary=how much each song section reshuffles it; rim/ao/fog/glow=lighting. Material picks the look(line=neon edges, glow=haze, chrome=reflective).
-Field shapes(plasma,aurora,terrain,edge,beams,scene)+flame draw 1 copy regardless of place count.
+cells(Voronoi): mode 0 foam,1 veins,2 domes; warp=bent walls; fill=cell light; var=hue spread; pulse=beat pop.
+Field shapes(plasma,aurora,terrain,edge,beams,scene,cells)+flame draw 1 copy regardless of place count.
 
 PLACE:
 point: fixed spot. orbit: copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.
@@ -63,7 +64,7 @@ water(0=off): beat drops spread ripples refracting the picture; wsize=drop radiu
 COLOUR:
 Palette kind(3 hue slots around song key): analogous(close),complementary(opposite),triad(3 even),split(complement+neighbours),mono(near 1 hue),free(3 slots). hue=1st slot's offset from key; spread=how far slots spread.
 Colour mapping(per body, drives hue): fixed(1 hue),instrument(each copy=its slot),pitch(chroma around key),melody(follows melody),height(vertical pos),age(hue drifts w/time; rate=palette turns/bar),speed(faster=more hue shift). amount=driver's swing; detail=shape's own shading variance.
-Tone(whole-scene post): sat=saturation; exposure=brightness; bloom=glow bleed; adapt=eye-adapt speed; vignette=edge darkening; ca=chromatic aberration; reflect/reflectY=mirror bottom of frame; tonemap=filmic or flame(log-density). relief=emboss the picture as a lit surface (0 off); bump=surface height; light=light direction; gloss=shine; metal=liquid-chrome palette reflections.
+Tone(whole-scene post): sat=saturation; exposure=brightness; bloom=glow bleed; adapt=eye-adapt speed; vignette=edge darkening; ca=chromatic aberration; reflect/reflectY=mirror bottom of frame; tonemap=filmic or flame(log-density). relief=emboss(bump,light,gloss,metal).
 
 CHOREO(optional, knows the song ahead): before drops the camera pushes in and leans, colour drains, light dims; slams on the drop, settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle. Each section type gets its own framing; frame=how far framings push/pan/lean; shot=which set of framings; glide=bars into new framing(0=cut); dolly=slow push-in across each section; scene=hue shift per section type. arc=zoom swell per phrase(phrase=bars).
 

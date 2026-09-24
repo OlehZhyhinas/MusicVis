@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 14;
+export const SEED_VERSION = 15;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -681,6 +681,36 @@ const MILKDROP: Def[] = [
       rx('bass', 'op', 2, 'amp', 0.5, { atk: 0.02, rel: 0.3, thr: 0.3 }), rx('bar', 'pal', 0, 'hue', 1),
       rx('bar', 'col', 0, 'light', 0.4),
     ],
+  },
+  {
+    // Flexi, mindblob 2.0: a two-colour cell foam, hot walls around cool blobs, bent by a slow
+    // inward flow so the membranes curl; the bass pushes the cells about and the beat swells a few.
+    origin: 'M12', name: 'Mindblob Foam (after Flexi)', energy: [0.15, 0.7], scheme: 'analogous', hue: 0.92,
+    color: { sat: 1, exposure: 1.1, contrast: 0.01, adapt: 0.3, bloom: 0.6, vignette: 0.15 },
+    carrier: 'warp', car: { halfLife: 0.08, floor: 0.2 },
+    chain: [op('swirl', { amt: 0.01, k: 3, wander: 0.3 })],
+    bodies: [body({
+      shape: ['cells', { mode: 0, scale: 2.2, speed: 0.35, warp: 0.9, wall: 0.6, fill: 1, var: 0.05, pulse: 0.3 }],
+      material: ['fill', { gain: 1.1 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.02, rel: 0.4 }],
+    })],
+    reactions: [rx('bass', 'sh', 0, 'warp', 0.3, { atk: 0.05, rel: 0.6 }), rx('loud', 'sh', 0, 'wall', 0.3, { atk: 0.05, rel: 0.4 })],
+  },
+  {
+    // Flexi, alien fish pond: a pond of shaded cells, each a lit dome with a dark nucleus drifting
+    // inside, packed edge to edge; the colours roll slowly through the palette and the drums jostle them.
+    origin: 'M13', name: 'Alien Fish Pond (after Flexi)', energy: [0.1, 0.6], scheme: 'triad', hue: 0.35,
+    color: { sat: 0.95, exposure: 1.1, adapt: 0.3, bloom: 0.7, vignette: 0.3, relief: 0.5, bump: 1.2, gloss: 0.4 },
+    carrier: 'warp', car: { halfLife: 0.15, floor: 0.1 },
+    chain: [op('rotate', { lock: 0, rate: 0.0006 })],
+    bodies: [body({
+      shape: ['cells', { mode: 2, scale: 3.6, speed: 0.25, warp: 0.35, wall: 0.1, fill: 0.9, var: 0.25, pulse: 0.2 }],
+      material: ['fill', { gain: 1 }],
+      emit: ['trail'],
+      color: ['height', { amount: 0.6, detail: 1 }],
+    })],
+    reactions: [rx('drums', 'sh', 0, 'speed', 0.3, { atk: 0.02, rel: 0.3 }), rx('bar', 'sh', 0, 'var', 0.3)],
   },
 ];
 

@@ -26,6 +26,7 @@ import {
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
 import { slimeDisplayScale } from './genes/physarum';
+import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
 
@@ -1666,7 +1667,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1757,6 +1758,11 @@ export class Stage {
         E[o + 2] = m[key('sc')];
         E[o + 4] = 0; E[o + 5] = P('density'); E[o + 6] = P('peaks');
         E[o + 8] = P('terrain'); E[o + 9] = P('flash');
+        break;
+      }
+      case 'cells': {
+        const cf = { speed: F.speed, beats: F.beats, beatPulse: F.beatPulse, bass: F.stem[1], loud: F.loud };
+        packCells(E, o, P, sh.p, cf, m, key, (k, raw) => this.resp(k, raw), sdt);
         break;
       }
       case 'beams': {

@@ -6,7 +6,7 @@
 import {
   COST_BUDGET_MS, DEFORM_KINDS, EMIT_KINDS, LOCI, LOCUS_KINDS, MATERIAL_KINDS, MOTION_KINDS, PLACE_KINDS, SHAPE_CLASS,
   SHAPE_KINDS, SHAPE_SCHEMAS, UNIQUE_SHAPES,
-  classify, cloneGenome, estimateCost, locusSchema, repair, repairBody, sdfCapable, structuralKey, validate,
+  bodyCost, classify, cloneBody, cloneGenome, estimateCost, locusSchema, repair, repairBody, sdfCapable, structuralKey, validate,
   type BodyGene, type Gene, type Genome, type Locus,
 } from '../src/v2/genome';
 import {
@@ -29,6 +29,7 @@ import {
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
 import { buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
+import { CELLS_SCHEMA } from '../src/v2/genes/cells';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 import { slimeTests } from './slime-tests';
@@ -1580,6 +1581,43 @@ physicsChecks(check);
 // -------------------------------------------------- phenotype fingerprints and novelty
 
 noveltyTests(check);
+
+// -------------------------------------------------- MilkDrop mining: cells (Voronoi field)
+
+{
+  const m12 = seedByOrigin('M12'), m13 = seedByOrigin('M13');
+  const cb = m12.bodies[0];
+  check('cells.schema', SHAPE_KINDS.includes('cells') && SHAPE_CLASS.cells === 'field' && SHAPE_SCHEMAS.cells === CELLS_SCHEMA && !sdfCapable(cb.shape), 'a field-class shape with its own schema');
+  const wild = repair({ ...cloneGenome(m12), bodies: [{ ...cloneBody(cb), shape: { kind: 'cells', p: { mode: 7, scale: 99, speed: -1, warp: 2, wall: NaN } }, place: { kind: 'orbit', p: { count: 5 } } }] });
+  const wp = wild.bodies[0].shape.p;
+  check('cells.repair', !validate(wild).length && wp.mode === 2 && wp.scale === 14 && wp.speed === 0 && wp.warp === 1 && wp.wall === CELLS_SCHEMA.wall.def && wild.bodies[0].place.p.count === 1, JSON.stringify(wp));
+  const src = buildSources(m12).feedback;
+  check('cells.glsl', /vec3 FLD_0\(vec2 p\)/.test(src) && src.includes('f2 - f1') && !buildSources(m13).composite.includes('undefined'), 'the Voronoi field is built into the body pass');
+  const plain = cloneGenome(m12);
+  plain.bodies[0].shape.p.warp = 0;
+  check('cells.cost', Math.abs(bodyCost(m12.bodies[0]) - bodyCost(plain.bodies[0]) - 0.25) < 1e-9 && estimateCost(m12) < COST_BUDGET_MS && estimateCost(m13) < COST_BUDGET_MS, `M12 ${estimateCost(m12).toFixed(2)} ms (measured 1.51 at 1440p), M13 ${estimateCost(m13).toFixed(2)} ms (1.63)`);
+  const rng = mulberry32(7171);
+  const probs: string[] = [];
+  let kept = 0, n = 0;
+  const bySp = new Map<string, Genome>();
+  for (const x of SEEDS) if (!bySp.has(classify(x.genome).primary)) bySp.set(classify(x.genome).primary, x.genome);
+  for (const [sp, other] of bySp) {
+    for (let k = 0; k < 6; k++) {
+      const c = k % 2 ? crossover(m12, other, rng) : crossover(other, m13, rng);
+      n++;
+      if (validate(c).length) probs.push(`${sp}:${validate(c)[0]}`);
+      if (c.bodies.some((b) => b.shape.kind === 'cells')) kept++;
+      const m = mutate(c, rng, 2);
+      if (validate(m).length) probs.push(`${sp} mutated:${validate(m)[0]}`);
+    }
+  }
+  check('cells.breeds-with-every-species', !probs.length && kept > n * 0.25, probs.slice(0, 3).join(' | ') || `${bySp.size} species x 6 crossovers (+ mutation) valid; cells inherited in ${kept}/${n}`);
+  const rr = mulberry32(2024);
+  let rc = 0;
+  for (let i = 0; i < 600; i++) if (randomBody(rr).shape.kind === 'cells') rc++;
+  check('cells.random', rc > 5 && rc < 120, `${rc}/600 random bodies are cell fields`);
+  check('cells.name', nounKind(cb) === 'cells' && NOUN_POOLS.cells.includes(nameFor(repair({ ...cloneGenome(m12), chain: [] })).split(' ').pop()!), nameFor(m12));
+}
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);
