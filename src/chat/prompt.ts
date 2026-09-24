@@ -58,7 +58,7 @@ Edits (applied in order):
 {"op":"express","body":0,"locus":"shape"}  swap in a body's silent allele
 {"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes listed below
 Paths: bN.<locus>.<param> (loci: shape place motion deform material emit feel color), bN.fuse.<p>, bN.fuseShape.<p>, bN.drawOpJ.<p> (w = strength), bN.xformJ.<p> (var.<name> = variation weight), opJ.<p> (w = strength), carrier.<p>, palette.<p>, tone.<p>, reactionJ.<p>.
-Colours: to change the overall colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}; a body's colour offset is bN.color.hue.
+Colours: to change the colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}. Body hues (bN.color.hue) are offsets added to the palette: leave them alone, or set them to 0 so the body takes the palette colour. Never give a body hue a colour name for a whole-picture colour change.
 Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
 
 ${GLOSSARY}
@@ -146,7 +146,7 @@ export function genomeText(g: Genome, keyHue: number): string {
       if (locus === 'deform') b.deform.ops?.forEach((o, j) => lines.push(`  b${bi}.drawOp${j}=${o.op} ${paramsText(g, { t: 'drawOp', b: bi, j }, o.op)}`));
       if (locus === 'color') {
         const abs = (keyHue + g.palette.p.hue + (gene.p.hue ?? 0)) % 1;
-        lines[lines.length - 1] += ` (base colour on screen: ${colourName(abs)})`;
+        lines[lines.length - 1] += ` (hue is an offset from the palette; this body shows ${colourName(abs)})`;
       }
     }
     if (b.alt) lines.push(`  silent alleles: ${Object.entries(b.alt).map(([l, a]) => `${l}=${a!.kind}`).join(', ')}`);

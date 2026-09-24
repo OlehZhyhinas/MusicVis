@@ -197,6 +197,8 @@ export class LocalLLM {
     if (!stockRec) throw new Error(`${MODEL_ID} is missing from the runtime's model list`);
     const record: ModelRecord = { ...stockRec, ...(p.modelLib ? { model_lib: p.modelLib } : {}), overrides: { ...stockRec.overrides, context_window_size: CONTEXT_TOKENS, prefill_chunk_size: this.prefillChunk } };
     const opfs = typeof navigator.storage?.getDirectory === 'function';
+    // Ask the browser not to evict the weights under storage pressure (best effort).
+    void navigator.storage?.persist?.().catch(() => false);
     const appConfig = { model_list: [record], cacheBackend: opfs ? 'opfs' : 'cache' };
     // An 8-way largest-first prefetch into the same OPFS layout WebLLM reads; WebLLM
     // then finds every shard present. A failure is only logged (WebLLM fetches the rest).

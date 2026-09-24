@@ -216,7 +216,11 @@ async function main(): Promise<void> {
   const look = new LookSampler();
   let keyHueNow = 0;
   const chat = new ChatPane($<HTMLElement>('gene-chat'), { editor, look, keyHue: () => keyHueNow });
-  Object.assign(window, { __geneChat: chat });
+  Object.assign(window, {
+    __geneChat: chat,
+    // Gene chat test set against the loaded model: await __geneChatTest() or __geneChatTest(['calmer']).
+    __geneChatTest: (ids?: string[]) => import('../chat/testRunner').then((m) => m.runChatTests(chat.model, ids)),
+  });
   editor.onClose = () => dock.close();
   editor.onAttention = () => dock.open('genes');
   function toggleGenes(): void {

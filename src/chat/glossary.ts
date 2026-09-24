@@ -83,18 +83,19 @@ slower: op/motion rates x0.5-0.7; feel atk/rel up.
 brighter: tone.exposure x1.15-1.3; material gain up.
 darker/dimmer: tone.exposure x0.75-0.85; material gain down.
 too dark: tone.exposure+material gain up.
-too bright/washed out: tone.exposure down; tone.bloom down.
+too bright: tone.exposure down; tone.bloom down.
+washed out/faded: tone.sat up; tone.contrast up; tone.exposure down a little; tone.bloom down.
 more colourful: palette.spread up; tone.sat up; color mapping->instrument/pitch.
 less colourful/muted: tone.sat x0.6-0.8; palette.spread down; palette->mono.
-warmer: palette hue ->0-0.1(red/orange).
-colder: palette hue ->0.55-0.65(blue).
+warmer: palette.hue "orange" (or "red", "amber").
+colder: palette.hue "blue" (or "cyan", "teal").
 bigger: shape r/size/radius x1.3-1.5; place spread/radius up.
 smaller: shape r/size/radius x0.6-0.75.
 sharper/crisper: material width down; carrier.sharpen up; tone.contrast up.
 softer/blurrier: carrier.blur up; material width/glow up.
 dreamy: carrier.halfLife+blur up; tone.bloom up; feel atk/rel up.
 underwater: carrier=fluid/flow; carrier.fnoise up; tone.ca up; carrier.blur up.
-fire: palette hue 0.02-0.08; material=glow/textured tex=1; emit=trail/sparks; tone.exposure up.
+fire: palette.hue "orange"; material=glow/textured tex=1; emit=trail/sparks; tone.exposure up.
 space/stars: place=float/point, small dots; emit=trail; carrier.halfLife long; deform=none.
 psychedelic/trippy: chain ops up(kaleido,swirl,quad); palette=triad/split high spread; tone.ca up; deform=noise/wobble.
 minimal/clean: 1 body; chain ops 0-1; deform=none; reactions 1-2.
@@ -107,7 +108,7 @@ on the drop: reaction src=drop/surge ->tone.exposure or carrier.halfLife, fast a
 longer trails: carrier.halfLife x1.5-3.
 shorter trails/no trails: carrier.halfLife x0.3-0.5, or emit=cover high amt, or carrier=none.
 fill more of the screen: place count up; spread/radius up; shape size up.
-emptier/less cluttered: place count down; chain ops down; fewer bodies.
+emptier/less cluttered: place count (walker: heads) down; remove_body a second body; shorter trails (carrier.halfLife down); shape size down.
 more symmetry/kaleidoscope: add fold ops mirror/kaleido/polar, or place=grid/ring/mirror.
 less symmetry: remove fold ops; place=point/walker/float.
 spin/rotate: motion=spin rate up; or add chain op rotate.

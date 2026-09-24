@@ -120,6 +120,11 @@ export class ChatPane {
     deps.editor.onLoad = () => this.presetChanged();
   }
 
+  /** The local model (loaded once the chat has started). */
+  get model(): LocalLLM {
+    return this.llm;
+  }
+
   /** The Genes tab became visible (or hidden): a previously enabled chat starts again. */
   setShown(on: boolean): void {
     this.shown = on;

@@ -8,6 +8,7 @@ import { SEEDS } from '../src/v2/seeds';
 import { applyEdits, paramPaths, parseKindPath, parsePath, replySchema, settablePaths, type Edit } from '../src/chat/edits';
 import { systemPrompt, genomeDiff, genomeText, glossaryGaps, lookText } from '../src/chat/prompt';
 import { parseReply, partialSay } from '../src/chat/geneChat';
+import { TEST_SET } from '../src/chat/testset';
 import { registerGenomeGene, repairGenomeGenes, validateGenomeGenes } from '../src/v2/geneRegistry';
 
 let failures = 0;
@@ -133,6 +134,18 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   check('replies parse after a think block', !!r && r.say === 'Bluer now.' && r.edits.length === 1);
   check('broken replies are null', parseReply('{"say": "x", "edits": [') === null);
   check('partial say streams', partialSay('{"say": "Making it cal') === 'Making it cal');
+}
+
+// ------------------------------------------------------------ test set sanity
+
+{
+  const bad = TEST_SET.filter((c) => !SEEDS.some((s) => s.origin === c.seed)).map((c) => c.id);
+  check('every test case names a seed', bad.length === 0, bad.join(', '));
+  const trivial = TEST_SET.filter((c) => {
+    const g = SEEDS.find((s) => s.origin === c.seed)?.genome;
+    return g && c.id !== 'nonsense' && c.expect(g, cloneGenome(g)) === null;
+  }).map((c) => c.id);
+  check('no test case passes without an edit', trivial.length === 0, `${TEST_SET.length} cases${trivial.length ? `, trivial: ${trivial.join(', ')}` : ''}`);
 }
 
 // ------------------------------------------------------------ registered genome-wide genes
