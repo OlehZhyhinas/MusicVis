@@ -1291,6 +1291,21 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   for (let i = 0; i < 300; i++) if (randomGenome(rnd).carrier.p.sharpen > 0) randomOn++;
   check('carrier.new-genes-breed', strayed === 0 && sharpened > 300 && randomOn > 5 && randomOn < 100, `strayed=${strayed} sharpened=${sharpened}/400 random-on=${randomOn}/300`);
 
+  // The quad op (z-squared flow): a breedable chain op with its shader snippet.
+  const qr = mulberry32(4455);
+  let quads = 0;
+  const quadBad: string[] = [];
+  for (let i = 0; i < 600; i++) {
+    const o = randomOp(qr);
+    if (o.op !== 'quad') continue;
+    quads++;
+    const g = repair({ ...cloneGenome(seedByOrigin('E05')), chain: [o] });
+    if (validate(g).length) quadBad.push(validate(g)[0]);
+    if (!buildSources(g).feedback.includes('d.x * d.x - d.y * d.y')) quadBad.push('no quad glsl');
+  }
+  const qg = repair({ ...cloneGenome(seedByOrigin('E05')), chain: [{ op: 'quad', stage: 'view', w: 2, p: { amt: 9, turn: 0.3 } }] });
+  check('ops.quad', quads > 10 && !quadBad.length && qg.chain[0].stage === 'warp' && qg.chain[0].w === 1 && qg.chain[0].p.amt === 2.5 && qg.chain[0].p.turn === 0.25, quadBad.join(' | ') || `${quads}/600 random ops were quad, all valid and built; a bad one is repaired into range`);
+
   // Migration: a seed-version-5 population (24 seeds, votes, a hidden seed, bred children) gains
   // M01-M10 exactly once; the original seeds and every child stay exactly as they were.
   const base = Population.seeded(1);

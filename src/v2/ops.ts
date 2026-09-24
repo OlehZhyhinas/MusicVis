@@ -334,6 +334,8 @@ export function opToXform(o: OpGene, rng: Rng): FlameXformGene {
     const s = 0.4 + 0.3 * rng();
     x.aff = [s, 0, 0, s, (o.p.cx ?? o.p.vx ?? 0) + (rng() - 0.5) * 0.8, (o.p.cy ?? o.p.vy ?? 0) + (rng() - 0.5) * 0.8];
     x.vars = { linear: 0.6, spherical: 0.4 };
+  } else if (o.op === 'quad') {
+    x.vars = { horseshoe: 0.8, linear: 0.2 };
   } else if (o.op === 'mirror' || o.op === 'tile') {
     const s = 0.5;
     x.aff = [-s, 0, 0, s, 0.3, 0];

@@ -824,6 +824,11 @@ export class Stage {
           }
           break;
         }
+        case 'quad':
+          wander(P('wander'));
+          a[j + 2] = P('amt') * o.w * Math.min(2, f60);
+          a[j + 3] = o.p.turn * TAU;
+          break;
         case 'push':
           a[j] = P('amt') * o.w * f60 * F.speed;
           a[j + 1] = o.p.axis;

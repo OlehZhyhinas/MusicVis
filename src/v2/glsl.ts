@@ -140,6 +140,7 @@ const OP_GLSL: Record<string, string> = {
   twist: `{ vec2 d = p - OA.xy; p = OA.xy + rot2(OA.z * length(d) * 8.0) * d; }`,
   ripple: `{ if (OA.w > 0.5) { float r = length(p); p += normalize(p + 1e-5) * OA.x * sin(r * OA.y - OA.z); } else { p.y += OA.x * sin(p.x * OA.y - OA.z); } }`,
   noise: `{ p += curlNoise(p * OA.y + 4.0, OA.z) * OA.x; }`,
+  quad: `{ vec2 d = p - OA.xy; p += rot2(OA.w) * vec2(d.x * d.x - d.y * d.y, 2.0 * d.x * d.y) * OA.z; }`,
   push: `{ if (OA.y < 0.5) p.x -= sign(p.x) * OA.x * smoothstep(0.0, 0.03, abs(p.x)); else if (OA.y < 1.5) p.y -= sign(p.y) * OA.x * smoothstep(0.0, 0.03, abs(p.y)); else { float r = length(p); p -= p / max(r, 1e-4) * OA.x * smoothstep(0.0, 0.03, r); } }`,
   stretch: `{ float hw = uAspect * 0.5; float bin = clamp((p.x + hw) / (2.0 * hw), 0.0, 1.0); bin = (floor(bin * OA.w) + 0.5) / OA.w; float lv = specAt(bin * 0.8 + 0.03); float st = 1.0 + OA.y * lv * (0.4 + 0.6 * uAct) + OA.z * uBeatPulse * uPres.x; float above = step(OA.x, p.y); vAdd += OB.y * above * mix(uColC * (0.025 + 0.05 * uStem.y * uPres.y), uColB * 0.002, smoothstep(OA.x, 0.5, p.y)) * vMul; vMul *= 1.0 + OB.x * (1.4 * lv - 0.3); p.y = OA.x + (p.y - OA.x) / st; }`,
   mirror: `{ if (OA.x < 0.5) p.x = abs(p.x); else if (OA.x < 1.5) p.y = abs(p.y); else p = abs(p); }`,
@@ -1033,6 +1034,12 @@ void main() {
   suv -= texture(uVel, vUv).xy * uSimTexel * uDt * uFluidAmt;
 #endif
   vec3 pv = prevAt(suv);
+  // With a border, whatever the warp pulls in from beyond the edge is the border colour (clamped
+  // sampling), so escaping flow fills with it and the fractal set stays dark.
+  if (uBorder > 0.001) {
+    vec2 eo = min(suv, 1.0 - suv);
+    pv += uBorderCol * uBorder * (1.0 - smoothstep(0.0, 0.002, min(eo.x, eo.y)));
+  }
   if (uSharpen > 0.001) {
     // Unsharp mask against a two-ring blur, then the 8-bit style clamp that keeps the patterns bistable.
     vec2 rr = vec2(uGrain / uAspect, uGrain);
@@ -1055,8 +1062,11 @@ void main() {
   }
   c = max(pv * uDecay - uDecaySub, 0.0);
   if (uBorder > 0.001) {
+    // Outer border in colour, a dark inner border just inside it (MilkDrop's ob / ib pair).
     vec2 e = min(vUv, 1.0 - vUv) * asp;
-    c = mix(c, uBorderCol, uBorder * smoothstep(uBorderW, uBorderW * 0.5, min(e.x, e.y)));
+    float ed = min(e.x, e.y);
+    c *= 1.0 - uBorder * smoothstep(uBorderW * 4.0, uBorderW * 3.0, ed);
+    c = mix(c, uBorderCol, uBorder * smoothstep(uBorderW, uBorderW * 0.5, ed));
   }
 ${masks}#endif
 ${fbDraw}  o = vec4(clamp(c, vec3(0.0), vec3(64.0)), 1.0);

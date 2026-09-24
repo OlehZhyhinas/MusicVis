@@ -54,7 +54,7 @@ export const TURNS = [-1, -0.5, -0.25, -0.125, -0.0625, 0, 0.0625, 0.125, 0.25, 
 
 // ------------------------------------------------------------------ chain
 
-export const MOTION_OPS = ['zoom', 'rotate', 'translate', 'swirl', 'twist', 'ripple', 'noise', 'push'] as const;
+export const MOTION_OPS = ['zoom', 'rotate', 'translate', 'swirl', 'twist', 'ripple', 'noise', 'push', 'quad'] as const;
 export const FOLD_OPS = ['mirror', 'tile', 'polar', 'kaleido', 'stretch'] as const;
 export const VAR_OPS = FLAME_VARIATIONS.map((v) => `v_${v}`) as `v_${FlameVar}`[];
 export type OpKind = (typeof MOTION_OPS)[number] | (typeof FOLD_OPS)[number] | `v_${FlameVar}`;
@@ -75,6 +75,9 @@ export const OP_SCHEMAS: Record<string, Schema> = {
   ripple: { amp: P(0, 0.004, 0.0008), freq: P(2, 40, 8), speed: P(0.2, 4, 0.7), radial: C([0, 1], 0) },
   noise: { amp: P(0, 0.003, 0.0012), scale: P(0.8, 5, 2), speed: P(0.05, 1, 0.3) },
   push: { amt: P(-0.01, 0.01, 0.001), axis: C([0, 1, 2], 0) },
+  // Quadratic flow: each frame samples from p + amt * turn(z^2) around the (wandering) centre, so the
+  // feedback settles into a Julia-set coastline (the classic z-squared per-pixel warp).
+  quad: { amt: P(0, 2.5, 1), turn: C([0, 0.25, 0.5, 0.75], 0.75), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), wander: P(0, 0.35, 0) },
   mirror: { axis: C([0, 1, 2], 0) },
   tile: { n: P(1.2, 4, 2) },
   polar: { scale: P(0.4, 1.6, 1), lock: C(LOCKS, 0) },
@@ -1164,6 +1167,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
       case 'kaleido': s.mirror += 2.2; break;
       case 'polar': s.vortex += 1; break;
       case 'push': if (p.axis === 0) s.mirror += 0.5; else s.vortex += 0.5; break;
+      case 'quad': s.flame += Math.min(1.6, p.amt * o.w); s.plasma += Math.min(1.2, p.amt * o.w * 0.6); break;
       case 'stretch': s.terrain += 1.2; break;
       default: s.flame += 0.5 * o.w; // variations
     }

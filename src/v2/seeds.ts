@@ -428,6 +428,7 @@ const DEFS: Def[] = [
 // ------------------------------------------------------------ MilkDrop classics
 // Per-frame MilkDrop values map onto the chain as: zoom z -> zoom rate z - 1, rot -> rotate rate,
 // cx / cy wandering -> the ops' shared wander path, warp -> a noise op, dx / dy -> translate,
+// the z-squared per-pixel warp -> a quad op,
 // decay -> half-life, per-pixel rotation growing toward the centre -> swirl, video echo -> a
 // view-stage mirror or kaleido.
 
@@ -574,35 +575,41 @@ const MILKDROP: Def[] = [
     ],
   },
   {
-    // Rovastar, Fractopia: a squaring flow pulls the coloured border inward into fractal coastlines
-    // that turn slowly; the centre wanders further the more bass has played and the border swells on it.
+    // Rovastar, Fractopia: a z-squared flow pulls the coloured border (and the dark band inside it) in
+    // from the edges while the picture turns, growing spiralling fractal coastlines around a dotted
+    // scope; the centre wanders with the bars and the bass strengthens the flow.
     origin: 'M07', name: 'Fractopia (after Rovastar)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.6,
-    color: { adapt: 0.35, bloom: 1, vignette: 0.2 }, carrier: 'warp', decay: 0.998, car: { border: 1, floor: 0.3 },
+    color: { adapt: 0.35, bloom: 1, vignette: 0.2 }, carrier: 'warp', car: { halfLife: 3, border: 1, floor: 0 },
     chain: [
-      op('v_horseshoe', { s: 1.4 }, 0.35),
-      op('rotate', { lock: -0.0625, rate: 0, wander: 0.15 }),
-      op('zoom', { rate: -0.004, wander: 0.15 }),
+      op('quad', { amt: 2, turn: 0.25, cx: 0, cy: -0.1, wander: 0.15 }),
+      op('rotate', { lock: -0.25, rate: -0.01, wander: 0.15 }),
+      op('zoom', { rate: -0.01, wander: 0.15 }),
     ],
     bodies: [body({
-      shape: ['dot', { r: 0.01 }],
-      material: ['glow', { gain: 0.25, width: 0.01 }],
+      shape: ['curve', { form: 3, radius: 0.1, amp: 0.5, ra: 2, rb: 3 }],
+      material: ['dots', { gain: 0.25, spacing: 0.03 }],
       color: ['age', { rate: 0.125 }],
     })],
-    reactions: [rx('bass', 'op', 0, 's', 0.25, { atk: 0.1, rel: 1.2 }), rx('beat', 'car', 0, 'border', -0.3)],
+    reactions: [rx('bass', 'op', 0, 'amt', 0.15, { atk: 0.1, rel: 1 }), rx('beat', 'car', 0, 'border', -0.3)],
   },
   {
     // Rovastar + Geiss, Hurricane Nightmare: a circular waveform feeds a vortex that spins hardest at
     // the eye and zooms hardest at the edges; loud bass winds it tighter.
     origin: 'M08', name: 'Hurricane Nightmare (after Rovastar & Geiss)', energy: [0.45, 1], scheme: 'analogous', hue: 0.55,
     color: { adapt: 0.35, bloom: 1.2, vignette: 0.55 }, carrier: 'warp', decay: 0.965,
-    chain: [op('zoom', { rate: 0.02, radial: 1 }), op('swirl', { amt: -0.02, k: 8 }), op('rotate', { lock: 0, rate: -0.004 })],
+    chain: [
+      op('zoom', { rate: 0.012, radial: 1 }),
+      op('swirl', { amt: -0.03, k: 3 }),
+      op('swirl', { amt: -0.03, k: 6 }),
+      op('rotate', { lock: 0, rate: -0.006 }),
+    ],
     bodies: [body({
       shape: ['curve', { form: 1, radius: 0.16, amp: 0.3 }],
       place: ['point', { x: 0, y: -0.03 }],
       material: ['line', { gain: 1.1, width: 2.4, halo: 0.3 }],
       color: ['age', { rate: 0.125, detail: 0.5 }],
     })],
-    reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.3)],
+    reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 2, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.3)],
   },
   {
     // Krash + Rovastar, Rainbow Orb: a rainbow waveform jumping with the loudness is spun into an orb by
@@ -638,6 +645,6 @@ const MILKDROP: Def[] = [
 ];
 
 /** MilkDrop re-creations released so far (in order M01..). */
-const MILKDROP_READY = 6;
+const MILKDROP_READY = 8;
 
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP.slice(0, MILKDROP_READY)].map(build);
