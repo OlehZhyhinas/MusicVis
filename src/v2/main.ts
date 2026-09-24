@@ -23,6 +23,7 @@ import { Fingerprinter } from './fingerprintRender';
 import { ExploreControls, loadExploreMode } from './exploreUi';
 import { EXPLORE_LABEL } from './novelty';
 import { PresetMap, ViewSwitch, loadPresetView, type PresetView } from './mapView';
+import { SimilarityPage } from './similarityUi';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
 import { ChatPane } from '../chat/chatPane';
@@ -221,6 +222,7 @@ async function main(): Promise<void> {
     distance: (a, b) => (a.fp && b.fp ? pheno.distance(a.fp, b.fp) : NaN),
     novelty: (m) => pheno.novelty(m),
     thumb: (id) => evo.thumb(id),
+    metricVersion: () => pheno.metricVersion,
     open: (id) => {
       play(id, 1.2, true);
       dock.open('genes');
@@ -229,6 +231,20 @@ async function main(): Promise<void> {
   });
   $('v2b-list').before(presetMap.host);
   const presetView = new ViewSwitch(explore.tools, loadPresetView(), (v) => applyPresetView(v));
+  // Similarity page: teach the look metric which presets look alike.
+  const similarity = new SimilarityPage({
+    pheno,
+    fper: pheno.fper!,
+    members: () => evo.pop.list(),
+    thumb: (id) => evo.thumb(id),
+    toast: (msg, detail) => showToast(msg, 'info', 5000, detail),
+  });
+  const simBtn = document.createElement('button');
+  simBtn.className = 'btn sm';
+  simBtn.title = 'Which looks more like this one? Teach the look metric';
+  simBtn.textContent = 'Similarity…';
+  simBtn.addEventListener('click', () => similarity.open());
+  explore.tools.append(simBtn);
   function applyPresetView(v: PresetView): void {
     $('v2b-list').hidden = v === 'map';
     presetMap.setShown(v === 'map' && dock.tab === 'presets');
@@ -605,6 +621,7 @@ async function main(): Promise<void> {
       { group: 'Presets', icon: 'evolve', label: `Evolve mode ${evolveOn ? 'off' : 'on'}`, keys: ['E'], run: () => setEvolve(!evolveOn) },
       { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
       { group: 'Presets', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
+      { group: 'Presets', icon: 'sparkle', label: 'Similarity judgements (teach the look metric)…', run: () => similarity.open() },
       { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
       { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
       { group: 'Panels', icon: 'trash', label: 'Clear playlist', run: () => clearPlaylist() },
@@ -711,7 +728,7 @@ async function main(): Promise<void> {
   else relayout();
 
   // Debug / test handle.
-  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, presetMap, play, choose, current, editor };
+  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, presetMap, similarity, play, choose, current, editor };
 
   const hud = new Hud(hudEl);
   let lastTime = performance.now();

@@ -17,6 +17,8 @@ export interface MapCallbacks {
   distance(a: Member, b: Member): number;
   novelty(m: Member): { nov: number; rel: number } | null;
   thumb(id: string): Promise<string>;
+  /** Changes when the distance metric changes (fitted weights): the graph is rebuilt. */
+  metricVersion?(): number;
   /** Play the preset and open it in the Genes tab with the HUD on. */
   open(id: string): void;
 }
@@ -128,7 +130,7 @@ export class PresetMap {
     }
     this.lastSync = performance.now();
     const ms = this.cb.members();
-    const sig = ms.map((m) => `${m.id}${m.fp ? '+' : ''}${m.hidden ? 'h' : ''}`).join(',');
+    const sig = `${this.cb.metricVersion?.() ?? 0}:` + ms.map((m) => `${m.id}${m.fp ? '+' : ''}${m.hidden ? 'h' : ''}`).join(',');
     this.members = new Map(ms.map((m) => [m.id, m]));
     if (sig === this.sig) {
       this.redraw();

@@ -8,6 +8,9 @@ import {
 } from '../src/v2/fingerprint';
 import { Population, fitness } from '../src/v2/population';
 import { SpringLayout } from '../src/v2/springLayout';
+import { agreement, answerRows, chooseTriplet, fitAnswers, parseAnswers, type SimilarityAnswer } from '../src/v2/similarity';
+import { MIN_ANSWERS_TO_APPLY } from '../src/v2/phenotype';
+import { groupTerms } from '../src/v2/fingerprint';
 import { Phenotype } from '../src/v2/phenotype';
 import {
   EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, parseExploreMode,
@@ -93,6 +96,7 @@ function cloud(n: number, seed: number, centre: number, s: number): number[][] {
 }
 
 export async function noveltyTestsAsync(check: Check): Promise<void> {
+  await similarityTests(check);
   // ------------------------------------------------ archive
   {
     const a = new NoveltyArchive(5);
@@ -248,6 +252,69 @@ function layoutTests(check: Check): void {
   for (let i = 0; i < 50; i++) B.step();
   const per = (performance.now() - t1) / 50;
   check('map.layout-scale', per < 6, `500 nodes, ${B.edges.length} springs: ${per.toFixed(2)} ms per step`);
+}
+
+async function similarityTests(check: Check): Promise<void> {
+  // A simulated user who judges with hidden group weights (colour and motion matter, detail and response barely).
+  const hidden = [3, 0.4, 1, 2, 0.2];
+  const pts = cloud(80, 21, 0, 2);
+  const ids = pts.map((_, i) => `G1-${String(i).padStart(4, '0')}`);
+  const norm = FeatureNorm.fit(pts);
+  let seed = 5;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  const wd = (w: number[], t: number[]) => t.reduce((s2, v, i) => s2 + w[i] * v, 0);
+  const answers: SimilarityAnswer[] = [];
+  const seen = new Set<string>();
+  const cands = pts.map((fp, i) => ({ id: ids[i], fp }));
+  let uncertainSum = 0;
+  for (let k = 0; k < 90; k++) {
+    const t = chooseTriplet(cands, norm, [1, 1, 1, 1, 1], rnd, { seen });
+    if (!t) break;
+    seen.add([t.ref, ...[t.a, t.b].sort()].join('|'));
+    uncertainSum += t.uncertainty;
+    const fp = (id: string) => pts[ids.indexOf(id)];
+    const ta = groupTerms(norm.z(fp(t.ref)), norm.z(fp(t.a))), tb = groupTerms(norm.z(fp(t.ref)), norm.z(fp(t.b)));
+    let pick: 'a' | 'b' = wd(hidden, ta) < wd(hidden, tb) ? 'a' : 'b';
+    if (rnd() < 0.1) pick = pick === 'a' ? 'b' : 'a';
+    answers.push({ ref: t.ref, a: t.a, b: t.b, pick, t: k, fps: [fp(t.ref), fp(t.a), fp(t.b)] });
+  }
+  const fit = fitAnswers(answers, norm);
+  const { x, y } = answerRows(answers, norm);
+  const ceiling = agreement(x, y, hidden);
+  const hn = hidden.map((v) => v / (hidden.reduce((s2, q) => s2 + q, 0) / hidden.length));
+  const order = (w: number[]) => w.map((v, i) => [v, i]).sort((p, q) => q[0] - p[0]).map((p) => p[1]).join('');
+  check('similarity.fit', answers.length === 90 && fit.agreeFit > fit.agreeEqual + 0.1 && order(fit.weights).slice(0, 2) === order(hidden).slice(0, 2) && fit.weights[0] > fit.weights[1] * 2,
+    `90 simulated answers (10% noise) on uncertain triplets (mean uncertainty ${(uncertainSum / answers.length).toFixed(2)}): equal weights ${Math.round(fit.agreeEqual * 100)}%, fitted ${Math.round(fit.agreeFit * 100)}% cross-validated (the hidden weights themselves ${Math.round(ceiling * 100)}%); weights ${fit.weights.map((v) => v.toFixed(2)).join('/')} vs hidden ${hn.map((v) => v.toFixed(2)).join('/')}`);
+
+  // Triplets: never repeat a seen one; a reference's candidates are its near neighbours.
+  const t1 = chooseTriplet(cands, norm, [1, 1, 1, 1, 1], () => 0.3, { seen: new Set() })!;
+  const t2 = chooseTriplet(cands, norm, [1, 1, 1, 1, 1], () => 0.3, { seen: new Set([[t1.ref, ...[t1.a, t1.b].sort()].join('|')]) })!;
+  const few = chooseTriplet(cands.slice(0, 2), norm, [1, 1, 1, 1, 1], rnd);
+  check('similarity.triplet', !!t1 && !!t2 && [t1.ref, t1.a, t1.b].join() !== [t2.ref, t2.a, t2.b].join() && new Set([t1.ref, t1.a, t1.b]).size === 3 && few === null,
+    `distinct presets, a seen triplet is not asked again, none with fewer than 3 fingerprints (uncertainty ${t1.uncertainty.toFixed(2)}, group disagreement ${t1.disagreement.toFixed(2)})`);
+
+  // Phenotype: answers persist, fitted weights apply after MIN_ANSWERS_TO_APPLY.
+  const pop = Population.seeded(3);
+  const ms = pop.list();
+  ms.forEach((m, i) => {
+    m.fp = pts[i % pts.length];
+    m.fpv = FP_VERSION;
+  });
+  const kv = new MemKV();
+  const ph = new Phenotype(null, () => pop);
+  await ph.attachStore(kv);
+  let appliedAt = -1;
+  for (let k = 0; k < 12; k++) {
+    const [r, a, b] = [ms[k], ms[k + 1], ms[k + 2]];
+    const ta = groupTerms(ph.norm.z(r.fp!), ph.norm.z(a.fp!)), tb = groupTerms(ph.norm.z(r.fp!), ph.norm.z(b.fp!));
+    ph.addAnswer(r, a, b, wd(hidden, ta) < wd(hidden, tb) ? 'a' : 'b');
+    if (appliedAt < 0 && ph.metricVersion > 0) appliedAt = k + 1;
+  }
+  const ph2 = new Phenotype(null, () => pop);
+  await ph2.attachStore(kv);
+  const bad = parseAnswers({ format: 'musicvis-v2-similarity', answers: [{ ref: 'x', a: 'y', b: 'z', pick: 'c', fps: [] }, answers[0]] });
+  check('similarity.persist', appliedAt === MIN_ANSWERS_TO_APPLY && ph2.answers.length === 12 && JSON.stringify(ph2.weights) === JSON.stringify(ph.weights) && bad.length === 1 && parseAnswers(null).length === 0,
+    `fitted weights take over at answer ${appliedAt}; 12 answers reload with the same weights; malformed answers are dropped`);
 }
 
 export function noveltyTests(check: Check): void {

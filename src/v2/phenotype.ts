@@ -14,6 +14,8 @@ import {
   type ExploreMode,
 } from './novelty';
 import { fitness } from './population';
+import { GROUPS } from './fingerprint';
+import { fitAnswers, parseAnswers, type SimilarityAnswer, type SimilarityFit } from './similarity';
 
 export interface KV {
   get<T>(key: string): Promise<T | undefined>;
@@ -21,6 +23,9 @@ export interface KV {
 }
 
 const ARCHIVE_KEY = 'novelty-archive';
+const ANSWERS_KEY = 'similarity-answers';
+/** Answers needed before the fitted weights replace equal weights. */
+export const MIN_ANSWERS_TO_APPLY = 8;
 
 export interface DuplicateHit {
   id: string;
@@ -44,6 +49,13 @@ export class Phenotype {
   private table: Map<string, { nov: number; rel: number }> = new Map();
   private tableKey = '';
   private typical: number[] = [];
+  /** Similarity judgements and the current fit of the group weights to them. */
+  answers: SimilarityAnswer[] = [];
+  fit: SimilarityFit | null = null;
+  /** Bumped when the metric (weights) changes: the map re-lays out. */
+  metricVersion = 0;
+  /** Agreement history (cross-validated, after each answer), for the similarity page. */
+  agreeHistory: number[] = [];
 
   readonly fper: Fingerprinter | null;
   private popRef: () => Population;
@@ -65,7 +77,35 @@ export class Phenotype {
     } catch {
       this.archive = new NoveltyArchive();
     }
+    try {
+      this.answers = parseAnswers(await store.get<unknown>(ANSWERS_KEY));
+    } catch {
+      this.answers = [];
+    }
     this.syncArchive();
+    this.refitWeights();
+  }
+
+  // --------------------------------------------------------- similarity
+
+  addAnswer(ref: Member, a: Member, b: Member, pick: 'a' | 'b'): void {
+    if (!validFingerprint(ref.fp) || !validFingerprint(a.fp) || !validFingerprint(b.fp)) return;
+    this.answers.push({ ref: ref.id, a: a.id, b: b.id, pick, t: Date.now(), fps: [ref.fp, a.fp, b.fp] });
+    void this.store?.set(ANSWERS_KEY, { format: 'musicvis-v2-similarity', answers: this.answers });
+    this.refitWeights();
+    if (Number.isFinite(this.fit?.agreeFit)) this.agreeHistory.push(this.fit!.agreeFit);
+  }
+
+  /** Fit the group weights to the answers; applied once there are enough of them. */
+  refitWeights(): void {
+    this.fit = this.answers.length ? fitAnswers(this.answers, this.norm) : null;
+    const apply = !!this.fit && this.fit.n >= MIN_ANSWERS_TO_APPLY;
+    const w = { ...EQUAL_WEIGHTS };
+    if (apply) GROUPS.forEach((g, i) => (w[g] = Math.max(0.02, this.fit!.weights[i])));
+    if (JSON.stringify(w) !== JSON.stringify(this.weights)) {
+      this.weights = w;
+      this.metricVersion++;
+    }
   }
 
   /** Every current member's fingerprint is in the archive (migration and imports). */
@@ -148,6 +188,7 @@ export class Phenotype {
     this.norm = FeatureNorm.fit(c);
     this.fitN = c.length;
     this.zCache = new WeakMap();
+    if (this.answers.length) this.refitWeights();
   }
 
   z(fp: number[]): Float32Array {

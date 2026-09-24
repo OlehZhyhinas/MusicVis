@@ -72,3 +72,146 @@
   font: 500 11px var(--mono);
   color: var(--acc);
 }
+
+/* Similarity page: "Which looks more like this one?" */
+.sim {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.sim[hidden] {
+  display: none;
+}
+.sim-card {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--r-dock);
+  background: var(--panel-strong);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh);
+  backdrop-filter: blur(var(--blur-3));
+  -webkit-backdrop-filter: blur(var(--blur-3));
+}
+.sim-h {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.sim-h h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.sim-h .dim {
+  font-size: 12px;
+}
+.sim canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-btn);
+  background: #0b0c12;
+}
+.sim canvas.loading {
+  opacity: 0.75;
+}
+.sim-ref {
+  margin: 0 auto;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sim-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.sim-cand {
+  all: unset;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: calc(var(--r-btn) + 4px);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.sim-cand:hover,
+.sim-cand:focus-visible {
+  border-color: var(--acc);
+  background: var(--acc-tint);
+}
+.sim-cand.chosen {
+  border-color: var(--ok);
+  background: rgba(126, 226, 168, 0.14);
+}
+.sim-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sim-cap .id {
+  font: 500 11px var(--mono);
+  color: var(--acc);
+}
+.sim-actions {
+  display: flex;
+  justify-content: center;
+}
+.sim-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--tx2);
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.sim-stats b {
+  color: var(--tx);
+}
+.sim-stats .sim-agree {
+  color: var(--acc);
+}
+.sim-ws {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px 14px;
+}
+.sim-w {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 6px;
+  align-items: center;
+}
+.sim-w i {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--acc) var(--w), var(--raise) var(--w));
+}
+.sim-w b {
+  font: 500 11px var(--mono);
+}
+@media (max-width: 560px) {
+  .sim-pair {
+    grid-template-columns: 1fr;
+  }
+}

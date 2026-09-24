@@ -134,6 +134,12 @@ export class ReferenceClip {
     return this.frame / CLIP.fps;
   }
 
+  /** Jump to clip time t (the next frame is t + 1/fps). */
+  seek(t: number): void {
+    this.frame = Math.round(t * CLIP.fps);
+    this.lastPart = clipPart(this.frame / CLIP.fps);
+  }
+
   static audio(t: number): ClipAudio {
     const part = clipPart(t);
     const bp = t / BEAT;
