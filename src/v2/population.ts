@@ -8,6 +8,7 @@ import {
 import { nameFor } from './naming';
 import { SEEDS, SEED_VERSION } from './seeds';
 import type { CrossTag, Rng } from './ops';
+import { FP_VERSION, validFingerprint } from './fingerprint';
 
 /** How a member came to be: a crossover outcome, or 'edited' (saved from the gene editor). */
 export type MemberTag = CrossTag | 'edited';
@@ -36,6 +37,10 @@ export interface Member {
   descriptor?: number[];
   /** How a crossover child combined its parents, or 'edited' (absent for seeds, mutants and older children). */
   cross?: MemberTag;
+  /** Phenotype fingerprint on the reference clip (fingerprint.ts FEATURES); computed in the background when missing. */
+  fp?: number[];
+  /** FP_VERSION the fingerprint was made with (another version is recomputed). */
+  fpv?: number;
 }
 
 /**
@@ -162,7 +167,7 @@ export class Population {
       } else if (JSON.stringify(cur.genome) !== JSON.stringify(fresh.genome)) {
         Object.assign(cur, {
           gen: 0, origin: s.origin, parents: [], genome: fresh.genome, name: s.name,
-          species: fresh.species, species2: fresh.species2, type: fresh.type, energy: fresh.energy, descriptor: undefined,
+          species: fresh.species, species2: fresh.species2, type: fresh.type, energy: fresh.energy, descriptor: undefined, fp: undefined, fpv: undefined,
         });
         changed.push(cur.id);
       }
@@ -360,6 +365,11 @@ export class Population {
         descriptor: !old && Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
       };
       if (CROSS_TAGS.includes(raw.cross as MemberTag)) m.cross = raw.cross;
+      // Fingerprints from another clip / feature version (or none: older files) are recomputed lazily.
+      if (!old && raw.fpv === FP_VERSION && validFingerprint(raw.fp)) {
+        m.fp = raw.fp;
+        m.fpv = FP_VERSION;
+      }
       p.members.set(m.id, m);
     }
     if (!p.members.size) throw new Error('The file has no valid presets.');

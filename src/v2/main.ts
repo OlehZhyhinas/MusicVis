@@ -18,6 +18,8 @@ import { Screener } from './screen';
 import { Store } from './store';
 import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
+import { Phenotype } from './phenotype';
+import { Fingerprinter } from './fingerprintRender';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
 import { ChatPane } from '../chat/chatPane';
@@ -77,6 +79,10 @@ async function main(): Promise<void> {
   const screener = new Screener(eng);
   const evo = new Evolution(store, screener);
   await evo.load();
+  // Phenotype fingerprints: visual duplicate rejection in breeding, computed for old members in the background.
+  const pheno = new Phenotype(new Fingerprinter(eng, screener.runner), () => evo.pop);
+  evo.pheno = pheno;
+  pheno.onFingerprint = () => evo.changed();
 
   function resizeCanvas(): void {
     eng.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
@@ -660,6 +666,7 @@ async function main(): Promise<void> {
   updateBar();
   // Descriptors for novelty scoring, in the background.
   window.setTimeout(() => void evo.describeMissing(40), 4000);
+  window.setTimeout(() => pheno.startIdle(() => !screener.runner.busy && evo.breeding === 0), 6000);
 
   // The dock starts open on its last tab (a sheet on phones, so not there).
   updateEmpty();
@@ -667,7 +674,7 @@ async function main(): Promise<void> {
   else relayout();
 
   // Debug / test handle.
-  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, play, choose, current, editor };
+  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, play, choose, current, editor };
 
   const hud = new Hud(hudEl);
   let lastTime = performance.now();

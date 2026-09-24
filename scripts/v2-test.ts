@@ -34,6 +34,7 @@ import { choreoTests } from './choreo-tests';
 import { slimeTests } from './slime-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
+import { noveltyTests } from './novelty-tests';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -1537,6 +1538,10 @@ physicsChecks(check);
   const added = loaded.upgradeSeeds(9);
   check('migrate.adds-m11-once', added.includes('G0-M11') && JSON.stringify(loaded.get('G0-M11')!.genome) === JSON.stringify(m11) && loaded.upgradeSeeds(10).length === 0 && JSON.stringify(loaded.get(kid.id)) === kidBefore && loaded.get('G0-M05')!.likes === 2, `added ${added.filter((x) => /M1[1-9]|M[2-9]\d/.test(x)).join(',')}; child and votes untouched`);
 }
+
+// -------------------------------------------------- phenotype fingerprints and novelty
+
+noveltyTests(check);
 
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);

@@ -6,6 +6,7 @@ import { crossoverTagged, mulberry32, mutate, sameGenome, type CrossTag, type Rn
 import { BREED_EVERY, POP_CAP, Population, fitness, type Member } from './population';
 import type { ScreenResult, Screener } from './screen';
 import type { Store } from './store';
+import type { Phenotype } from './phenotype';
 
 export type BreedMode = 'cross' | 'mutate';
 export type ChooseReason = 'evolve' | 'new' | 'drop' | 'next';
@@ -25,6 +26,8 @@ export class Evolution {
   onChange: (() => void) | null = null;
   breeding = 0;
   lastRejects: string[] = [];
+  /** Phenotype fingerprints (visual duplicate rejection, novelty); null without a GPU (tests). */
+  pheno: Phenotype | null = null;
   private saveTimer = 0;
   private history: string[] = [];
   private view: { id: string; start: number } | null = null;
@@ -164,8 +167,18 @@ export class Evolution {
           onEvent?.({ kind: 'reject', reason: res.reason, tried });
           continue;
         }
+        // Visual duplicates: a child that looks like an existing member is rejected, whatever its genes say.
+        const fp = this.pheno ? await this.pheno.fingerprint(g) : null;
+        const dup = fp && this.pheno!.duplicateOf(fp);
+        if (dup) {
+          const reason = `looks like an existing preset (${dup.id}, distance ${dup.dist.toFixed(2)})`;
+          this.lastRejects.push(reason);
+          onEvent?.({ kind: 'reject', reason, tried });
+          continue;
+        }
         const child = this.pop.addChild(cloneGenome(g), parents, Date.now(), tag);
         child.descriptor = res.descriptor;
+        if (fp) this.pheno!.adopt(child, fp);
         out.push(child);
         onEvent?.({ kind: 'child', member: child, tried });
         this.changed();
