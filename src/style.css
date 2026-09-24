@@ -724,80 +724,6 @@ img.th:not([src]) {
   color: var(--accent);
 }
 
-/* HUD */
-#hud {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  padding: 10px 14px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--fg);
-  z-index: 20;
-  min-width: 180px;
-  pointer-events: none;
-  transition:
-    opacity 0.3s ease,
-    visibility 0.3s ease;
-}
-
-#hud[hidden] {
-  display: none;
-}
-
-.hud-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  white-space: nowrap;
-}
-
-.hud-dim {
-  color: var(--fg-dim);
-}
-
-.hud-beats {
-  display: flex;
-  gap: 5px;
-  margin: 4px 0;
-}
-
-.hud-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.hud-dot.lit {
-  background: var(--accent);
-}
-
-.hud-dot.downbeat.lit {
-  background: #ff9f6b;
-}
-
-.hud-meter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.hud-meter-track {
-  flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.hud-meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-}
-
 #preset-goto {
   position: absolute;
   top: 56px;
@@ -1936,4 +1862,124 @@ img.th:not([src]) {
 #app.phone.dock-open #first-run,
 #app.phone.dock-open #empty-tools {
   display: none;
+}
+
+/* ================================================================ HUD */
+#hud {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 244px;
+  z-index: 20;
+  pointer-events: none;
+}
+.hudbox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  font-family: var(--mono);
+}
+.hudbox .k {
+  font-size: 10px;
+  color: var(--tx3);
+}
+.hud-top,
+.hud-sec,
+.hud-line {
+  justify-content: space-between;
+}
+.hud-bpm {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+}
+.hud-key {
+  font-size: 14px;
+  font-weight: 500;
+}
+.hud-range {
+  font-size: 11px;
+  color: var(--tx2);
+}
+.hud-stems {
+  gap: 6px;
+}
+.hud-stem {
+  font-size: 11px;
+  color: var(--tx2);
+  width: 48px;
+  flex: none;
+}
+.hud-rule {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.hud-line {
+  font-size: 11px;
+  gap: 12px;
+}
+.hud-line .k {
+  font-size: 11px;
+}
+.hud-stats {
+  font-size: 10.5px;
+  color: var(--tx3);
+  line-height: 1.45;
+  white-space: pre-line;
+}
+.beats {
+  display: flex;
+  gap: 6px;
+}
+.beats i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+}
+.beats i.on {
+  background: var(--acc);
+}
+.beats i.on.down {
+  background: var(--warn);
+}
+#app.phone #hud {
+  left: 16px;
+  right: 16px;
+  top: 44px;
+  width: auto;
+  padding: 10px 12px;
+  gap: 8px;
+}
+#app.phone .hud-prog,
+#app.phone .hud-rule,
+#app.phone .hud-line,
+#app.phone .hud-stats {
+  display: none;
+}
+#app.phone .hud-stems {
+  flex-direction: row;
+  gap: 6px;
+}
+#app.phone .hud-stems .row {
+  flex: 1;
+  gap: 4px;
+}
+#app.phone .hud-stem {
+  width: auto;
+  font-size: 10px;
+  color: var(--tx3);
+}
+#app.phone.dock-open #hud {
+  display: none;
+}
+#app.phone.hud-on .plabel {
+  top: 150px;
+}
+/* keep the transient label clear of the HUD */
+#app.hud-on:not(.phone) .plabel {
+  left: max(calc(var(--cw, 100vw) / 2), 396px);
+  max-width: max(240px, calc(var(--cw, 100vw) - 584px));
 }

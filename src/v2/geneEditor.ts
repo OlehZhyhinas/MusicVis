@@ -1,4 +1,4 @@
-// Gene editor panel (HUD view, left side): the playing preset's genes as live
+// Gene editor (the dock's Genes tab): the playing preset's genes as live
 // controls generated from the parameter schemas (geneEdit.ts). Edits go to a
 // scratch copy of the genome: parameter changes are swapped into the running
 // program in place (uniforms, no recompile); structural changes (a kind switch,
@@ -15,7 +15,7 @@ import type { Engine } from './engine';
 import type { Evolution } from './evolve';
 import type { Member } from './population';
 import { loadSetting, saveSetting } from '../ui/storage';
-import { icon, setIcon, type IconName } from '../ui/icons';
+import { icon, type IconName } from '../ui/icons';
 
 export interface GeneEditorDeps {
   eng: Engine;
@@ -61,8 +61,8 @@ export class GeneEditor {
   private saving = false;
   private shown = false;
   private forced = false;
-  private collapsed = loadSetting<boolean>('v2.genesCollapsed', false);
-  private openState = new Map<string, boolean>();
+  private openState = new Map<string, boolean>(Object.entries(loadSetting<Record<string, boolean>>('v2.genesOpen', {})));
+  private msgText = '';
   private errors = new Map<string, string>();
   private bound: Bound[] = [];
   private meters: { src: HTMLElement; resp: HTMLElement; val: HTMLElement }[] = [];
@@ -70,60 +70,65 @@ export class GeneEditor {
   private confirmAction: (() => void) | null = null;
 
   private readonly who: HTMLElement;
+  private readonly costMeter: HTMLElement;
   private readonly costFill: HTMLElement;
   private readonly costNum: HTMLElement;
-  private readonly costWrap: HTMLElement;
   private readonly revertBtn: HTMLButtonElement;
   private readonly saveBtn: HTMLButtonElement;
   private readonly note: HTMLElement;
   private readonly prompt: HTMLElement;
+  private readonly promptText: HTMLElement;
   private readonly pasteBox: HTMLElement;
   private readonly pasteText: HTMLTextAreaElement;
   private readonly msg: HTMLElement;
+  private readonly jump: HTMLElement;
   private readonly body: HTMLElement;
 
   constructor(private root: HTMLElement, private deps: GeneEditorDeps) {
     root.textContent = '';
-    const fold = h('button', { class: 'tp-btn vg-fold', 'aria-label': 'Collapse the gene editor', title: 'Collapse' });
-    const close = h('button', { class: 'tp-btn vg-close', 'aria-label': 'Hide the gene editor (K)', title: 'Hide (K)' });
-    setIcon(close, 'x', 16);
-    this.who = h('span', { class: 'vg-who' });
-    root.append(h('div', { class: 'vg-head' }, fold, h('span', { class: 'vg-title', text: 'Genes' }), this.who, close));
+    this.who = h('span', { class: 'mono vg-who ell' });
+    this.revertBtn = h('button', { class: 'btn sm ghost', title: 'Back to the preset as saved' });
+    this.revertBtn.innerHTML = `${icon('undo', 14)}<span class="lbl">Revert</span>`;
+    this.saveBtn = h('button', { class: 'btn sm primary', title: 'Add the edited genome to the population as a child of this preset' });
+    this.saveBtn.innerHTML = `${icon('save', 14)}<span>Save as new</span>`;
+    root.append(h('div', { class: 'sec-h' }, h('div', { class: 'col grow', style: 'gap:1px' }, h('h2', { text: 'Genes' }), this.who), this.revertBtn, this.saveBtn));
+
+    this.promptText = h('b', { text: 'Discard unsaved edits?' });
+    const discard = h('button', { class: 'btn danger sm' }, 'Discard');
+    const keep = h('button', { class: 'btn ghost sm' }, 'Keep editing');
+    this.prompt = h('div', { class: 'confirm warn', role: 'alertdialog', hidden: true }, this.promptText, h('div', { class: 'row' }, discard, keep));
+    this.note = h('div', { class: 'banner', style: '--c:var(--warn)', hidden: true });
+    this.note.innerHTML = `${icon('alert', 14)}<span class="sp">Editing · auto-switch paused until you save or revert</span>`;
+    this.msg = h('div', { class: 'banner vg-msg', role: 'status', hidden: true });
 
     this.costFill = h('i');
-    this.costNum = h('span', { class: 'vg-cost-num' });
-    this.costWrap = h('div', { class: 'vg-cost', title: `Estimated GPU cost per frame at 1440p against the ${COST_BUDGET_MS} ms budget` },
-      h('span', { class: 'vg-cost-label', text: 'GPU' }), h('span', { class: 'vg-cost-bar' }, this.costFill, h('b')), this.costNum);
-    this.revertBtn = h('button', { class: 'tp-btn-text', title: 'Back to the preset as saved' }, 'Revert');
-    this.saveBtn = h('button', { class: 'tp-btn-text vg-save', title: 'Add the edited genome to the population as a child of this preset' }, 'Save as new');
-    const copyBtn = h('button', { class: 'tp-btn-text', title: 'Copy the edited genome as JSON' }, 'Copy JSON');
-    const pasteBtn = h('button', { class: 'tp-btn-text', title: 'Load a genome from JSON' }, 'Paste JSON');
-    this.note = h('div', { class: 'vg-note', hidden: true }, 'Editing: auto-switch paused until you save or revert');
-    const discard = h('button', { class: 'tp-btn-text' }, 'Discard');
-    const keep = h('button', { class: 'tp-btn-text' }, 'Keep editing');
-    this.prompt = h('div', { class: 'vg-prompt', hidden: true }, h('span', { text: 'Discard unsaved edits?' }), discard, keep);
-    this.pasteText = h('textarea', { rows: 4, spellcheck: 'false', placeholder: 'Paste genome JSON here' });
-    const apply = h('button', { class: 'tp-btn-text' }, 'Apply');
-    const cancel = h('button', { class: 'tp-btn-text' }, 'Close');
-    this.pasteBox = h('div', { class: 'vg-paste', hidden: true }, this.pasteText, h('div', { class: 'vg-paste-actions' }, apply, cancel));
-    this.msg = h('div', { class: 'vg-msg' });
-    root.append(h('div', { class: 'vg-top' }, this.costWrap, h('div', { class: 'vg-actions' }, this.revertBtn, this.saveBtn, copyBtn, pasteBtn), this.note, this.prompt, this.pasteBox, this.msg));
-    this.body = h('div', { class: 'vg-body' });
+    this.costMeter = h('div', { class: 'meter h6' }, this.costFill);
+    this.costNum = h('span', { class: 'mono vg-cost-num' });
+    const copyBtn = h('button', { class: 'ib sm', title: 'Copy genome JSON', 'aria-label': 'Copy genome JSON' });
+    copyBtn.innerHTML = icon('copy', 16);
+    const pasteBtn = h('button', { class: 'ib sm', title: 'Paste genome JSON', 'aria-label': 'Paste genome JSON', 'aria-expanded': 'false' });
+    pasteBtn.innerHTML = icon('paste', 16);
+    const cost = h('div', { class: 'row vg-cost', title: `Estimated GPU cost per frame at 1440p against the ${COST_BUDGET_MS} ms budget` },
+      h('span', { class: 'muted vg-cpu' }), h('span', { class: 'muted vg-cost-label', text: 'GPU cost' }), this.costMeter, this.costNum, h('span', { class: 'div', style: 'height:18px' }), copyBtn, pasteBtn);
+    (cost.querySelector('.vg-cpu') as HTMLElement).innerHTML = icon('cpu', 15);
+
+    this.pasteText = h('textarea', { class: 'txt mono', rows: 4, spellcheck: 'false', placeholder: 'Paste genome JSON here', 'aria-label': 'Genome JSON' });
+    const apply = h('button', { class: 'btn sm primary' }, 'Apply');
+    const cancel = h('button', { class: 'btn sm ghost' }, 'Close');
+    this.pasteBox = h('div', { class: 'sub vg-paste', hidden: true }, this.pasteText, h('div', { class: 'row' }, apply, cancel));
+    this.jump = h('div', { class: 'seg full', role: 'group', 'aria-label': 'Jump to' });
+    root.append(h('div', { class: 'vg-top' }, this.prompt, this.note, this.msg, cost, this.pasteBox, this.jump));
+    this.body = h('div', { class: 'vg-body scroll' });
     root.append(this.body);
 
-    fold.addEventListener('click', () => {
-      this.collapsed = !this.collapsed;
-      saveSetting('v2.genesCollapsed', this.collapsed);
-      this.root.classList.toggle('vg-collapsed', this.collapsed);
-      setIcon(fold, this.collapsed ? 'cright' : 'cdown', 16);
-    });
-    root.classList.toggle('vg-collapsed', this.collapsed);
-    setIcon(fold, this.collapsed ? 'cright' : 'cdown', 16);
-    close.addEventListener('click', () => this.onClose?.());
-    this.revertBtn.addEventListener('click', () => this.revert());
+    this.revertBtn.addEventListener('click', () => this.askRevert());
     this.saveBtn.addEventListener('click', () => void this.save());
     copyBtn.addEventListener('click', () => this.copy());
-    pasteBtn.addEventListener('click', () => this.openPaste(''));
+    pasteBtn.addEventListener('click', () => {
+      if (this.pasteBox.hidden) this.openPaste('');
+      else this.pasteBox.hidden = true;
+      pasteBtn.setAttribute('aria-expanded', String(!this.pasteBox.hidden));
+    });
     apply.addEventListener('click', () => this.applyPaste());
     cancel.addEventListener('click', () => (this.pasteBox.hidden = true));
     discard.addEventListener('click', () => {
@@ -133,8 +138,25 @@ export class GeneEditor {
       act?.();
     });
     keep.addEventListener('click', () => this.hidePrompt());
-    // Keys typed into the panel never reach the page shortcuts.
-    root.addEventListener('keydown', (ev) => ev.stopPropagation());
+    this.jump.addEventListener('click', (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-g]');
+      if (!b) return;
+      for (const x of this.jump.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+      this.body.querySelector<HTMLElement>(`#vg-g${b.dataset.g}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    // Keys typed into the panel never reach the page shortcuts (Esc still closes the dock
+    // from anywhere but a text field).
+    root.addEventListener('keydown', (ev) => {
+      const t = ev.target as HTMLElement;
+      if (ev.key === 'Escape' && !(t instanceof HTMLInputElement && t.type === 'text') && !(t instanceof HTMLTextAreaElement) && !(t instanceof HTMLSelectElement)) {
+        if (!this.prompt.hidden) {
+          ev.stopPropagation();
+          this.hidePrompt();
+        }
+        return;
+      }
+      ev.stopPropagation();
+    });
   }
 
   /** Called when the close button is pressed (main hides the panel). */
@@ -155,7 +177,6 @@ export class GeneEditor {
   private applyVisibility(): void {
     const vis = this.shown || this.forced;
     this.root.hidden = !vis;
-    document.getElementById('app')?.classList.toggle('vg-open', vis);
     if (vis) this.meterClock = 0;
   }
 
@@ -167,6 +188,7 @@ export class GeneEditor {
     this.pasteBox.hidden = true;
     this.errors.clear();
     this.watch = null;
+    this.say('');
     if (!m) {
       this.original = this.scratch = this.lastGood = null;
       this.body.textContent = '';
@@ -188,11 +210,28 @@ export class GeneEditor {
   /** Asks before discarding unsaved edits; runs the action on "Discard". */
   confirmDiscard(action: () => void): void {
     this.confirmAction = action;
+    this.promptText.textContent = 'Discard unsaved edits?';
     this.prompt.hidden = false;
     this.forced = true;
-    if (this.collapsed) this.root.classList.remove('vg-collapsed');
     this.applyVisibility();
+    this.updateBanners();
     this.onAttention?.();
+    (this.prompt.querySelector('.btn.ghost') as HTMLElement | null)?.focus();
+  }
+
+  /** Revert asks inline first. */
+  private askRevert(): void {
+    if (!this.dirtyNow) return;
+    this.confirmAction = null;
+    this.promptText.textContent = 'Discard unsaved edits?';
+    this.prompt.hidden = false;
+    this.updateBanners();
+    (this.prompt.querySelector('.btn.ghost') as HTMLElement | null)?.focus();
+  }
+
+  private updateBanners(): void {
+    this.note.hidden = !this.dirtyNow || !this.prompt.hidden;
+    this.msg.hidden = !this.msgText || !this.prompt.hidden;
   }
 
   private hidePrompt(): void {
@@ -200,9 +239,9 @@ export class GeneEditor {
     this.prompt.hidden = true;
     if (this.forced) {
       this.forced = false;
-      this.root.classList.toggle('vg-collapsed', this.collapsed);
       this.applyVisibility();
     }
+    this.updateBanners();
   }
 
   /** Per frame: compile status of structural edits, live meters (when visible). */
@@ -225,7 +264,7 @@ export class GeneEditor {
         if (on && structuralKey(on) === w.key) this.lastGood = cloneGenome(this.scratch!);
       }
     }
-    if (this.root.hidden || this.collapsed || !this.meters.length) return;
+    if (this.root.hidden || !this.meters.length) return;
     this.meterClock -= dt;
     if (this.meterClock > 0) return;
     this.meterClock = METER_EVERY_S;
@@ -236,8 +275,8 @@ export class GeneEditor {
       const el = this.meters[j];
       const r = this.scratch!.reactions[j];
       if (!el || !r) return;
-      el.src.style.width = `${Math.round(Math.min(1, Math.max(0, m.src)) * 100)}%`;
-      el.resp.style.width = `${Math.round(Math.min(1, Math.max(0, m.resp)) * 100)}%`;
+      el.src.style.setProperty('--v', `${Math.round(Math.min(1, Math.max(0, m.src)) * 100)}%`);
+      el.resp.style.setProperty('--v', `${Math.round(Math.min(1, Math.max(0, m.resp)) * 100)}%`);
       const spec = schemaFor(this.scratch!, r.g, r.i)?.[r.k];
       el.val.textContent = spec && Number.isFinite(m.value) ? E.formatValue(m.value, spec) : '–';
     });
@@ -377,15 +416,20 @@ export class GeneEditor {
   }
 
   private say(text: string, kind: 'ok' | 'warn' | 'err' = 'ok'): void {
-    this.msg.textContent = text;
-    this.msg.className = `vg-msg vg-${kind}`;
+    this.msgText = text;
+    const c = kind === 'ok' ? 'var(--ok)' : kind === 'warn' ? 'var(--warn)' : 'var(--neg)';
+    this.msg.style.setProperty('--c', c);
+    this.msg.innerHTML = text ? `${icon(kind === 'ok' ? 'check' : 'alert', 14)}<span class="sp"></span>` : '';
+    const sp = this.msg.querySelector('.sp');
+    if (sp) sp.textContent = text;
+    this.updateBanners();
   }
 
   private setDirty(d: boolean): void {
     if (d === this.dirtyNow) return;
     this.dirtyNow = d;
-    this.note.hidden = !d;
     this.root.classList.toggle('vg-dirty', d);
+    this.updateBanners();
     this.deps.onDirty(d);
   }
 
@@ -394,9 +438,10 @@ export class GeneEditor {
     if (!g) return;
     const cost = estimateCost(g);
     const f = cost / COST_BUDGET_MS;
-    this.costFill.style.width = `${Math.min(100, (f / 1.25) * 100).toFixed(1)}%`;
-    this.costWrap.classList.toggle('vg-amber', f >= 0.85 && f <= 1);
-    this.costWrap.classList.toggle('vg-red', f > 1);
+    const c = f > 1 ? 'var(--neg)' : f >= 0.85 ? 'var(--warn)' : 'var(--ok)';
+    this.costFill.style.setProperty('--v', `${Math.min(100, (f / 1.25) * 100).toFixed(1)}%`);
+    this.costMeter.style.setProperty('--c', c);
+    this.costNum.style.color = c;
     this.costNum.textContent = `${cost.toFixed(1)} / ${COST_BUDGET_MS} ms${f > 1 ? ' over' : ''}`;
     const d = JSON.stringify(g) !== this.originalJson;
     this.setDirty(d);
@@ -418,48 +463,80 @@ export class GeneEditor {
     this.meters = [];
     if (!g) return;
     let group = -2;
+    const groups: { id: number; label: string }[] = [];
     for (const sec of E.buildModel(g)) {
       if (sec.body !== group) {
         group = sec.body;
-        const label = sec.body < 0 ? 'Preset' : g.bodies.length > 1 ? `Body ${sec.body + 1}` : 'Body';
-        this.body.append(h('div', { class: 'vg-group', text: label }));
+        const label = sec.body < 0 ? 'Genome' : g.bodies.length > 1 ? `Body ${sec.body + 1}` : 'Body';
+        groups.push({ id: sec.body, label });
+        this.body.append(h('div', { class: 'grp-h', id: `vg-g${sec.body}` }, h('span', { class: 'overline', text: label })));
       }
       this.body.append(this.section(sec));
     }
     this.body.scrollTop = scroll;
+    // Jump links, one per group.
+    const pressed = this.jump.querySelector('button[aria-pressed=true]')?.getAttribute('data-g');
+    this.jump.textContent = '';
+    for (const gr of groups) {
+      const b = h('button', { 'data-g': gr.id, 'aria-pressed': String(pressed === String(gr.id) || (!pressed && gr === groups[0])) }, gr.label);
+      this.jump.append(b);
+    }
+    this.jump.hidden = groups.length < 2;
   }
 
   private errLine(anchor: string): HTMLElement | null {
     const e = this.errors.get(anchor);
-    return e ? h('div', { class: 'vg-err', role: 'alert', text: e }) : null;
+    if (!e) return null;
+    const el = h('div', { class: 'banner vg-err', role: 'alert', style: '--c:var(--neg)' });
+    el.innerHTML = `${icon('alert', 14)}<span class="sp"></span>`;
+    el.querySelector('.sp')!.textContent = e;
+    return el;
   }
 
   private section(sec: E.SectionModel): HTMLElement {
     const open = this.openState.get(sec.id) ?? sec.open;
-    const d = h('details', { class: 'vg-sec', open: open || this.errors.has(sec.id) });
-    const sum = h('summary', {}, h('span', { text: sec.title }), sec.kind ? h('em', { text: sec.kind.value }) : null);
-    d.append(sum);
-    d.addEventListener('toggle', () => this.openState.set(sec.id, d.open));
+    const d = h('details', { class: 'gx', open: open || this.errors.has(sec.id) });
+    const m = /^(.*) \((\d+)\/(\d+)\)$/.exec(sec.title);
+    const title = m ? m[1] : sec.title;
+    const count = m ? `${m[2]} / ${m[3]}` : sec.alleles ? String(sec.alleles.length) : '';
+    const chev = h('span', { class: 'chev' });
+    chev.innerHTML = icon('cright', 14);
+    const sum = h('summary', {}, chev, h('b', { text: title }), count ? h('span', { class: 'dim mono vg-count', text: count }) : null, h('span', { class: 'sp' }));
     if (sec.kind && sec.target) {
       const t = sec.target;
-      d.append(this.kindRow('kind', sec.kind, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id)));
+      const sel = this.select(sec.kind.options.map((o) => ({ value: o, label: o })), sec.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id), `${title} kind`);
+      sel.classList.add('vg-kind');
+      // The dropdown lives in the summary: keep clicks and keys from folding the section.
+      for (const ev of ['click', 'keydown', 'keyup']) sel.addEventListener(ev, (e) => e.stopPropagation());
+      sum.append(sel);
+    } else if (sec.kind) {
+      sum.append(h('span', { class: 'tag', text: sec.kind.value }));
     }
-    d.append(...[this.errLine(sec.id)].filter((x): x is HTMLElement => !!x));
-    if (sec.target) for (const c of sec.params) d.append(this.paramRow(sec.target, c, sec.id));
+    d.append(sum);
+    d.addEventListener('toggle', () => {
+      this.openState.set(sec.id, d.open);
+      saveSetting('v2.genesOpen', Object.fromEntries(this.openState));
+    });
+    const gb = h('div', { class: 'gb' });
+    d.append(gb);
+    const err = this.errLine(sec.id);
+    if (err) gb.append(err);
+    if (sec.target) for (const c of sec.params) gb.append(this.paramRow(sec.target, c, sec.id));
     if (sec.target?.t === 'fuse') {
       const b = sec.target.b;
-      d.append(h('div', { class: 'vg-row-actions' }, this.button('Remove fused shape', () => this.structural((g) => E.removeFuse(g, b), sec.id))));
+      gb.append(h('div', { class: 'row' }, this.button('Remove fused shape', () => this.structural((g) => E.removeFuse(g, b), sec.id), undefined, false, 'trash', 'ghost')));
     }
-    if (sec.list) d.append(this.list(sec));
+    if (sec.list) gb.append(this.list(sec));
     if (sec.alleles) {
       const b = sec.body;
+      gb.append(h('p', { class: 'dim vg-hint', text: 'Dormant genes this body carries. Express swaps one in; the gene showing goes silent.' }));
       for (const a of sec.alleles) {
         const anchor = `${sec.id}.${a.locus}`;
-        d.append(h('div', { class: 'vg-allele' },
-          h('span', {}, h('b', { text: `${E.LOCUS_TITLE[a.locus]}: ${a.kind}` }), h('small', { text: a.summary })),
-          this.button('Express', () => this.structural((g) => E.expressAllele(g, b, a.locus), anchor), 'Show this gene; the one showing goes silent')));
+        gb.append(h('div', { class: 'allele' },
+          h('div', { class: 'grow' }, h('b', { text: `${E.LOCUS_TITLE[a.locus]}: ${a.kind}` }), h('small', { text: a.summary })),
+          this.button('Express', () => this.structural((g) => E.expressAllele(g, b, a.locus), anchor), 'Show this gene; the one showing goes silent', false, 'sparkle')));
         const el = this.errLine(anchor);
-        if (el) d.append(el);
+        if (el) gb.append(el);
       }
     }
     return d;
@@ -468,32 +545,38 @@ export class GeneEditor {
   private list(sec: E.SectionModel): HTMLElement {
     const wrap = h('div', { class: 'vg-list' });
     const body = sec.body;
-    for (const [j, it] of (sec.items ?? []).entries()) {
-      const item = h('div', { class: 'vg-item' });
-      const head = h('div', { class: 'vg-item-head' });
+    const items = sec.items ?? [];
+    for (const [j, it] of items.entries()) {
       const t = it.target;
       if (sec.list === 'reactions') {
-        head.append(this.reactionHead(j));
-      } else {
-        head.append(h('span', { class: 'vg-item-title', text: it.title }));
-        if (it.kind) {
-          head.append(this.select(it.kind.options.map((o) => ({ value: o, label: o })), it.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), it.id), 'Op kind'));
-        }
-        if (it.stage && sec.list === 'chain') {
-          head.append(this.segmented([{ value: 'warp', label: 'warp' }, { value: 'view', label: 'view' }], it.stage, (v) => this.structural((g) => E.setStage(g, j, v as 'warp' | 'view'), it.id), 'Stage: warp (feedback) or view (display)'));
-        }
-        const acts = h('span', { class: 'vg-item-acts' });
-        if (sec.list === 'chain' || sec.list === 'drawOps') {
-          const move = (dir: -1 | 1) => this.structural((g) => (sec.list === 'chain' ? E.moveOp(g, j, dir) : E.moveDrawOp(g, body, j, dir)), it.id);
-          acts.append(this.iconButton('aup', () => move(-1), 'Move up', !it.canUp), this.iconButton('adown', () => move(1), 'Move down', !it.canDown));
-        }
-        acts.append(this.iconButton('x', () => this.structural((g) => {
-          if (sec.list === 'chain') return E.removeOp(g, j);
-          if (sec.list === 'drawOps') return E.removeDrawOp(g, body, j);
-          return E.removeXform(g, body, j);
-        }, it.id), 'Remove'));
-        head.append(acts);
+        const item = this.reaction(j);
+        const el = this.errLine(it.id);
+        if (el) item.append(el);
+        for (const c of it.params) item.append(this.paramRow(t, c, it.id));
+        wrap.append(item);
+        continue;
       }
+      const item = h('div', { class: 'sub' });
+      const head = h('div', { class: 'sh' });
+      head.append(h('span', { class: sec.list === 'xforms' ? '' : 'dim mono vg-n', text: it.title }));
+      if (it.kind) {
+        const sel = this.select(it.kind.options.map((o) => ({ value: o, label: o })), it.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), it.id), 'Op kind');
+        sel.classList.add('vg-opkind');
+        head.append(sel);
+      }
+      if (it.stage && sec.list === 'chain') {
+        head.append(this.segmented([{ value: 'warp', label: 'warp' }, { value: 'view', label: 'view' }], it.stage, (v) => this.structural((g) => E.setStage(g, j, v as 'warp' | 'view'), it.id), 'Stage: warp (feedback) or view (display)'));
+      }
+      head.append(h('span', { class: 'sp' }));
+      if (sec.list === 'chain' || sec.list === 'drawOps') {
+        const move = (dir: -1 | 1) => this.structural((g) => (sec.list === 'chain' ? E.moveOp(g, j, dir) : E.moveDrawOp(g, body, j, dir)), it.id);
+        head.append(this.iconButton('aup', () => move(-1), 'Move up', !it.canUp), this.iconButton('adown', () => move(1), 'Move down', !it.canDown));
+      }
+      head.append(this.iconButton('x', () => this.structural((g) => {
+        if (sec.list === 'chain') return E.removeOp(g, j);
+        if (sec.list === 'drawOps') return E.removeDrawOp(g, body, j);
+        return E.removeXform(g, body, j);
+      }, it.id), sec.list === 'xforms' ? 'Remove transform' : 'Remove'));
       item.append(head);
       const el = this.errLine(it.id);
       if (el) item.append(el);
@@ -504,7 +587,7 @@ export class GeneEditor {
         const sel = this.select([{ value: '', label: 'add variation…' }, ...opts.map((v) => ({ value: v, label: v }))], '', (v) => {
           if (v) this.structural((g) => E.addVariation(g, body, j, v as FlameVar), it.id);
         }, 'Add a variation');
-        item.append(h('div', { class: 'vg-row-actions' }, sel));
+        item.append(h('div', { class: 'prow' }, h('span', { class: 'pl', text: 'Variation' }), sel));
       }
       wrap.append(item);
     }
@@ -514,24 +597,26 @@ export class GeneEditor {
       const kinds = sec.list === 'chain' ? OP_KINDS : DRAW_OPS;
       let pick: string = 'swirl';
       const sel = this.select(kinds.map((k) => ({ value: k, label: k })), pick, (v) => (pick = v), 'Op to add');
-      const btn = this.button('Add op', () => this.structural((g) => (sec.list === 'chain' ? E.addOp(g, pick as OpKind) : E.addDrawOp(g, body, pick as OpKind)), addAnchor), undefined, !sec.canAdd);
-      wrap.append(h('div', { class: 'vg-row-actions' }, sel, btn));
+      sel.classList.add('grow');
+      const btn = this.button('Add op', () => this.structural((g) => (sec.list === 'chain' ? E.addOp(g, pick as OpKind) : E.addDrawOp(g, body, pick as OpKind)), addAnchor), undefined, !sec.canAdd, 'plus');
+      wrap.append(h('div', { class: 'row' }, sel, btn));
     } else if (sec.list === 'reactions') {
-      wrap.append(h('div', { class: 'vg-row-actions' }, this.button('Add reaction', () => this.structural((g) => E.addReaction(g), addAnchor), undefined, !sec.canAdd)));
+      wrap.append(h('div', { class: 'row' }, this.button('Add reaction', () => this.structural((g) => E.addReaction(g), addAnchor), 'Disabled once every target is driven or the list is full', !sec.canAdd, 'plus', 'ghost')));
     } else if (sec.list === 'xforms') {
-      wrap.append(h('div', { class: 'vg-row-actions' }, this.button('Add transform', () => this.structural((g) => E.addXform(g, body), addAnchor), undefined, !sec.canAdd)));
+      wrap.append(h('div', { class: 'row' }, this.button('Add transform', () => this.structural((g) => E.addXform(g, body), addAnchor), undefined, !sec.canAdd, 'plus', 'ghost'),
+        h('span', { class: 'dim vg-hint', text: `${items.length} transform${items.length === 1 ? '' : 's'}` })));
     }
     const el = this.errLine(addAnchor);
     if (el) wrap.append(el);
     return wrap;
   }
 
-  private reactionHead(j: number): HTMLElement {
+  private reaction(j: number): HTMLElement {
     const g = this.scratch!;
     const r = g.reactions[j];
     const anchor = `reaction${j}`;
     const src = this.select(SIGNALS.map((s) => ({ value: s, label: s })), r.src, (v) => this.structural((x) => E.switchKind(x, { t: 'reaction', j }, v), anchor), 'Source signal');
-    const tsel = h('select', { class: 'vg-select vg-target', 'aria-label': 'Target parameter' });
+    const tsel = h('select', { class: 'dd', 'aria-label': 'Target parameter' });
     const used = new Set(g.reactions.filter((_x, i) => i !== j).map(E.reactKey));
     const groups = new Map<string, HTMLOptGroupElement>();
     for (const t of E.reactionTargets(g)) {
@@ -548,19 +633,25 @@ export class GeneEditor {
       const [gg, i, k] = tsel.value.split('|');
       this.structural((x) => E.setReactionTarget(x, j, { g: gg as typeof r.g, i: Number(i), k }), anchor);
     });
-    const srcBar = h('i', { class: 'vg-m-src' });
-    const respBar = h('i', { class: 'vg-m-resp' });
-    const val = h('span', { class: 'vg-m-val', text: '–' });
+    const srcBar = h('i', { style: '--v:0%' });
+    const respBar = h('i', { style: '--v:0%' });
+    const val = h('span', { class: 'mono vg-m-val', text: '–' });
     this.meters[j] = { src: srcBar, resp: respBar, val };
-    const meter = h('span', { class: 'vg-meter', title: 'Live: source signal (top), response after the curve (bottom), driven value' }, h('span', { class: 'vg-m-bars' }, srcBar, respBar), val);
+    const arrow = h('span', { class: 'dim' });
+    arrow.innerHTML = icon('cright', 14);
     const rm = this.iconButton('x', () => this.structural((x) => E.removeReaction(x, j), anchor), 'Remove reaction');
-    return h('div', { class: 'vg-react-head' }, h('div', { class: 'vg-react-line' }, src, h('span', { class: 'vg-arrow', text: '→' }), tsel, rm), h('div', { class: 'vg-react-line' }, meter));
+    return h('div', { class: 'rx' },
+      h('div', { class: 'row' }, src, arrow, tsel, rm),
+      h('div', { class: 'mm', title: 'Live: source signal (in), response after the curve (out), driven value' },
+        h('span', { text: 'in' }), h('div', { class: 'meter h3' }, srcBar), h('span', { text: 'out' }), h('div', { class: 'meter h3', style: '--c:var(--ok)' }, respBar), val));
   }
 
   // ---------------------------------------------------------- widgets
 
-  private button(label: string, fn: () => void, title?: string, disabled = false): HTMLButtonElement {
-    const b = h('button', { class: 'tp-btn-text vg-btn', title, disabled }, label);
+  private button(label: string, fn: () => void, title?: string, disabled = false, ic?: IconName, kind = ''): HTMLButtonElement {
+    const b = h('button', { class: `btn sm ${kind}`.trim(), title, disabled });
+    b.innerHTML = `${ic ? icon(ic, 14) : ''}<span></span>`;
+    b.querySelector('span')!.textContent = label;
     b.addEventListener('click', fn);
     return b;
   }
@@ -573,39 +664,38 @@ export class GeneEditor {
   }
 
   private select(options: { value: string; label: string }[], value: string, fn: (v: string) => void, label: string): HTMLSelectElement {
-    const s = h('select', { class: 'vg-select', 'aria-label': label });
+    const s = h('select', { class: 'dd', 'aria-label': label });
     for (const o of options) s.append(h('option', { value: o.value, selected: o.value === value, text: o.label }));
     s.addEventListener('change', () => fn(s.value));
     return s;
   }
 
   private segmented(options: { value: string; label: string }[], value: string, fn: (v: string) => void, title: string): HTMLElement {
-    const wrap = h('span', { class: 'vg-seg', role: 'group', title });
+    const wrap = h('span', { class: 'seg', role: 'group', title });
     for (const o of options) {
-      const b = h('button', { class: o.value === value ? 'on' : '', 'aria-pressed': String(o.value === value) }, o.label);
+      const b = h('button', { 'aria-pressed': String(o.value === value) }, o.label);
       b.addEventListener('click', () => fn(o.value));
       wrap.append(b);
     }
     return wrap;
   }
 
-  private kindRow(label: string, k: E.KindControl, fn: (v: string) => void): HTMLElement {
-    return h('div', { class: 'vg-row vg-kind' }, h('label', { text: label }), this.select(k.options.map((o) => ({ value: o, label: o })), k.value, fn, label));
-  }
-
   private paramRow(t: E.Target, c: E.ParamControl, anchor: string): HTMLElement {
     const spec = c.spec;
     const title = `${c.key} · ${spec.choices ? spec.choices.join(' / ') : `${spec.min} … ${spec.max}${spec.log ? ' (log)' : ''}${spec.int ? ' (integer)' : ''}`} · default ${spec.def}`;
-    const row = h('div', { class: 'vg-row', title });
-    row.append(h('label', { text: c.label }));
+    const row = h('div', { class: 'prow', title });
+    row.append(h('span', { class: 'pl', text: c.label }));
     const current = () => {
       const g = this.scratch;
       return g && E.schemaAt(g, t)?.[c.key] ? E.getParam(g, t, c.key) : NaN;
     };
     if (c.widget === 'slider') {
-      const range = h('input', { type: 'range', min: 0, max: E.SLIDER_STEPS, step: 1, value: E.toSlider(c.value, spec), 'aria-label': c.label });
-      const num = h('input', { type: 'text', class: 'vg-num', value: E.formatValue(c.value, spec), 'aria-label': `${c.label} value`, inputmode: 'decimal' });
+      const range = h('input', { type: 'range', class: 'rng', min: 0, max: E.SLIDER_STEPS, step: 1, value: E.toSlider(c.value, spec), 'aria-label': c.label });
+      const num = h('input', { type: 'text', class: 'val', value: E.formatValue(c.value, spec), 'aria-label': `${c.label} value`, inputmode: 'decimal' });
+      const fill = () => range.style.setProperty('--v', `${(Number(range.value) / E.SLIDER_STEPS) * 100}%`);
+      fill();
       range.addEventListener('input', () => {
+        fill();
         const v = E.fromSlider(Number(range.value), spec);
         num.value = E.formatValue(v, spec);
         this.applyParam(t, c.key, v, true, anchor);
@@ -619,6 +709,7 @@ export class GeneEditor {
       });
       range.addEventListener('dblclick', () => {
         range.value = String(E.toSlider(spec.def, spec));
+        fill();
         num.value = E.formatValue(spec.def, spec);
         this.applyParam(t, c.key, spec.def, false, anchor);
       });
@@ -628,6 +719,7 @@ export class GeneEditor {
         const now = current();
         num.value = E.formatValue(now, spec);
         range.value = String(E.toSlider(now, spec));
+        fill();
       });
       num.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') num.blur();
@@ -637,6 +729,7 @@ export class GeneEditor {
         const v = current();
         if (!Number.isFinite(v)) return;
         range.value = String(E.toSlider(v, spec));
+        fill();
         num.value = E.formatValue(v, spec);
       };
       this.bound.push({ el: range, sync });

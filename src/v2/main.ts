@@ -44,7 +44,6 @@ async function main(): Promise<void> {
   const dropOverlay = $<HTMLElement>('drop-overlay');
   const transportEl = $<HTMLElement>('transport');
   const hudEl = $<HTMLElement>('hud');
-  const statsEl = $<HTMLElement>('v2-stats');
   const playlistPanelEl = $<HTMLElement>('tab-playlist');
   const firstRun = $<HTMLElement>('first-run');
   const helpOverlay = $<HTMLElement>('help-overlay');
@@ -61,7 +60,7 @@ async function main(): Promise<void> {
   let repeat = loadSetting<RepeatMode>('repeat', 'off');
   let evolveOn = loadSetting<boolean>('v2.evolve', false);
   let muted = false;
-  hudEl.hidden = statsEl.hidden = !hudOn;
+  hudEl.hidden = !hudOn;
   appRoot.classList.toggle('hud-on', hudOn);
 
   let eng: Engine;
@@ -420,7 +419,7 @@ async function main(): Promise<void> {
   }
   function setHud(on: boolean): void {
     hudOn = on;
-    hudEl.hidden = statsEl.hidden = !on;
+    hudEl.hidden = !on;
     appRoot.classList.toggle('hud-on', on);
     saveSetting('v2.hudOn', on);
   }
@@ -676,7 +675,7 @@ async function main(): Promise<void> {
       if (statsTimer <= 0) {
         statsTimer = 0.5;
         const s = eng.stats;
-        statsEl.textContent = `frame ${s.frameMs.toFixed(1)} ms · cpu ${s.cpuMs.toFixed(1)} · gpu ${s.gpuMs.toFixed(1)} ms · ${s.width}×${s.height}${s.scale < 1 ? ` (scale ${s.scale.toFixed(2)})` : ''}${m ? ` · ${m.type}` : ''}`;
+        hud.setStats(`frame ${s.frameMs.toFixed(1)} ms · cpu ${s.cpuMs.toFixed(1)} · gpu ${s.gpuMs.toFixed(1)} ms\n${s.width}×${s.height} (scale ${s.scale.toFixed(2)})${m ? ` · ${m.type}` : ''}`);
       }
     }
     requestAnimationFrame(frame);
