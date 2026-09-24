@@ -36,6 +36,7 @@ import { choreoTests } from './choreo-tests';
 import { driftTests } from './drift-tests';
 import { slimeTests } from './slime-tests';
 import { flockTests } from './flock-tests';
+import { ecosystemTests } from './ecosystem-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
@@ -1164,7 +1165,8 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
       if (rng() < 0.3) g = mutate(g, rng, 0.6);
       for (let bi = 0; bi < g.bodies.length; bi++) {
         const alt = g.bodies[bi].alt;
-        if (alt) {
+        // A silent allele the body cannot express (e.g. a fill material on a curve) is a valid state, not this check's case.
+        if (alt && expressAllele(g, bi, (Object.keys(alt) as Locus[])[0]).ok) {
           const locus = (Object.keys(alt) as Locus[])[0];
           carrier = { g, b: bi, locus };
           break;
@@ -1530,6 +1532,7 @@ choreoTests(check);
 driftTests(check);
 slimeTests(check);
 flockTests(check);
+ecosystemTests(check);
 physicsChecks(check);
 
 // -------------------------------------------------- MilkDrop mining: relief (emboss lighting)

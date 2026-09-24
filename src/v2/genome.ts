@@ -34,6 +34,7 @@ import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
 import { FLOCK_SCHEMA, flockCost } from './genes/boids';
 import { TUNNEL_SCHEMA } from './genes/tunnel';
+import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
 import { CELLS_SCHEMA, cellsCost } from './genes/cells';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
@@ -309,7 +310,7 @@ export const STATIC_MATERIALS: MaterialKind[] = ['fill', 'textured', 'chrome'];
 
 // -------------------------------------------------------------- emission
 
-export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime', 'flock'] as const;
+export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime', 'flock', 'ecosystem'] as const;
 export type EmitKind = (typeof EMIT_KINDS)[number];
 export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   // Redrawn every frame on top of the picture.
@@ -330,6 +331,8 @@ export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   slime: SLIME_SCHEMA,
   // A flock of boids circling the body (genes/boids.ts).
   flock: FLOCK_SCHEMA,
+  // Four instrument species of GPU agents sharing a growth field, populations driven by the mix (genes/ecosystem.ts).
+  ecosystem: ECO_SCHEMA,
 };
 
 // ------------------------------------------------------------------ fuse
@@ -877,6 +880,7 @@ export function repair(input: unknown): Genome {
   let sparks = false;
   let slime = false;
   let flock = false;
+  let eco = false;
   for (const raw of Array.isArray(g.bodies) ? g.bodies : []) {
     if (bodies.length >= MAX_BODIES) break;
     const b = repairBody(raw);
@@ -895,6 +899,10 @@ export function repair(input: unknown): Genome {
     if (b.emit.kind === 'flock') {
       if (flock) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
       flock = true;
+    }
+    if (b.emit.kind === 'ecosystem') {
+      if (eco) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
+      eco = true;
     }
     used.add(b.shape.kind);
     if (b.fuse) used.add(b.fuse.shape.kind);
@@ -976,6 +984,7 @@ function fitBudget(g: Genome): void {
     }
   };
   fewerAgents(65536);
+  fewerCreatures(g, 16384);
   for (let guard = 0; guard < 24 && estimateCost(g) > COST_BUDGET_MS * 0.95; guard++) {
     let best: BodyGene | null = null;
     let bc = 0;
@@ -992,6 +1001,7 @@ function fitBudget(g: Genome): void {
     best.place.p[countKey(best.place.kind)!] -= 1;
   }
   fewerAgents(SLIME_SCHEMA.count.min);
+  fewerCreatures(g, ECO_SCHEMA.count.min);
   // Still over: a grid evaluates one cell instead of its 3x3 neighbourhood, then fused shapes go.
   for (const b of g.bodies) {
     if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
@@ -1009,6 +1019,15 @@ function fitBudget(g: Genome): void {
   for (const b of g.bodies) {
     const res = SCENE_SCHEMA.res.choices!;
     while (b.shape.kind === 'scene' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.res > res[0]) b.shape.p.res = res[res.indexOf(b.shape.p.res) - 1];
+  }
+}
+
+/** Halves a stem ecosystem's agents (down to floor) while the genome is over budget. */
+function fewerCreatures(g: Genome, floor: number): void {
+  for (const b of g.bodies) {
+    while (b.emit.kind === 'ecosystem' && b.emit.p.count > floor && estimateCost(g) > COST_BUDGET_MS * 0.95) {
+      b.emit.p.count = Math.max(floor, Math.round(b.emit.p.count / 2));
+    }
   }
 }
 
@@ -1046,6 +1065,7 @@ export function validate(g: Genome): string[] {
   let sparks = 0;
   let slimes = 0;
   let flocks = 0;
+  let ecos = 0;
   g.bodies?.forEach((b, i) => {
     const w = `bodies[${i}]`;
     for (const locus of LOCI) {
@@ -1102,6 +1122,7 @@ export function validate(g: Genome): string[] {
     if (b.emit.kind === 'sparks') sparks++;
     if (b.emit.kind === 'slime') slimes++;
     if (b.emit.kind === 'flock') flocks++;
+    if (b.emit.kind === 'ecosystem') ecos++;
     if (b.fuse) {
       const f = b.fuse;
       if (!f.shape || !SHAPE_KINDS.includes(f.shape.kind)) errs.push(`${w}.fuse shape kind`);
@@ -1135,6 +1156,7 @@ export function validate(g: Genome): string[] {
   if (sparks > 1) errs.push('more than one sparks emission');
   if (slimes > 1) errs.push('more than one slime emission');
   if (flocks > 1) errs.push('more than one flock emission');
+  if (ecos > 1) errs.push('more than one ecosystem emission');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
   if (!PALETTE_KINDS.includes(g.palette?.kind)) errs.push('palette kind');
@@ -1387,6 +1409,7 @@ export function bodyCost(b: BodyGene): number {
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
   if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count);
+  if (b.emit.kind === 'ecosystem') ms += ecoCost(b.emit.p as { count: number; size: number });
   if (cls === 'flame') {
     ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.35;
     if (b.fuse || b.deform.kind !== 'none') ms += 0.3 + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] : 0);

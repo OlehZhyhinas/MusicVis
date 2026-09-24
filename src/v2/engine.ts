@@ -30,6 +30,8 @@ import { Physarum } from './genes/physarumGpu';
 import { Boids } from './genes/boidsGpu';
 import { FLOCK_GAIN } from './genes/boids';
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
+import { Ecosystem } from './genes/ecosystemGpu';
+import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
@@ -501,6 +503,8 @@ export class Slot {
   slime = -1;
   /** The body leading a flock of boids (-1: none). */
   flock = -1;
+  /** The body running the stem ecosystem (-1: none). */
+  eco = -1;
   /** Per reaction this frame: the source signal and the response after its curve (live meters). */
   readonly meters = new Float32Array(MAX_REACTIONS * 2);
   /** Ray-marched scene: its pass uniforms and its reduced-resolution target. */
@@ -522,6 +526,7 @@ export class Slot {
     this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = genome.bodies.findIndex((b) => b.emit.kind === 'slime');
     this.flock = genome.bodies.findIndex((b) => b.emit.kind === 'flock');
+    this.eco = genome.bodies.findIndex((b) => b.emit.kind === 'ecosystem');
   }
 
   /** Swaps in a genome with the same structure (same programs, same uniform layout): parameters only. */
@@ -530,6 +535,7 @@ export class Slot {
     this.sparks = g.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = g.bodies.findIndex((b) => b.emit.kind === 'slime');
     this.flock = g.bodies.findIndex((b) => b.emit.kind === 'flock');
+    this.eco = g.bodies.findIndex((b) => b.emit.kind === 'ecosystem');
   }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
@@ -648,6 +654,8 @@ export class Stage {
   private readonly slimeCopies = new Float32Array(COPY_SLOTS * 3);
   flock: Boids | null = null;
   private flockOwner: Slot | null = null;
+  eco: Ecosystem | null = null;
+  private ecoOwner: Slot | null = null;
   flame: Flame | null = null;
   private pu: ParticleUpdate;
   flash = 0;
@@ -686,6 +694,7 @@ export class Stage {
     }
     this.fluid?.resize(w / h);
     this.slime?.resize(w, h);
+    this.eco?.resize(w, h);
     this.water?.resize(w / h);
     for (const s of this.slots) {
       s.fb.dispose();
@@ -791,12 +800,14 @@ export class Stage {
 
     const slimeSlot = slots.filter((s) => s.slime >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
+    const ecoSlot = slots.filter((s) => s.eco >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
+    if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
     const flockSlot = slots.filter((s) => s.flock >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
-    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot, s === flockSlot);
+    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot, s === flockSlot, s === ecoSlot);
 
     // Composite every live slot into the HDR scene.
     this.scene!.bind();
@@ -1104,7 +1115,7 @@ export class Stage {
     E[o + 48] = b.emit.kind === 'cover' ? PE('amt') : 0;
     E[o + 49] = b.emit.kind === 'cover' || b.emit.kind === 'trail' ? PE('tip') : 0;
     E[o + 50] = ops.length;
-    E[o + 51] = b.emit.kind === 'sparks' || b.emit.kind === 'slime' || b.emit.kind === 'flock' ? PE('body') : 1;
+    E[o + 51] = b.emit.kind === 'sparks' || b.emit.kind === 'slime' || b.emit.kind === 'flock' || b.emit.kind === 'ecosystem' ? PE('body') : 1;
 
     // Fuse: slot 13 (mode, blend radius, t, inside), 14-15 the fused shape.
     if (b.fuse) {
@@ -2221,7 +2232,28 @@ export class Stage {
     });
   }
 
-  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean, slimeOwner = false, flockOwner = false): void {
+  /** Stem ecosystem: populations from the mix, then births, hunting, grazing, blooming (genes/ecosystemGpu.ts). */
+  private updateEco(s: Slot, sdt: number): void {
+    if (!this.eco) {
+      this.eco = new Ecosystem(this.eng.gl, this.eng.fs, this.eng.hdr);
+      this.eco.resize(this.w, this.h);
+    }
+    if (this.ecoOwner !== s) this.eco.reseed();
+    this.ecoOwner = s;
+    const bi = s.eco;
+    const b = s.genome.bodies[bi];
+    const sch = EMIT_SCHEMAS.ecosystem;
+    const p: Record<string, number> = {};
+    for (const k of Object.keys(sch)) p[k] = s.P('em', bi, b.emit.p, k, sch);
+    const F = this.sig.F;
+    const pres = [0, 1, 2, 3].map((i) => F.gate[i] * (0.55 + 0.45 * Math.min(1, F.stem[i] * 2)));
+    this.eco.step({
+      dt: sdt, time: this.sig.clock, aspect: F.aspect, count: b.emit.p.count, cuts: ecoCuts(p), pres, env: F.stem,
+      strike: F.onset[0] + 0.4 * F.beatPulse * F.gate[0], drop: F.drop, p,
+    });
+  }
+
+  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean, slimeOwner = false, flockOwner = false, ecoOwner = false): void {
     const eng = this.eng;
     const gl = eng.gl;
     const g = s.genome;
@@ -2278,6 +2310,18 @@ export class Stage {
       const gain = s.P('ma', s.flock, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
       const size = Math.max(1, s.P('em', s.flock, b.emit.p, 'size', EMIT_SCHEMAS.flock) * (this.h / 1080));
       this.flock.draw(size, gain * FLOCK_GAIN * (0.7 + 0.5 * this.sig.F.loud), s.P('em', s.flock, b.emit.p, 'speed', EMIT_SCHEMAS.flock) * this.sig.F.speed, s.cols);
+    }
+    if (ecoOwner && this.eco && s.eco >= 0) {
+      const b = g.bodies[s.eco];
+      const PE = (k: string) => s.P('em', s.eco, b.emit.p, k, EMIT_SCHEMAS.ecosystem);
+      const gain = s.P('ma', s.eco, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+      const F = this.sig.F;
+      const fill = Math.min(1, Math.max(0.15, (1 - s.decay) * 8));
+      this.eco.draw({
+        gain, fieldScale: ecoFieldScale(b.emit.p), field: PE('field'), size: PE('size'), trail: PE('trail'), glyph: b.emit.p.glyph, hues: b.emit.p.hues,
+        bright: gain * 1.2 * fill, strike: F.onset[0], cols: s.cols,
+      });
+      s.fb.write.bind();
     }
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;
@@ -2437,6 +2481,7 @@ export class Stage {
     this.particles?.dispose();
     this.slime?.dispose();
     this.flock?.dispose();
+    this.eco?.dispose();
     this.flame?.dispose();
     this.sig.dispose();
   }

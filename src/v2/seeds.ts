@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 25;
+export const SEED_VERSION = 26;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1158,4 +1158,23 @@ const AGENTS: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS].map(build);
+// B01.. showcase the stem ecosystem (src/v2/genes/ecosystem.ts): each instrument is a species of agent,
+// and the balance of the mix decides who thrives.
+const ECOSYSTEM: Def[] = [
+  {
+    // A savanna food web: streaking drum predators hunt the drifting plankton of the other instruments,
+    // fat bass grazers lumber after the flora, leaving trails the ring-shaped vocal pollinators follow,
+    // and the meadow blooms wherever they pass. A vocal bridge fills the screen with flowers and
+    // pollinators, a drop is a feast for the predators, and a silent stem lets its species starve away.
+    origin: 'B01', name: 'Stem Savanna', energy: [0.2, 0.85], scheme: 'triad', hue: 0.12,
+    color: { adapt: 0.35, bloom: 1, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.15, floor: 1 },
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      material: ['glow', { gain: 1, width: 0.01 }],
+      emit: ['ecosystem', { count: 16384, wD: 0.35, wB: 0.3, wV: 0.45, wO: 0.9, glyph: 0, size: 3, trail: 0.6, predation: 0.6, bloom: 0.6, graze: 0.5, growth: 0.7, starve: 0.4, decay: 0.985, speed: 1, field: 0.6, hues: 0, body: 0 }],
+    })],
+    reactions: [rx('loud', 'ma', 0, 'gain', 0.25, { atk: 0.05, rel: 0.3 }), rx('drop', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 1 })],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM].map(build);

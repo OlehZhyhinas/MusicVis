@@ -123,6 +123,7 @@ export const ENTRIES: Record<string, string> = {
   'emit.sparks': 'sparks(1/preset): curl=swirliness; zoomFlow=inherits carrier zoom; life=lifetime; surge=extra burst; top=above/below body; body=source shape visibility.',
   'emit.slime': 'slime(1/preset): physarum agents grow glowing vein networks; count=agents; sa/sd=sensor angle/distance(sd=cell size); steer=steering; step=speed; deposit=trail laid; decay=trail kept/frame; diffuse=blur; body=source shape visibility; feed=the shape seeds veins; birth=agents reborn at the shape; onDrop 0 none,1 scatter,2 burst from the shape.',
   'emit.flock': 'flock(1/preset): boids circling the body; speed; radius=neighbourhood; align/cohere/separate=flocking rules; wander; home=pull to body; size=bird px; onDrop 0 none,1 burst outward,2 restart at body.',
+  'emit.ecosystem': 'ecosystem(1/preset): instrument species of agents share a growth field; drums=predators chase plankton+dart on hits, bass=grazers eat flora+leave trails, vocals=pollinators bloom flora, other=plankton drift+get eaten; a species grows while its stem plays, starves when silent; count=agents; wD/wB/wV/wO=roster shares; glyph 0 creatures,1 points,2 comets,3 sigils; size; trail=streak length; predation/bloom/graze=interaction strengths; growth/starve=population rates; decay=flora kept/frame; speed; field=flora visibility; hues=species-palette rotation; body=source shape visibility.',
 
   // -------------------------------------------------------------- color
   'color.fixed': '1 hue.',
