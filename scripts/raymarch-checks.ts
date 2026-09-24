@@ -112,6 +112,28 @@ export function raymarchChecks(check: Check): void {
     if (!(worst > 0.1)) camBad.push(`lattice cam ${cam} gap ${gap}: corridor clearance ${worst.toFixed(2)}`);
     if (!(Math.abs(z1 - z0) > 1)) camBad.push(`lattice cam ${cam}: does not travel`);
   }
+  // Tunnel: every camera travels down the bending axis and stays inside the radius the ribs leave free.
+  for (const cam of SCENE_SCHEMA.cam.choices!) for (const [gap, spec, size, roam] of [[1, 1, 1.6, 1], [0, 0, 0.4, 1], [1, 1, 0.4, 0]]) {
+    const p = { ...r01.bodies[0].shape.p, scene: 2, cam, gap, spec, size, roam, pulse: 1, kick: 1 };
+    const out = new Float32Array(SCENE_VEC4 * 4);
+    const mem: Record<string, number> = {};
+    const F = { speed: 1, act: 1, loud: 1, beatPulse: 0, gate: new Float32Array([1, 1, 1, 1]), stem: new Float32Array([0, 1, 0, 0]), onset: new Float32Array(4), sectionIndex: 0, bars: 0 } as unknown as Frame;
+    let worst = 1e9, travelled = 0, prevZ = 0;
+    for (let i = 0; i < 1200; i++) {
+      F.bars = i / 120;
+      F.sectionIndex = Math.floor(i / 300);
+      F.onset[0] = i % 30 === 0 ? 1 : 0;
+      packScene(out, { F, sdt: 1 / 60, P: (k) => p[k], raw: p, mem, key: 'b0.' });
+      const [R, , bend, seed] = [out[20], out[21], out[22], out[23]];
+      const z = out[2];
+      const ax = bend * Math.sin(z * 0.2 + seed * Math.PI * 2), ay = bend * 0.7 * Math.cos(z * 0.16 + seed * 4);
+      worst = Math.min(worst, R * 0.8 - out[24] - Math.hypot(out[0] - ax, out[1] - ay));
+      if (i) travelled += Math.abs(z - prevZ) < 100 ? z - prevZ : 0;
+      prevZ = z;
+    }
+    if (!(worst > 0.02)) camBad.push(`tunnel cam ${cam} gap ${gap} spec ${spec}: clearance ${worst.toFixed(3)}`);
+    if (!(travelled > 5)) camBad.push(`tunnel cam ${cam}: travelled ${travelled.toFixed(1)}`);
+  }
   const distinct = new Set(paths.filter((_, i) => i % 3 === 0).map((x) => x.join())).size === SCENE_SCHEMA.cam.choices!.length;
   check('scene.cameras', !camBad.length && distinct, camBad.join(' | ') || `${SCENE_SCHEMA.cam.choices!.length} camera modes move differently and keep clear of the shapes (3 settings each)`);
 

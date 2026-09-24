@@ -17,8 +17,8 @@ import type { Frame } from '../engine';
 const P = (min: number, max: number, def: number) => ({ min, max, def });
 const C = (choices: number[], def: number) => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
 
-/** Scene kinds: 0 smooth-union primitives, 1 an endless lattice of shapes between two plates. */
-export const SCENE_KINDS = ['primitives', 'lattice'] as const;
+/** Scene kinds: 0 smooth-union primitives, 1 an endless lattice of shapes between two plates, 2 a tunnel. */
+export const SCENE_KINDS = ['primitives', 'lattice', 'tunnel'] as const;
 /** Camera kinds: 0 orbit, 1 flythrough, 2 dolly zoom. */
 export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
 
@@ -28,10 +28,11 @@ export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
  * size: object scale (bass pulses it by `pulse`); blend: smooth-union radius; speed: animation and
  * camera speed; roam: how far the camera travels (orbit swing, flight path, dolly depth); kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
  * rim / ao / fog / glow: lighting terms. Lattice: gap = height of the corridor between the plates,
- * spec = how far each cell's shape rises with its spectrum band.
+ * spec = how far each cell's shape rises with its spectrum band. Tunnel: gap = how much it bends,
+ * spec = how far its ribs close in with their spectrum bands.
  */
 export const SCENE_SCHEMA: Schema = {
-  scene: C([0, 1], 0),
+  scene: C([0, 1, 2], 0),
   cam: C([0, 1, 2], 0),
   res: C([0.35, 0.5, 0.7], 0.5),
   size: P(0.4, 1.6, 1),
@@ -57,7 +58,7 @@ export const SCENE_NO_REACT = ['scene', 'cam', 'res'];
  * an M-series Mac against the wireframe solid (E14) as reference; kept on the high side because the
  * readings were noisy on a shared GPU.
  */
-const SCENE_FULL_MS = [8.0, 8.0];
+const SCENE_FULL_MS = [8.0, 8.0, 7.0];
 
 /** Estimated GPU ms of a scene body: the reduced-resolution march plus the upsampling field lookup. */
 export function sceneCost(p: Params): number {
@@ -76,6 +77,7 @@ export const SCENE_VEC4 = 32;
  *   2 time, size, blend, variation seed      3 rim, ao, fog, glow
  *   4 scene kind, camera kind, -, -
  *   5 lattice: cell size, floor y, ceiling y, -   6 lattice: shape radius, seed, spectrum lift, time
+ *   5 tunnel: radius, rib spacing, bend, seed      6 tunnel: rib lift, wall wobble, time, -
  *   8-12 primitives: centre xyz, radius   13-27 primitives: rotation rows (3 per primitive)
  *   28 primitive kinds (0 sphere, 1 torus, 2 box, 3 octahedron) for 0-3, 29.x kind of 4
  */
@@ -129,7 +131,29 @@ vec2 rmLattice(vec3 p) {
   if (yy < d) { d = yy; sh = 0.95; }
   return vec2(d, sh);
 }
+// A tunnel bending along z: a ribbed, panelled wall; each rib closes in with its own spectrum band.
+vec2 rmTunnelPath(float z) {
+  vec4 A = uScn[5];
+  return A.z * vec2(sin(z * 0.2 + A.w * TAU), 0.7 * cos(z * 0.16 + A.w * 4.0));
+}
+vec2 rmTunnel(vec3 p) {
+  vec4 A = uScn[5], B = uScn[6];
+  vec2 q = p.xy - rmTunnelPath(p.z);
+  float r = length(q);
+  float a = atan(q.y, q.x);
+  float R = A.x * (1.0 + B.y * sin(a * 3.0 + B.z * 2.0) * 0.5);
+  // Panels: a shallow angular relief on the wall.
+  float wall = (R - r) + 0.04 * A.x * smoothstep(0.35, 0.5, abs(fract(a * 1.9099) - 0.5));
+  float id = floor(p.z / A.y);
+  float rz = (fract(p.z / A.y) - 0.5) * A.y;
+  float band = specAt(fract(id * 0.137) * 0.7 + 0.03);
+  float rib = length(vec2(r - (R - B.x * band - 0.06 * A.x), rz)) - 0.06 * A.x;
+  float d = min(wall, rib) * 0.8;
+  float sh = rib < wall ? 0.55 + 0.3 * fract(id * 0.37) : 0.1 + 0.15 * fract(a / TAU + id * 0.05);
+  return vec2(d, sh);
+}
 vec2 rmMap(vec3 p) {
+  if (uScn[4].x > 1.5) return rmTunnel(p);
   if (uScn[4].x > 0.5) return rmLattice(p);
   return rmPrims(p);
 }
@@ -243,7 +267,8 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
   const kick = set('kick', Math.max(get('kick') * Math.exp(-sdt * 7), F.onset[0] * F.gate[0] * P('kick')));
   const side = set('side', F.onset[0] > 0.6 && get('kick') < 0.05 ? -get('side', 1) : get('side', 1));
   out.fill(0);
-  camera(out, c, T, kick, side);
+  if (c.raw.scene === 2) tunnelCamera(out, c, T, kick, seed);
+  else camera(out, c, T, kick, side);
   out[8] = T; out[9] = size; out[10] = P('blend'); out[11] = seed;
   out[12] = P('rim'); out[13] = P('ao'); out[14] = P('fog'); out[15] = P('glow');
   out[16] = c.raw.scene; out[17] = c.raw.cam;
@@ -252,7 +277,58 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
     const L = latticeFrame(P);
     out[20] = L.cell; out[21] = L.floor; out[22] = L.ceil;
     out[24] = L.cell * 0.22 * (size / P('size')); out[25] = seed; out[26] = P('spec') * 0.6; out[27] = T;
+  } else if (c.raw.scene === 2) {
+    const U = tunnelFrame(P, seed);
+    out[20] = U.R; out[21] = U.ribs; out[22] = U.bend; out[23] = seed;
+    out[24] = U.lift; out[25] = P('pulse') * 0.16 * bass; out[26] = T;
   } else placePrims(out, T, size, seed);
+}
+
+/** The tunnel's path repeats over TUNNEL_WRAP (its frequencies and rib spacing divide it), so travel can wrap. */
+const TUNNEL_WRAP = (TAU * 100) / 0.2;
+
+/** Tunnel geometry: radius, rib spacing (dividing the wrap), bend amplitude, rib lift and the free radius. */
+function tunnelFrame(P: (k: string) => number, seed: number): { R: number; ribs: number; bend: number; lift: number; free: number; seed: number } {
+  const R = 1.3 * P('size');
+  const ribs = TUNNEL_WRAP / Math.round(TUNNEL_WRAP / (1.1 * R));
+  const lift = 0.35 * R * P('spec');
+  // Wall wobble (0.08 R at most), rib lift and rib thickness leave this radius clear.
+  const free = R * (1 - 0.08 - 0.06 - 0.12) - lift;
+  return { R, ribs, bend: R * (0.3 + 2.2 * P('gap')), lift, free, seed };
+}
+function tunnelPath(U: { bend: number; seed: number }, z: number): [number, number] {
+  return [U.bend * Math.sin(z * 0.2 + U.seed * TAU), U.bend * 0.7 * Math.cos(z * 0.16 + U.seed * 4)];
+}
+
+/**
+ * Tunnel cameras, all travelling down the tunnel on its bending path: orbit circles the axis as it goes;
+ * fly weaves and banks; dolly holds the axis while the lens breathes over four bars (a travelling vertigo
+ * shot). Drum hits surge the travel forward. The camera stays inside the free radius.
+ */
+function tunnelCamera(out: Float32Array, c: SceneCtx, T: number, kick: number, seed: number): void {
+  const { F, sdt, P, mem } = c;
+  const k = (s: string) => `${c.key}${s}`;
+  const get = (s: string, init = 0) => mem[k(s)] ?? (mem[k(s)] = init);
+  const set = (s: string, v: number) => (mem[k(s)] = v);
+  const speed = P('speed'), roam = P('roam');
+  const U = tunnelFrame(P, seed);
+  const z = set('travel', (get('travel') + sdt * F.speed * (0.8 + 4 * speed) * U.R * (1 + 1.5 * kick)) % TUNNEL_WRAP);
+  const off = 0.55 * Math.max(0, U.free) * roam;
+  let ox = 0, oy = 0, roll = 0, f = 1.2;
+  if (c.raw.cam === 0) {
+    const a = T * 0.35;
+    ox = Math.cos(a) * off; oy = Math.sin(a) * off;
+    roll = a * 0.25;
+  } else if (c.raw.cam === 1) {
+    ox = Math.sin(T * 0.7) * off; oy = Math.cos(T * 0.53) * off * 0.7;
+    roll = 0.5 * Math.cos(T * 0.7) * roam;
+  } else {
+    f = 0.8 + 1.4 * (0.5 - 0.5 * Math.cos((F.bars / 4) * TAU)) * (0.4 + 0.6 * roam) + 0.3 * kick;
+  }
+  const [cx, cy] = tunnelPath(U, z);
+  const [ax, ay] = tunnelPath(U, z + 2.5 * U.R);
+  out[0] = cx + ox; out[1] = cy + oy; out[2] = z; out[3] = f;
+  out[4] = ax + ox * 0.3; out[5] = ay + oy * 0.3; out[6] = z + 2.5 * U.R; out[7] = roll;
 }
 
 /** Lattice geometry: cell size, the two plates and the free corridor between their tallest shapes. */
