@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 28;
+export const SEED_VERSION = 29;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
