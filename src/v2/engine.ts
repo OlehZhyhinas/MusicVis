@@ -129,6 +129,8 @@ export interface Frame {
   tension: number; resolve: number; chordPulse: number; modPulse: number;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
   surge: number;
+  /** Lyrics: new-line pulse, and the words' valence / arousal (the music's own mood where no words are sung). */
+  line: number; valence: number; arousal: number;
 }
 
 /** Music state -> per-frame values and the waveform / spectrum textures (one per Stage). */
@@ -138,8 +140,10 @@ export class Signals {
     barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, stem: new Float32Array(4), onset: new Float32Array(4),
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
-    tension: 0, resolve: 0, chordPulse: 0, modPulse: 0,
+    tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, line: 0, valence: 0.5, arousal: 0.5,
   };
+  /** Seconds the vocals have been silent (a new line's fallback pulse without lyrics). */
+  private vocalRest = 0;
   spinStep = 0;
   clock = 0;
   songCx: number | null = null;
@@ -247,6 +251,27 @@ export class Signals {
 
     const surge = 1.3 * F.beatPulse * F.gate[0] + 0.6 * F.loud + 2.5 * F.drop;
     F.surge = approach(F.surge, surge, surge > F.surge ? 18 : 3, dt);
+    this.updateLyrics(state, dt);
+  }
+
+  /**
+   * Lyric signals: with lyrics, the words' mood and a pulse per line; without (or between lines),
+   * the music's mood (major / minor key, activity) and a pulse when the vocals come back in.
+   */
+  private updateLyrics(state: MusicState, dt: number): void {
+    const F = this.F;
+    const pres = clamp01(num(state.lyricPresence, 0));
+    const musV = (F.minor ? 0.38 : 0.62) - 0.15 * (F.tension - 0.3);
+    F.valence = clamp01(musV + (num(state.lyricValence, 0.5) - musV) * pres);
+    F.arousal = clamp01(F.act + (num(state.lyricArousal, 0.5) - F.act) * pres);
+    if (state.lyricPulse !== undefined) F.line = num(state.lyricPulse, 0);
+    else {
+      F.line *= Math.exp(-dt * 4);
+      if (F.gate[2] > 0.5) {
+        if (this.vocalRest > 1.2 && state.playing) F.line = 1;
+        this.vocalRest = 0;
+      } else this.vocalRest += dt;
+    }
   }
 
   private processAudio(state: MusicState, dt: number): void {
@@ -334,6 +359,9 @@ export class Signals {
       case 'resolve': return F.resolve;
       case 'chordchange': return F.chordPulse;
       case 'modulation': return F.modPulse;
+      case 'line': return F.line;
+      case 'valence': return F.valence;
+      case 'arousal': return F.arousal;
     }
   }
 

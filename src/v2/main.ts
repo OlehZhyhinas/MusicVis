@@ -35,7 +35,8 @@ import { AutoHide } from '../ui/autoHide';
 import { applyLayout, computeLayout } from '../ui/layout';
 import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
-import { LyricsLibrary } from '../lyrics/library';
+import { LyricsLibrary, lyricStatusLabel } from '../lyrics/library';
+import { LyricSampler } from '../lyrics/sampler';
 import '../lyrics/lyrics.css';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
@@ -300,13 +301,34 @@ async function main(): Promise<void> {
   const playlist = new Playlist();
   // Lyrics: looked up automatically for every added song (LRCLIB), shown in the playlist rows.
   const lyrics = new LyricsLibrary();
-  lyrics.onChange = () => playlistPanel.render(playlist);
+  lyrics.onChange = (id) => {
+    playlistPanel.render(playlist);
+    // Lyrics found while the song already plays: they join in from here.
+    if (songLoaded && playlist.currentTrack?.id === id) attachLyrics();
+  };
   playlist.setShuffle(shuffle);
   playlist.setRepeat(repeat);
   let audioCtx: AudioContext | null = null;
   let player: Player | null = null;
   let liveAnalyser: LiveAnalyser | null = null;
   let sampler: import('../analysis/TimelineSampler').TimelineSampler | null = null;
+  /** The playing song's lyrics (null: none found, not looked up yet, or live input). */
+  let lyricSampler: LyricSampler | null = null;
+  let songResult: import('../types').AnalysisResult | null = null;
+  function lyricSourceText(): string {
+    if (liveMode.active) return 'live input';
+    const cur = playlist.currentTrack;
+    const l = cur ? lyrics.get(cur.id) : undefined;
+    if (!l) return '–';
+    const label = lyricStatusLabel(l.status)?.label ?? l.status;
+    return l.result?.source ? `${label} · ${l.result.source}` : label;
+  }
+  function attachLyrics(): void {
+    const cur = playlist.currentTrack;
+    const track = cur && songResult ? lyrics.lyricTrack(cur.id, songResult) : null;
+    if (track === lyricSampler?.track) return;
+    lyricSampler = track ? new LyricSampler(track) : null;
+  }
   let songLoaded = false;
   let loadToken = 0;
 
@@ -319,6 +341,7 @@ async function main(): Promise<void> {
     onSeek: (t) => {
       player?.seek(t);
       sampler?.reset();
+      lyricSampler?.reset();
     },
     onVolumeChange: (v) => {
       volume = v;
@@ -348,6 +371,7 @@ async function main(): Promise<void> {
     player?.pause();
     songLoaded = false;
     sampler = null;
+    lyricSampler = null;
   }
   function toggleShuffle(): void {
     shuffle = !shuffle;
@@ -444,6 +468,7 @@ async function main(): Promise<void> {
           player?.pause();
           songLoaded = false;
           sampler = null;
+          lyricSampler = null;
         }
       }
     },
@@ -532,6 +557,7 @@ async function main(): Promise<void> {
     if (cur && t.id === cur.id) {
       player?.seek(0);
       sampler?.reset();
+      lyricSampler?.reset();
     } else void playTrack(t);
   }
   if ('mediaSession' in navigator) {
@@ -560,6 +586,7 @@ async function main(): Promise<void> {
       lyrics.prioritize(track.id);
       songLoaded = false;
       sampler = null;
+      lyricSampler = null;
       if ('mediaSession' in navigator && 'MediaMetadata' in window) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: 'MusicVis' });
       }
@@ -570,6 +597,8 @@ async function main(): Promise<void> {
       if (token !== loadToken) return;
       player.load(buffer);
       sampler = new TimelineSampler(result);
+      songResult = result;
+      attachLyrics();
       songCx = result.songComplexity ?? 0.5;
       eng.setSongComplexity(songCx);
       if (!evolveOn) choose('new', 1.5);
@@ -612,6 +641,7 @@ async function main(): Promise<void> {
     if (!player || liveMode.active) return;
     player.seek(Math.max(0, Math.min(player.duration, player.currentTime + d)));
     sampler?.reset();
+    lyricSampler?.reset();
   }
   function commands(): Command[] {
     return [
@@ -689,6 +719,7 @@ async function main(): Promise<void> {
         else if (player) {
           player.seek(Math.max(0, player.currentTime - 5));
           sampler?.reset();
+          lyricSampler?.reset();
         }
         break;
       case 'ArrowRight':
@@ -696,6 +727,7 @@ async function main(): Promise<void> {
         else if (player) {
           player.seek(Math.min(player.duration, player.currentTime + 5));
           sampler?.reset();
+          lyricSampler?.reset();
         }
         break;
       case 'f': case 'F': toggleFullscreen(); break;
@@ -757,6 +789,7 @@ async function main(): Promise<void> {
       state = liveState;
     } else if (songLoaded && player && sampler && liveAnalyser) {
       state = sampler.sample(player.currentTime, dt, player.playing, liveAnalyser.read(dt));
+      lyricSampler?.apply(state, dt);
       transport.updatePlayback(player.currentTime, player.duration, player.playing);
     } else {
       lastIdle += dt;
@@ -785,7 +818,7 @@ async function main(): Promise<void> {
 
     if (hudOn) {
       const m = current();
-      hud.update(state, { presetName: m ? `${m.id} · ${m.name}` : '—', fps });
+      hud.update(state, { presetName: m ? `${m.id} · ${m.name}` : '—', fps, lyricSource: lyricSourceText() });
       statsTimer -= dt;
       if (statsTimer <= 0) {
         statsTimer = 0.5;

@@ -230,6 +230,26 @@ export interface MusicState {
 
   // --- Groove (timing feel; songs from the offline groove track, live input from a running estimate) ---
   groove?: GrooveStats;
+
+  // --- Lyrics (src/lyrics/sampler.ts; undefined when the song has no lyrics or for live input) ---
+  /** The line being sung ('' between lines), and the next one. */
+  lyricLine?: string;
+  lyricNext?: string;
+  /** Index of the line being sung, -1 between lines. */
+  lyricIndex?: number;
+  /** 0..1 through the current line. */
+  lyricProgress?: number;
+  /** What the words are about: imagery tags 0..1 in src/lyrics/lexicon.ts LYRIC_TAGS order, eased. */
+  lyricTags?: Float32Array;
+  /** 0 sad .. 1 happy, and 0 calm .. 1 intense, of the words (0.5 neutral), eased. */
+  lyricValence?: number;
+  lyricArousal?: number;
+  /** 1 when a new line starts, decays. */
+  lyricPulse?: number;
+  /** 1 while lines are being sung, fading over a few seconds between them. */
+  lyricPresence?: number;
+  /** true: line times come from synced lyrics; false: plain lyrics spread over the vocals. */
+  lyricSynced?: boolean;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */

@@ -49,7 +49,9 @@ drop=structural drop. loud=overall loudness. melody=melody activity. build=tensi
 surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on
 section change. tension=harmonic tension 0..1(chord far from home key/dissonant). resolve=pulse when
 harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=pulse per chord change.
-modulation=pulse on a key change.
+modulation=pulse on a key change. line=pulse per sung lyric line(vocal entry without lyrics).
+valence=mood of the words 0 sad..1 happy(music's mood without lyrics). arousal=intensity of the words
+0 calm..1 intense(music's activity without lyrics).
 `;
 
 /**
