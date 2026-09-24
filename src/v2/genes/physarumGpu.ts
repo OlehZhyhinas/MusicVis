@@ -30,7 +30,10 @@ float hash12(vec2 p) {
 
 const UPDATE_FS = HEAD + HASH + /* glsl */ `
 uniform sampler2D uAgents, uTrail;
-uniform float uAspect, uSA, uSD, uTurn, uStep, uTime;
+uniform float uAspect, uSA, uSD, uTurn, uStep, uTime, uBirth;
+// Birth places: the body's copies (uv x, uv y, radius in screen heights), uN of them.
+uniform vec3 uCopy[6];
+uniform int uN;
 out vec4 o;
 float sense(vec2 pos, float a) {
   return texture(uTrail, fract(pos + vec2(cos(a) / uAspect, sin(a)) * uSD)).r;
@@ -51,6 +54,16 @@ void main() {
     h += (l > r ? 1.0 : -1.0) * uTurn * (0.6 + 0.4 * rnd);
   }
   pos = fract(pos + vec2(cos(h) / uAspect, sin(h)) * uStep);
+  // Re-born at one of the body's copies, heading outward from its centre.
+  float rb = hash12(vec2(ij) * 1.37 + vec2(fract(uTime * 0.21) * 977.3, s.w * 37.1));
+  if (uN > 0 && rb < uBirth) {
+    float r2 = hash12(vec2(ij) + vec2(rb * 311.1, uTime));
+    vec3 c = uCopy[min(int(r2 * float(uN)), uN - 1)];
+    float a = hash12(vec2(r2 * 91.7, rb * 53.3)) * TAU;
+    float d = c.z * sqrt(hash12(vec2(a, r2) * 17.3));
+    pos = fract(c.xy + vec2(cos(a) / uAspect, sin(a)) * d);
+    h = a;
+  }
   o = vec4(pos, mod(h, TAU), s.w);
 }`;
 
@@ -67,10 +80,28 @@ uniform float uDep;
 out vec4 o;
 void main() { o = vec4(uDep, 0.0, 0.0, 1.0); }`;
 
-const DIFFUSE_FS = HEAD + /* glsl */ `
+/** The trail's colour as laid into the feedback (shared by the show pass and the feed's self-exclusion). */
+const SHOW = /* glsl */ `
+uniform vec3 uColA, uColB, uColC;
+uniform float uGain, uScale;
+vec3 showCol(float t) {
+  float k = 1.0 - exp(-t * uScale);
+  vec3 c = mix(uColA, uColB, smoothstep(0.0, 0.55, k));
+  c = mix(c, uColC * 1.4, smoothstep(0.6, 1.0, k));
+  return c * k * uGain;
+}`;
+const SHOW_FS = HEAD + SHOW + /* glsl */ `
 uniform sampler2D uTrail;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  o = vec4(showCol(texture(uTrail, vUv).r), 1.0);
+}`;
+
+const DIFFUSE_FS = HEAD + SHOW + /* glsl */ `
+uniform sampler2D uTrail, uFb;
 uniform vec2 uTexel;
-uniform float uDecay, uDiffuse;
+uniform float uDecay, uDiffuse, uFeed;
 in vec2 vUv;
 out vec4 o;
 void main() {
@@ -78,21 +109,10 @@ void main() {
   float b = 0.0;
   for (int y = -1; y <= 1; y++)
     for (int x = -1; x <= 1; x++) b += texture(uTrail, fract(vUv + vec2(x, y) * uTexel)).r;
-  o = vec4(mix(c, b / 9.0, uDiffuse) * uDecay, 0.0, 0.0, 1.0);
-}`;
-
-const SHOW_FS = HEAD + /* glsl */ `
-uniform sampler2D uTrail;
-uniform vec3 uColA, uColB, uColC;
-uniform float uGain, uScale;
-in vec2 vUv;
-out vec4 o;
-void main() {
-  float t = texture(uTrail, vUv).r * uScale;
-  float k = 1.0 - exp(-t);
-  vec3 c = mix(uColA, uColB, smoothstep(0.0, 0.55, k));
-  c = mix(c, uColC * 1.4, smoothstep(0.6, 1.0, k));
-  o = vec4(c * k * uGain, 1.0);
+  // Feed: light in the feedback above the network's own (the bodies, the carried picture) joins the trail.
+  vec3 ex = max(texture(uFb, vUv).rgb - showCol(c), 0.0);
+  float feed = uFeed * max(ex.r, max(ex.g, ex.b));
+  o = vec4(mix(c, b / 9.0, uDiffuse) * uDecay + feed, 0.0, 0.0, 1.0);
 }`;
 
 export interface SlimeStep {
@@ -108,6 +128,17 @@ export interface SlimeStep {
   deposit: number;
   decay: number;
   diffuse: number;
+  /** Feed from the feedback (trail units per unit of light per frame at 60 fps) and its texture. */
+  feed: number;
+  fb: WebGLTexture;
+  /** Share of the agents re-born per second, at these places (uv x, uv y, radius; up to 6). */
+  birth: number;
+  copies: Float32Array;
+  nCopies: number;
+  /** Show settings, so the feed leaves out the network's own light. */
+  gain: number;
+  scale: number;
+  cols: Float32Array;
 }
 
 export class Physarum {
@@ -203,7 +234,10 @@ export class Physarum {
       .f1('uSD', u.sd)
       .f1('uTurn', Math.min(1.5, u.turn * f60))
       .f1('uStep', u.step * f60)
-      .f1('uTime', u.time);
+      .f1('uTime', u.time)
+      .f1('uBirth', 1 - Math.pow(1 - Math.min(1, u.birth), u.dt))
+      .i1('uN', Math.min(6, u.nCopies));
+    if (u.nCopies > 0) gl.uniform3fv(this.pUpdate.loc('uCopy'), u.copies);
     this.fs.draw();
     ag.swap();
 
@@ -221,7 +255,10 @@ export class Physarum {
       .tex('uTrail', tr.read.t)
       .f2('uTexel', 1 / this.tw, 1 / this.th)
       .f1('uDecay', Math.pow(u.decay, f60))
-      .f1('uDiffuse', Math.min(1, u.diffuse * f60));
+      .f1('uDiffuse', Math.min(1, u.diffuse * f60))
+      .tex('uFb', u.fb)
+      .f1('uFeed', u.feed * f60);
+    this.setShow(this.pDiffuse, u.gain, u.scale, u.cols);
     this.fs.draw();
     tr.swap();
   }
@@ -237,16 +274,18 @@ export class Physarum {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
     gl.blendEquation(gl.MAX);
-    this.pShow
-      .use()
-      .tex('uTrail', this.trail.read.t)
-      .f1('uGain', gain)
+    this.pShow.use().tex('uTrail', this.trail.read.t);
+    this.setShow(this.pShow, gain, scale, cols);
+    this.fs.draw();
+    gl.blendEquation(gl.FUNC_ADD);
+  }
+
+  private setShow(p: Program, gain: number, scale: number, cols: Float32Array): void {
+    p.f1('uGain', gain)
       .f1('uScale', scale)
       .f3('uColA', cols[0], cols[1], cols[2])
       .f3('uColB', cols[3], cols[4], cols[5])
       .f3('uColC', cols[6], cols[7], cols[8]);
-    this.fs.draw();
-    gl.blendEquation(gl.FUNC_ADD);
   }
 
   dispose(): void {

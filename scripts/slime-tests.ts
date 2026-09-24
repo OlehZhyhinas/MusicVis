@@ -121,6 +121,11 @@ export function slimeTests(check: Check): void {
     check('slime.seeds', ps.length >= 1 && ps.every((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime') && !validate(x.genome).length && estimateCost(x.genome) < COST_BUDGET_MS
       && JSON.stringify(repair(JSON.parse(JSON.stringify(x.genome)))) === JSON.stringify(x.genome)),
       ps.map((x) => `${x.origin} ${x.name} ${estimateCost(x.genome).toFixed(2)}ms (${nameFor(x.genome)})`).join(', '));
+    // Shapes seed networks: every showcase body feeds the trail; one is born inside a distance-field shape.
+    const seeding = ps.filter((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime' && b.emit.p.feed > 0 && b.emit.p.birth > 0));
+    const shaped = ps.some((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime' && b.emit.p.birth >= 0.1 && ['star', 'polygon', 'segment', 'solid'].includes(b.shape.kind)));
+    check('slime.shapes-seed', seeding.length === ps.length && shaped && SLIME_SCHEMA.feed.max > 0 && SLIME_SCHEMA.birth.max > 0,
+      `${seeding.length}/${ps.length} showcase bodies feed the trail and give birth; a shape seeds one: ${shaped}`);
     const base = Population.seeded(1);
     for (const x of ps) base.members.delete(`G0-${x.origin}`);
     base.get('G0-E07')!.likes = 2;

@@ -25,7 +25,7 @@ import {
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
-import { slimeDisplayScale } from './genes/physarum';
+import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
@@ -625,6 +625,7 @@ export class Stage {
   particles: Particles | null = null;
   slime: Physarum | null = null;
   private slimeOwner: Slot | null = null;
+  private readonly slimeCopies = new Float32Array(COPY_SLOTS * 3);
   flame: Flame | null = null;
   private pu: ParticleUpdate;
   flash = 0;
@@ -2128,9 +2129,26 @@ export class Stage {
     const b = s.genome.bodies[bi];
     const sch = EMIT_SCHEMAS.slime;
     const P = (k: string) => s.P('em', bi, b.emit.p, k, sch);
+    const F = this.sig.F;
+    // Birth places: the body's copies (uv, radius in screen heights); fold placements and full-screen
+    // chunks are born anywhere.
+    const o = bi * BODY_VEC4 * 4;
+    const R = Math.max(0.01, s.bd[o + 19]);
+    const whole = SHAPE_CLASS[b.shape.kind] === 'field' || b.place.kind === 'grid';
+    const n = whole ? 1 : Math.max(1, Math.min(COPY_SLOTS, Math.round(s.bd[o + 16])));
+    const pl = this.slimeCopies;
+    for (let i = 0; i < n; i++) {
+      const j = (bi * COPY_SLOTS + i) * 4;
+      pl[i * 3] = whole ? 0.5 : s.cp[j] / F.aspect + 0.5;
+      pl[i * 3 + 1] = whole ? 0.5 : s.cp[j + 1] + 0.5;
+      pl[i * 3 + 2] = whole ? 0.75 : b.place.kind === 'ring' ? b.place.p.radius + R : R * Math.max(0.3, s.cp[j + 3]);
+    }
+    const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
     this.slime.step({
-      dt: sdt, time: this.sig.clock, aspect: this.sig.F.aspect, count: b.emit.p.count,
+      dt: sdt, time: this.sig.clock, aspect: F.aspect, count: b.emit.p.count,
       sa: P('sa'), sd: P('sd'), turn: P('turn'), step: P('step'), deposit: P('deposit'), decay: P('decay'), diffuse: P('diffuse'),
+      feed: P('feed'), fb: s.fb.read.t, birth: P('birth'), copies: pl, nCopies: n,
+      gain: gain * SLIME_GAIN, scale: slimeDisplayScale(b.emit.p), cols: s.cols,
     });
   }
 
@@ -2184,7 +2202,7 @@ export class Stage {
     if (slimeOwner && this.slime && s.slime >= 0) {
       const b = g.bodies[s.slime];
       const gain = s.P('ma', s.slime, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
-      this.slime.draw(gain * 1.5, slimeDisplayScale(b.emit.p), s.cols);
+      this.slime.draw(gain * SLIME_GAIN, slimeDisplayScale(b.emit.p), s.cols);
     }
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;

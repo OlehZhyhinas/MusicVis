@@ -33,7 +33,7 @@ import {
 } from './genome';
 import { CHOREO_SCHEMA } from './genes/choreo';
 
-export const SEED_VERSION = 15;
+export const SEED_VERSION = 16;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -852,20 +852,39 @@ const AGENTS: Def[] = [
   {
     // Half a million slime-mould agents sense each other's trail and grow a meandering vein network that
     // keeps re-routing itself; the bass makes them steer harder, drum hits lay down bright bursts of
-    // trail, the vocals soften it, and four faint instrument lights drift over it.
+    // trail, the vocals soften it, and four faint instrument lights drift through it, each feeding the
+    // trail and giving birth to fresh agents, so the veins thicken around them and stream out of them.
     origin: 'P01', name: 'Physarum Bloom', energy: [0.2, 0.8], scheme: 'analogous', hue: 0.3,
     color: { adapt: 0.35, bloom: 1.1, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.25, floor: 1 },
     bodies: [body({
       shape: ['dot', { r: 0.004 }],
       place: ['stations', { count: 4, inst: 1, xs: 0.8, wander: 0.15 }],
       material: ['glow', { gain: 1, width: 0.012 }],
-      emit: ['slime', { count: 524288, sa: 0.6, sd: 0.008, turn: 0.3, step: 0.001, deposit: 0.3, decay: 0.93, diffuse: 0.5, body: 0.35 }],
+      emit: ['slime', { count: 524288, sa: 0.6, sd: 0.008, turn: 0.3, step: 0.001, deposit: 0.3, decay: 0.93, diffuse: 0.5, body: 0.35, feed: 0.5, birth: 0.05 }],
       feel: ['flow', { atk: 0.02, rel: 0.3 }],
       color: ['height', { amount: 0.5 }],
     })],
     reactions: [
       rx('bass', 'em', 0, 'turn', 0.15, { atk: 0.05, rel: 0.4 }), rx('hit', 'em', 0, 'deposit', 0.6, { rel: 0.3 }),
       rx('vocals', 'em', 0, 'diffuse', 0.3, { atk: 0.1, rel: 0.8 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.3 }),
+    ],
+  },
+  {
+    // A slowly turning five-point star feeds the trail and gives birth to agents inside itself, so a
+    // mycelium blossoms out of the shape: fine radial veins inside, looping runners around it. Drum hits
+    // release bursts of new agents, the bass drives them faster, the vocals make the star feed harder.
+    origin: 'P02', name: 'Mycelial Star', energy: [0.25, 0.85], scheme: 'triad', hue: 0.1,
+    color: { adapt: 0.35, bloom: 1.1, vignette: 0.45, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    bodies: [body({
+      shape: ['star', { n: 5, r: 0.3, inner: 0.45 }],
+      motion: ['spin', { rate: 0.0625 }],
+      material: ['line', { gain: 1, width: 2, halo: 0.2 }],
+      emit: ['slime', { count: 393216, sa: 0.5, sd: 0.01, turn: 0.35, step: 0.0012, deposit: 0.3, decay: 0.93, diffuse: 0.5, body: 0.7, feed: 1, birth: 0.15 }],
+      color: ['age', { rate: 0.0625, detail: 0.6 }],
+    })],
+    reactions: [
+      rx('hit', 'em', 0, 'birth', 0.8, { rel: 0.25 }), rx('bass', 'em', 0, 'step', 0.3, { atk: 0.05, rel: 0.4 }),
+      rx('vocals', 'em', 0, 'feed', 0.4, { atk: 0.1, rel: 0.8 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.3 }),
     ],
   },
 ];

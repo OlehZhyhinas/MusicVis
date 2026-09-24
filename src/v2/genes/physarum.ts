@@ -4,8 +4,9 @@
 // Many agents walk a trail map. Each one senses the trail ahead-left, ahead and ahead-right (sensor
 // angle sa, distance sd), turns toward the strongest (turn), steps forward (step) and deposits
 // (deposit); the trail diffuses (diffuse) and fades (decay) every frame, so the walkers grow vein
-// networks. The trail is added into the body's feedback in the palette colours, so the carrier and
-// the space chain act on it like on any other light.
+// networks. The body seeds them twice over: its light in the feedback feeds the trail (feed), and a
+// share of the agents is re-born at its copies (birth). The trail is laid into the body's feedback in
+// the palette colours, so the carrier and the space chain act on it like on any other light.
 
 import type { ParamSpec, Schema } from '../genome';
 
@@ -26,6 +27,10 @@ export const SLIME_SCHEMA: Schema = {
   diffuse: P(0, 1, 0.6),
   // How visible the body itself stays (it still seeds the network when hidden).
   body: P(0, 1, 1),
+  // Light drawn into the feedback above the network (the body, the carried picture) feeds the trail, so
+  // shapes seed networks; birth: agents re-born at the body's copies, fraction of all agents per second.
+  feed: P(0, 1, 0.5),
+  birth: P(0, 0.5, 0.05),
 };
 
 /** Reference trail area the agent count is expressed at. */
@@ -46,6 +51,9 @@ export function slimeCost(count: number): number {
 export function slimeDisplayScale(p: Record<string, number>): number {
   return (0.3 * (262144 / p.count) * ((1 - p.decay) / 0.07)) / (p.deposit / 0.3);
 }
+
+/** Brightness of the laid trail per unit of material gain. */
+export const SLIME_GAIN = 1.5;
 
 /** Agents a stage of this trail area runs for a gene count (never below a few thousand). */
 export function slimeAgents(count: number, trailArea: number): number {
