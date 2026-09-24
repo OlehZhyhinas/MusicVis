@@ -10,7 +10,9 @@ function ensureContainer(): HTMLDivElement {
   return container;
 }
 
-export function showToast(message: string, kind: 'error' | 'info' = 'info', durationMs = 5000): void {
+export type ToastKind = 'error' | 'info' | 'ok' | 'live' | 'evolve';
+
+export function showToast(message: string, kind: ToastKind = 'info', durationMs = 5000): void {
   const root = ensureContainer();
   const el = document.createElement('div');
   el.className = `toast toast-${kind}`;

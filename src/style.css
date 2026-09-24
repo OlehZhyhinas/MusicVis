@@ -1932,7 +1932,8 @@ img.th:not([src]) {
     display: none;
   }
 }
-/* transient panels hidden in the old browser header now that the dock has a close */
-#v2b-close {
+
+#app.phone.dock-open #first-run,
+#app.phone.dock-open #empty-tools {
   display: none;
 }

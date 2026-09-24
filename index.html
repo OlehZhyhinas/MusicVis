@@ -65,41 +65,43 @@
 
         <section id="tab-presets" class="dock-body" role="tabpanel" aria-labelledby="dt-presets" hidden>
           <div id="v2-browser">
-        <div class="v2b-header">
-          <span class="v2b-title">Presets <span id="v2b-count"></span></span>
-          <div class="v2b-actions">
-            <button id="v2b-export" class="tp-btn-text" title="Download the whole population as JSON">Export</button>
-            <button id="v2b-import" class="tp-btn-text" title="Replace the population with a JSON file">Import</button>
-            <button id="v2b-reset" class="tp-btn-text" title="Back to the seed presets">Reset</button>
-            <button id="v2b-close" class="tp-btn" aria-label="Close preset browser" data-icon="x" data-icon-size="16"></button>
-          </div>
-        </div>
-        <div class="v2b-filters">
-          <select id="v2b-type" aria-label="Filter by type"></select>
-          <select id="v2b-energy" aria-label="Filter by energy">
-            <option value="">All energy</option>
-            <option value="calm">Calm</option>
-            <option value="energetic">Energetic</option>
-          </select>
-          <select id="v2b-sort" aria-label="Sort">
-            <option value="score">Best score</option>
-            <option value="newest">Newest</option>
-            <option value="gen">Generation</option>
-          </select>
-          <label class="v2b-check"><input id="v2b-hidden" type="checkbox" /> hidden</label>
-        </div>
-        <div class="v2b-select-bar">
-          <span id="v2b-selected">Select two to breed, one to mutate</span>
-          <button id="v2b-breed" class="tp-btn-text" disabled>Breed</button>
-          <button id="v2b-mutate" class="tp-btn-text" disabled>Mutate</button>
-          <button id="v2b-hide" class="tp-btn-text" disabled>Hide</button>
-          <button id="v2b-clear" class="tp-btn-text" disabled>Clear</button>
-        </div>
-        <div id="v2b-results" hidden>
-          <div class="v2b-results-head"><span id="v2b-results-title">Children</span><button id="v2b-results-close" class="tp-btn" aria-label="Close results" data-icon="x" data-icon-size="14"></button></div>
-          <div id="v2b-results-grid"></div>
-        </div>
-        <div id="v2b-list" role="list"></div>
+            <div class="sec-h">
+              <div class="col grow" style="gap: 0"><h2>Presets</h2><span class="dim ell" id="v2b-count"></span></div>
+              <button id="v2b-export" class="btn sm" title="Export the population as JSON" data-icon="download" data-icon-size="14"><span class="lbl">Export</span></button>
+              <button id="v2b-import" class="btn sm" title="Import a population JSON (replaces the population)" data-icon="upload" data-icon-size="14"><span class="lbl">Import</span></button>
+              <button id="v2b-reset" class="btn sm ghost" title="Reset to the seed presets" aria-expanded="false" data-icon="reset" data-icon-size="14"><span class="lbl">Reset</span></button>
+            </div>
+            <div id="v2b-confirm" class="confirm" role="alertdialog" aria-labelledby="v2b-confirm-q" hidden>
+              <b id="v2b-confirm-q"></b>
+              <span class="muted">All bred presets, votes and hidden flags are discarded. Export first if you want to keep them.</span>
+              <div class="row"><button id="v2b-reset-yes" class="btn danger sm">Reset population</button><button id="v2b-reset-no" class="btn ghost sm">Cancel</button></div>
+            </div>
+            <div class="filters">
+              <select id="v2b-type" class="dd" aria-label="Filter by type"></select>
+              <div class="seg" id="v2b-energy" role="group" aria-label="Energy">
+                <button data-v="" aria-pressed="true">All</button><button data-v="calm" aria-pressed="false">Calm</button><button data-v="energetic" aria-pressed="false">Energetic</button>
+              </div>
+              <select id="v2b-sort" class="dd" aria-label="Sort">
+                <option value="score">Best score</option>
+                <option value="newest">Newest</option>
+                <option value="gen">Generation</option>
+              </select>
+              <label class="row v2b-hid"><button id="v2b-hidden" class="tog" aria-pressed="false" aria-label="Show hidden presets"></button>Show hidden</label>
+            </div>
+            <div class="selbar">
+              <span class="txt2" id="v2b-selected">Select two to breed, one to mutate</span>
+              <button id="v2b-breed" class="btn sm" title="Breed the two selected presets" disabled data-icon="breed" data-icon-size="14"><span>Breed</span></button>
+              <button id="v2b-mutate" class="btn sm" title="Mutate the selected preset" disabled data-icon="mutate" data-icon-size="14"><span>Mutate</span></button>
+              <button id="v2b-hide" class="btn sm" title="Hide / unhide the selected presets" disabled data-icon="eyeoff" data-icon-size="14"><span class="lbl">Hide</span></button>
+              <button id="v2b-clear" class="btn sm ghost" disabled>Clear</button>
+            </div>
+            <div id="v2b-scroll" class="scroll grow">
+              <div id="v2b-results" class="results" hidden>
+                <div class="row"><b id="v2b-results-title"></b><span class="status" id="v2b-results-status"></span><span class="grow"></span><button id="v2b-results-close" class="ib xs" aria-label="Close results" title="Close results" data-icon="x" data-icon-size="14"></button></div>
+                <div id="v2b-results-grid" class="rgrid"></div>
+              </div>
+              <div id="v2b-list" role="list" aria-label="Presets"></div>
+            </div>
           </div>
         </section>
 
