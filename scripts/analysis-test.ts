@@ -6,6 +6,7 @@ import { TimelineSampler } from '../src/analysis/TimelineSampler';
 import type { AnalysisResult, LiveAudioFrame, StemName } from '../src/types';
 import { harmonyTests } from './harmony-tests';
 import { repetitionTests } from './repetition-tests';
+import { grooveTests } from './groove-tests';
 
 const SR = 44100;
 const BPM = Number(process.env.BPM ?? 128);
@@ -624,6 +625,9 @@ harmonyTests(check);
 // ---------------------------------------------------------------- repetition (feature level)
 console.log('\nRepetition (feature-level synthetic songs):');
 repetitionTests(check);
+// ---------------------------------------------------------------- groove (timing feel)
+console.log('\nGroove on synthetic click tracks:');
+grooveTests(check);
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);
 process.exitCode = failures === 0 ? 0 : 1;

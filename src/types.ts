@@ -30,6 +30,31 @@ export interface KeySegment {
   confidence: number; // 0..1
 }
 
+/** Timing feel (src/analysis/groove.ts). */
+export interface GrooveStats {
+  /** 0 straight .. 1 triplet swing (where the off-beat of each pair lands). */
+  swing: number;
+  /** Backbeat lean against the strong beats, -1 pushing (early) .. 1 laid back (late); 1 = 40 ms. */
+  push: number;
+  /** 0 machine-quantized .. 1 loose human timing (~20 ms spread around the grid). */
+  humanity: number;
+  /** 0..1 syncopation density (weak-slot onsets whose next stronger slot is silent). */
+  synco: number;
+}
+
+/** Per-frame groove tracks plus song and section summaries. */
+export interface GrooveTrack {
+  swing: Float32Array;
+  push: Float32Array;
+  humanity: Float32Array;
+  synco: Float32Array;
+  song: GrooveStats;
+  /** One per AnalysisResult.sections entry. */
+  sections: GrooveStats[];
+  /** The swung subdivision: 8th or 16th pairs. */
+  sub: 8 | 16;
+}
+
 /** Produced once per song by the analysis worker. All arrays are transferable. */
 export interface AnalysisResult {
   duration: number; // seconds
@@ -69,6 +94,8 @@ export interface AnalysisResult {
   keys: KeySegment[]; // contiguous, cover [0, duration]
   /** Repetition structure, one entry per section (src/analysis/repetition.ts); absent in older results. */
   repeats?: SectionRepeat[];
+  /** Timing feel (optional: older cached results lack it). */
+  groove?: GrooveTrack;
 }
 
 /** How a section relates to the rest of the song (src/analysis/repetition.ts). */
@@ -200,6 +227,9 @@ export interface MusicState {
   keyWalk?: number;
   /** Seconds until the next resolution (precomputed songs only). */
   timeToResolve?: number;
+
+  // --- Groove (timing feel; songs from the offline groove track, live input from a running estimate) ---
+  groove?: GrooveStats;
 }
 
 /** Produced every frame by src/audio/LiveAnalyser.ts from an AnalyserNode. */

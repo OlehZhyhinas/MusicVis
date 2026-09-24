@@ -208,6 +208,13 @@ export class RealtimeSampler {
 
     // --- Harmony map (realtime-lite) ---
     this.harmony.sample(s, a.harmony, s.keyTonic, s.keyMode, dt, events);
+    // --- Groove (running estimate) ---
+    const gr = a.groove.out;
+    const gs = (s.groove ??= { swing: 0, push: 0, humanity: 0, synco: 0 });
+    gs.swing = gr.swing;
+    gs.push = gr.push;
+    gs.humanity = gr.humanity;
+    gs.synco = gr.synco;
 
     this.synced = true;
     return s;

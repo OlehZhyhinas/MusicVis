@@ -12,6 +12,7 @@
 // - chroma -> KeyTracker,
 // - ~10 Hz summary -> StructureTracker (sections, builds, drops).
 
+import { GrooveTracker } from './groove';
 import type { StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import { RealFFT } from './fft';
@@ -194,6 +195,8 @@ export class RealtimeAnalyzer {
   onset = 0;
 
   readonly beat: BeatTracker;
+  /** Running timing-feel estimate against the beat clock (groove.ts). */
+  readonly groove = new GrooveTracker();
   readonly key: KeyTracker;
   /** Realtime-lite chord tracking (harmony map). */
   readonly harmony = new HarmonyTracker();
@@ -574,6 +577,12 @@ export class RealtimeAnalyzer {
     // ---------------- beats ----------------
     const active = this.gate > 0.5;
     this.beat.push(this.onset, this.frameTime, active, accents, this.chroma);
+    {
+      const pos = this.beat.positionAt(this.frameTime);
+      const fl = Math.floor(pos);
+      const inBar = (((fl - this.beat.downbeatSlot) % 4) + 4) % 4;
+      this.groove.push(Math.max(this.stemOnsets.drums, 0.6 * this.stemOnsets.bass, 0.5 * this.stemOnsets.other) * Math.pow(10, this.dbfs / 40), pos - fl, this.beat.period, inBar, 1 / this.frameRate, active ? this.beat.confidence : 0);
+    }
 
     // ---------------- key ----------------
     if (this.chromaFresh) this.key.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr, this.frameTime);

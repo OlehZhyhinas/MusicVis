@@ -362,6 +362,15 @@ export class TimelineSampler {
 
     // --- Harmony map ---
     this.harmony?.sample(s, time, dt, jumped);
+    // --- Groove ---
+    const gr = r.groove;
+    if (gr && T > 0 && gr.swing.length >= T) {
+      const g = (s.groove ??= { swing: 0, push: 0, humanity: 0, synco: 0 });
+      g.swing = gr.swing[i0] + (gr.swing[i1] - gr.swing[i0]) * f;
+      g.push = gr.push[i0] + (gr.push[i1] - gr.push[i0]) * f;
+      g.humanity = gr.humanity[i0] + (gr.humanity[i1] - gr.humanity[i0]) * f;
+      g.synco = gr.synco[i0] + (gr.synco[i1] - gr.synco[i0]) * f;
+    }
 
     this.synced = true;
     this.lastTime = time;

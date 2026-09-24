@@ -10,6 +10,7 @@ import { computeChroma, resampleChroma, detectKeys } from './key';
 import { detectSections } from './structure';
 import { detectRepeats } from './repetition';
 import { computeComplexity, type ComplexityFeatures } from './complexity';
+import { analyzeGroove } from './groove';
 
 export type ProgressFn = (stage: string, progress: number) => void;
 
@@ -159,6 +160,7 @@ export function analyzePcm(
     songComplexity: cx.songComplexity,
   });
   if (sections.length === 0) sections = [{ start: 0, end: Math.max(duration, 1e-3), label: 'verse', energy: 0 }];
+  const groove = analyzeGroove(env, frameRate, beats, downbeats, sections, st.raw.total);
   report('Done', 1);
 
   const result: AnalysisResult = {
@@ -178,6 +180,7 @@ export function analyzePcm(
     beatsPerBar: BEATS_PER_BAR,
     sections,
     keys,
+    groove,
   };
   result.repeats = detectRepeats(result);
   return result;
