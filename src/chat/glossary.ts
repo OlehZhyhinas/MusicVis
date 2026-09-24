@@ -14,6 +14,7 @@ aurora: fall=ray falloff; wav=waviness.
 terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=downbeat flash.
 edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.
 flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
+superscope(3D point curve, AVS style): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 3D lissajous,5 ring tunnel; p/q=frequencies; audio=push by waveform or spectrum(spec); spinX/spinY=3D tumble turns/bar; persp=depth; n=points. Never fuses.
 Field shapes(plasma,aurora,terrain,edge)+flame draw 1 copy regardless of place count.
 
 PLACE:
