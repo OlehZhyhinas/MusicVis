@@ -267,7 +267,8 @@ function freshGenome(): Genome {
   }
   check('cross.all-seed-pairs-valid', !bad.length, bad.slice(0, 5).join(' | ') || `${n} children valid, <= 2 bodies, under budget`);
   check('cross.normally-one-body', one / n > 0.85, `${one}/${n} single-body children; tags ${JSON.stringify(tags)}`);
-  check('cross.layering-rare', (tags.layered ?? 0) / n < 0.08, `${tags.layered ?? 0}/${n} layered`);
+  // Layering is a LAYER_CHANCE (8%) roll that some pairs reject; allow three standard errors of sampling noise.
+  check('cross.layering-rare', (tags.layered ?? 0) / n < 0.08 + 3 * Math.sqrt((0.08 * 0.92) / n), `${tags.layered ?? 0}/${n} layered`);
   check('cross.all-operators-used', ['fused', 'morph', 'merged', 'layered'].every((t) => (tags[t] ?? 0) > 0), JSON.stringify(tags));
   check('cross.mixes-ideas', mixed / n > 0.45, `${mixed}/${n} children take distinct loci from both parents (dominant ${lociFrom.dom}, recessive ${lociFrom.rec} loci)`);
 

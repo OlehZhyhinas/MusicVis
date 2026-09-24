@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 40;
+export const SEED_VERSION = 41;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1494,6 +1494,28 @@ const DEJAVU: Def[] = [
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.25 })],
     dejavu: { recall: 0.85, blend: 2, snap: 0.85, frame: 0.5, hue: 0.8, motion: 0.6, evolve: 0.25, keep: 0, res: 0.5, cap: 3, min: 0.65 },
+  },
+  {
+    // Ink in water: three sources ride their instruments through a swirling liquid and bleed dye on
+    // the beats. Every appearance of a section that will return is remembered, so the memory is
+    // rewritten each time: when the chorus comes back, the ink cloud it left last time wells up again
+    // out of the current over four bars, softer and a turn further round, its colours restored, and
+    // the living current tears it into something new that the next return will remember.
+    origin: 'D02', name: 'Ink Recollection', energy: [0.15, 0.75], scheme: 'complementary', hue: 0.58,
+    color: { exposure: 0.85, adapt: 0.3, bloom: 1.05, vignette: 0.35 }, carrier: 'fluid',
+    car: { halfLife: 2.5, floor: 0.8, amount: 1.1, vort: 30, fnoise: 0.4 },
+    bodies: [body({
+      shape: ['dot', { r: 0.012 }],
+      place: ['stations', { count: 3, inst: 1, xs: 0.7, jump: 0, wander: 0.25 }],
+      motion: ['circle', { radius: 0.08, period: 4 }],
+      material: ['glow', { gain: 0.6, width: 0.02 }],
+      emit: ['dye', { force: 1.2 }],
+      feel: ['flow', { atk: 0.02, rel: 0.35 }],
+    })],
+    reactions: [
+      rx('bass', 'car', 0, 'amount', 0.3, { atk: 0.05, rel: 0.5 }), rx('loud', 'em', 0, 'force', 0.4, { atk: 0.05, rel: 0.4 }),
+    ],
+    dejavu: { recall: 0.7, blend: 4, snap: 0.75, frame: 0.3, hue: 0.6, motion: 0.2, evolve: 0.5, keep: 1, res: 0.25, cap: 4, min: 0.7 },
   },
 ];
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU].map(build);
