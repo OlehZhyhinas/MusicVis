@@ -522,3 +522,240 @@
 #app.phone #v2-genes .sec-h .lbl {
   display: none;
 }
+
+/* -------------------------------------------------------- gene chat */
+#gene-chat {
+  flex: none;
+  height: var(--gc-h, 300px);
+  min-height: 150px;
+  max-height: 70%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-size: 12.5px;
+}
+#gene-chat.collapsed {
+  height: auto;
+  min-height: 0;
+}
+#gene-chat.collapsed .gc-body,
+#gene-chat.collapsed .gc-grip {
+  display: none;
+}
+.gc-grip {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.gc-grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 36px;
+  height: 3px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+.gc-grip:hover::after {
+  background: var(--acc);
+}
+.gc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.gc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font-size: 13px;
+}
+.gc-toggle .chev {
+  display: inline-flex;
+  transition: transform 0.15s;
+  transform: rotate(90deg);
+  color: var(--tx3);
+}
+#gene-chat.collapsed .gc-toggle .chev {
+  transform: none;
+}
+.gc-status.on {
+  --c: var(--ok);
+}
+#gene-chat[data-state='busy'] .gc-status,
+#gene-chat[data-state='loading'] .gc-status,
+#gene-chat[data-state='warming'] .gc-status {
+  --c: var(--acc);
+}
+#gene-chat[data-state='failed'] .gc-status {
+  --c: var(--neg);
+}
+.gc-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gc-log {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  overscroll-behavior: contain;
+}
+.gc-intro p {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+.gc-msg {
+  max-width: 92%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--raise);
+  line-height: 1.45;
+}
+.gc-msg p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gc-msg.me {
+  align-self: flex-end;
+  background: var(--acc-tint);
+  border-bottom-right-radius: 4px;
+}
+.gc-msg.bot {
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.gc-msg.err {
+  color: var(--neg);
+}
+.gc-ex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.gc-ex .tag {
+  border: 0;
+  cursor: pointer;
+  height: 24px;
+}
+.gc-ex .tag:hover {
+  --c: var(--acc);
+}
+.gc-changes,
+.gc-problems {
+  margin: 6px 0 0;
+  padding: 0 0 0 14px;
+  font-size: 11px;
+  color: var(--tx2);
+}
+.gc-problems {
+  color: var(--warn);
+  font-size: 11.5px;
+}
+.gc-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 10.5px;
+}
+.gc-note {
+  font-size: 11px;
+  text-align: center;
+  color: var(--tx3);
+}
+.gc-note.warn {
+  color: var(--warn);
+}
+.gc-note.err {
+  color: var(--neg);
+}
+.gc-dots {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px 0 0;
+}
+.gc-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tx3);
+  animation: gc-dot 1s infinite ease-in-out;
+}
+.gc-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.gc-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes gc-dot {
+  0%, 80%, 100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.gc-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  flex: none;
+}
+.gc-progress .meter {
+  flex: none;
+}
+.gc-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  flex: none;
+}
+.gc-in {
+  flex: 1;
+  height: auto;
+  min-height: 34px;
+  max-height: 120px;
+  padding: 7px 10px;
+  resize: none;
+  line-height: 1.35;
+}
+.gc-in:disabled {
+  opacity: 0.5;
+}
+/* Controls a chat edit touched. */
+.vg-flash {
+  animation: vg-flash 1.5s ease-out;
+  border-radius: 6px;
+}
+@keyframes vg-flash {
+  0% {
+    background: color-mix(in srgb, var(--acc) 34%, transparent);
+    box-shadow: 0 0 0 1px var(--acc);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 1px transparent;
+  }
+}

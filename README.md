@@ -26,6 +26,10 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   music by reaction genes. Like or dislike what you see, let evolve mode breed
   new candidates in the background, or pick two parents yourself.
 - Gene editor: change any gene of the playing preset and see it immediately.
+- Gene chat (desktop, WebGPU): describe a change in words ("calmer", "more
+  blue", "fill the screen") and a language model running on your GPU edits
+  the playing preset. Opt-in: the model (Qwen3.5 4B, about 2.4 GB) downloads
+  from Hugging Face only when you start the chat, and stays in the browser.
 - Live input: a microphone, audio interface or virtual device (for example
   BlackHole) instead of files.
 - A real playlist: add many songs at once, shuffle, repeat, skip around, and
@@ -80,7 +84,14 @@ in `dist/`. Headless tests:
 node --import ./scripts/analysis-test.hooks.mjs scripts/analysis-test.ts
 node --import ./scripts/analysis-test.hooks.mjs scripts/realtime-test.ts
 node --import ./scripts/analysis-test.hooks.mjs scripts/v2-test.ts
+node --import ./scripts/analysis-test.hooks.mjs scripts/chat-test.ts
 ```
+
+The gene chat's runtime lives in `public/llm/`: a patched WebLLM 0.2.84 bundle
+(tuned decoding on Apple GPUs with WGSL subgroups, plus a prefill that yields
+the GPU between passes so the visualizer keeps its frame rate), its worker, a
+weight prefetcher and a catalog naming the tuned model lib. Runtime
+measurements: `await __geneChatBench()` in the browser console.
 
 ## Deploying
 

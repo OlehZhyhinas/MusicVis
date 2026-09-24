@@ -161,6 +161,96 @@ export class GeneEditor {
 
   /** Called when the close button is pressed (main hides the panel). */
   onClose: (() => void) | null = null;
+  /** A preset started showing (its genome is now the one edited). */
+  onLoad: ((m: Member | null) => void) | null = null;
+
+  /** The genome as edited now (the scratch copy; do not mutate). */
+  current(): Genome | null {
+    return this.scratch;
+  }
+
+  get memberId(): string {
+    return this.member?.id ?? '';
+  }
+
+  get memberLabel(): string {
+    return this.member ? `${this.member.id} "${this.member.name}"` : '';
+  }
+
+  /**
+   * Replaces the edited genome from outside the editor (the gene chat): swapped in place when the
+   * structure is unchanged, else compiled and crossfaded; the controls it touched (parameter paths
+   * or section ids) flash and slide from their old values.
+   */
+  applyExternal(g: Genome, touched: string[] = []): void {
+    if (!this.scratch) return;
+    const before = this.scratch;
+    this.errors.clear();
+    this.scratch = cloneGenome(g);
+    this.render();
+    this.push(false, 'chat');
+    this.afterChange();
+    this.flash(touched, before);
+  }
+
+  private flash(touched: string[], before: Genome): void {
+    const seen = new Set<string>();
+    for (const t of touched) {
+      if (seen.has(t)) continue;
+      seen.add(t);
+      const row = this.body.querySelector<HTMLElement>(`.prow[data-path="${CSS.escape(t)}"]`);
+      const hit = row ?? this.body.querySelector<HTMLElement>(`[data-sec="${CSS.escape(t)}"]`);
+      const sec = hit?.closest<HTMLDetailsElement>('details') ?? null;
+      if (sec && !sec.open) sec.open = true;
+      const el = row ?? (hit instanceof HTMLDetailsElement ? hit.querySelector<HTMLElement>('summary') : hit);
+      if (!el) continue;
+      el.classList.remove('vg-flash');
+      void el.offsetWidth;
+      el.classList.add('vg-flash');
+      window.setTimeout(() => el.classList.remove('vg-flash'), 1600);
+      // Sliders glide from the old value to the new one.
+      const range = row?.querySelector<HTMLInputElement>('input[type=range]');
+      const pp = row?.dataset.path;
+      if (range && pp) {
+        const i = pp.lastIndexOf('.');
+        const t0 = this.targetOf(pp.slice(0, i));
+        const key = pp.slice(i + 1);
+        const spec = t0 && E.schemaAt(before, t0)?.[key];
+        if (t0 && spec) {
+          const from = E.toSlider(E.getParam(before, t0, key), spec);
+          const to = Number(range.value);
+          if (from !== to) this.glide(range, from, to);
+        }
+      }
+    }
+    const first = this.body.querySelector<HTMLElement>('.vg-flash');
+    first?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /** The target whose section id is `id` in the current genome (null when gone). */
+  private targetOf(id: string): E.Target | null {
+    const g = this.scratch;
+    if (!g) return null;
+    for (const sec of E.buildModel(g)) {
+      if (sec.target && E.targetId(sec.target) === id) return sec.target;
+      for (const it of sec.items ?? []) if (E.targetId(it.target) === id) return it.target;
+    }
+    return null;
+  }
+
+  private glide(range: HTMLInputElement, from: number, to: number): void {
+    const t0 = performance.now();
+    const dur = 450;
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      range.value = String(Math.round(from + (to - from) * e));
+      range.style.setProperty('--v', `${(Number(range.value) / E.SLIDER_STEPS) * 100}%`);
+      if (k < 1 && range.isConnected) requestAnimationFrame(step);
+    };
+    range.value = String(from);
+    requestAnimationFrame(step);
+  }
   /** Asked to be seen (a discard question is waiting): main opens the Genes tab. */
   onAttention: (() => void) | null = null;
 
@@ -194,6 +284,7 @@ export class GeneEditor {
       this.body.textContent = '';
       this.who.textContent = '';
       this.setDirty(false);
+      this.onLoad?.(null);
       return;
     }
     this.original = cloneGenome(m.genome);
@@ -205,6 +296,7 @@ export class GeneEditor {
     this.who.title = `${m.id} · ${m.name} · ${m.type}`;
     this.render();
     this.afterChange();
+    this.onLoad?.(m);
   }
 
   /** Asks before discarding unsaved edits; runs the action on "Discard". */
@@ -495,7 +587,7 @@ export class GeneEditor {
 
   private section(sec: E.SectionModel): HTMLElement {
     const open = this.openState.get(sec.id) ?? sec.open;
-    const d = h('details', { class: 'gx', open: open || this.errors.has(sec.id) });
+    const d = h('details', { class: 'gx', open: open || this.errors.has(sec.id), 'data-sec': sec.id });
     const m = /^(.*) \((\d+)\/(\d+)\)$/.exec(sec.title);
     const title = m ? m[1] : sec.title;
     const count = m ? `${m[2]} / ${m[3]}` : sec.alleles ? String(sec.alleles.length) : '';
@@ -556,7 +648,7 @@ export class GeneEditor {
         wrap.append(item);
         continue;
       }
-      const item = h('div', { class: 'sub' });
+      const item = h('div', { class: 'sub', 'data-sec': it.id });
       const head = h('div', { class: 'sh' });
       head.append(h('span', { class: sec.list === 'xforms' ? '' : 'dim mono vg-n', text: it.title }));
       if (it.kind) {
@@ -683,7 +775,7 @@ export class GeneEditor {
   private paramRow(t: E.Target, c: E.ParamControl, anchor: string): HTMLElement {
     const spec = c.spec;
     const title = `${c.key} · ${spec.choices ? spec.choices.join(' / ') : `${spec.min} … ${spec.max}${spec.log ? ' (log)' : ''}${spec.int ? ' (integer)' : ''}`} · default ${spec.def}`;
-    const row = h('div', { class: 'prow', title });
+    const row = h('div', { class: 'prow', title, 'data-path': `${E.targetId(t)}.${c.key}` });
     row.append(h('span', { class: 'pl', text: c.label }));
     const current = () => {
       const g = this.scratch;

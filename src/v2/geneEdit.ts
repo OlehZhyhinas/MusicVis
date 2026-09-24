@@ -5,7 +5,7 @@
 // Node tests. Every structural edit returns a repaired, valid genome or a reason.
 
 import {
-  BODY_GROUPS, CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, FLAME_VARIATIONS, FUSE_SCHEMA, LOCI, LOCUS_KINDS, MAX_CHAIN, MAX_DRAW,
+  BODY_GROUPS, CARRIER_KINDS, MAX_BODIES, CARRIER_SCHEMA, DRAW_OPS, FLAME_VARIATIONS, FUSE_SCHEMA, LOCI, LOCUS_KINDS, MAX_CHAIN, MAX_DRAW,
   MAX_REACTIONS, MAX_XFORMS, OP_KINDS, OP_SCHEMAS, PALETTE_KINDS, PALETTE_SCHEMAS, REACTION_SCHEMA, SHAPE_CLASS, SHAPE_KINDS,
   SHAPE_SCHEMAS, SIGNALS, TONE_SCHEMA, UNIQUE_SHAPES, XFORM_DRIFT, XFORM_SPIN, AFF_RANGE,
   cloneBody, cloneGenome, defaultParams, isFold, isVarOp, locusSchema, reactable, repair, repairBody, repairShape, repairXform,
@@ -773,6 +773,90 @@ export function removeFuse(gIn: Genome, b: number): EditResult {
   const g = cloneGenome(gIn);
   delete g.bodies[b].fuse;
   return finish(gIn, g, () => null);
+}
+
+// Bodies.
+
+export interface NewBody {
+  shape: ShapeKind;
+  place?: string;
+  material?: string;
+  emit?: string;
+  motion?: string;
+}
+
+/** Adds a body of default genes (the kinds given, sensible defaults for the rest), up to MAX_BODIES. */
+export function addBody(gIn: Genome, spec: NewBody): EditResult {
+  if (gIn.bodies.length >= MAX_BODIES) return fail(gIn, `a preset has at most ${MAX_BODIES} bodies`);
+  if (!SHAPE_KINDS.includes(spec.shape)) return fail(gIn, `unknown shape "${spec.shape}"`);
+  if (UNIQUE_SHAPES.includes(spec.shape) && gIn.bodies.some((x) => x.shape.kind === spec.shape || x.fuse?.shape.kind === spec.shape)) {
+    return fail(gIn, `only one ${spec.shape} per preset`);
+  }
+  const pick = (locus: Locus, kind: string | undefined, def: string): Gene => {
+    const k = kind && LOCUS_KINDS[locus].includes(kind) ? kind : def;
+    return { kind: k, p: defaultParams(locusSchema(locus, k)) };
+  };
+  for (const [locus, kind] of [['place', spec.place], ['material', spec.material], ['emit', spec.emit], ['motion', spec.motion]] as [Locus, string | undefined][]) {
+    if (kind !== undefined && !LOCUS_KINDS[locus].includes(kind)) return fail(gIn, `unknown ${locus} kind "${kind}"`);
+  }
+  const cls = SHAPE_CLASS[spec.shape];
+  const body = {
+    shape: repairShape({ kind: spec.shape }),
+    place: pick('place', spec.place, 'point'),
+    motion: pick('motion', spec.motion, cls === 'sdf' ? 'spin' : 'none'),
+    deform: pick('deform', undefined, 'none'),
+    material: pick('material', spec.material, cls === 'curve' ? 'line' : 'glow'),
+    emit: pick('emit', spec.emit, 'trail'),
+    feel: pick('feel', undefined, 'flow'),
+    color: pick('color', undefined, 'fixed'),
+  } as BodyGene;
+  fitLoci(body);
+  const g = cloneGenome(gIn);
+  g.bodies.push(repairBody(body));
+  return finish(gIn, g, (out) => (out.bodies[out.bodies.length - 1].shape.kind === spec.shape ? null : `${spec.shape} does not work with that placement / material`));
+}
+
+/** Removes a body (a preset keeps at least one); reactions on it go, later bodies' reactions follow their body. */
+export function removeBody(gIn: Genome, b: number): EditResult {
+  if (!gIn.bodies[b]) return fail(gIn, 'no such body');
+  if (gIn.bodies.length <= 1) return fail(gIn, 'a preset needs at least one body');
+  const g = cloneGenome(gIn);
+  g.bodies.splice(b, 1);
+  const bodyGroups = new Set<GeneGroup>([...Object.values(BODY_GROUPS), 'fu', 'fs']);
+  g.reactions = g.reactions.flatMap((r) => {
+    if (r.g === 'dr') {
+      const ob = Math.floor(r.i / MAX_DRAW);
+      if (ob === b) return [];
+      return [ob > b ? { ...r, i: r.i - MAX_DRAW } : r];
+    }
+    if (!bodyGroups.has(r.g)) return [r];
+    if (r.i === b) return [];
+    return [r.i > b ? { ...r, i: r.i - 1 } : r];
+  });
+  return finish(gIn, g, (out) => (out.bodies.length === g.bodies.length ? null : 'could not remove the body'));
+}
+
+/** Adds a reaction driving one specific parameter (never one that is already driven). */
+export function addReactionTo(gIn: Genome, src: Signal, target: Pick<ReactionGene, 'g' | 'i' | 'k'>, gain = 0.3): EditResult {
+  if (gIn.reactions.length >= MAX_REACTIONS) return fail(gIn, `at most ${MAX_REACTIONS} reactions`);
+  if (!SIGNALS.includes(src)) return fail(gIn, `unknown signal "${src}"`);
+  if (!reactionTargets(gIn).some((t) => reactKey(t) === reactKey(target))) return fail(gIn, 'that parameter cannot react');
+  if (gIn.reactions.some((r) => reactKey(r) === reactKey(target))) return fail(gIn, 'that parameter is already driven by a reaction');
+  const g = cloneGenome(gIn);
+  g.reactions.push({ src, g: target.g, i: target.i, k: target.k, gain: clampTo(gain, REACTION_SCHEMA.gain), atk: 0.01, rel: 0.3, thr: 0, q: 0, div: 1 });
+  return finish(gIn, g, (out) => (out.reactions.length === g.reactions.length ? null : 'could not add the reaction'));
+}
+
+/** Fuses a second shape into a body (mode 0 union, 1 morph, 2 region). */
+export function addFuse(gIn: Genome, b: number, shape: ShapeKind, mode = 0): EditResult {
+  const body = gIn.bodies[b];
+  if (!body) return fail(gIn, 'no such body');
+  if (!FUSE_SHAPE_KINDS.includes(shape)) return fail(gIn, `${shape} has no distance field to fuse`);
+  if (UNIQUE_SHAPES.includes(shape) && gIn.bodies.some((x) => x.shape.kind === shape || x.fuse?.shape.kind === shape)) return fail(gIn, `only one ${shape} per preset`);
+  const g = cloneGenome(gIn);
+  g.bodies[b].fuse = { shape: repairShape({ kind: shape }), p: { ...defaultParams(FUSE_SCHEMA), mode } };
+  g.bodies[b] = repairBody(g.bodies[b]);
+  return finish(gIn, g, (out) => (out.bodies[b].fuse?.shape.kind === shape ? null : `${shape} cannot fuse into this ${body.shape.kind}`));
 }
 
 // ------------------------------------------------------------------ saving

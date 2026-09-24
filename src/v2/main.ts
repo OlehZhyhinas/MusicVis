@@ -20,6 +20,8 @@ import { Evolution, type ChooseReason } from './evolve';
 import { PresetBrowser } from './browser';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
+import { ChatPane } from '../chat/chatPane';
+import { LookSampler } from '../chat/look';
 import { hydrateIcons } from '../ui/icons';
 import { PresetBar } from '../ui/presetBar';
 import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
@@ -210,6 +212,11 @@ async function main(): Promise<void> {
     },
     onDirty: () => updateBar(),
   });
+  // Gene chat under the gene editor: a local model edits the playing preset from a description.
+  const look = new LookSampler();
+  let keyHueNow = 0;
+  const chat = new ChatPane($<HTMLElement>('gene-chat'), { editor, look, keyHue: () => keyHueNow });
+  Object.assign(window, { __geneChat: chat });
   editor.onClose = () => dock.close();
   editor.onAttention = () => dock.open('genes');
   function toggleGenes(): void {
@@ -385,6 +392,7 @@ async function main(): Promise<void> {
     relayout();
     browser.setOpen(tab === 'presets');
     editor.setShown(tab === 'genes');
+    chat.setShown(tab === 'genes');
     transport.setPlaylistOpen(tab === 'playlist');
     presetBar.setPresetsOpen(tab === 'presets');
     updateNowPlaying();
@@ -694,6 +702,8 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('render failed', err);
     }
+    keyHueNow = state.keyHue;
+    look.tick(dt, canvas);
     if (screener.runner.busy) screener.runner.pump(eng.stats.frameMs > 18 ? 2 : 5);
     editor.tick(dt);
 
@@ -710,6 +720,11 @@ async function main(): Promise<void> {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+  // Gene chat runtime measurements, from the console: await __geneChatBench()
+  Object.assign(window, {
+    __geneChatBench: () => import('../chat/bench').then((m) => m.runBench()),
+    __geneChatChunkBench: (sizes?: number[], yieldMs?: number) => import('../chat/bench').then((m) => m.runChunkBench(sizes, yieldMs)),
+  });
 
   new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen);
 }
