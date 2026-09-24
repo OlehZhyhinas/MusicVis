@@ -263,8 +263,18 @@ export class ChatPane {
     dots.remove();
     bot.classList.remove('pending');
     if (res) this.showResult(bot, say, res);
-    this.setState('ready');
     this.scroll();
+    // A nearly full conversation starts over now, while the user reads the reply.
+    if (this.chat.full) {
+      this.setState('warming');
+      try {
+        await this.chat.maintain();
+      } catch (err) {
+        console.warn('[chat] refresh failed', err);
+        this.chat.reset();
+      }
+    }
+    this.setState('ready');
     this.input.focus();
   }
 

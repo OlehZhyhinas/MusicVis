@@ -1,82 +1,170 @@
 // Plain-language reference for the gene chat's system prompt: what each gene does on screen
-// (GLOSSARY), everyday words mapped to gene edits (LEXICON) and value-choosing rules (RULES).
+// (INTRO always sent, ENTRIES keyed per gene kind and sent only for kinds present in the
+// current preset), everyday words mapped to gene edits (LEXICON) and value-choosing rules (RULES).
 
-export const GLOSSARY = `
-BODIES (1-3): shape, place, motion, deform, material, emit, feel, color, optional fuse.
+/** Always sent: what a preset is made of, the section notes that apply to every preset (chain
+ * stages, carrier params, colour and tone params, feel, reaction signals), kept short. */
+export const INTRO = `
+BODIES (1-3): each has shape, place, motion, deform, material, emit, feel, color(mapping), optional fuse.
+Field shapes(plasma,aurora,terrain,edge,beams,scene,cells)+flame always draw 1 copy regardless of place count.
+Only 1 flame + 1 solid + 1 scene shape per preset(each unique, at most 1 of that kind).
 
-SHAPE:
-dot: disc. polygon: n sides; round=corner round. star: inner=inner radius, spikier when low. segment: line stroke.
-solid(3D,1/preset): solid 0 tetra,1 cube,2 octa,3 icosa,4 polygon(sides),5 by section; tilt=3D tilt; inner=inner faces visible.
-bars: mode 0 baseline,1 arc,2 ring,3 mirrored; fill=duty cycle.
-curve: form 0 wave,1 circle,2 spiral,3 lissajous,4 arc,5 harmonograph; turns=spiral wraps; ra/rb=lissajous ratio.
-plasma(field): warp=distortion; bands=colour bands; lines=line vs smooth; tempo/pulse/melHue=music-driven colour shift.
-aurora: fall=ray falloff; wav=waviness.
-terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=downbeat flash.
-edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.
-flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.
-superscope(3D point curve): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 lissajous,5 ring tunnel; p/q=frequencies; audio=wave/spectrum(spec) push; spinX/spinY=tumble turns/bar; persp=depth; n=points.
-beams(stage light shafts): count=heads; spread=truss; fan/sweep=aim spread/swing; pattern 0 unison,1 scissor,2 wave,3 alt,4 step; period=bars; width=cone; haze; gobo 0 open,1 split,2 ring,3 noise; hues/head; length; flare; accent=beat chase.
-scene(ray-marched 3D,1/preset): scene 0 melting shapes; cam 0 orbit,1 fly,2 dolly zoom; roam=camera travel; res=render res(cost); blend=melt; pulse=bass swell; kick=drum camera jolt; vary=section reshuffle; rim/ao/fog/glow=light. Material sets look(line=neon rims).
-cells(Voronoi): mode 0 foam,1 veins,2 domes; warp=bent walls; fill=cell light; var=hue spread; pulse=beat pop.
-cymatics(Chladni sand): plate 0 square,1 round; size; modes=max; source 0 chords,1 bands,2 section; hold=bars; settle=beats; sand=grains; line; shake=bass; rim.
-Fields(plasma,aurora,terrain,edge,beams,scene,cells,cymatics)+flame: 1 copy only.
+CHAIN (up to 6 whole-scene ops + each body's own up to 3 draw-space deform ops, from the same op
+kinds): warp-stage feeds back frame-to-frame(trails/streaming); view-stage just reshapes the
+picture(no accumulation). Motion ops(zoom,rotate,translate,swirl,twist,ripple,noise,push,quad) are
+warp-only; folds(mirror,tile,polar,kaleido,stretch)+v_ flame variations can run in either stage.
 
-PLACE:
-point: fixed spot. orbit: copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.
-walker: 1-2 roaming heads; step=move/beat; every=beats/turn; square=90-deg turns.
-stations: 1 copy/instrument; inst=how much they move; xs=sideways roam; jump=snap on hit; swap=slots swap.
-row: copies along the bottom. float: copies drift on slow Lissajous paths; spread=area size.
-outline: copies travel a path; path 0 circle,1 polygon,2 figure-8.
-grid(lattice fold, not real copies): lattice 0 square,1 hex,2 triangle; density=fraction lit; links=lines to lit neighbours; lock=turns/bar.
-ring: n copies on a ring. mirror: mirrors 1 copy across axis 0 vert,1 horiz,2 both.
+CARRIER(always present): halfLife=trail length(s to fade to half). floor=black-level cut/frame
+(higher=trails vanish faster). blur=softens image. sharpen=edges sharpen/flats fade, grows
+reaction-diffusion texture. border=coloured edge frame injected each frame, swells w/bass, carried
+inward. Fluid carrier only: amount/vort/fnoise/fscale/famt=advection+vorticity/turbulence.
+water(0=off)=beat drops spread ripples refracting the picture; wsize=drop radius.
 
-MOTION:
-none: static. spin: rate=turns/bar; alt=reverse alt bars; solids spin in 3D. sway: side swing, period=bars.
-bob: drifts/bar, bobs on beat. drift: constant slow velocity, wraps at edges. circle: small loop, period=bars.
-hits: jolts/turns on drum hits. pulse: size kick on beat.
+PALETTE(3 hue slots around the song key, always present): hue=1st slot's offset from key;
+spread=how far the slots spread.
 
-DEFORM (+ up to 3 draw-space ops/body: swirl,twist,ripple,noise,rotate,zoom,mirror,kaleido,v_<flame var>):
-none. arms: tapered curling arms reaching per instrument+loudness; curl=amount; turn=bars/direction change.
-wobble: wobbling outline lobes; rate=turns/bar, swells w/bass. noise: organic outline jitter. twist: rotation grows w/distance from centre, breathes w/loudness.
+COLOUR MAPPING(per body, common params): amount=how much the driver swings the hue; detail=how
+much the shape's own shading(depth,bins,curve position) varies it.
 
-MATERIAL (all: gain=brightness; blend onto picture 0 add,1 max,2 subtract,3 xor,4 screen,5 interlace): line: glow outline; width(px); halo=glow spread. fill: soft=edge softness; outline=cell outline; core=inner gradient; clip=hide below height.
-glow: soft blob, grows w/level; base=brightness at silence. dots: stippled fill. textured: tex 0 craters,1 stripes(sunset),2 windows. chrome: mirror-like; chrome 0 plastic..1 mirror.
-fill/textured/chrome hold steady brightness; line/glow/dots accumulate into the trail.
+MATERIAL: all have gain=brightness and blend=how it lands on the picture below(0 add,1 max,2
+subtract,3 xor,4 screen,5 interlace); fill/textured/chrome hold steady brightness, line/glow/dots
+accumulate into the trail.
 
-EMIT: none: no trail. trail: leaves light in feedback; tip=extra bright point at current position. cover: paints over old trail instead of adding light; amt=opacity. dye: pushes into fluid carrier on hits/beats.
-sparks(1/preset): curl=swirliness; zoomFlow=inherits carrier zoom; life=lifetime; surge=extra burst; top=above/below body; body=source shape visibility.
-slime(1/preset): physarum veins; sa/sd=sensor angle/dist(sd=cell size); step=speed; decay=trail kept; diffuse=blur; body=shape visibility; feed=shape seeds veins; birth=agents reborn at shape.
+TONE(whole-scene post, always present): sat=saturation; exposure=brightness; contrast; bloom=glow
+bleed; adapt=eye-adapt speed; vignette=edge darkening; ca=chromatic aberration;
+reflect/reflectY=mirror bottom of frame; tonemap=filmic or flame(log-density); relief=emboss the
+picture as a lit surface(0 off); bump=surface height; light=light direction; gloss=shine;
+metal=liquid-chrome palette reflections.
 
-FUSE (2nd shape merged in): mode 0 union(k=blend radius, grows w/bass),1 morph(t=mix),2 region(lit inside/along other shape). drive=what moves t(none,sweep,bass,melody,loud,surge).
+FEEL(per body, response curve+clock, always present): flow=levels follow music continuously;
+step=sampled+held on clock grid(staccato). atk/rel=rise/fall time(s); thr=signal below ignored;
+sens=sensitivity. div=clock unit in beats(0.5..16). lock: 1=locked to song grid(mechanical),
+0=free-running(organic).
 
-CHAIN (up to 6 whole-scene ops + each body's own deform ops): warp-stage feeds back frame-to-frame(trails/streaming); view-stage just reshapes the picture(no accumulation). Motion ops warp-only; folds+v_ variations either stage.
-zoom: rate>0 flies outward,<0 inward. rotate: lock=bar-locked turns/bar; rate=free spin. translate: push; lanes=columns alternating 1x/2x speed.
-swirl: rotates near cx,cy; amt=strength+dir; k=falloff. twist: like swirl but grows w/distance.
-ripple: concentric/radial waves. noise: organic warble. push: shift along axis(x,y,radial). quad: z^2 warp, Julia-set-like coastlines.
-mirror(fold): reflects across axis. tile(fold): repeats in a grid; n=cells/unit. polar(fold): polar-coord map, radial symmetry.
-kaleido(fold): n-fold mirror. stretch: spectrum stretch; beat=extra pull on beat.
-v_<name>(flame variation): bends space via that flame function; w=blend; s=scale.
-
-CARRIER: warp(feedback+chain), fluid(velocity-advected), flow(flow-field), none(no persistence).
-halfLife=trail length(s to fade to half). floor: black-level cut/frame(higher=trails vanish faster). blur: softens image.
-amount/vort/fnoise/fscale/famt: fluid advection+vorticity/turbulence. sharpen: edges sharpen/flats fade, grows reaction-diffusion texture. border: coloured edge frame injected each frame, swells w/bass, carried inward.
-water(0=off): beat drops spread ripples refracting the picture; wsize=drop radius.
-
-COLOUR:
-Palette kind(3 hue slots around song key): analogous(close),complementary(opposite),triad(3 even),split(complement+neighbours),mono(near 1 hue),free(3 slots). hue=1st slot's offset from key; spread=how far slots spread.
-Colour mapping(per body, drives hue): fixed(1 hue),instrument(each copy=its slot),pitch(chroma around key),melody(follows melody),height(vertical pos),age(hue drifts w/time; rate=palette turns/bar),speed(faster=more hue shift). amount=driver's swing; detail=shape's own shading variance.
-Tone(whole-scene post): sat=saturation; exposure=brightness; bloom=glow bleed; adapt=eye-adapt speed; vignette=edge darkening; ca=chromatic aberration; reflect/reflectY=mirror bottom of frame; tonemap=filmic or flame(log-density). relief=emboss(bump,light,gloss,metal).
-
-CHOREO(optional, knows the song ahead): before drops the camera pushes in and leans, colour drains, light dims; slams on the drop, settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle. Each section type gets its own framing; frame=how far framings push/pan/lean; shot=which set of framings; glide=bars into new framing(0=cut); dolly=slow push-in across each section; scene=hue shift per section type. arc=zoom swell per phrase(phrase=bars).
-
-FEEL(per body, response curve+clock): flow=levels follow music continuously; step=sampled+held on clock grid(staccato).
-atk/rel=rise/fall time(s); thr=signal below ignored; sens=sensitivity. div=clock unit in beats(0.5..16). lock: 1=locked to song grid(mechanical), 0=free-running(organic).
-
-REACTIONS(signal->1 parameter+gain; up to 6; 1 reaction/parameter):
-drums/bass/vocals/other=instrument level. hit=drum trigger. beat=pulse/beat. bar=slow wave/bar. complexity=mix busyness.
+REACTIONS(signal->1 parameter+gain; up to 6; 1 reaction/parameter): drums/bass/vocals/other=
+instrument level. hit=drum trigger. beat=pulse/beat. bar=slow wave/bar. complexity=mix busyness.
 drop=structural drop. loud=overall loudness. melody=melody activity. build=tension pre-drop.
-surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on section change.
+surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on
+section change.
 `;
+
+/**
+ * One entry per gene kind, keyed '<group>.<kind>'. group: a body locus (shape, place, motion, deform,
+ * material, emit, color), 'op' (space-chain ops, including 'op.v_' for all flame variations as one entry),
+ * 'carrier', 'palette', 'fuse' (one entry 'fuse.fuse') or 'gene' (an optional genome-wide gene, e.g. 'gene.choreo').
+ * The text is what the kind looks like on screen plus its non-obvious params, as in the old GLOSSARY.
+ */
+export const ENTRIES: Record<string, string> = {
+  // -------------------------------------------------------------- shape
+  'shape.dot': 'disc.',
+  'shape.polygon': 'n sides; round=corner round.',
+  'shape.star': 'inner=inner radius, spikier when low.',
+  'shape.segment': 'line stroke.',
+  'shape.solid': 'solid(3D,1/preset): solid 0 tetra,1 cube,2 octa,3 icosa,4 polygon(sides),5 by section; tilt=3D tilt; inner=inner faces visible.',
+  'shape.bars': 'mode 0 baseline,1 arc,2 ring,3 mirrored; fill=duty cycle.',
+  'shape.curve': 'form 0 wave,1 circle,2 spiral,3 lissajous,4 arc,5 harmonograph; turns=spiral wraps; ra/rb=lissajous ratio.',
+  'shape.plasma': 'plasma(field): warp=distortion; bands=colour bands; lines=line vs smooth; tempo/pulse/melHue=music-driven colour shift.',
+  'shape.aurora': 'fall=ray falloff; wav=waviness.',
+  'shape.terrain': 'terrain(hills over a valley): peaks=peak height; terrain=ridge shape; flash=downbeat flash.',
+  'shape.edge': 'edge(edge strip): mode 0 skyline,1 melody,2 rain,3 ridge; side 0 right,1 top,2 bottom,3 left.',
+  'shape.flame': 'flame(particle cloud,1/preset): rounds=iterations; flow=variation morph cycles/8 bars; breathe=zoom pulse per bass.',
+  'shape.superscope': 'superscope(3D point curve): family 0 torus knot,1 sphere spiral,2 rose,3 coiled ring,4 lissajous,5 ring tunnel; p/q=frequencies; audio=wave/spectrum(spec) push; spinX/spinY=tumble turns/bar; persp=depth; n=points.',
+  'shape.beams': 'beams(concert light shafts through haze, rig at the placement): count=heads; spread=truss length; fan=aim spread; sweep=swing size; pattern 0 unison,1 scissor,2 chase wave,3 alternate,4 step; period=bars per sweep; width=beam cone; haze=smoke density; gobo 0 open,1 breakup,2 ring,3 textured; hues=colour step per head; length=reach; flare=lens glow; accent=beat chase.',
+  'shape.scene': 'scene(ray-marched 3D,1/preset): scene 0 melting shapes; cam 0 orbit,1 fly,2 dolly zoom; roam=camera travel; res=render res(cost); size=object scale; blend=melt; speed=animation+camera speed; pulse=bass swell; kick=drum camera jolt; vary=section reshuffle; rim/ao/fog/glow=light. Material sets the look(line=neon rims, glow=haze, chrome=reflective).',
+  'shape.cymatics': 'cymatics(Chladni sand plate, 1 copy): plate 0 square,1 round; size; modes=max mode number; source 0 chords,1 spectrum bands,2 section; hold=bars per figure; settle=beats to re-form; sand=grains vs lines; line=width; shake=bass jitter; rim=plate edge.',
+  'shape.cells': 'cells(Voronoi cell foam): mode 0 foam,1 veins,2 domes; warp=bent walls; fill=cell light; var=hue spread; pulse=beat pop.',
+
+  // -------------------------------------------------------------- place
+  'place.point': 'fixed spot.',
+  'place.orbit': 'copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.',
+  'place.walker': '1-2 roaming heads; step=move/beat; every=beats/turn; square=90-deg turns.',
+  'place.stations': '1 copy/instrument; inst=how much they move; xs=sideways roam; jump=snap on hit; swap=slots swap.',
+  'place.row': 'copies along the bottom.',
+  'place.float': 'copies drift on slow Lissajous paths; spread=area size.',
+  'place.outline': 'copies travel a path; path 0 circle,1 polygon,2 figure-8.',
+  'place.grid': 'grid(lattice fold, not real copies): lattice 0 square,1 hex,2 triangle; density=fraction lit; links=lines to lit neighbours; lock=turns/bar.',
+  'place.ring': 'n copies on a ring.',
+  'place.mirror': 'mirrors 1 copy across axis 0 vert,1 horiz,2 both.',
+
+  // ------------------------------------------------------------- motion
+  'motion.none': 'static.',
+  'motion.spin': 'rate=turns/bar; alt=reverse alt bars; solids spin in 3D.',
+  'motion.sway': 'side swing, period=bars.',
+  'motion.bob': 'drifts/bar, bobs on beat.',
+  'motion.drift': 'constant slow velocity, wraps at edges.',
+  'motion.circle': 'small loop, period=bars.',
+  'motion.hits': 'jolts/turns on drum hits.',
+  'motion.pulse': 'size kick on beat.',
+
+  // ------------------------------------------------------------- deform
+  'deform.none': 'no deform.',
+  'deform.arms': 'tapered curling arms reaching per instrument+loudness; curl=amount; turn=bars/direction change.',
+  'deform.wobble': 'wobbling outline lobes; rate=turns/bar, swells w/bass.',
+  'deform.noise': 'organic outline jitter.',
+  'deform.twist': 'rotation grows w/distance from centre, breathes w/loudness.',
+
+  // ------------------------------------------------------------ material
+  'material.line': 'glow outline; width(px); halo=glow spread.',
+  'material.fill': 'soft=edge softness; outline=cell outline; core=inner gradient; clip=hide below height.',
+  'material.glow': 'soft blob, grows w/level; base=brightness at silence.',
+  'material.dots': 'stippled fill.',
+  'material.textured': 'tex 0 craters,1 stripes(sunset),2 windows.',
+  'material.chrome': 'mirror-like; chrome 0 plastic..1 mirror.',
+
+  // --------------------------------------------------------------- emit
+  'emit.none': 'no trail.',
+  'emit.trail': 'leaves light in feedback; tip=extra bright point at current position.',
+  'emit.cover': 'paints over old trail instead of adding light; amt=opacity.',
+  'emit.dye': 'pushes into fluid carrier on hits/beats.',
+  'emit.sparks': 'sparks(1/preset): curl=swirliness; zoomFlow=inherits carrier zoom; life=lifetime; surge=extra burst; top=above/below body; body=source shape visibility.',
+  'emit.slime': 'slime(1/preset): physarum agents grow glowing vein networks; count=agents; sa/sd=sensor angle/distance(sd=cell size); turn=steering; step=speed; deposit=trail laid; decay=trail kept/frame; diffuse=blur; body=source shape visibility; feed=the shape seeds veins; birth=agents reborn at the shape.',
+
+  // -------------------------------------------------------------- color
+  'color.fixed': '1 hue.',
+  'color.instrument': 'each copy=its instrument slot.',
+  'color.pitch': 'chroma around the key.',
+  'color.melody': 'follows the melody line.',
+  'color.height': 'driven by vertical position.',
+  'color.age': 'hue drifts w/time; rate=palette turns/bar.',
+  'color.speed': "faster copies=more hue shift.",
+
+  // ---------------------------------------------------------------- op
+  'op.zoom': 'rate>0 flies outward,<0 inward.',
+  'op.rotate': 'lock=bar-locked turns/bar; rate=free spin.',
+  'op.translate': 'push; lanes=columns alternating 1x/2x speed.',
+  'op.swirl': 'rotates near cx,cy; amt=strength+dir; k=falloff.',
+  'op.twist': 'like swirl but grows w/distance.',
+  'op.ripple': 'concentric/radial waves.',
+  'op.noise': 'organic warble.',
+  'op.push': 'shift along axis(x,y,radial).',
+  'op.quad': 'z^2 warp, Julia-set-like coastlines.',
+  'op.mirror': 'mirror(fold): reflects across axis.',
+  'op.tile': 'tile(fold): repeats in a grid; n=cells/unit.',
+  'op.polar': 'polar(fold): polar-coord map, radial symmetry.',
+  'op.kaleido': 'kaleido(fold): n-fold mirror.',
+  'op.stretch': 'spectrum stretch; beat=extra pull on beat.',
+  'op.v_': 'v_<name>(flame variation): bends space via that flame function; w=blend; s=scale.',
+
+  // ----------------------------------------------------------- carrier
+  'carrier.warp': 'feedback+chain: the existing picture warps and re-accumulates every frame(trails/streaming).',
+  'carrier.fluid': 'velocity-advected: light is carried through a simulated fluid field.',
+  'carrier.flow': 'flow-field: light drifts along a fixed flow field(no fluid sim).',
+  'carrier.none': 'no persistence: each frame is redrawn fresh.',
+
+  // ----------------------------------------------------------- palette
+  'palette.analogous': '3 hue slots close together.',
+  'palette.complementary': '3 hue slots, 2nd opposite the key.',
+  'palette.triad': '3 hue slots evenly spaced.',
+  'palette.split': '3 hue slots: the key\'s complement plus its neighbours.',
+  'palette.mono': '3 hue slots near 1 hue.',
+  'palette.free': "3 independently placed hue slots; hue=1st slot's offset, s1/s2=other slots' offsets from the first.",
+
+  // ------------------------------------------------------------- fuse
+  'fuse.fuse': 'FUSE(2nd shape merged in): mode 0 union(k=blend radius, grows w/bass),1 morph(t=mix),2 region(lit inside/along other shape). drive=what moves t(none,sweep,bass,melody,loud,surge).',
+
+  // ------------------------------------------------------------- gene
+  'gene.choreo': "CHOREO(optional, knows the song ahead): before drops the camera pushes in and leans, colour drains, light dims; slams on the drop, settles. lead=bars of build-up; curve=how late it bites; push=zoom-in; roll=lean(turns); drain=desaturate; dim=darken; punch=drop slam; relax=bars to settle. Each section type gets its own framing; frame=how far framings push/pan/lean; shot=which set of framings; glide=bars into new framing(0=cut); dolly=slow push-in across each section; scene=hue shift per section type. arc=zoom swell per phrase(phrase=bars).",
+};
 
 export const LEXICON = `
 calmer/chill: carrier.halfLife up; op/motion/place rates ->0; material gain x0.7; reactions gain x0.6.
@@ -97,9 +185,9 @@ smaller: shape r/size/radius x0.6-0.75.
 sharper/crisper: material width down; carrier.sharpen up; tone.contrast up.
 softer/blurrier: carrier.blur up; material width/glow up.
 dreamy: carrier.halfLife+blur up; tone.bloom up; feel atk/rel up.
-underwater: carrier=fluid/flow; carrier.fnoise up; tone.ca up; carrier.blur up.
+underwater: palette.hue "teal"; add_op ripple (warp); kind carrier fluid; carrier.blur up.
 fire: palette.hue "orange"; material=glow/textured tex=1; emit=trail/sparks; tone.exposure up.
-space/stars: place=float/point, small dots; emit=trail; carrier.halfLife long; deform=none.
+space/stars: add_body shape dot place grid (a star field) or emit sparks; add_op zoom with rate>0 (flying through space); palette.hue "blue".
 psychedelic/trippy: chain ops up(kaleido,swirl,quad); palette=triad/split high spread; tone.ca up; deform=noise/wobble.
 minimal/clean: 1 body; chain ops 0-1; deform=none; reactions 1-2.
 aggressive/harder: feel atk down; reactions gain up; motion=hits/pulse; tone.contrast up.
@@ -109,7 +197,8 @@ react to vocals: reaction src=vocals ->color mapping amount or place wander.
 build-up to the drop/cinematic: add choreo; push/drain/punch up; lead=bars of tension.
 on the drop: reaction src=drop/surge ->tone.exposure or carrier.halfLife, fast atk.
 longer trails: carrier.halfLife x1.5-3.
-shorter trails/no trails: carrier.halfLife x0.3-0.5, or emit=cover high amt, or carrier=none.
+shorter trails: carrier.halfLife x0.3-0.5.
+no trails: kind bN.emit none, or kind carrier none.
 fill more of the screen: place count up; spread/radius up; shape size up.
 emptier/less cluttered: place count (walker: heads) down; remove_body a second body; shorter trails (carrier.halfLife down); shape size down.
 more symmetry/kaleidoscope: add fold ops mirror/kaleido/polar, or place=grid/ring/mirror.
@@ -120,7 +209,7 @@ more particles/sparks: emit=sparks; sparks count x1.5-2.
 glow: material=glow; width/halo up; tone.bloom up.
 neon: material=glow/line; tone.sat high; tone.bloom up; palette=triad/split high spread.
 retro/oscilloscope: shape=curve form=0(wave)/1(circle); material=line; emit=trail.
-smoother motion: feel.lock=0; feel atk/rel up; op/motion rates down.
+smoother motion: bN.feel.atk x3 and bN.feel.rel x3 (slower response); bN.feel.lock 0; rates a little down.
 jerkier/staccato: feel=step; feel.lock=1; motion=hits; feel atk down.
 more depth: material=chrome/textured; tone.reflect on; carrier.sharpen up.
 `;

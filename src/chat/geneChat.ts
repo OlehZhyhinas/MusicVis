@@ -8,7 +8,7 @@ import { COST_BUDGET_MS, estimateCost, type Genome } from '../v2/genome';
 import { repairKeeping } from '../v2/geneEdit';
 import { applyEdits, replySchema, type Edit, type Reply } from './edits';
 import { CONTEXT_TOKENS, type ChatMessage, type GenerateResult, type LocalLLM } from './llm';
-import { systemPrompt, genomeDiff, genomeText, lookText, type LookMetrics } from './prompt';
+import { entryKey, genomeDiff, genomeText, lookText, mentionedKeys, notesText, presentKeys, systemPrompt, type LookMetrics } from './prompt';
 
 export interface ChatContext {
   /** The genome being edited now (the editor's scratch copy). */
@@ -64,6 +64,23 @@ export function partialSay(text: string): string {
   }
 }
 
+/** Entry keys of the kinds a reply's edits name (their notes go with the repair round). */
+function failedKeys(edits: Edit[], g: Genome): string[] {
+  const out: string[] = [];
+  for (const e of edits) {
+    if (!e || typeof e !== 'object') continue;
+    if (e.op === 'kind') {
+      const m = /^b\d\.(\w+)$/.exec(e.path);
+      if (m) out.push(entryKey(m[1], e.kind));
+      else if (e.path === 'carrier' || e.path === 'palette') out.push(entryKey(e.path, e.kind));
+      else if (/^op\d$/.test(e.path)) out.push(entryKey('op', e.kind));
+    } else if (e.op === 'add_op' || e.op === 'add_deform_op') out.push(entryKey('op', e.kind));
+    else if (e.op === 'add_body' || e.op === 'fuse') out.push(entryKey('shape', e.shape));
+    else if (e.op === 'add_gene') out.push(`gene.${e.gene}`);
+  }
+  return [...out, ...presentKeys(g)];
+}
+
 export class GeneChat {
   private messages: ChatMessage[] = [{ role: 'system', content: systemPrompt() }];
   /** The genome as the model last saw it (after its own edits), and whose preset it was. */
@@ -71,6 +88,8 @@ export class GeneChat {
   private seenPreset = '';
   private usedTokens = 0;
   private busyNow = false;
+  /** Glossary entries the conversation has already been given (sent once, then remembered). */
+  private described = new Set<string>();
   /** The last turn's model calls (message sent, raw reply, token counts), for debugging and the test set. */
   trace: { sent: string; raw: string; promptTokens: number; completionTokens: number; prefillMs: number; decodeMs: number }[] = [];
 
@@ -92,6 +111,15 @@ export class GeneChat {
     this.seen = null;
     this.seenPreset = '';
     this.usedTokens = 0;
+    this.described.clear();
+  }
+
+  /** "Gene notes" for the entries among `keys` the conversation has not seen yet (marks them seen). */
+  private notes(keys: string[]): string {
+    const fresh = keys.filter((k) => !this.described.has(k));
+    for (const k of fresh) this.described.add(k);
+    const text = notesText(fresh);
+    return text ? `Gene notes:\n${text}\n` : '';
   }
 
   private stateText(g: Genome): string {
@@ -111,6 +139,19 @@ export class GeneChat {
     this.usedTokens += r.promptTokens + r.completionTokens;
   }
 
+  /** True when the next turn would overflow the context (the conversation starts over then). */
+  get full(): boolean {
+    return this.usedTokens + TURN_RESERVE > CONTEXT_TOKENS;
+  }
+
+  /** Between turns: when the context is nearly full, start over and read the prompt again now. */
+  async maintain(): Promise<boolean> {
+    if (!this.full || this.busyNow) return false;
+    this.reset();
+    await this.prewarm();
+    return true;
+  }
+
   /**
    * Reads the system prompt and the current preset ahead of the first request, so the first real
    * turn only reads the request. Resolves when done.
@@ -120,7 +161,7 @@ export class GeneChat {
     if (!g || this.busyNow || this.messages.length > 1) return;
     this.busyNow = true;
     try {
-      const msg = `${this.stateText(g)}\nRequest: nothing yet, I will ask next. Reply with no edits.`;
+      const msg = `${this.notes(presentKeys(g))}${this.stateText(g)}\nRequest: nothing yet, I will ask next. Reply with no edits.`;
       const msgs: ChatMessage[] = [...this.messages, { role: 'user', content: msg }];
       const r = await this.llm.generate(msgs, { schema: replySchema(g), maxTokens: 40, signal });
       if (r.aborted) return;
@@ -151,7 +192,7 @@ export class GeneChat {
     try {
       if (this.usedTokens + TURN_RESERVE > CONTEXT_TOKENS) this.reset();
       const preset = this.ctx.presetId();
-      const user = `${this.stateText(before)}\nRequest: ${request.trim()}`;
+      const user = `${this.notes([...presentKeys(before), ...mentionedKeys(request)])}${this.stateText(before)}\nRequest: ${request.trim()}`;
       const msgs: ChatMessage[] = [...this.messages, { role: 'user', content: user }];
       const r1 = await this.llm.generate(msgs, { schema: replySchema(before), maxTokens: MAX_REPLY_TOKENS, signal: opts.signal, onText: (t) => opts.onText?.(partialSay(t)) });
       add(r1, user);
@@ -182,7 +223,7 @@ export class GeneChat {
       let repaired = false;
       if (hard.length && !opts.signal?.aborted) {
         repaired = true;
-        const fix = `These edits did not work:\n${hard.map((e) => `- ${e}`).join('\n')}\nThe other edits were applied. Reply with JSON holding only replacement edits that do what was asked within the rules (or no edits if it cannot be done), and a "say" for the user.`;
+        const fix = `${this.notes(failedKeys(reply?.edits ?? [], g))}These edits did not work:\n${hard.map((e) => `- ${e}`).join('\n')}\nThe other edits were applied. Reply with JSON holding only replacement edits that do what was asked within the rules (or no edits if it cannot be done), and a "say" for the user.`;
         const msgs2: ChatMessage[] = [...this.messages, { role: 'user', content: fix }];
         const r2 = await this.llm.generate(msgs2, { schema: replySchema(g), maxTokens: MAX_REPLY_TOKENS, signal: opts.signal, onText: (t) => opts.onText?.(partialSay(t)) });
         add(r2, fix);

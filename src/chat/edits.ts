@@ -201,6 +201,12 @@ export function applyEdits(gIn: Genome, edits: Edit[], ctx: ApplyContext): Appli
     switch (e.op) {
       case 'set': case 'mul': {
         const pp = parsePath(e.path);
+        // A kind name given as a value ({"op":"set","path":"b0.emit.x","value":"cover"}) means a kind switch.
+        if (e.op === 'set' && typeof e.value === 'string' && pp?.target.t === 'locus' && LOCUS_KINDS[pp.target.locus].includes(e.value.trim())) {
+          const t = pp.target;
+          res(e, E.switchKind(g, t, e.value.trim()), E.targetId(t), `b${t.b}.${t.locus} → ${e.value.trim()}`);
+          break;
+        }
         const spec = pp && E.schemaAt(g, pp.target)?.[pp.key];
         if (!pp || !spec) {
           errors.push(`${describeEdit(e)} failed: ${pp && E.schemaAt(g, pp.target) ? `${e.path.replace(/\.[^.]+$/, '')} has no parameter "${pp.key}"` : `no such path ${e.path}`}`);
@@ -331,18 +337,16 @@ function obj(op: string, props: Record<string, object>, optional: string[] = [])
   };
 }
 
-/** JSON schema of a reply for this genome: every path and kind an enum. */
+/**
+ * A parameter path's shape. Deliberately not an enum of the genome's paths: xgrammar turns a large
+ * enum of dotted strings into an automaton that also accepts cross-combinations of its parts (a
+ * real list of ~300 paths let "b0.emit.radial" through), and the big grammar halves decode speed.
+ * The pattern keeps the format; applyEdits checks the names and the repair round fixes them.
+ */
+const PATH = { type: 'string', pattern: '^(b[0-2]\\.(shape|place|motion|deform|material|emit|feel|color|fuse|fuseShape|drawOp[0-2]|xform[0-3])|op[0-5]|reaction[0-5]|[a-z][A-Za-z0-9]*)\\.[A-Za-z0-9]+(\\.[A-Za-z0-9]+)?$' };
+
+/** JSON schema of a reply for this genome: kinds and signals are enums, paths follow PATH. */
 export function replySchema(g: Genome): object {
-  const paths = settablePaths(g);
-  // Multiplying only makes sense for continuous parameters (not switches or coded choices).
-  const specs = new Map(paramPaths(g).map((p) => [p.path, p.spec]));
-  const scalable = paths.filter((p) => !specs.get(p)?.choices);
-  const reactable = E.reactionTargets(g).map((t) => {
-    const id = t.g === 'op' ? `op${t.i}` : t.g === 'car' ? 'carrier' : t.g === 'col' ? 'tone' : t.g === 'pal' ? 'palette'
-      : t.g === 'dr' ? `b${Math.floor(t.i / 3)}.drawOp${t.i % 3}` : t.g === 'fu' ? `b${t.i}.fuse` : t.g === 'fs' ? `b${t.i}.fuseShape`
-      : `b${t.i}.${({ sh: 'shape', pl: 'place', mo: 'motion', de: 'deform', ma: 'material', em: 'emit', fe: 'feel', cm: 'color' } as Record<string, string>)[t.g]}`;
-    return `${id}.${t.k}`;
-  });
   const kindPaths: string[] = ['palette', 'carrier'];
   g.bodies.forEach((b, bi) => {
     for (const l of LOCI) kindPaths.push(`b${bi}.${l}`);
@@ -356,8 +360,8 @@ export function replySchema(g: Genome): object {
   const allKinds = [...new Set([...SHAPE_KINDS, ...LOCI.flatMap((l) => LOCUS_KINDS[l]), ...OP_KINDS, ...PALETTE_KINDS, ...CARRIER_KINDS, ...SIGNALS, ...regs.flatMap((r) => r.kinds ?? [])])];
   const bodyIdx = { type: 'integer', minimum: 0, maximum: Math.max(0, g.bodies.length - 1) };
   const variants = [
-    obj('set', { path: str(paths), value: { anyOf: [NUM, { type: 'string' }] } }),
-    obj('mul', { path: str(scalable.length ? scalable : paths), by: NUM }),
+    obj('set', { path: PATH, value: { anyOf: [NUM, { type: 'string' }] } }),
+    obj('mul', { path: PATH, by: NUM }),
     obj('kind', { path: str(kindPaths), kind: str(allKinds) }),
     obj('add_body', { shape: str(SHAPE_KINDS), place: str(LOCUS_KINDS.place), material: str(LOCUS_KINDS.material), emit: str(LOCUS_KINDS.emit) }, ['place', 'material', 'emit']),
     obj('remove_body', { body: bodyIdx }),
@@ -366,7 +370,7 @@ export function replySchema(g: Genome): object {
     obj('move_op', { index: INT, dir: INT }),
     obj('add_deform_op', { body: bodyIdx, kind: str(DRAW_OPS) }),
     obj('remove_deform_op', { body: bodyIdx, index: INT }),
-    obj('add_reaction', { signal: str(SIGNALS), path: str(reactable.length ? reactable : ['tone.exposure']), gain: NUM }),
+    obj('add_reaction', { signal: str(SIGNALS), path: PATH, gain: NUM }),
     obj('remove_reaction', { index: INT }),
     obj('fuse', { body: bodyIdx, shape: str(E.FUSE_SHAPE_KINDS), mode: str(Object.keys(MODE_NAMES)) }, ['mode']),
     obj('unfuse', { body: bodyIdx }),

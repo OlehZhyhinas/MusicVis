@@ -6,7 +6,7 @@ import { COST_BUDGET_MS, MAX_BODIES, MAX_REACTIONS, cloneGenome, estimateCost, v
 import * as E from '../src/v2/geneEdit';
 import { SEEDS } from '../src/v2/seeds';
 import { applyEdits, paramPaths, parseKindPath, parsePath, replySchema, settablePaths, type Edit } from '../src/chat/edits';
-import { systemPrompt, genomeDiff, genomeText, glossaryGaps, lookText } from '../src/chat/prompt';
+import { genomeDiff, genomeText, glossaryGaps, lookText, mentionedKeys, notesText, presentKeys, systemPrompt } from '../src/chat/prompt';
 import { parseReply, partialSay } from '../src/chat/geneChat';
 import { TEST_SET } from '../src/chat/testset';
 import { registerGenomeGene, repairGenomeGenes, validateGenomeGenes } from '../src/v2/geneRegistry';
@@ -112,10 +112,18 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
 {
   const g = seeds[0];
   const s = JSON.stringify(replySchema(g));
-  check('reply schema is JSON with path enums', s.includes('"tone.exposure"') && s.includes('"add_body"'), `${s.length} chars`);
+  check('reply schema has the path pattern and the edit ops', s.includes('"pattern"') && s.includes('"add_body"') && s.includes('"b0.shape"'), `${s.length} chars`);
+  const re = new RegExp((replySchema(g) as { properties: { edits: { items: { anyOf: { properties: { path: { pattern: string } } }[] } } } }).properties.edits.items.anyOf[0].properties.path.pattern);
+  const allOk = seeds.every((x) => paramPaths(x).every((p) => re.test(p.path)));
+  check('the path pattern admits every real parameter path', allOk && re.test('testWave.amp') && !re.test('bogus path'));
   const t = genomeText(g, 0.2);
   check('genome text lists every body and the palette', t.includes('b0.shape=') && t.includes('palette=') && t.includes('tone '), `${t.length} chars`);
-  check('system prompt within budget', systemPrompt().length < 16000, `${systemPrompt().length} chars`);
+  check('system prompt within budget', systemPrompt().length < 12000, `${systemPrompt().length} chars`);
+  const pk = presentKeys(g);
+  check('gene notes cover the preset\'s kinds', pk.includes(`shape.${g.bodies[0].shape.kind}`) && pk.includes(`carrier.${g.carrier.kind}`) && notesText(pk).length > 0, pk.join(' '));
+  check('requests pull in the kinds they name', mentionedKeys('make it a star').includes('shape.star') && mentionedKeys('kaleidoscope please').includes('op.kaleido') && mentionedKeys('add sparks').includes('emit.sparks'));
+  const worst = Math.max(...seeds.map((x) => notesText(presentKeys(x)).length));
+  check('per-preset notes stay short', worst < 4000, `longest ${worst} chars`);
   const gaps = glossaryGaps();
   check('every gene kind has a glossary entry', gaps.length === 0, gaps.join(', ') || 'none missing');
   check('look text words', /dark/.test(lookText({ brightness: 0.08, coverage: 0.1, motion: 0.01, colourfulness: 0.5, hue: 0.6 })));
@@ -165,7 +173,7 @@ const byShape = (k: string) => cloneGenome(seeds.find((g) => g.bodies.some((b) =
   validateGenomeGenes(a.genome as unknown as Record<string, unknown>, errs);
   check('the registered gene validates', errs.length === 0, errs.join(', '));
   check('a later structural edit keeps it', !!E.geneValue(applyEdits(a.genome, [{ op: 'add_op', kind: 'swirl' }], ctx).genome, 'testWave'));
-  check('its paths are in the reply schema and the genome text', JSON.stringify(replySchema(a.genome)).includes('"testWave.teeth"') && genomeText(a.genome, 0).includes('testWave=saw'));
+  check('its kind path is in the reply schema and it shows in the genome text', JSON.stringify(replySchema(a.genome)).includes('"testWave"') && genomeText(a.genome, 0).includes('testWave=saw'));
   const r = applyEdits(a.genome, [{ op: 'remove_gene', gene: 'testWave' }], ctx);
   check('remove it again', !E.geneValue(r.genome, 'testWave') && r.errors.length === 0);
   const repaired: Record<string, unknown> = {};

@@ -9,30 +9,89 @@ import {
 } from '../v2/genome';
 import * as E from '../v2/geneEdit';
 import { colourName, paramPaths } from './edits';
-import { GLOSSARY, LEXICON, RULES } from './glossary';
+import { ENTRIES, INTRO, LEXICON, RULES } from './glossary';
 import { genomeGenes } from '../v2/geneRegistry';
 
+/** Entry key of a kind: '<group>.<kind>' (flame variations share 'op.v_'). */
+export function entryKey(group: string, kind: string): string {
+  return group === 'op' && kind.startsWith('v_') ? 'op.v_' : `${group}.${kind}`;
+}
+
+/** Every gene kind the schemas define, as entry keys (built at runtime, so new genes appear). */
+export function allEntryKeys(): string[] {
+  const keys: string[] = [];
+  for (const l of LOCI) if (l !== 'feel') for (const k of LOCUS_KINDS[l]) keys.push(entryKey(l, k));
+  for (const k of [...MOTION_OPS, ...FOLD_OPS, 'v_']) keys.push(entryKey('op', k));
+  for (const k of CARRIER_KINDS) keys.push(entryKey('carrier', k));
+  for (const k of PALETTE_KINDS) keys.push(entryKey('palette', k));
+  keys.push('fuse.fuse');
+  for (const spec of genomeGenes()) keys.push(`gene.${spec.key}`);
+  return [...new Set(keys)];
+}
+
+/** Description of one entry key (a registered gene's own description when the glossary has none). */
+function entryText(key: string): string | undefined {
+  if (ENTRIES[key]) return ENTRIES[key];
+  if (key.startsWith('gene.')) return genomeGenes().find((s) => `gene.${s.key}` === key)?.glossary;
+  return undefined;
+}
+
 /**
- * Kinds the schemas define that the glossary does not mention (genes added since it was written).
- * Built from the schemas at runtime, so new genes show up here until the glossary covers them.
+ * Kinds without a glossary entry (genes added since it was written), plus reaction signals the
+ * intro does not name. Built from the schemas at runtime, so new genes show up here until covered.
  */
 export function glossaryGaps(): string[] {
-  const text = GLOSSARY.toLowerCase();
-  const has = (w: string) => new RegExp(`(^|[^a-z_])${w.toLowerCase()}([^a-z_]|$)`).test(text);
-  const kinds = [...LOCI.flatMap((l) => LOCUS_KINDS[l].map((k) => [l, k] as const)), ...[...MOTION_OPS, ...FOLD_OPS].map((k) => ['op', k] as const),
-    ...CARRIER_KINDS.map((k) => ['carrier', k] as const), ...PALETTE_KINDS.map((k) => ['palette', k] as const), ...SIGNALS.map((k) => ['signal', k] as const)];
-  const out = kinds.filter(([, k]) => k !== 'none' && !has(k)).map(([l, k]) => `${l} ${k}`);
-  for (const spec of genomeGenes()) if (!spec.glossary) out.push(`gene ${spec.key}`);
+  const out = allEntryKeys().filter((k) => !entryText(k) && !k.endsWith('.none'));
+  const intro = INTRO.toLowerCase();
+  for (const sig of SIGNALS) if (!new RegExp(`(^|[^a-z])${sig}([^a-z]|$)`).test(intro)) out.push(`signal.${sig}`);
   return out;
 }
 
-/** Descriptions of the registered genome-wide genes (geneRegistry.ts), for the system prompt. */
-function registeredGlossary(): string {
-  const specs = genomeGenes();
-  if (!specs.length) return '';
-  const lines = specs.map((s) => `${s.key}${s.kinds ? ` (kinds: ${s.kinds.join(', ')})` : ''}${s.optional ? ', optional: add_gene / remove_gene' : ''}: ${s.glossary ?? s.title}`);
-  return `\nGenome-wide genes (paths <gene>.<param>, kind path <gene>):\n${lines.join('\n')}\n`;
+/** Entry keys for everything the preset expresses (the notes the model needs to edit it). */
+export function presentKeys(g: Genome): string[] {
+  const keys: string[] = [];
+  for (const b of g.bodies) {
+    for (const l of LOCI) if (l !== 'feel') keys.push(entryKey(l, (b[l] as Gene).kind));
+    if (b.fuse) keys.push('fuse.fuse', entryKey('shape', b.fuse.shape.kind));
+    for (const o of b.deform.ops ?? []) keys.push(entryKey('op', o.op));
+  }
+  for (const o of g.chain) keys.push(entryKey('op', o.op));
+  keys.push(entryKey('carrier', g.carrier.kind), entryKey('palette', g.palette.kind));
+  for (const spec of genomeGenes()) if (E.geneValue(g, spec.key)) keys.push(`gene.${spec.key}`);
+  return [...new Set(keys)];
 }
+
+/** Entry keys of kinds a request names ("make it a star", "kaleidoscope", "add sparks"). */
+export function mentionedKeys(text: string): string[] {
+  const words = text.toLowerCase().match(/[a-z]+/g) ?? [];
+  const out: string[] = [];
+  for (const key of allEntryKeys()) {
+    const kind = key.slice(key.indexOf('.') + 1).toLowerCase();
+    if (kind.length < 3 || kind === 'none' || kind === 'v_') continue;
+    if (words.some((w) => w === kind || (kind.length >= 4 && w.startsWith(kind)) || w === `${kind}s`)) out.push(key);
+  }
+  return out;
+}
+
+/** Notes for these entry keys, one line each (unknown keys skipped). */
+export function notesText(keys: string[]): string {
+  return keys.map((k) => {
+    const t = entryText(k);
+    return t ? `${k}: ${t.trim()}` : '';
+  }).filter(Boolean).join('\n');
+}
+
+/** One line per group naming every kind (details arrive with the preset or when asked about). */
+function kindIndex(): string {
+  const groups = new Map<string, string[]>();
+  for (const key of allEntryKeys()) {
+    const [grp, kind] = [key.slice(0, key.indexOf('.')), key.slice(key.indexOf('.') + 1)];
+    if (grp === 'fuse') continue;
+    groups.set(grp, [...(groups.get(grp) ?? []), kind === 'v_' ? 'v_<flame variation>' : kind]);
+  }
+  return [...groups].map(([grp, kinds]) => `${grp}: ${kinds.join(', ')}`).join('\n');
+}
+
 let cached = '';
 /**
  * The system prompt. Built on first use (after every gene module has registered) and then kept
@@ -56,13 +115,17 @@ Edits (applied in order):
 {"op":"fuse","body":0,"shape":"star","mode":"morph"}  (modes union, morph, region); {"op":"unfuse","body":0}
 {"op":"add_xform","body":0}; {"op":"remove_xform","body":0,"index":1}  (flame transforms)
 {"op":"express","body":0,"locus":"shape"}  swap in a body's silent allele
-{"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes listed below
+{"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes (listed below)
 Paths: bN.<locus>.<param> (loci: shape place motion deform material emit feel color), bN.fuse.<p>, bN.fuseShape.<p>, bN.drawOpJ.<p> (w = strength), bN.xformJ.<p> (var.<name> = variation weight), opJ.<p> (w = strength), carrier.<p>, palette.<p>, tone.<p>, reactionJ.<p>.
 Colours: to change the colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}. Body hues (bN.color.hue) are offsets added to the palette: leave them alone, or set them to 0 so the body takes the palette colour. Never give a body hue a colour name for a whole-picture colour change.
-Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
+Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the message is not a request to change the visuals (a question, small talk, anything else), answer briefly in "say" and send an empty edits list. If a request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
+To switch a gene's kind use the kind op ({"op":"kind","path":"b0.emit","kind":"none"}), never set.
 
-${GLOSSARY}
-${registeredGlossary()}
+${INTRO.trim()}
+Every kind (a user message adds "Gene notes" describing the kinds in the preset and any kind the request names; ask for nothing else):
+${kindIndex()}
+Optional genome-wide genes (add_gene / remove_gene; paths <gene>.<param>): ${genomeGenes().filter((x) => x.optional).map((x) => x.key).join(', ') || 'none'}.
+
 Everyday words:
 ${LEXICON}
 
