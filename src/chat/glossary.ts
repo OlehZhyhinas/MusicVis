@@ -120,6 +120,7 @@ export const ENTRIES: Record<string, string> = {
   'emit.dye': 'pushes into fluid carrier on hits/beats.',
   'emit.sparks': 'sparks(1/preset): curl=swirliness; zoomFlow=inherits carrier zoom; life=lifetime; surge=extra burst; top=above/below body; body=source shape visibility.',
   'emit.slime': 'slime(1/preset): physarum agents grow glowing vein networks; count=agents; sa/sd=sensor angle/distance(sd=cell size); steer=steering; step=speed; deposit=trail laid; decay=trail kept/frame; diffuse=blur; body=source shape visibility; feed=the shape seeds veins; birth=agents reborn at the shape; onDrop 0 none,1 scatter,2 burst from the shape.',
+  'emit.flock': 'flock(1/preset): boids circling the body; speed; radius=neighbourhood; align/cohere/separate=flocking rules; wander; home=pull to body; size=bird px; onDrop 0 none,1 burst outward,2 restart at body.',
 
   // -------------------------------------------------------------- color
   'color.fixed': '1 hue.',

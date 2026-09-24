@@ -32,6 +32,7 @@ import { FLAME_VARIATIONS, type FlameVar } from './variations';
 import { repair as repairV2, upgradeV2 } from './legacy';
 import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 import { SLIME_SCHEMA, slimeCost } from './genes/physarum';
+import { FLOCK_SCHEMA, flockCost } from './genes/boids';
 import { CELLS_SCHEMA, cellsCost } from './genes/cells';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
@@ -305,7 +306,7 @@ export const STATIC_MATERIALS: MaterialKind[] = ['fill', 'textured', 'chrome'];
 
 // -------------------------------------------------------------- emission
 
-export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime'] as const;
+export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime', 'flock'] as const;
 export type EmitKind = (typeof EMIT_KINDS)[number];
 export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   // Redrawn every frame on top of the picture.
@@ -324,6 +325,8 @@ export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   },
   // Physarum agents growing vein networks out of a trail the body seeds (genes/physarum.ts).
   slime: SLIME_SCHEMA,
+  // A flock of boids circling the body (genes/boids.ts).
+  flock: FLOCK_SCHEMA,
 };
 
 // ------------------------------------------------------------------ fuse
@@ -868,6 +871,7 @@ export function repair(input: unknown): Genome {
   const used = new Set<ShapeKind>();
   let sparks = false;
   let slime = false;
+  let flock = false;
   for (const raw of Array.isArray(g.bodies) ? g.bodies : []) {
     if (bodies.length >= MAX_BODIES) break;
     const b = repairBody(raw);
@@ -882,6 +886,10 @@ export function repair(input: unknown): Genome {
     if (b.emit.kind === 'slime') {
       if (slime) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
       slime = true;
+    }
+    if (b.emit.kind === 'flock') {
+      if (flock) b.emit = { kind: 'trail', p: defaultParams(EMIT_SCHEMAS.trail) };
+      flock = true;
     }
     used.add(b.shape.kind);
     if (b.fuse) used.add(b.fuse.shape.kind);
@@ -949,11 +957,16 @@ function reactionIndex(g: Genome, group: GeneGroup, raw: number): number {
 
 /** Drops copies (most expensive body first) until the estimated cost fits the budget. */
 function fitBudget(g: Genome): void {
-  // Slime agents go first (halved, down to a still-connected network), then copies, then more agents.
+  // Slime agents and flocks go first (halved, down to a still-connected network), then copies, then more.
   const fewerAgents = (floor: number) => {
     for (const b of g.bodies) {
       while (b.emit.kind === 'slime' && b.emit.p.count > floor && estimateCost(g) > COST_BUDGET_MS * 0.95) {
         b.emit.p.count = Math.max(floor, Math.round(b.emit.p.count / 2));
+      }
+      // Flocks are smaller: a quarter of the slime floor, never below their own minimum.
+      const ff = Math.max(FLOCK_SCHEMA.count.min, Math.round(floor / 4));
+      while (b.emit.kind === 'flock' && b.emit.p.count > ff && estimateCost(g) > COST_BUDGET_MS * 0.95) {
+        b.emit.p.count = Math.max(ff, Math.round(b.emit.p.count / 2));
       }
     }
   };
@@ -1027,6 +1040,7 @@ export function validate(g: Genome): string[] {
   const used = new Set<string>();
   let sparks = 0;
   let slimes = 0;
+  let flocks = 0;
   g.bodies?.forEach((b, i) => {
     const w = `bodies[${i}]`;
     for (const locus of LOCI) {
@@ -1082,6 +1096,7 @@ export function validate(g: Genome): string[] {
     }
     if (b.emit.kind === 'sparks') sparks++;
     if (b.emit.kind === 'slime') slimes++;
+    if (b.emit.kind === 'flock') flocks++;
     if (b.fuse) {
       const f = b.fuse;
       if (!f.shape || !SHAPE_KINDS.includes(f.shape.kind)) errs.push(`${w}.fuse shape kind`);
@@ -1114,6 +1129,7 @@ export function validate(g: Genome): string[] {
   });
   if (sparks > 1) errs.push('more than one sparks emission');
   if (slimes > 1) errs.push('more than one slime emission');
+  if (flocks > 1) errs.push('more than one flock emission');
   if (!CARRIER_KINDS.includes(g.carrier?.kind)) errs.push('carrier kind');
   else chk(g.carrier.p, CARRIER_SCHEMA, 'carrier');
   if (!PALETTE_KINDS.includes(g.palette?.kind)) errs.push('palette kind');
@@ -1364,6 +1380,7 @@ export function bodyCost(b: BodyGene): number {
   let ms = 0;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
+  if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count);
   if (cls === 'flame') {
     ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.35;
     if (b.fuse || b.deform.kind !== 'none') ms += 0.3 + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] : 0);

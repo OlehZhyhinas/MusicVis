@@ -169,7 +169,7 @@ const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8 },
   material: { line: 2, fill: 1.5, glow: 2, dots: 0.8, textured: 0.8, chrome: 0.8 },
-  emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8, slime: 0.7 },
+  emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8, slime: 0.7, flock: 0.6 },
   color: { fixed: 1, instrument: 2, pitch: 1, melody: 1.2, height: 1, age: 1, speed: 0.8 },
 };
 
@@ -195,6 +195,7 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   if (locus === 'material') p.blend = rng() < 0.15 ? 1 + Math.floor(rng() * 5) : 0;
   if (locus === 'emit' && k === 'sparks') p.count = Math.min(p.count, 32768);
   if (locus === 'emit' && k === 'slime') p.count = Math.min(p.count, 262144);
+  if (locus === 'emit' && k === 'flock') p.count = Math.min(p.count, 65536);
   if (locus === 'shape' && k === 'flame') p.count = pick(rng, [65536, 131072, 262144]);
   const g: Gene = { kind: k, p };
   if (locus === 'shape' && k === 'flame') (g as ShapeGene).xforms = Array.from({ length: randInt(rng, 2, 3) }, () => randomXform(rng));

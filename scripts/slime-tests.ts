@@ -117,7 +117,7 @@ export function slimeTests(check: Check): void {
 
   // Showcase seeds: P01.. grow a network; a population saved before them gains them exactly once.
   {
-    const ps = SEEDS.filter((x) => /^P\d\d$/.test(x.origin));
+    const ps = SEEDS.filter((x) => /^P\d\d$/.test(x.origin) && x.genome.bodies.some((b) => b.emit.kind === 'slime'));
     check('slime.seeds', ps.length >= 1 && ps.every((x) => x.genome.bodies.some((b) => b.emit.kind === 'slime') && !validate(x.genome).length && estimateCost(x.genome) < COST_BUDGET_MS
       && JSON.stringify(repair(JSON.parse(JSON.stringify(x.genome)))) === JSON.stringify(x.genome)),
       ps.map((x) => `${x.origin} ${x.name} ${estimateCost(x.genome).toFixed(2)}ms (${nameFor(x.genome)})`).join(', '));

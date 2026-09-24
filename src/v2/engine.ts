@@ -26,6 +26,8 @@ import {
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
+import { Boids } from './genes/boidsGpu';
+import { FLOCK_GAIN } from './genes/boids';
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
@@ -485,6 +487,8 @@ export class Slot {
   spawn = { mode: 4, count: 3, angle: 0, radius: 0.3 };
   /** The body growing a physarum network (-1: none). */
   slime = -1;
+  /** The body leading a flock of boids (-1: none). */
+  flock = -1;
   /** Per reaction this frame: the source signal and the response after its curve (live meters). */
   readonly meters = new Float32Array(MAX_REACTIONS * 2);
   /** Ray-marched scene: its pass uniforms and its reduced-resolution target. */
@@ -505,6 +509,7 @@ export class Slot {
     this.drB = new Float32Array(this.nb * 12);
     this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = genome.bodies.findIndex((b) => b.emit.kind === 'slime');
+    this.flock = genome.bodies.findIndex((b) => b.emit.kind === 'flock');
   }
 
   /** Swaps in a genome with the same structure (same programs, same uniform layout): parameters only. */
@@ -512,6 +517,7 @@ export class Slot {
     this.genome = g;
     this.sparks = g.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = g.bodies.findIndex((b) => b.emit.kind === 'slime');
+    this.flock = g.bodies.findIndex((b) => b.emit.kind === 'flock');
   }
 
   /** Parameter with this frame's reactions applied, clamped to its spec. */
@@ -628,6 +634,8 @@ export class Stage {
   slime: Physarum | null = null;
   private slimeOwner: Slot | null = null;
   private readonly slimeCopies = new Float32Array(COPY_SLOTS * 3);
+  flock: Boids | null = null;
+  private flockOwner: Slot | null = null;
   flame: Flame | null = null;
   private pu: ParticleUpdate;
   flash = 0;
@@ -773,7 +781,10 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
 
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
-    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot);
+    const flockSlot = slots.filter((s) => s.flock >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
+    if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
+
+    for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot, s === flockSlot);
 
     // Composite every live slot into the HDR scene.
     this.scene!.bind();
@@ -1078,7 +1089,7 @@ export class Stage {
     E[o + 48] = b.emit.kind === 'cover' ? PE('amt') : 0;
     E[o + 49] = b.emit.kind === 'cover' || b.emit.kind === 'trail' ? PE('tip') : 0;
     E[o + 50] = ops.length;
-    E[o + 51] = b.emit.kind === 'sparks' || b.emit.kind === 'slime' ? PE('body') : 1;
+    E[o + 51] = b.emit.kind === 'sparks' || b.emit.kind === 'slime' || b.emit.kind === 'flock' ? PE('body') : 1;
 
     // Fuse: slot 13 (mode, blend radius, t, inside), 14-15 the fused shape.
     if (b.fuse) {
@@ -2130,6 +2141,46 @@ export class Stage {
     if (c.blend) resetCurveBlend(gl);
   }
 
+  /**
+   * Where a body's agents are born or gather: its copies (uv x, uv y, radius in screen heights) into
+   * `out`; fold placements and full-screen chunks cover the screen. Returns the count (1-6).
+   */
+  private agentHomes(s: Slot, bi: number, out: Float32Array): number {
+    const b = s.genome.bodies[bi];
+    const aspect = this.sig.F.aspect;
+    const o = bi * BODY_VEC4 * 4;
+    const R = Math.max(0.01, s.bd[o + 19]);
+    const whole = SHAPE_CLASS[b.shape.kind] === 'field' || b.place.kind === 'grid';
+    const n = whole ? 1 : Math.max(1, Math.min(COPY_SLOTS, Math.round(s.bd[o + 16])));
+    for (let i = 0; i < n; i++) {
+      const j = (bi * COPY_SLOTS + i) * 4;
+      out[i * 3] = whole ? 0.5 : s.cp[j] / aspect + 0.5;
+      out[i * 3 + 1] = whole ? 0.5 : s.cp[j + 1] + 0.5;
+      out[i * 3 + 2] = whole ? 0.75 : b.place.kind === 'ring' ? b.place.p.radius + R : R * Math.max(0.3, s.cp[j + 3]);
+    }
+    return n;
+  }
+
+  /** Boids: splat into the neighbourhood grid, then align, cohere, separate, home and move (genes/boidsGpu.ts). */
+  private updateFlock(s: Slot, sdt: number): void {
+    if (!this.flock) this.flock = new Boids(this.eng.gl, this.eng.fs, this.eng.hdr);
+    if (this.flockOwner !== s) this.flock.reseed();
+    this.flockOwner = s;
+    const bi = s.flock;
+    const b = s.genome.bodies[bi];
+    const P = (k: string) => s.P('em', bi, b.emit.p, k, EMIT_SCHEMAS.flock);
+    const F = this.sig.F;
+    const homes = this.flockHomes;
+    const n = this.agentHomes(s, bi, homes);
+    const count = Math.max(1024, Math.round(b.emit.p.count * Math.min(1, (this.w * this.h) / (1280 * 720))));
+    this.flock.step({
+      dt: sdt, time: this.sig.clock, aspect: F.aspect, count, speed: P('speed') * F.speed, radius: P('radius'),
+      align: P('align'), cohere: P('cohere'), separate: P('separate'), wander: P('wander'), home: P('home'),
+      copies: homes, nCopies: n, burst: F.dropStart ? b.emit.p.onDrop : 0,
+    });
+  }
+  private readonly flockHomes = new Float32Array(COPY_SLOTS * 3);
+
   /** Physarum: sense, move, deposit, diffuse and decay (genes/physarumGpu.ts). */
   private updateSlime(s: Slot, sdt: number): void {
     if (!this.slime) {
@@ -2143,19 +2194,8 @@ export class Stage {
     const sch = EMIT_SCHEMAS.slime;
     const P = (k: string) => s.P('em', bi, b.emit.p, k, sch);
     const F = this.sig.F;
-    // Birth places: the body's copies (uv, radius in screen heights); fold placements and full-screen
-    // chunks are born anywhere.
-    const o = bi * BODY_VEC4 * 4;
-    const R = Math.max(0.01, s.bd[o + 19]);
-    const whole = SHAPE_CLASS[b.shape.kind] === 'field' || b.place.kind === 'grid';
-    const n = whole ? 1 : Math.max(1, Math.min(COPY_SLOTS, Math.round(s.bd[o + 16])));
     const pl = this.slimeCopies;
-    for (let i = 0; i < n; i++) {
-      const j = (bi * COPY_SLOTS + i) * 4;
-      pl[i * 3] = whole ? 0.5 : s.cp[j] / F.aspect + 0.5;
-      pl[i * 3 + 1] = whole ? 0.5 : s.cp[j + 1] + 0.5;
-      pl[i * 3 + 2] = whole ? 0.75 : b.place.kind === 'ring' ? b.place.p.radius + R : R * Math.max(0.3, s.cp[j + 3]);
-    }
+    const n = this.agentHomes(s, bi, pl);
     const gain = s.P('ma', bi, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
     this.slime.step({
       dt: sdt, time: this.sig.clock, aspect: F.aspect, count: b.emit.p.count,
@@ -2166,7 +2206,7 @@ export class Stage {
     });
   }
 
-  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean, slimeOwner = false): void {
+  private feedbackPass(s: Slot, sdt: number, partOwner: boolean, flameOwner: boolean, slimeOwner = false, flockOwner = false): void {
     const eng = this.eng;
     const gl = eng.gl;
     const g = s.genome;
@@ -2217,6 +2257,12 @@ export class Stage {
       const b = g.bodies[s.slime];
       const gain = s.P('ma', s.slime, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
       this.slime.draw(gain * SLIME_GAIN, slimeDisplayScale(b.emit.p), s.cols);
+    }
+    if (flockOwner && this.flock && s.flock >= 0) {
+      const b = g.bodies[s.flock];
+      const gain = s.P('ma', s.flock, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+      const size = Math.max(1, s.P('em', s.flock, b.emit.p, 'size', EMIT_SCHEMAS.flock) * (this.h / 1080));
+      this.flock.draw(size, gain * FLOCK_GAIN * (0.7 + 0.5 * this.sig.F.loud), s.P('em', s.flock, b.emit.p, 'speed', EMIT_SCHEMAS.flock) * this.sig.F.speed, s.cols);
     }
     if (flameOwner && this.flame && s.flameSpec) {
       const spec = s.flameSpec;
@@ -2375,6 +2421,7 @@ export class Stage {
     this.water?.dispose();
     this.particles?.dispose();
     this.slime?.dispose();
+    this.flock?.dispose();
     this.flame?.dispose();
     this.sig.dispose();
   }

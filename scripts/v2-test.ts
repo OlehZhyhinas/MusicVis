@@ -34,6 +34,7 @@ import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '..
 import { choreoTests } from './choreo-tests';
 import { driftTests } from './drift-tests';
 import { slimeTests } from './slime-tests';
+import { flockTests } from './flock-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
@@ -1527,6 +1528,7 @@ raymarchChecks(check);
 choreoTests(check);
 driftTests(check);
 slimeTests(check);
+flockTests(check);
 physicsChecks(check);
 
 // -------------------------------------------------- MilkDrop mining: relief (emboss lighting)
