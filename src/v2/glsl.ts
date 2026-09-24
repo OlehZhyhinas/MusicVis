@@ -6,6 +6,7 @@
 // structuralKey().
 
 import { FLAME_VARIATION_GLSL } from './variations';
+import { SUPERSCOPE_GLSL } from './genes/superscope';
 import {
   SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
@@ -1161,6 +1162,7 @@ vec2 deformFwd(vec2 q) {
   if (uDk == 4) return rot2(-uDp.x * length(q)) * q;
   return q;
 }
+${SUPERSCOPE_GLSL}
 vec2 curve(float k) {
   vec4 A = uW[0], B = uW[1], C = uW[2];
   int sh = int(A.x + 0.5);
@@ -1184,6 +1186,8 @@ vec2 curve(float k) {
   } else if (sh == 4) {
     float a = (k - 0.5) * B.y * 0.37;
     q = (B.x + waveAt(k) * A.y * 0.4) * vec2(cos(a), sin(a));
+  } else if (sh == 6) {
+    q = superscopeAt(k);
   } else {
     float t = k * 42.0;
     float damp = exp(-k * 2.0);
@@ -1202,6 +1206,7 @@ vec3 curveColor(float k) {
   float damp = sh == 3 || sh == 5 ? 0.5 + 0.5 * exp(-k * 1.5) : 1.0;
   float t = sh == 4 ? 0.5 + 0.5 * sin(k * TAU) : k;
   vec3 c = sh == 0 ? mix(pal(uW[2].z), vec3(1.0), 0.2) : mix(pal(uW[2].z), pal(uW[2].z + 0.66), t * uW[2].w);
+  if (sh == 6) return mix(pal(uW[2].z), pal(uW[2].z + 0.33), (0.5 + 0.5 * gScopeZ) * uW[2].w) * (0.35 + 0.65 * (0.5 + 0.5 * gScopeZ)) * superscopeFade(k);
   return c * env * damp;
 }
 void main() {

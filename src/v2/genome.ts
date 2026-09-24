@@ -30,6 +30,7 @@
 
 import { FLAME_VARIATIONS, type FlameVar } from './variations';
 import { repair as repairV2, upgradeV2 } from './legacy';
+import { SUPERSCOPE_COST, SUPERSCOPE_SCHEMA } from './genes/superscope';
 
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 export { FLAME_VARIATIONS };
@@ -121,7 +122,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -133,6 +134,7 @@ export type ShapeClass = 'sdf' | 'curve' | 'field' | 'flame';
 export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   dot: 'sdf', polygon: 'sdf', star: 'sdf', segment: 'sdf', solid: 'sdf', bars: 'sdf',
   curve: 'curve', plasma: 'field', aurora: 'field', terrain: 'field', edge: 'field', flame: 'flame',
+  superscope: 'curve',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame'];
@@ -157,6 +159,8 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   edge: { mode: C([0, 1, 2, 3], 0), side: C([0, 1, 2, 3], 0), base: P(-0.3, 0.3, -0.16), height: P(0.1, 0.5, 0.3), density: P(0.2, 1, 0.6) },
   // flow: vars <-> alt morph cycles per 8 bars (0 = only drops morph); breathe: zoom per unit bass.
   flame: { count: C([65536, 131072, 262144, 524288], 262144), zoom: P(0.1, 0.45, 0.22), rounds: I(1, 2, 2), flow: P(0, 2, 0), breathe: P(0, 0.4, 0) },
+  // AVS superscope: a 3D parametric point curve pushed by the audio, tumbling in perspective (genes/superscope.ts).
+  superscope: SUPERSCOPE_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -744,7 +748,8 @@ export function repairBody(raw: unknown): BodyGene {
     const fp = repairParams(f.p, FUSE_SCHEMA);
     if (fp.mode !== 2 && !sdfCapable(shape)) fp.mode = 2;
     // The same kind twice only makes sense as a region (e.g. sparks born inside a disc).
-    const ok = sdfCapable(fs) && (fs.kind !== shape.kind || fp.mode === 2);
+    // A superscope has no distance field to light up inside, so it never fuses.
+    const ok = sdfCapable(fs) && (fs.kind !== shape.kind || fp.mode === 2) && shape.kind !== 'superscope';
     if (ok) {
       body.fuse = { shape: fs, p: fp };
       // A fused curve is drawn through its distance field.
@@ -1012,6 +1017,7 @@ export function validate(g: Genome): string[] {
       chk(f.p, FUSE_SCHEMA, `${w}.fuse`);
       if (f.p.mode !== 2 && !sdfCapable(b.shape)) errs.push(`${w}.fuse needs a distance field`);
       if (b.shape.kind === 'curve' && (b.shape.p.form === 3 || b.shape.p.form === 5)) errs.push(`${w}.fuse curve form`);
+      if (b.shape.kind === 'superscope') errs.push(`${w}.fuse on a superscope`);
     }
   });
   g.bodies?.forEach((b, i) => {
@@ -1104,6 +1110,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
     switch (b.shape.kind) {
       case 'flame': s.flame += 3.2 * w; break;
       case 'curve': s.scope += 2.4 * w * shapeW; break;
+      case 'superscope': s.scope += 2 * w * shapeW; s.wire += 0.8 * w * shapeW; break;
       case 'bars': s.spectrum += 2.6 * w * shapeW; break;
       case 'solid': s.wire += 2.6 * w * shapeW; break;
       case 'plasma': s.plasma += 2.6 * w; break;
@@ -1224,7 +1231,7 @@ export function estimateCost(g: Genome): number {
 /** One distance-field evaluation of a shape, per full-screen pass. */
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
-  plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3,
+  plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
 };
 const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05 };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
@@ -1272,7 +1279,8 @@ export function bodyCost(b: BodyGene): number {
   }
   if (cls === 'curve' && !b.fuse) {
     const draws = b.place.kind === 'ring' ? b.place.p.n : b.place.kind === 'mirror' ? 2 : copyCount(b.place);
-    return ms + 0.05 + 0.03 * draws + (b.deform.kind === 'noise' ? 0.1 : 0);
+    const perDraw = b.shape.kind === 'superscope' ? 0.03 * Math.max(1, b.shape.p.n / 1024) : 0.03;
+    return ms + 0.05 + perDraw * draws + (b.deform.kind === 'noise' ? 0.1 : 0);
   }
   const n = evalCount(b);
   let per = shapeEvalCost(b.shape) + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;

@@ -5,6 +5,7 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { packSuperscope } from './genes/superscope';
 import type { MusicState, StemName } from '../types';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
@@ -1571,6 +1572,13 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'superscope': {
+        // AVS superscope: 3D tumble on the body's bar clock, pushed by the bass and the beat.
+        const ph = set('ph', (mm('ph') + sdt * F.speed * 0.07) % 4096);
+        packSuperscope(s.wv, bi * 16, sh.p, P, this.clk.spin, ph, this.bodyHue, b.color.p.detail, beat, F.stem[1]);
+        E[o] = P('size');
+        return P('size');
+      }
       case 'aurora': {
         const t = set('t', (mm('t') + sdt * F.speed * 0.15) % 512);
         const lvl = Math.max(F.stem[2], F.stem[3] * 0.7 * (1 - F.gate[2])) + 0.08 * F.loud;
@@ -1920,7 +1928,7 @@ export class Stage {
       top: b.emit.kind === 'none',
       bright: gain * 0.5 * (0.3 + 0.9 * Math.max(F.loud, 0.6 * this.sig.melodic())) * (b.emit.kind === 'sparks' ? b.emit.p.body : 1),
       thick: mk === 'line' ? b.material.p.width : mk === 'glow' ? 3 + b.material.p.width * 60 : 1.5,
-      n: b.shape.p.form === 3 || b.shape.p.form === 5 ? 1024 : 512,
+      n: b.shape.kind === 'superscope' ? b.shape.p.n : b.shape.p.form === 3 || b.shape.p.form === 5 ? 1024 : 512,
       soft: mk === 'glow' ? 1 : 0,
       dash: mk === 'dots' ? 3 + b.material.p.spacing * 400 : 0,
       copies: list,

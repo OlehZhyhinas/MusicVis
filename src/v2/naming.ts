@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -64,6 +64,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   polygon: ['Prism', 'Facet', 'Shard', 'Hexagon', 'Gem', 'Tablet', 'Plate', 'Keystone', 'Tile', 'Emblem', 'Sigil', 'Lozenge'],
   star: ['Star', 'Asterisk', 'Pinwheel', 'Starburst', 'Compass', 'Spur', 'Rowel', 'Sunburst', 'Blossom', 'Burr', 'Thistle', 'Urchin'],
   segment: ['Stroke', 'Dash', 'Needle', 'Streak', 'Stitch', 'Splinter', 'Rod', 'Baton', 'Quill', 'Sliver', 'Spoke', 'Wand'],
+  scope: ['Scope', 'Knot', 'Gyroscope', 'Armillary', 'Spirograph', 'Torus', 'Orrery', 'Astrolabe', 'Whorl', 'Rotor', 'Loop', 'Oscillograph'],
 };
 
 /** The noun family of a body. */
@@ -82,6 +83,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'terrain': return 'horizon';
     case 'edge': return 'edge';
     case 'curve': return 'wave';
+    case 'superscope': return 'scope';
     case 'bars': return 'spectrum';
     case 'solid': return 'wire';
     case 'segment': return pk === 'walker' ? 'snake' : 'segment';

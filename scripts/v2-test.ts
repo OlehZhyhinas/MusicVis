@@ -27,7 +27,8 @@ import {
   type ParamControl, type Target,
 } from '../src/v2/geneEdit';
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
-import { buildSources } from '../src/v2/glsl';
+import { buildSources, WAVE_VS } from '../src/v2/glsl';
+import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
 
@@ -326,6 +327,8 @@ function freshGenome(): Genome {
       delete body.fuse;
       body.deform = { kind: 'none', p: {} };
       body.place = { kind: 'point', p: { x: 0, y: 0 } };
+      // No particle system either: its cost is not what this checks, and a costly body with sparks sheds the fuse to fit the budget.
+      if (body.emit.kind === 'sparks') body.emit = { kind: 'trail', p: { tip: 0 } };
       const other = randomGene('shape', rng, b) as BodyGene['shape'];
       if (!sdfCapable(other) || UNIQUE_SHAPES.includes(b)) continue;
       const f = makeFuse(body, other, rng, mode);
@@ -1327,6 +1330,47 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
   check('migrate.milkdrop-genomes', ms.every((x) => JSON.stringify(loaded.get(`G0-${x.origin}`)!.genome) === JSON.stringify(x.genome) && loaded.get(`G0-${x.origin}`)!.name === x.name), 'new seeds arrive with their genomes and names');
   const reload = Population.fromJSON(JSON.parse(JSON.stringify(loaded.toJSON())));
   check('migrate.milkdrop-stable', reload.upgradeSeeds().length === 0 && reload.size === loaded.size, 'a saved migrated population reloads without further changes');
+}
+
+// -------------------------------------------------- AVS genes: superscope shape
+
+{
+  const bad: string[] = [];
+  const rng = mulberry32(6106);
+  const scopeGenome = (p: Record<string, number> = {}): Genome => repair({
+    ...cloneGenome(seedByOrigin('E07')),
+    bodies: [{ ...cloneGenome(seedByOrigin('E07')).bodies[0], shape: { kind: 'superscope', p: { ...p } }, material: { kind: 'dots', p: { gain: 1, spacing: 0.01, size: 0.5 } } }],
+  });
+  const sg = scopeGenome({ family: 5, p: 4, n: 2048 });
+  check('superscope.schema', SHAPE_KINDS.includes('superscope') && SHAPE_CLASS.superscope === 'curve' && SHAPE_SCHEMAS.superscope === SUPERSCOPE_SCHEMA && !sdfCapable(sg.bodies[0].shape), 'a curve-class shape with its own schema, no distance field');
+  check('superscope.repair', !validate(sg).length && sg.bodies[0].shape.p.family === 5 && JSON.stringify(repair(JSON.parse(JSON.stringify(sg)))) === JSON.stringify(sg), validate(sg).join(';') || 'valid and idempotent');
+  const wild = scopeGenome({ family: 9, p: 0, q: 11, size: 3, audio: -1, spinX: 0.3, n: 5000 });
+  const wp = wild.bodies[0].shape.p;
+  check('superscope.clamps', !validate(wild).length && wp.family === 5 && wp.p === 1 && wp.q === 8 && wp.size === 0.45 && wp.audio === 0 && wp.spinX === 0.25 && wp.n === 2048, JSON.stringify(wp));
+  // Never fused (no distance field to light up inside), even when a fuse is supplied.
+  const fused = repair({ ...cloneGenome(sg), bodies: [{ ...sg.bodies[0], fuse: { shape: { kind: 'dot', p: { r: 0.1 } }, p: { mode: 2 } } }] });
+  check('superscope.no-fuse', !fused.bodies[0].fuse && !validate(fused).length && makeFuse(sg.bodies[0], { kind: 'dot', p: { r: 0.1 } }, rng) === null, 'fuse dropped');
+  check('superscope.glsl', WAVE_VS.includes('superscopeAt(k)') && WAVE_VS.includes('sh == 6') && buildSources(sg).feedback.includes('void main'), 'curve pass carries the superscope family code');
+  const cheap = scopeGenome({ n: 256 });
+  check('superscope.cost', estimateCost(sg) > estimateCost(cheap) && estimateCost(sg) < COST_BUDGET_MS, `${estimateCost(cheap).toFixed(3)} -> ${estimateCost(sg).toFixed(3)} ms`);
+  check('superscope.named', nounKind(sg.bodies[0]) === 'scope' && NOUN_POOLS.scope.includes(nameFor(sg).split(/\s+/).pop()!) && classify(sg).primary === 'scope', `${nameFor(sg)} (${classify(sg).label})`);
+  // Breeds with every species both ways; mutants stay valid; random bodies sometimes pick it.
+  const bySpecies = new Map<string, Genome>();
+  for (const e of SEEDS) if (!bySpecies.has(classify(e.genome).primary)) bySpecies.set(classify(e.genome).primary, e.genome);
+  let crosses = 0, kept = 0;
+  for (const e of bySpecies.values()) for (const [a, b] of [[sg, e], [e, sg]]) for (let k = 0; k < 6; k++) {
+    const c = crossover(a, b, rng);
+    crosses++;
+    if (c.bodies.some((x) => x.shape.kind === 'superscope')) kept++;
+    if (validate(c).length) bad.push(`cross:${validate(c)[0]}`);
+    if (!(estimateCost(c) < COST_BUDGET_MS)) bad.push('cross:cost');
+    const mu = mutate(c, rng, 2);
+    if (validate(mu).length) bad.push(`mutant:${validate(mu)[0]}`);
+    if (!buildSources(mu).feedback.includes('void main')) bad.push('mutant:glsl');
+  }
+  let random = 0;
+  for (let i = 0; i < 400; i++) if (randomBody(rng).shape.kind === 'superscope') random++;
+  check('superscope.breeds', !bad.length && kept > 10 && random > 5, bad.slice(0, 6).join(' | ') || `${crosses} crossovers over ${bySpecies.size} species valid, ${kept} kept the scope; ${random}/400 random bodies are scopes`);
 }
 
 // -------------------------------------------------- 16. example crossovers
