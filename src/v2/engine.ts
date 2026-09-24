@@ -23,6 +23,7 @@ import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type ChoreoPose } from './genes/choreo';
 import { HarmonyMotor, IDLE_HARMONY, type HarmonyInputs, type HarmonyOut } from './genes/harmony';
+import { DejaVuBank } from './genes/dejavuGpu';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
@@ -710,12 +711,15 @@ export class Stage {
   private harmIn: HarmonyInputs = { tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, tonnetzX: 0.5, tonnetzY: 0.2887, keyWalk: 0 };
   private harmWarp = new Float32Array(4);
   private harmSeed = 0;
+  /** Visual deja vu: each slot's snapshots of returning sections (genes/dejavu.ts). */
+  readonly dejavu: DejaVuBank;
 
   constructor(private eng: Engine, readonly opts: StageOptions) {
     const gl = eng.gl;
     this.sig = new Signals(gl);
     this.bloom = new Bloom(gl, eng.fs);
     this.avgLum = new PingPong(gl, 1, 1, [eng.hdr], gl.NEAREST);
+    this.dejavu = new DejaVuBank(gl, eng.fs, eng.hdr);
     this.pu = {
       dt: 0, time: 0, aspect: 1, velocity: eng.black, simTexelX: 0, simTexelY: 0, wave: this.sig.waveTex,
       fluidAmt: 0, curl: 0, zoomFlow: 0, rotFlow: 0, converge: 0, drag: 3, lifeRate: 0.3, speed: 0.5,
@@ -762,6 +766,7 @@ export class Stage {
   }
 
   disposeSlot(s: Slot): void {
+    this.dejavu.drop(s);
     s.fb.dispose();
     s.sceneT?.dispose();
     s.sceneT = null;
@@ -801,6 +806,8 @@ export class Stage {
       if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
       choreoPose(s.genome.choreo, cue, q);
       this.harmonize(s, state, sdt, q);
+      // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
+      this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
     }
     this.harmonyWarp(slots, state);
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
@@ -861,7 +868,9 @@ export class Stage {
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
     for (const s of slots) if (s.progs.land) this.landPass(s, sdt);
+    for (const s of slots) if (s.genome.carrier.kind !== 'none') this.dejavu.recall(s, s.fb.read);
     for (const s of slots) this.feedbackPass(s, sdt, s === partSlot, s === flameSlot, s === slimeSlot, s === flockSlot, s === ecoSlot);
+    for (const s of slots) this.dejavu.snapshot(s, s.fb.read);
 
     // Composite every live slot into the HDR scene.
     this.scene!.bind();

@@ -15,6 +15,7 @@ import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
 import { crossGroove, jitterGroove, randomGroove } from './genes/groove';
+import { crossDejaVu, jitterDejaVu, randomDejaVu } from './genes/dejavu';
 
 export type Rng = () => number;
 
@@ -772,6 +773,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (harmony) child.harmony = harmony;
     const groove = crossGroove(D.groove, R.groove, rng);
     if (groove) child.groove = groove;
+    const dejavu = crossDejaVu(D.dejavu, R.dejavu, rng);
+    if (dejavu) child.dejavu = dejavu;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1102,6 +1105,18 @@ const MUTATORS: [number, string, Mutator][] = [
     if (!g.choreo) g.choreo = randomChoreo(rng);
     else if (rng() < 0.3) delete g.choreo;
     else jitterChoreo(g.choreo, rng);
+    return true;
+  }],
+  // Deja vu (returning sections recall their first appearance): rarely gained (or lost), nudged when present.
+  [0.5, 'dejavu', (g, rng) => {
+    if (!g.dejavu) g.dejavu = randomDejaVu(rng);
+    else if (rng() < 0.3) delete g.dejavu;
+    else jitterDejaVu(g.dejavu, rng);
+    return true;
+  }],
+  [1.2, 'jitter-dejavu', (g, rng, amt) => {
+    if (!g.dejavu) return false;
+    jitterDejaVu(g.dejavu, rng, amt);
     return true;
   }],
   [1.5, 'jitter-choreo', (g, rng, amt) => {

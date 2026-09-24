@@ -35,8 +35,9 @@ import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
+import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 34;
+export const SEED_VERSION = 35;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -113,6 +114,8 @@ interface Def {
   harmony?: Record<string, number>;
   /** Timing feel for the motion (src/v2/genes/groove.ts); omitted = none. */
   groove?: Record<string, number>;
+  /** Visual deja vu: returning sections recall their first appearance (src/v2/genes/dejavu.ts); omitted = none. */
+  dejavu?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -133,6 +136,7 @@ function build(d: Def): Seed {
   if (d.drift) g.drift = { p: { ...defaultParams(DRIFT_SCHEMA), ...d.drift } };
   if (d.harmony) g.harmony = { p: { ...defaultParams(HARMONY_SCHEMA), ...d.harmony } };
   if (d.groove) g.groove = { p: { ...defaultParams(GROOVE_SCHEMA), ...d.groove } };
+  if (d.dejavu) g.dejavu = { p: { ...defaultParams(DEJAVU_SCHEMA), ...d.dejavu } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -1378,4 +1382,27 @@ const GROOVE: Def[] = [
 ];
 
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE].map(build);
+// D01.. showcase visual deja vu (genes/dejavu.ts): a section that returns (the second chorus, a
+// returning riff) recalls the picture, framing, colours and motion of its first appearance, evolved.
+const DEJAVU: Def[] = [
+  {
+    // Two roaming glow heads paint a garden of trails that drifts slowly outward and turns, folded
+    // five ways: over a section the drawing grows into something no other moment has. When a chorus
+    // comes back, the garden it grew the first time resurfaces over two bars (turned a little
+    // further each time), the colours swing back to that chorus's own and the turning rewinds to
+    // where it was; then the heads keep painting and the old garden slowly overgrows.
+    origin: 'D01', name: 'Chorus Garden', energy: [0.2, 0.85], scheme: 'triad', hue: 0.35,
+    color: { adapt: 0.35, bloom: 1.1, vignette: 0.4 }, carrier: 'warp', car: { halfLife: 6, floor: 0.2 },
+    chain: [op('zoom', { rate: 0.0008 }), op('rotate', { lock: 0, rate: 0.002 }), op('kaleido', { n: 5, lock: 0 }, 1, 'view')],
+    bodies: [body({
+      shape: ['dot', { r: 0.02 }],
+      place: ['walker', { heads: 2, step: 0.15, every: 1, curve: 1.2 }],
+      material: ['glow', { gain: 1, width: 0.014 }],
+      emit: ['trail'],
+      color: ['instrument', { amount: 1 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.25 })],
+    dejavu: { recall: 0.85, blend: 2, snap: 0.85, frame: 0.5, hue: 0.8, motion: 0.6, evolve: 0.25, keep: 0, res: 0.5, cap: 3, min: 0.65 },
+  },
+];
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU].map(build);

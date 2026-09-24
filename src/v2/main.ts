@@ -770,8 +770,9 @@ async function main(): Promise<void> {
     if (evolveOn) {
       if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo && !eng.current()?.drift) {
-      // A choreographed or drifting preset stays on: it composes its own release on the drop.
+    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo && !eng.current()?.drift && !eng.current()?.dejavu) {
+      // Presets that compose their own release on the drop stay on (choreography, drift), and so does a
+      // deja vu preset: switching would forget the scenes it is remembering for the returns.
       choose('drop', 0.35);
     }
 

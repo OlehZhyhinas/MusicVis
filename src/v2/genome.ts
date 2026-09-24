@@ -48,6 +48,7 @@ import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from '.
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 import { HARMONY_COST_MS, repairHarmony, validateHarmony, type HarmonyGene } from './genes/harmony';
 import { GROOVE_COST_MS, repairGroove, validateGroove, type GrooveGene } from './genes/groove';
+import { dejavuCost, repairDejaVu, validateDejaVu, type DejaVuGene } from './genes/dejavu';
 export { FLAME_VARIATIONS };
 export type { FlameVar };
 
@@ -598,6 +599,8 @@ export interface Genome {
   harmony?: HarmonyGene;
   /** Optional: motion takes the music's timing feel (src/v2/genes/groove.ts). */
   groove?: GrooveGene;
+  /** Optional: a returning section recalls its first appearance (src/v2/genes/dejavu.ts). */
+  dejavu?: DejaVuGene;
 }
 
 export const MAX_CHAIN = 6;
@@ -948,6 +951,7 @@ export function repair(input: unknown): Genome {
   if (isObj(g.drift)) out.drift = repairDrift(g.drift);
   if (isObj(g.harmony)) out.harmony = repairHarmony(g.harmony);
   if (isObj(g.groove)) out.groove = repairGroove(g.groove);
+  if (isObj(g.dejavu)) out.dejavu = repairDejaVu(g.dejavu);
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -1188,6 +1192,7 @@ export function validate(g: Genome): string[] {
   if (g.drift !== undefined) errs.push(...validateDrift(g.drift));
   if (g.harmony !== undefined) errs.push(...validateHarmony(g.harmony));
   if (g.groove !== undefined) errs.push(...validateGroove(g.groove));
+  if (g.dejavu !== undefined) errs.push(...validateDejaVu(g.dejavu));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {
@@ -1388,6 +1393,7 @@ export function estimateCost(g: Genome): number {
   for (const b of g.bodies) ms += bodyCost(b) + (b.material.p.blend ? BLEND_COST : 0);
   if (g.choreo) ms += CHOREO_COST_MS;
   if (g.harmony) ms += HARMONY_COST_MS;
+  if (g.dejavu) ms += dejavuCost(g.dejavu.p);
   // A drifting preset may play genomes up to driftCost() of its own (the planner rejects dearer
   // ones), so its cost is the worst case over any path.
   if (g.groove) ms += GROOVE_COST_MS;
