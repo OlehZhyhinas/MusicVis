@@ -26,6 +26,7 @@ import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
 import { AutoHide } from '../ui/autoHide';
 import { applyLayout, computeLayout } from '../ui/layout';
 import { Dock } from '../ui/dock';
+import { Palette, type Command } from '../ui/palette';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
@@ -46,13 +47,10 @@ async function main(): Promise<void> {
   const hudEl = $<HTMLElement>('hud');
   const playlistPanelEl = $<HTMLElement>('tab-playlist');
   const firstRun = $<HTMLElement>('first-run');
-  const helpOverlay = $<HTMLElement>('help-overlay');
   const presetLabel = $<HTMLElement>('preset-label');
   const faintId = $<HTMLElement>('faint-id');
   const moreMenu = $<HTMLElement>('more-menu');
   const volPop = $<HTMLElement>('vol-pop');
-  const presetGoto = $<HTMLFormElement>('preset-goto');
-  const presetGotoInput = $<HTMLInputElement>('preset-goto-input');
 
   let volume = loadSetting<number>('volume', 0.8);
   let hudOn = loadSetting<boolean>('v2.hudOn', false);
@@ -243,12 +241,7 @@ async function main(): Promise<void> {
     onPrev: () => goPrev(),
     onNext: () => goNext(),
     onShuffleToggle: () => toggleShuffle(),
-    onRepeatCycle: () => {
-      repeat = repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off';
-      playlist.setRepeat(repeat);
-      transport.setRepeatUi(repeat);
-      saveSetting('repeat', repeat);
-    },
+    onRepeatCycle: () => cycleRepeat(),
     onSeek: (t) => {
       player?.seek(t);
       sampler?.reset();
@@ -259,15 +252,28 @@ async function main(): Promise<void> {
       applyVolume();
       saveSetting('volume', v);
     },
-    onMuteToggle: () => {
-      muted = !muted;
-      applyVolume();
-    },
+    onMuteToggle: () => toggleMute(),
     onFullscreen: () => toggleFullscreen(),
     onPlaylistToggle: () => dock.toggle('playlist'),
     onMore: (anchor) => openMore(anchor),
     onVolumePopover: (anchor) => popovers.toggle(volPop, anchor),
   });
+  function toggleMute(): void {
+    muted = !muted;
+    applyVolume();
+  }
+  function cycleRepeat(): void {
+    repeat = repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off';
+    playlist.setRepeat(repeat);
+    transport.setRepeatUi(repeat);
+    saveSetting('repeat', repeat);
+  }
+  function clearPlaylist(): void {
+    playlist.clear();
+    player?.pause();
+    songLoaded = false;
+    sampler = null;
+  }
   function toggleShuffle(): void {
     shuffle = !shuffle;
     playlist.setShuffle(shuffle);
@@ -285,7 +291,7 @@ async function main(): Promise<void> {
       { icon: 'list', label: 'Playlist', kbd: 'P', run: () => dock.toggle('playlist') },
       { icon: 'fullscreen', label: 'Fullscreen', kbd: 'F', run: () => toggleFullscreen() },
       'Preset',
-      { icon: 'hash', label: 'Go to preset…', kbd: 'G', run: () => setGotoVisible(true) },
+      { icon: 'hash', label: 'Go to preset…', kbd: 'G', run: () => palette.open('goto') },
       { icon: 'skip', label: 'Next preset', kbd: 'N', run: () => nextPreset() },
       { icon: 'grid', label: 'Preset browser', kbd: 'B', run: () => dock.toggle('presets') },
       ...(phone || narrow
@@ -301,8 +307,8 @@ async function main(): Promise<void> {
           ] as MenuItem[])
         : []),
       'Help',
-      { icon: 'search', label: 'All commands…', kbd: '/', run: () => setHelpVisible(true) },
-      { icon: 'keyboard', label: 'Keyboard shortcuts', kbd: '?', run: () => setHelpVisible(true) },
+      { icon: 'search', label: 'All commands…', kbd: '/', run: () => palette.open('cmd') },
+      { icon: 'keyboard', label: 'Keyboard shortcuts', kbd: '?', run: () => palette.open('help') },
       { icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
       { icon: 'github', label: 'MusicVis on GitHub', href: GITHUB_URL },
     ];
@@ -365,12 +371,7 @@ async function main(): Promise<void> {
         }
       }
     },
-    onClear: () => {
-      playlist.clear();
-      player?.pause();
-      songLoaded = false;
-      sampler = null;
-    },
+    onClear: () => clearPlaylist(),
     onAdd: () => fileInput.click(),
   });
   let wasEmpty = playlist.isEmpty;
@@ -389,7 +390,7 @@ async function main(): Promise<void> {
   };
   $('fr-add').addEventListener('click', () => fileInput.click());
   $('fr-drop').addEventListener('click', () => fileInput.click());
-  $('et-help').addEventListener('click', () => setHelpVisible(true));
+  $('et-help').addEventListener('click', () => palette.open('help'));
   $('et-fullscreen').addEventListener('click', () => toggleFullscreen());
 
   playlist.onChange = () => {
@@ -424,13 +425,6 @@ async function main(): Promise<void> {
     appRoot.classList.toggle('hud-on', on);
     saveSetting('v2.hudOn', on);
   }
-  function setHelpVisible(show: boolean): void {
-    helpOverlay.hidden = !show;
-  }
-  $('help-close').addEventListener('click', () => setHelpVisible(false));
-  helpOverlay.addEventListener('click', (ev) => {
-    if (ev.target === helpOverlay) setHelpVisible(false);
-  });
   function toggleFullscreen(): void {
     if (!document.fullscreenElement) appRoot.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.().catch(() => {});
@@ -527,30 +521,58 @@ async function main(): Promise<void> {
     },
   });
 
-  // ------------------------------------------------------------ go to
+  // ------------------------------------------------ commands + go to
 
-  function setGotoVisible(show: boolean): void {
-    presetGoto.hidden = !show;
-    if (show) {
-      presetGotoInput.value = '';
-      presetGotoInput.focus();
-    } else presetGotoInput.blur();
-  }
-  function goTo(raw: string): void {
+  function findPreset(raw: string): Member | undefined {
     const id = raw.trim().toUpperCase();
-    const direct = evo.pop.get(id) ?? evo.pop.get(`G0-${id}`);
-    if (!direct || !play(direct.id, 1.2, true)) showToast(`No preset "${raw}" in the population.`, 'error');
+    return evo.pop.get(id) ?? evo.pop.get(`G0-${id}`);
   }
-  presetGoto.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const v = presetGotoInput.value;
-    setGotoVisible(false);
-    if (v.trim()) goTo(v);
+  function seekBy(d: number): void {
+    if (!player || liveMode.active) return;
+    player.seek(Math.max(0, Math.min(player.duration, player.currentTime + d)));
+    sampler?.reset();
+  }
+  function commands(): Command[] {
+    return [
+      { group: 'Playback', icon: 'play', label: 'Play / pause', keys: ['Space'], run: () => togglePlay() },
+      { group: 'Playback', icon: 'next', label: 'Next track', keys: ['Shift', '→'], run: () => goNext() },
+      { group: 'Playback', icon: 'prev', label: 'Previous track', keys: ['Shift', '←'], run: () => goPrev() },
+      { group: 'Playback', icon: 'skip', label: 'Seek 5 s forward', keys: ['→'], run: () => seekBy(5) },
+      { group: 'Playback', icon: 'undo', label: 'Seek 5 s back', keys: ['←'], run: () => seekBy(-5) },
+      { group: 'Playback', icon: muted ? 'volume' : 'mute', label: muted ? 'Unmute' : 'Mute', keys: ['M'], run: () => toggleMute() },
+      { group: 'Playback', icon: 'shuffle', label: `Shuffle ${shuffle ? 'off' : 'on'}`, keys: ['S'], run: () => toggleShuffle() },
+      { group: 'Playback', icon: repeat === 'one' ? 'repeat1' : 'repeat', label: `Repeat: ${repeat} → ${repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off'}`, run: () => cycleRepeat() },
+      { group: 'Playback', icon: 'fullscreen', label: 'Fullscreen', keys: ['F'], run: () => toggleFullscreen() },
+      { group: 'Presets', icon: 'up', label: 'Like this preset', keys: ['L'], run: () => vote(true) },
+      { group: 'Presets', icon: 'down', label: 'Dislike this preset', keys: ['D'], run: () => vote(false) },
+      { group: 'Presets', icon: 'skip', label: 'Next preset', keys: ['N'], run: () => nextPreset() },
+      { group: 'Presets', icon: 'hash', label: 'Go to preset by ID…', keys: ['G'], run: () => palette.open('goto'), stay: true },
+      { group: 'Presets', icon: 'evolve', label: `Evolve mode ${evolveOn ? 'off' : 'on'}`, keys: ['E'], run: () => setEvolve(!evolveOn) },
+      { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
+      { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
+      { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
+      { group: 'Panels', icon: 'trash', label: 'Clear playlist', run: () => clearPlaylist() },
+      { group: 'Panels', icon: 'mic', label: 'Live input…', run: () => liveMode.setOpen(true) },
+      { group: 'Panels', icon: 'genes', label: 'Gene editor (edit the playing preset)', keys: ['K'], run: () => toggleGenes() },
+      { group: 'Panels', icon: 'hud', label: hudOn ? 'Hide HUD' : 'Show HUD', keys: ['H'], run: () => setHud(!hudOn) },
+      { group: 'Panels', icon: 'keyboard', label: 'Keyboard shortcuts', keys: ['?'], run: () => palette.open('help'), stay: true },
+      { group: 'About', icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
+      { group: 'About', icon: 'github', label: 'MusicVis on GitHub', href: GITHUB_URL },
+    ];
+  }
+  const palette = new Palette({
+    commands,
+    findPresets: (q) => {
+      const t = q.trim().toUpperCase();
+      const exact = findPreset(t);
+      const hits = evo.pop.list().filter((m) => m.id.startsWith(t) || m.id.startsWith(`G0-${t}`));
+      if (exact && !hits.includes(exact)) hits.unshift(exact);
+      hits.sort((a, b) => (a === exact ? -1 : b === exact ? 1 : a.id.localeCompare(b.id)));
+      return hits.slice(0, 8).map((m) => ({ id: m.id, name: m.name, hint: `${m.type} · ${m.energy}` }));
+    },
+    gotoPreset: (id) => play(id, 1.2, true),
+    thumb: (id) => evo.thumb(id),
   });
-  presetGotoInput.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') setGotoVisible(false);
-  });
-  presetGotoInput.addEventListener('blur', () => (presetGoto.hidden = true));
 
   window.addEventListener('keydown', (ev) => {
     const tgt = ev.target;
@@ -558,16 +580,22 @@ async function main(): Promise<void> {
     // Nothing typed or pressed inside the gene editor (sliders, selects, buttons) triggers a shortcut.
     if (tgt instanceof Element && tgt.closest('#v2-genes')) return;
     if (ev.key === '?') {
-      setHelpVisible(!!helpOverlay.hidden);
+      palette.toggle('help');
+      return;
+    }
+    if (ev.key === '/') {
+      ev.preventDefault();
+      palette.toggle('cmd');
       return;
     }
     if (ev.key === 'Escape') {
-      if (popovers.close()) return;
-      if (!helpOverlay.hidden) setHelpVisible(false);
-      else if (!presetGoto.hidden) setGotoVisible(false);
+      // Closes the top layer: overlay, then a menu / popover, then the dock.
+      if (palette.isOpen) palette.close();
+      else if (popovers.close()) return;
       else dock.close();
       return;
     }
+    if (palette.isOpen) return;
     switch (ev.key) {
       case ' ':
         ev.preventDefault();
@@ -599,11 +627,10 @@ async function main(): Promise<void> {
       case 'b': case 'B': dock.toggle('presets'); break;
       case 'g': case 'G':
         ev.preventDefault();
-        setGotoVisible(true);
+        palette.open('goto');
         break;
       case 'm': case 'M':
-        muted = !muted;
-        applyVolume();
+        toggleMute();
         break;
       default:
         return;
@@ -683,7 +710,7 @@ async function main(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
-  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || !helpOverlay.hidden || !presetGoto.hidden);
+  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen);
 }
 
 main().catch((err) => {

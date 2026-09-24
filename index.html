@@ -32,10 +32,6 @@
         <div class="row" id="pl-tags"></div>
       </div>
 
-      <form id="preset-goto" class="panel" hidden>
-        <label for="preset-goto-input">Go to preset</label>
-        <input id="preset-goto-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. G0-E07 or G3-0012" />
-      </form>
 
 
 
@@ -199,46 +195,35 @@
       <div id="faint-id" class="mono" aria-hidden="true"></div>
       <div id="reveal-hint" class="glass" hidden>Move the mouse or press any key for controls</div>
 
-      <div id="help-overlay" hidden>
-        <div id="help-panel" class="panel">
-          <div id="help-header">
-            <span>Keyboard shortcuts</span>
-            <button id="help-close" class="tp-btn" aria-label="Close help" data-icon="x" data-icon-size="16"></button>
+      <div id="overlay" hidden>
+        <div class="scrim"></div>
+        <div id="ov-box" class="ov glass strong" role="dialog" aria-modal="true" aria-label="Commands">
+          <div class="ov-head">
+            <div class="seg" role="group" aria-label="Overlay view">
+              <button data-v="cmd" aria-pressed="true"><span>Commands</span><span class="kbd">/</span></button>
+              <button data-v="help" aria-pressed="false"><span>Shortcuts</span><span class="kbd">?</span></button>
+            </div>
+            <span class="grow"></span>
+            <button id="ov-close" class="ib sm" aria-label="Close (Esc)" title="Close (Esc)" data-icon="x" data-icon-size="16"></button>
           </div>
-          <p class="help-links">
-            <a href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener">GitHub</a>
-            <a id="help-bug" data-bug href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener">Report a bug</a>
-          </p>
-          <dl id="help-list">
-            <dt>L / D</dt>
-            <dd>Like / dislike this preset</dd>
-            <dt>E</dt>
-            <dd>Evolve mode on / off</dd>
-            <dt>B</dt>
-            <dd>Preset browser (breed, mutate, export)</dd>
-            <dt>N</dt>
-            <dd>Next preset</dd>
-            <dt>G</dt>
-            <dd>Go to preset by ID</dd>
-            <dt>Space</dt>
-            <dd>Play / pause</dd>
-            <dt>&larr; / &rarr;</dt>
-            <dd>Seek -5s / +5s</dd>
-            <dt>Shift + &larr; / &rarr;</dt>
-            <dd>Previous / next track</dd>
-            <dt>F</dt>
-            <dd>Fullscreen</dd>
-            <dt>H</dt>
-            <dd>Toggle HUD</dd>
-            <dt>K</dt>
-            <dd>Gene editor panel (shown with the HUD): edit the playing preset live</dd>
-            <dt>M</dt>
-            <dd>Mute</dd>
-            <dt>P</dt>
-            <dd>Toggle playlist</dd>
-            <dt>?</dt>
-            <dd>Toggle this help</dd>
-          </dl>
+          <div id="ov-cmd">
+            <div class="ov-search">
+              <span data-icon="search"></span>
+              <input id="cmdq" type="text" role="combobox" aria-expanded="true" aria-controls="cmdlist" aria-label="Command or preset ID" autocomplete="off" spellcheck="false" />
+              <span class="kbd">Esc</span>
+            </div>
+            <div id="cmdlist" class="ov-body scroll" role="listbox" aria-label="Commands"></div>
+          </div>
+          <div id="ov-help" hidden>
+            <div class="keys scroll"></div>
+            <p class="dim ov-note">Shortcuts pause while you type in a field, while a modifier key is held, and inside the gene editor.</p>
+          </div>
+          <div class="ov-foot">
+            <span id="ov-hints"><span class="kbd">↑</span><span class="kbd">↓</span> move <span class="kbd">↵</span> run <span class="kbd">Esc</span> close</span>
+            <span class="grow"></span>
+            <a class="btn ghost sm" data-bug href="https://github.com/OlehZhyhinas/MusicVis/issues/new" target="_blank" rel="noopener" title="Opens a new GitHub issue prefilled with a template, the current preset, page and browser" data-icon="bug" data-icon-size="14"><span>Report a bug</span></a>
+            <a class="btn ghost sm" href="https://github.com/OlehZhyhinas/MusicVis" target="_blank" rel="noopener" data-icon="github" data-icon-size="14"><span>GitHub</span></a>
+          </div>
         </div>
       </div>
     </div>

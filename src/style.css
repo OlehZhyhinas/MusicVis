@@ -724,34 +724,6 @@ img.th:not([src]) {
   color: var(--accent);
 }
 
-#preset-goto {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  z-index: 40;
-  font-size: 13px;
-  color: var(--fg-dim);
-}
-
-#preset-goto[hidden] {
-  display: none;
-}
-
-#preset-goto-input {
-  width: 170px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  color: var(--fg);
-  padding: 6px 8px;
-  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
 .tp-btn,
 .tp-btn-text {
   background: transparent;
@@ -793,53 +765,6 @@ img.th:not([src]) {
 .tp-btn.active {
   background: var(--acc-tint);
   color: var(--acc);
-}
-
-/* Help overlay */
-#help-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 6, 10, 0.55);
-}
-
-#help-overlay[hidden] {
-  display: none;
-}
-
-#help-panel {
-  width: min(360px, calc(100vw - 32px));
-  padding: 18px 22px;
-}
-
-#help-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-
-#help-list {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  margin: 0;
-  font-size: 13px;
-}
-
-#help-list dt {
-  color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-#help-list dd {
-  margin: 0;
-  color: var(--fg-dim);
 }
 
 /* Toasts */
@@ -1922,4 +1847,202 @@ img.th:not([src]) {
   font-size: 12px;
   color: var(--tx2);
   line-height: 1.5;
+}
+
+/* ============================================= commands + shortcuts overlay */
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 10, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.ov {
+  position: absolute;
+  left: calc(var(--cw, 100vw) / 2);
+  transform: translateX(-50%);
+  top: 96px;
+  width: min(640px, calc(var(--cw, 100vw) - 64px));
+  max-height: calc(100% - 136px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.ov.wide {
+  width: min(860px, calc(var(--cw, 100vw) - 64px));
+  top: max(40px, calc(50% - 260px));
+}
+.ov-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+#ov-cmd,
+#ov-help {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.ov-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 52px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  color: var(--tx2);
+}
+.ov-search input {
+  flex: 1;
+  background: none;
+  border: 0;
+  font-size: 15px;
+  color: var(--tx);
+  outline: none;
+  min-width: 0;
+}
+.ov-search:focus-within {
+  box-shadow: inset 0 -2px 0 var(--acc);
+}
+.ov-body {
+  padding: 8px;
+  overflow: auto;
+  max-height: min(460px, calc(100vh - 300px));
+}
+.ov-body .mh {
+  padding: 10px 10px 6px;
+}
+.ov-body .banner {
+  margin: 4px 6px;
+}
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 0;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  color: var(--tx);
+  text-decoration: none;
+}
+.cmd:hover,
+.cmd.hl {
+  background: var(--raise);
+}
+.cmd .ic {
+  color: var(--tx2);
+}
+.cmd .lbl {
+  flex: 1;
+  min-width: 0;
+}
+.cmd .hint {
+  font-size: 11.5px;
+  color: var(--tx3);
+  white-space: nowrap;
+}
+.cmd .th {
+  width: 32px;
+  height: 20px;
+  border-radius: 4px;
+}
+.cmd-id {
+  color: var(--acc);
+  font-size: 12px;
+}
+.cmd-note {
+  font-size: 11.5px;
+  margin: 8px 10px;
+}
+.cmd-empty {
+  padding: 16px;
+  text-align: center;
+  margin: 0;
+}
+.ov-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--tx3);
+  flex-wrap: wrap;
+  flex: none;
+}
+#ov-hints {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+}
+.keys h4 {
+  margin: 0 0 8px;
+}
+.keys dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.keys dt {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.keys dd {
+  margin: 0;
+  color: var(--tx2);
+}
+.ov-note {
+  margin: 0 16px 14px;
+  font-size: 11.5px;
+}
+@media (max-width: 760px) {
+  .keys {
+    grid-template-columns: 1fr;
+  }
+}
+#app.phone .ov {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 40px;
+  width: auto;
+  max-height: none;
+  transform: none;
+  border-radius: 22px 22px 0 0;
+}
+#app.phone .ov-body {
+  max-height: none;
+  flex: 1;
+}
+#app.phone #ov-hints {
+  display: none;
 }

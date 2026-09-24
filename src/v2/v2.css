@@ -32,15 +32,6 @@
     top: 100px;
   }
 }
-.help-links {
-  display: flex;
-  gap: 14px;
-  margin: 0 0 10px;
-  font-size: 12px;
-}
-.help-links a {
-  color: var(--accent);
-}
 #v2-genes button:disabled {
   opacity: 0.4;
   cursor: default;
@@ -50,15 +41,6 @@
   #v2-genes {
     top: 100px;
   }
-}
-.help-links {
-  display: flex;
-  gap: 14px;
-  margin: 0 0 10px;
-  font-size: 12px;
-}
-.help-links a {
-  color: var(--accent);
 }
 
 /* inline vote icons */
