@@ -24,6 +24,7 @@ import { ExploreControls, loadExploreMode } from './exploreUi';
 import { EXPLORE_LABEL } from './novelty';
 import { PresetMap, ViewSwitch, loadPresetView, type PresetView } from './mapView';
 import { SimilarityPage } from './similarityUi';
+import { DuelPage } from './duelUi';
 import { Embedder } from './embedding';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
@@ -261,6 +262,24 @@ async function main(): Promise<void> {
   simBtn.textContent = 'Similarity…';
   simBtn.addEventListener('click', () => similarity.open());
   explore.tools.append(simBtn);
+  // Clip duels: which of two presets feels more in sync with the same song moment (trains the AV judge).
+  const duels = new DuelPage({
+    eng,
+    members: () => evo.pop.list(),
+    song: () => {
+      const cur = playlist.currentTrack;
+      if (!songLoaded || !player || !songResult || !cur || liveMode.active) return null;
+      const p = player;
+      return { id: cur.id, result: songResult, seek: (t) => p.seek(t), play: () => p.play(), pause: () => p.pause(), time: () => p.currentTime, playing: () => p.playing };
+    },
+    toast: (msg, detail) => showToast(msg, 'info', 5000, detail),
+  });
+  const duelBtn = document.createElement('button');
+  duelBtn.className = 'btn sm';
+  duelBtn.title = 'Which of two clips feels more in sync? Train the AV judge';
+  duelBtn.textContent = 'Duels…';
+  duelBtn.addEventListener('click', () => void duels.open());
+  explore.tools.append(duelBtn);
   function applyPresetView(v: PresetView): void {
     $('v2b-list').hidden = v === 'map';
     presetMap.setShown(v === 'map' && dock.tab === 'presets');
@@ -711,6 +730,7 @@ async function main(): Promise<void> {
       { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
       { group: 'Presets', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
       { group: 'Presets', icon: 'sparkle', label: 'Similarity judgements (teach the look metric)…', run: () => similarity.open() },
+      { group: 'Presets', icon: 'sparkle', label: 'Clip duels (which feels more in sync)…', run: () => void duels.open() },
       { group: 'Presets', icon: 'cpu', label: `Perceptual embedding (DINOv2) ${pheno.embOn ? 'off' : 'on'}`, run: () => void setEmbedding(!pheno.embOn).then((ok) => showToast(ok ? `Perceptual embedding ${pheno.embOn ? 'on' : 'off'}` : 'Perceptual embedding could not load', ok ? 'info' : 'error', 5000, ok ? undefined : pheno.embedder?.status.detail)) },
       { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
       { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
@@ -858,6 +878,12 @@ async function main(): Promise<void> {
 
     // Switching policy.
     // Unsaved gene edits pause automatic switching (drops, evolve rotation, new songs).
+    if (duels.isOpen) {
+      // The duel page renders its two presets itself; the main view and switching pause.
+      duels.frame(state, dt);
+      requestAnimationFrame(frame);
+      return;
+    }
     if (evolveOn) {
       if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);

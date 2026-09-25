@@ -223,3 +223,16 @@
   border-top: 1px solid var(--line);
   padding-top: 10px;
 }
+
+/* Clip duels (duelUi.ts): the similarity card, wider, with two videos. */
+.duel-card {
+  width: min(1100px, 100%);
+}
+.sim video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-btn);
+  background: #0b0c12;
+}
