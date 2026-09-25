@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 82;
+export const SEED_VERSION = 83;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -781,21 +781,23 @@ const MILKDROP: Def[] = [
     reactions: [rx('bass', 'op', 0, 'rate', 0.15, { atk: 0.02, rel: 0.3 }), rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.25, thr: 0.5 })],
   },
   {
-    // martin, tunnel race: bright waveform bands scroll up the carried picture, which is wrapped onto
-    // the wall of a pale tunnel rushing toward you as rings, surging on every beat and turning with the
-    // bar, with an orb racing round the wall; the far end is lost in haze.
+    // martin, tunnel race: waveform bands scroll up the carried picture, which is wrapped onto the wall
+    // of a tunnel coming toward you as rings, surging and deepening on every beat and turning with the
+    // bar, with an orb racing round the wall; the far end is lost in haze. The bass speeds the flight
+    // and drum hits flash the bands and the orb. Kept slow and dim enough that the passing rings never
+    // strobe (under 3 flashes a second).
     origin: 'M16', name: 'Tunnel Race (after martin)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.85,
-    color: { sat: 0.8, exposure: 1.2, adapt: 0.25, bloom: 1.1, vignette: 0.15 },
-    carrier: 'warp', car: { halfLife: 2.5, blur: 0.15 },
+    color: { sat: 0.8, exposure: 0.95, adapt: 0.25, bloom: 1.1, vignette: 0.55 },
+    carrier: 'warp', car: { halfLife: 0.6, blur: 0.05 },
     chain: [
-      op('translate', { vx: 0, vy: 0.3 }),
-      op('tunnel', { depth: 0.16, speed: 0.8, twist: 0.1, sides: 0, rep: 2, fog: 0.5, lock: 0.0625 }, 1, 'view'),
+      op('translate', { vx: 0, vy: 0.05 }),
+      op('tunnel', { depth: 0.16, speed: 0.15, twist: 0.1, sides: 0, rep: 1, fog: 0.8, lock: 0.0625 }, 1, 'view'),
     ],
     bodies: [
       body({
         shape: ['curve', { form: 0, amp: 0.2 }],
         place: ['point', { x: 0, y: -0.4 }],
-        material: ['line', { gain: 1.3, width: 3, halo: 0.4 }],
+        material: ['line', { gain: 0.6, width: 2, halo: 0.2 }],
         color: ['age', { rate: 0.25, detail: 0.5 }],
       }),
       body({
@@ -805,7 +807,10 @@ const MILKDROP: Def[] = [
         emit: ['none'],
       }),
     ],
-    reactions: [rx('bass', 'op', 1, 'speed', 0.3, { atk: 0.03, rel: 0.4 }), rx('loud', 'op', 1, 'twist', 0.2, { atk: 0.1, rel: 0.8 })],
+    reactions: [
+      rx('bass', 'op', 1, 'speed', 0.3, { atk: 0.03, rel: 0.4 }), rx('hit', 'ma', 1, 'gain', 0.6, { rel: 0.2 }),
+      rx('hit', 'ma', 0, 'gain', 0.7, { rel: 0.2 }), rx('beat', 'op', 1, 'depth', 0.3, { rel: 0.25 }),
+    ],
   },
   {
     // Flexi + Martin, tunnel of supraschismatika: a dark chrome pipe flown through at speed, glints
