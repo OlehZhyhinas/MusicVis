@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 70;
+export const SEED_VERSION = 71;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1674,16 +1674,22 @@ const HARMONY: Def[] = [
     // fading path, and the camera drifts after the walk. Tension bends the lattice off true; a
     // cadence home straightens it with a flash, and a key change turns the whole map.
     origin: 'H04', name: 'Tonnetz Walk', energy: [0.1, 0.8], scheme: 'analogous', hue: 0.52,
-    color: { sat: 0.85, adapt: 0.3, bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.8,
+    color: { sat: 0.85, adapt: 0.3, bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.7,
     bodies: [body({
-      shape: ['tonnetz', { scale: 0.14, follow: 0.6, tilt: 0, nodes: 0.8, lines: 0.2, fill: 0.85, echo: 0.3, trail: 0.8, pulse: 0.6 }],
+      shape: ['tonnetz', { scale: 0.14, follow: 0.6, tilt: 0, nodes: 0.5, lines: 0.25, fill: 0.85, echo: 0.3, trail: 0.55, pulse: 0.9 }],
       place: ['point', { x: 0, y: 0 }],
       material: ['glow', { gain: 1 }],
       emit: ['trail'],
-      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+      feel: ['flow', { atk: 0.01, rel: 0.15 }],
     })],
-    reactions: [rx('chordchange', 'sh', 0, 'lines', 0.4, { atk: 0.01, rel: 0.5 }), rx('bass', 'sh', 0, 'nodes', 0.2, { atk: 0.03, rel: 0.4 })],
-    harmony: { brk: 0.5, warp: 0.4, style: 0, snap: 0.6, settle: 0.3, walk: 0.05, kick: 0.25, modHue: 0.1, modTurn: 0.02, calm: 0.3 },
+    // A beat layer under the chord walk (tuned after a driving synth-pop track read as drifting): drum
+    // hits flash the lattice, the bass swells the note nodes with room to move, and each chord change
+    // and cadence lands with a firmer kick.
+    reactions: [
+      rx('chordchange', 'sh', 0, 'lines', 0.6, { atk: 0.01, rel: 0.35 }), rx('bass', 'sh', 0, 'nodes', 0.45, { atk: 0.02, rel: 0.25 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { rel: 0.2 }),
+    ],
+    harmony: { brk: 0.5, warp: 0.4, style: 0, snap: 0.8, settle: 0.3, walk: 0.05, kick: 0.6, modHue: 0.1, modTurn: 0.02, calm: 0.3 },
   },
   {
     // A spectrum skyline standing on a lake: the bars rise from the waterline and the lower half of
