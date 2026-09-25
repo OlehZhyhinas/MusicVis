@@ -225,11 +225,7 @@ async function main(): Promise<void> {
     novelty: (m) => pheno.novelty(m),
     thumb: (id) => evo.thumb(id),
     metricVersion: () => pheno.metricVersion,
-    open: (id) => {
-      play(id, 1.2, true);
-      dock.open('genes');
-      if (!hudOn) setHud(true);
-    },
+    open: (id) => play(id, 1.2, true),
   });
   $('v2b-list').before(presetMap.host);
   const presetView = new ViewSwitch(explore.tools, loadPresetView(), (v) => applyPresetView(v));

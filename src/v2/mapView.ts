@@ -19,7 +19,7 @@ export interface MapCallbacks {
   thumb(id: string): Promise<string>;
   /** Changes when the distance metric changes (fitted weights): the graph is rebuilt. */
   metricVersion?(): number;
-  /** Play the preset and open it in the Genes tab with the HUD on. */
+  /** Play the preset (the map stays open). */
   open(id: string): void;
 }
 
@@ -73,7 +73,7 @@ export class PresetMap {
         </div>
         <button class="btn sm" data-fit title="Fit every preset in view">Fit</button>
       </div>
-      <div class="map-legend dim">Springs link each preset to its nearest looks · drag to pan · scroll to zoom · click to open in Genes</div>
+      <div class="map-legend dim">Springs link each preset to its nearest looks · drag to pan · scroll to zoom · click to play</div>
       <div class="map-tip" hidden></div>`;
     this.canvas = this.host.querySelector('canvas')!;
     this.ctx = this.canvas.getContext('2d')!;
@@ -148,7 +148,7 @@ export class PresetMap {
       (i) => ms[i].parents.map((p) => idx.get(p) ?? -1),
     );
     if (!this.fitted) {
-      this.layout.settle(260);
+      this.layout.settle(800, 150);
       this.fit();
     }
     this.stats.syncMs = performance.now() - t0;
@@ -224,7 +224,8 @@ export class PresetMap {
   }
 
   private radius(): number {
-    return Math.max(6, Math.min(28, 13 * Math.sqrt(this.zoom)));
+    // Discs scale with the map (13 world units, the layout keeps centres 30 apart), so clusters and gaps read at any zoom.
+    return Math.max(4.5, Math.min(30, 13 * this.zoom));
   }
 
   private ringColour(m: Member): string {
@@ -271,7 +272,7 @@ export class PresetMap {
     for (const e of this.layout.edges) {
       const [ax, ay] = pos[e.a], [bx, by] = pos[e.b];
       const lit = hv && (ns[e.a].id === hv || ns[e.b].id === hv);
-      c.strokeStyle = lit ? 'rgba(127,216,255,0.55)' : 'rgba(255,255,255,0.07)';
+      c.strokeStyle = lit ? 'rgba(127,216,255,0.55)' : e.mutual ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.035)';
       c.beginPath();
       c.moveTo(ax, ay);
       c.lineTo(bx, by);

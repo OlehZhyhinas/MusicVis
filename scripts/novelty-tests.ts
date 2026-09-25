@@ -202,31 +202,40 @@ export async function noveltyTestsAsync(check: Check): Promise<void> {
 }
 
 function layoutTests(check: Check): void {
-  // Two clusters of looks (distance 0.3 inside, 2.5 across) end up apart on the map.
+  // Three clusters of looks (distance ~0.3 inside, 2.5 across) become tight, separated clusters on the map.
   const n = 60;
   const ids = Array.from({ length: n }, (_, i) => `G1-${String(i).padStart(4, '0')}`);
-  const group = (i: number) => (i < n / 2 ? 0 : 1);
-  const dist = (i: number, j: number) => (group(i) === group(j) ? 0.3 + ((i * 7 + j * 3) % 5) * 0.02 : 2.5);
+  const group = (i: number) => i % 3;
+  const dist = (i: number, j: number) => (group(i) === group(j) ? 0.3 + ((i * 7 + j * 3) % 5) * 0.03 : 2.5 + ((i + j) % 3) * 0.1);
   const L = new SpringLayout();
   L.setGraph(ids, dist);
   const t0 = performance.now();
-  L.settle(2000);
+  L.settle(3000);
   const ms = performance.now() - t0;
   const d = (a: number, b: number) => Math.hypot(L.nodes[a].x - L.nodes[b].x, L.nodes[a].y - L.nodes[b].y);
-  let inside = 0, across = 0, ni = 0, na = 0;
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-    if (group(i) === group(j)) { inside += d(i, j); ni++; } else { across += d(i, j); na++; }
-  }
-  inside /= ni;
-  across /= na;
-  // Neighbourhoods survive: each node's nearest node on the map is from its own cluster.
-  let same = 0;
+  const edge = new Set(L.edges.map((e) => `${e.a}:${e.b}`));
+  let el = 0, en = 0, nl = 0, nn = 0;
+  let gap = Infinity;
+  const nnInside: number[] = [];
   for (let i = 0; i < n; i++) {
-    let bj = -1, bd = Infinity;
-    for (let j = 0; j < n; j++) if (j !== i && d(i, j) < bd) { bd = d(i, j); bj = j; }
-    if (group(bj) === group(i)) same++;
+    let best = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      if (group(i) === group(j)) best = Math.min(best, d(i, j));
+      else gap = Math.min(gap, d(i, j));
+      if (j > i) {
+        if (edge.has(`${i}:${j}`)) { el += d(i, j); en++; } else { nl += d(i, j); nn++; }
+      }
+    }
+    nnInside.push(best);
   }
+  nnInside.sort((a, b) => a - b);
+  const nnMed = nnInside[n >> 1];
+  el /= en;
+  nl /= nn;
   const finite = L.nodes.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  let overlaps = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (d(i, j) < 26) overlaps++;
   // Incremental: a child that looks like node 5 appears next to it; the old nodes keep their places.
   const before = L.nodes.map((p) => [p.x, p.y]);
   const ids2 = [...ids, 'G2-0100'];
@@ -242,8 +251,8 @@ function layoutTests(check: Check): void {
   L.setGraph(ids3, dist3, (i) => (i === n + 1 ? [40] : []));
   const orphanEdges = L.edges.filter((e) => e.a === n + 1 || e.b === n + 1).length;
   L.settle(400);
-  check('map.layout', finite && across > inside * 1.5 && same >= n * 0.95 && added.length === 1 && nearest < 60 && kept && reheated && orphanEdges === 1,
-    `2 clusters of 30: mean spacing ${inside.toFixed(0)} inside vs ${across.toFixed(0)} across, ${same}/${n} nearest map neighbours in the same cluster; settled in ${ms.toFixed(0)} ms; a new look-alike child appears ${nearest.toFixed(0)} px from its twin, old nodes stay put, gentle re-heat; unfingerprinted nodes hang off their parents`);
+  check('map.layout', finite && el < nl * 0.35 && gap > nnMed * 1.5 && overlaps === 0 && added.length === 1 && nearest < 60 && kept && reheated && orphanEdges === 1,
+    `3 clusters of 20: mean spring length ${el.toFixed(0)} vs ${nl.toFixed(0)} between unlinked nodes; closest pair across clusters ${gap.toFixed(0)} vs median neighbour spacing ${nnMed.toFixed(0)} inside; no overlapping discs; settled in ${ms.toFixed(0)} ms; a look-alike child appears ${nearest.toFixed(0)} px from its twin, old nodes stay put, gentle re-heat; unfingerprinted nodes hang off their parents`);
   // Scale: 500 nodes step fast enough to keep the visualizer smooth.
   const big = Array.from({ length: 500 }, (_, i) => `G1-${String(i).padStart(4, '0')}`);
   const B = new SpringLayout();

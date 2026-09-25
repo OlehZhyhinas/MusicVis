@@ -1,10 +1,14 @@
-// Force-directed layout for the preset map: every node is linked to its k
-// nearest neighbours by phenotype distance with a spring whose rest length
-// grows with that distance, all nodes repel each other at short range, and a
-// weak pull keeps loose components near the middle. Incremental: new nodes
-// start at the mean of their neighbours and the layout re-heats a little, so
-// a bred child appears next to what it looks like and the map re-settles.
-// Pure logic (no DOM) so it runs in the Node tests.
+// Force-directed layout for the preset map, in the style of a network graph
+// (Obsidian-like): every node is linked to its k nearest neighbours by
+// phenotype distance (symmetrised) with a short spring whose pull grows with
+// similarity, so look-alikes collapse into tight clusters; a weak short-range
+// repulsion and disc collision keep nodes readable and open gaps between
+// clusters; communities found on the mutual links pull together and push
+// other communities away harder, which opens visible gaps between clusters; a
+// gentle pull to the centre keeps clusters from drifting off.
+// Incremental: new nodes start next to their nearest look and the layout
+// re-heats a little, so a bred child appears next to what it looks like and
+// the map re-settles. Pure logic (no DOM) so it runs in the Node tests.
 
 export interface LayoutNode {
   id: string;
@@ -21,29 +25,68 @@ export interface LayoutEdge {
   b: number;
   rest: number;
   k: number;
+  /** Each end is among the other's k nearest. */
+  mutual?: boolean;
 }
 
 export const LAYOUT = {
-  knn: 4,
-  /** Extra weak long-range springs per node (to deterministic far picks), so clusters keep their mutual distances. */
-  global: 3,
-  globalK: 0.012,
-  restBase: 36,
-  restPerUnit: 70,
-  spring: 0.06,
-  repulse: 2600,
-  repulseCut: 220,
-  gravity: 0.0025,
-  damping: 0.82,
-  alphaDecay: 0.985,
+  knn: 6,
+  /** Spring rest length: about one disc diameter, only mildly longer for less similar pairs. */
+  restBase: 30,
+  restPerUnit: 6,
+  spring: 0.12,
+  /** Pull multiplier (dRef / d)^2 is clamped to this range (dRef: median neighbour distance). */
+  simMin: 0.02,
+  simMax: 4,
+  /** Mutual neighbours (each in the other's k nearest) pull this much harder; one-way links this much softer. */
+  mutual: 2,
+  oneWay: 0.05,
+  repulse: 2500,
+  repulseCut: 240,
+  /** Pull toward the centre of the node's community (label propagation on the spring graph). */
+  cohesion: 0.06,
+  /** Repulsion between nodes of different communities is this much stronger (opens gaps between clusters). */
+  apart: 6,
+  /** Discs never overlap: minimum centre distance. */
+  collide: 30,
+  gravity: 0.003,
+  damping: 0.8,
+  alphaDecay: 0.99,
   alphaMin: 0.004,
   maxStep: 30,
 };
 
-function hashUnit(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return (h >>> 0) / 2 ** 32;
+/**
+ * Communities by weighted label propagation over the springs (deterministic:
+ * fixed visiting order, ties to the smaller label). Strong, mutual links end
+ * up sharing a label; weak one-way links rarely carry one across.
+ */
+export function communities(n: number, edges: LayoutEdge[]): Int32Array {
+  const label = Int32Array.from({ length: n }, (_, i) => i);
+  const adj: [number, number][][] = Array.from({ length: n }, () => []);
+  for (const e of edges) {
+    adj[e.a].push([e.b, e.k]);
+    adj[e.b].push([e.a, e.k]);
+  }
+  for (let it = 0; it < 30; it++) {
+    let changed = 0;
+    for (let i = 0; i < n; i++) {
+      if (!adj[i].length) continue;
+      const score = new Map<number, number>();
+      for (const [j, w] of adj[i]) score.set(label[j], (score.get(label[j]) ?? 0) + w);
+      let best = label[i], bs = score.get(label[i]) ?? 0;
+      for (const [l, v] of score) if (v > bs + 1e-12 || (Math.abs(v - bs) <= 1e-12 && l < best)) {
+        best = l;
+        bs = v;
+      }
+      if (best !== label[i]) {
+        label[i] = best;
+        changed++;
+      }
+    }
+    if (!changed) break;
+  }
+  return label;
 }
 
 /** Deterministic pseudo-random position from an id (stable first layouts). */
@@ -58,6 +101,8 @@ export function hashPos(id: string, spread = 300): [number, number] {
 export class SpringLayout {
   nodes: LayoutNode[] = [];
   edges: LayoutEdge[] = [];
+  /** Community of each node (label propagation over the springs, weighted by pull). */
+  community: Int32Array = new Int32Array(0);
   alpha = 1;
   private index = new Map<string, number>();
 
@@ -88,6 +133,7 @@ export class SpringLayout {
     // k nearest neighbours (symmetrised).
     const pairs = new Map<string, LayoutEdge>();
     const neigh: number[][] = ids.map(() => []);
+    const nearestOf = new Int32Array(n).fill(-1);
     for (let i = 0; i < n; i++) {
       const ds: [number, number][] = [];
       for (let j = 0; j < n; j++) {
@@ -102,22 +148,23 @@ export class SpringLayout {
       } else {
         links = fallback(i).filter((j) => j >= 0 && j !== i).map((j) => [1.5, j] as [number, number]);
       }
+      if (links.length) nearestOf[i] = links[0][1];
       for (const [d, j] of links) {
         const key = i < j ? `${i}:${j}` : `${j}:${i}`;
-        if (!pairs.has(key)) pairs.set(key, { a: Math.min(i, j), b: Math.max(i, j), rest: LAYOUT.restBase + LAYOUT.restPerUnit * d, k: LAYOUT.spring });
-        neigh[i].push(j);
-        neigh[j].push(i);
+        const e = pairs.get(key);
+        if (e) e.mutual = true;
+        else {
+          pairs.set(key, { a: Math.min(i, j), b: Math.max(i, j), rest: LAYOUT.restBase + LAYOUT.restPerUnit * Math.min(d, 4), k: d, mutual: false });
+          neigh[i].push(j);
+          neigh[j].push(i);
+        }
       }
     }
-    // A few weak long-range springs give the map its global shape (kNN alone only knows neighbourhoods).
-    for (let i = 0; i < n && n > LAYOUT.knn + 2; i++) {
-      for (let g = 0; g < LAYOUT.global; g++) {
-        const j = (i + 1 + Math.floor(hashUnit(`${ids[i]}/${g}`) * (n - 1))) % n;
-        const d = dist(i, j);
-        if (j === i || !Number.isFinite(d)) continue;
-        const key = i < j ? `${i}:${j}` : `${j}:${i}`;
-        if (!pairs.has(key)) pairs.set(key, { a: Math.min(i, j), b: Math.max(i, j), rest: LAYOUT.restBase + LAYOUT.restPerUnit * d, k: LAYOUT.globalK });
-      }
+    // Pull by similarity: (dRef / d)^2, dRef the median neighbour distance (k held d until now).
+    const ds = [...pairs.values()].map((e) => e.k).sort((x, y) => x - y);
+    const dRef = ds.length ? Math.max(1e-3, ds[ds.length >> 1]) : 1;
+    for (const e of pairs.values()) {
+      e.k = LAYOUT.spring * Math.max(LAYOUT.simMin, Math.min(LAYOUT.simMax, (dRef / Math.max(1e-3, e.k)) ** 2)) * (e.mutual ? LAYOUT.mutual : LAYOUT.oneWay);
     }
     const added: string[] = [];
     const nodes: LayoutNode[] = ids.map((id) => {
@@ -130,8 +177,15 @@ export class SpringLayout {
     for (let pass = 0; pass < 3; pass++) {
       nodes.forEach((nd, i) => {
         if (Number.isFinite(nd.x)) return;
+        const near = nearestOf[i] >= 0 ? nodes[nearestOf[i]] : undefined;
         const placed = neigh[i].map((j) => nodes[j]).filter((m) => Number.isFinite(m.x));
-        if (placed.length || pass === 2) {
+        if (near && Number.isFinite(near.x)) {
+          // Right next to the look it is closest to.
+          const [jx, jy] = hashPos(nd.id, 1);
+          const len = Math.hypot(jx, jy) || 1;
+          nd.x = near.x + (jx / len) * LAYOUT.collide;
+          nd.y = near.y + (jy / len) * LAYOUT.collide;
+        } else if (placed.length || pass === 2) {
           if (placed.length) {
             const [jx, jy] = hashPos(nd.id, 18);
             nd.x = placed.reduce((s, m) => s + m.x, 0) / placed.length + jx;
@@ -143,6 +197,8 @@ export class SpringLayout {
     this.nodes = nodes;
     this.edges = [...pairs.values()];
     this.index = new Map(ids.map((id, i) => [id, i]));
+    // Communities from mutual links only (one-way links would chain everything into one blob).
+    this.community = communities(n, this.edges.filter((e) => e.mutual));
     // Re-heat: a lot for a fresh graph, a little for an incremental change.
     const fresh = old.size === 0 || added.length > n * 0.5;
     if (fresh) this.alpha = 1;
@@ -170,35 +226,32 @@ export class SpringLayout {
     }
     // Short-range repulsion (grid buckets, so it stays near O(n)).
     const cut = LAYOUT.repulseCut, cut2 = cut * cut;
-    const grid = new Map<string, number[]>();
-    for (let i = 0; i < n; i++) {
-      const key = `${Math.floor(ns[i].x / cut)},${Math.floor(ns[i].y / cut)}`;
-      const b = grid.get(key);
-      if (b) b.push(i);
-      else grid.set(key, [i]);
-    }
-    for (let i = 0; i < n; i++) {
-      const gx = Math.floor(ns[i].x / cut), gy = Math.floor(ns[i].y / cut);
-      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        const b = grid.get(`${gx + ox},${gy + oy}`);
-        if (!b) continue;
-        for (const j of b) {
-          if (j <= i) continue;
-          let dx = ns[j].x - ns[i].x, dy = ns[j].y - ns[i].y;
-          let d2 = dx * dx + dy * dy;
-          if (d2 > cut2) continue;
-          if (d2 < 1) {
-            // Coincident: separate deterministically.
-            dx = ((i * 7919 + j) % 13) - 6 || 1;
-            dy = ((j * 104729 + i) % 11) - 5 || 1;
-            d2 = dx * dx + dy * dy;
-          }
-          const f = LAYOUT.repulse / d2 / Math.sqrt(d2);
-          fx[i] -= f * dx;
-          fy[i] -= f * dy;
-          fx[j] += f * dx;
-          fy[j] += f * dy;
-        }
+    const grid = this.buckets(cut);
+    const com = this.community;
+    this.eachNear(grid, cut, (i, j, dx, dy, d2) => {
+      if (d2 > cut2) return;
+      const f = (LAYOUT.repulse / d2) * (com[i] !== com[j] ? LAYOUT.apart : 1);
+      const d = Math.sqrt(d2);
+      fx[i] -= (f * dx) / d;
+      fy[i] -= (f * dy) / d;
+      fx[j] += (f * dx) / d;
+      fy[j] += (f * dy) / d;
+    });
+    // Cohesion: each node is pulled toward its community's centre.
+    if (LAYOUT.cohesion > 0 && com.length === n) {
+      const cx = new Map<number, [number, number, number]>();
+      for (let i = 0; i < n; i++) {
+        const c = cx.get(com[i]) ?? [0, 0, 0];
+        c[0] += ns[i].x;
+        c[1] += ns[i].y;
+        c[2]++;
+        cx.set(com[i], c);
+      }
+      for (let i = 0; i < n; i++) {
+        const c = cx.get(com[i])!;
+        if (c[2] < 2) continue;
+        fx[i] += LAYOUT.cohesion * (c[0] / c[2] - ns[i].x);
+        fy[i] += LAYOUT.cohesion * (c[1] / c[2] - ns[i].y);
       }
     }
     let speed = 0;
@@ -221,13 +274,60 @@ export class SpringLayout {
       nd.y += nd.vy;
       speed += Math.min(v, LAYOUT.maxStep);
     }
+    // Collision: overlapping discs are pushed apart (half the overlap each).
+    const c = LAYOUT.collide, c2 = c * c;
+    this.eachNear(this.buckets(c), c, (i, j, dx, dy, d2) => {
+      if (d2 >= c2) return;
+      const d = Math.sqrt(d2);
+      const push = (c - d) / 2 / d;
+      const pi = ns[i].fixed ? 0 : ns[j].fixed ? 2 : 1, pj = ns[j].fixed ? 0 : ns[i].fixed ? 2 : 1;
+      ns[i].x -= dx * push * pi;
+      ns[i].y -= dy * push * pi;
+      ns[j].x += dx * push * pj;
+      ns[j].y += dy * push * pj;
+    });
     this.alpha *= LAYOUT.alphaDecay;
     return speed / n;
   }
 
+  private buckets(cell: number): Map<string, number[]> {
+    const grid = new Map<string, number[]>();
+    this.nodes.forEach((nd, i) => {
+      const key = `${Math.floor(nd.x / cell)},${Math.floor(nd.y / cell)}`;
+      const b = grid.get(key);
+      if (b) b.push(i);
+      else grid.set(key, [i]);
+    });
+    return grid;
+  }
+
+  /** Every pair of nodes in neighbouring cells, once: fn(i, j, dx, dy, d2) with d = j - i (coincident nodes are nudged apart deterministically). */
+  private eachNear(grid: Map<string, number[]>, cell: number, fn: (i: number, j: number, dx: number, dy: number, d2: number) => void): void {
+    const ns = this.nodes;
+    for (let i = 0; i < ns.length; i++) {
+      const gx = Math.floor(ns[i].x / cell), gy = Math.floor(ns[i].y / cell);
+      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+        const b = grid.get(`${gx + ox},${gy + oy}`);
+        if (!b) continue;
+        for (const j of b) {
+          if (j <= i) continue;
+          let dx = ns[j].x - ns[i].x, dy = ns[j].y - ns[i].y;
+          let d2 = dx * dx + dy * dy;
+          if (d2 < 0.01) {
+            dx = ((i * 7919 + j) % 13) - 6 || 1;
+            dy = ((j * 104729 + i) % 11) - 5 || 1;
+            d2 = dx * dx + dy * dy;
+          }
+          fn(i, j, dx, dy, d2);
+        }
+      }
+    }
+  }
+
   /** Run up to `steps` steps now (a fresh graph is pre-settled before it is first drawn). */
-  settle(steps: number): void {
-    for (let i = 0; i < steps && !this.settled; i++) this.step();
+  settle(steps: number, maxMs = Infinity): void {
+    const t0 = performance.now();
+    for (let i = 0; i < steps && !this.settled && performance.now() - t0 < maxMs; i++) this.step();
   }
 
   /** Nudge the layout awake (a node was dragged). */
