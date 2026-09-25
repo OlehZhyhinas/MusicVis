@@ -1,7 +1,8 @@
 // Node-side loaders for harness output (.testdata/avq/).
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseClip, type Clip, type ClipHeader } from './format';
+import { parseClip, type CfResult, type Clip, type ClipHeader } from './format';
+export type { CfResult };
 import type { SongData, Hook, Moment } from './music';
 import { OUT } from './cdp';
 
@@ -55,17 +56,6 @@ export function loadInst(base: string, dir = join(OUT, 'clips')): { names: strin
   return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
 }
 
-export interface CfResult {
-  preset: { id: string; name: string };
-  song: { slug: string; bpm: number; beatsPerBar: number };
-  clip: { label: string; start: number; end: number };
-  halfBarFrames: number;
-  motion: number;
-  step: number;
-  reactions: { src: string; target: string; gain: number }[];
-  variants: { id: string; kind: string; mean: number; rel: number; series: number[]; stem?: string; reaction?: number }[];
-  motionSeries: (number | null)[];
-}
 
 export function loadCf(base: string): CfResult | null {
   const p = join(OUT, 'cf', base + '.json');

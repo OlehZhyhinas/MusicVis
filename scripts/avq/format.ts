@@ -9,6 +9,7 @@
 import { VIS_FIELDS, THUMB_W, THUMB_H } from './features';
 import { SPEC_BANDS } from './audio';
 import type { Hook, Moment, SectionLite } from './music';
+import type { ClipLike } from './metrics';
 
 export const STEMS = ['drums', 'bass', 'vocals', 'other'] as const;
 
@@ -83,4 +84,31 @@ export function parseClip(header: ClipHeader, bin: Uint8Array): Clip {
     thumb: (i) => bin.subarray(header.thumb.offset + i * THUMB_BYTES, header.thumb.offset + (i + 1) * THUMB_BYTES),
     spec: (i) => bin.subarray(header.spec.offset + i * header.spec.bands, header.spec.offset + (i + 1) * header.spec.bands),
   };
+}
+
+/** Adapter from a parsed clip to the metrics' ClipLike. */
+export function asClipLike(c: Clip): ClipLike {
+  const h = c.header;
+  return {
+    fps: h.render.fps, n: c.n,
+    col: (name) => c.col(name as Field),
+    has: (name) => h.fields.includes(name),
+    thumb: (i) => c.thumb(i),
+    thumbW: h.thumb.w, thumbH: h.thumb.h,
+    beats: h.beats, downbeats: h.downbeats, beatsPerBar: h.song.beatsPerBar, bpm: h.song.bpm,
+    sections: h.sections, moments: h.moments, hooks: h.hooks,
+  };
+}
+
+/** Counterfactual result file (page.ts counterfactual()), .testdata/avq/cf/<base>.json. */
+export interface CfResult {
+  preset: { id: string; name: string };
+  song: { slug: string; bpm: number; beatsPerBar: number };
+  clip: { label: string; start: number; end: number };
+  halfBarFrames: number;
+  motion: number;
+  step: number;
+  reactions: { src: string; target: string; gain: number }[];
+  variants: { id: string; kind: string; mean: number; rel: number; series: number[]; stem?: string; reaction?: number }[];
+  motionSeries: (number | null)[];
 }

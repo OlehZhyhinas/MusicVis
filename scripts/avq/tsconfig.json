@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": { "noEmit": true, "allowImportingTsExtensions": true },
-  "include": ["page.ts", "audio.ts", "features.ts", "music.ts", "format.ts", "metrics.ts", "../../src"]
+  "include": ["page.ts", "audio.ts", "features.ts", "music.ts", "format.ts", "metrics.ts", "sheet.ts", "../../src"]
 }

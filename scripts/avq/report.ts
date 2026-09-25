@@ -5,22 +5,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { OUT } from './cdp';
-import type { Clip } from './format';
+import { asClipLike, type Clip } from './format';
 import { listClips, loadCf, loadClip, loadEmb, loadInst } from './load';
-import { overallOf, cfSummary, embRhyme, embStructure, readoutStats, reportCard, type ClipLike, type ReportCard } from './metrics';
+import { overallOf, cfSummary, embRhyme, embStructure, readoutStats, reportCard, type ReportCard } from './metrics';
 
-export function asClipLike(c: Clip): ClipLike {
-  const h = c.header;
-  return {
-    fps: h.render.fps, n: c.n,
-    col: (name) => c.col(name as never),
-    has: (name) => h.fields.includes(name),
-    thumb: (i) => c.thumb(i),
-    thumbW: h.thumb.w, thumbH: h.thumb.h,
-    beats: h.beats, downbeats: h.downbeats, beatsPerBar: h.song.beatsPerBar, bpm: h.song.bpm,
-    sections: h.sections, moments: h.moments, hooks: h.hooks,
-  };
-}
+export { asClipLike };
 
 /** Song time of the frame before row 0. */
 export const clipT0 = (c: Clip) => c.header.clip.start;
@@ -34,7 +23,7 @@ export function cardFor(base: string): ReportCard {
     card.counterfactual = s;
     const f2 = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a');
     if (s.syncSensitivity < 0.15) card.notes.push(`desync-blind: a half-bar shift changes the picture by ${f2(s.desync)} of its own motion (chaos floor ${f2(s.chaos)})`);
-    for (const r of s.reactions) if (r.dead) card.notes.push(`dead reaction r${r.index} ${r.src}>${r.target}: removing it changes ${f2(r.rel)} of the motion`);
+    if (!loadInst(base)) for (const r of s.reactions) if (r.dead) card.notes.push(`dead reaction r${r.index} ${r.src}>${r.target}: removing it changes ${f2(r.rel)} of the motion`);
     if (s.chaos >= 0.3) card.notes.push(`chaotic: an inaudible 2% level change already moves the picture by ${f2(s.chaos)} of its motion, so single-change counterfactuals are masked`);
     const silent = Object.entries(s.stems).filter(([, v]) => v < 0.03).map(([k]) => k);
     if (silent.length && s.chaos < 0.3) card.notes.push(`no visual footprint from ${silent.join(', ')}`);

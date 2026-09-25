@@ -15,7 +15,9 @@ import { TimelineSampler } from '../../src/analysis/TimelineSampler';
 import type { AnalysisResult, MusicState } from '../../src/types';
 import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix, stemRegion, type StemId } from './audio';
 import { VIS_FIELDS, VisualFeatures } from './features';
-import { FIELDS, MUSIC_FIELDS, THUMB_BYTES, THUMB_H, THUMB_W, type ClipHeader } from './format';
+import { FIELDS, MUSIC_FIELDS, THUMB_BYTES, THUMB_H, THUMB_W, parseClip, type CfResult, type ClipHeader } from './format';
+import { drawSheet } from './sheet';
+import type { ReportCard } from './metrics';
 import { autoWindows, findHooks, songMoments, type ClipWindow, type Hook, type Moment, type SongData } from './music';
 
 // ------------------------------------------------------------------ io
@@ -666,6 +668,34 @@ async function counterfactual(opts: CfOpts) {
   return { preset: id, name, song: song.slug, clips: results };
 }
 
+// ------------------------------------------------------------------ sheets
+
+async function fetchJson<T>(path: string): Promise<T | null> {
+  const r = await fetch('/avq/file?p=' + encodeURIComponent(path));
+  return r.ok ? ((await r.json()) as T) : null;
+}
+
+/** Draw the timeline sheet for clip `base` from the files under `out` (.testdata/avq) and save sheets/<base>.png. */
+async function sheet(opts: { base: string; out: string }) {
+  const { base, out } = opts;
+  const header = await fetchJson<ClipHeader>(`${out}/clips/${base}.json`);
+  if (!header) throw new Error('no clip ' + base);
+  const bin = new Uint8Array(await (await fetch('/avq/file?p=' + encodeURIComponent(`${out}/clips/${base}.bin`))).arrayBuffer());
+  const clip = parseClip(header, bin);
+  const card = await fetchJson<ReportCard>(`${out}/cards/${base}.json`);
+  const cf = await fetchJson<CfResult>(`${out}/cf/${base}.json`);
+  const inst = await fetchJson<{ names: string[]; cols: (number | null)[][] }>(`${out}/clips/${base}.inst.json`);
+  const frame = async (i: number) => {
+    if (!header.framesDir) return null;
+    const r = await fetch('/avq/file?p=' + encodeURIComponent(`${out}/${header.framesDir}/${String(i).padStart(6, '0')}.jpg`));
+    return r.ok ? createImageBitmap(await r.blob()) : null;
+  };
+  const cv = await drawSheet({ clip, card, cf, inst, frame });
+  const blob = await new Promise<Blob>((ok) => cv.toBlob((b) => ok(b!), 'image/png'));
+  await save(`sheets/${base}.png`, blob);
+  return { base, w: cv.width, h: cv.height, bytes: blob.size };
+}
+
 async function songInfo(path: string) {
   const s = await loadSong(path);
   return {
@@ -676,6 +706,6 @@ async function songInfo(path: string) {
   };
 }
 
-const api = { status: () => statusText, song: songInfo, render, counterfactual, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
+const api = { status: () => statusText, song: songInfo, render, counterfactual, sheet, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
 (window as unknown as { avq: typeof api }).avq = api;
 document.getElementById('log')!.textContent = 'avq ready';
