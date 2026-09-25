@@ -38,7 +38,7 @@ import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 64;
+export const SEED_VERSION = 65;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1971,6 +1971,23 @@ const TIMBRE: Def[] = [
     })],
     reactions: [rx('vocals', 'ma', 0, 'gain', 0.35, { atk: 0.05, rel: 0.5 }), rx('noisy', 'sh', 0, 'round', 0.4, { atk: 0.2, rel: 0.8 })],
     timbre: { src: 3, sheen: 0.7, glass: 1, grain: 0.3, scale: 30, velvet: 0.8, edge: 0.5, emboss: 0 },
+  },
+  {
+    // A square lattice of four-point stars, each a pitch class lit by the chroma, streaming outward
+    // into a tunnel. It reads the drums: crisp, noisy hats and snares grind every star into sparkling
+    // grit and emboss the whole streaming picture into a rough, lit relief (glossier on bright
+    // cymbals), a soft kit leaves it smooth, and every sharp hit flashes the star outlines.
+    origin: 'T03', name: 'Snare Grit', energy: [0.45, 1], scheme: 'complementary', hue: 0.05,
+    color: { adapt: 0.4, bloom: 1, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.4, floor: 1 },
+    chain: [op('zoom', { rate: 0.018 }), op('rotate', { lock: -0.0625 })],
+    bodies: [body({
+      shape: ['star', { n: 4, r: 0.06, inner: 0.35 }],
+      place: ['grid', { lattice: 0, scale: 7, jitter: 0, density: 0.7, lit: 0.7, links: 0, twinkle: 0.3, lock: 0.0625 }],
+      material: ['fill', { gain: 2, soft: 0, outline: 1, core: 0.3 }],
+      emit: ['trail', { tip: 0 }],
+    })],
+    reactions: [rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 }), rx('attack', 'op', 0, 'rate', 0.4, { atk: 0.02, rel: 0.4 })],
+    timbre: { src: 1, sheen: 0.3, glass: 0, grain: 1, scale: 14, velvet: 0, edge: 0.9, emboss: 0.8 },
   },
 ];
 
