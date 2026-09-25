@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 49;
+export const SEED_VERSION = 50;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1368,6 +1368,24 @@ const DRIFT: Def[] = [
     })],
     reactions: [rx('loud', 'sh', 0, 'fill', 0.25, { atk: 0.05, rel: 0.5 }), rx('beat', 'sh', 0, 'pulse', 0.3, { atk: 0.01, rel: 0.3 })],
     drift: { step: 1, kinds: 0, what: 2, ret: 0.7, morph: 8, bound: 0.3, seed: 0.44 },
+  },
+  {
+    // A glowing torus knot tumbles in 3D above a streaming tunnel. Its look stays put; what drifts is how
+    // everything moves: the tumble, the flow of the tunnel, the swirl and the body's own dance change
+    // from section to section (even the kind of dance, spin one section and sway or bob the next),
+    // quickly, within a bar, so every section has its own choreography of the same object.
+    origin: 'W04', name: 'Knot Dancer', energy: [0.3, 0.95], scheme: 'complementary', hue: 0.55,
+    color: { sat: 0.9, adapt: 0.35, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.9 },
+    chain: [op('zoom', { rate: 0.012 }), op('swirl', { amt: 0.006, k: 5 })],
+    bodies: [body({
+      shape: ['superscope', { family: 0, p: 2, q: 3, size: 0.26, audio: 0.3, spec: 0, spinX: 0.0625, spinY: 0.125, persp: 0.6, n: 1024 }],
+      motion: ['spin', { rate: 0.125 }],
+      material: ['line', { gain: 1, width: 1.4, halo: 0.3 }],
+      color: ['age', { rate: 0.125, detail: 0.8 }],
+      feel: ['flow', { atk: 0.03, rel: 0.4 }],
+    })],
+    reactions: [rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('drums', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 })],
+    drift: { step: 0.4, kinds: 2, what: 3, ret: 0.6, morph: 1, bound: 0.2, seed: 0.6 },
   },
 ];
 
