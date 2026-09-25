@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 102;
+export const SEED_VERSION = 103;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1766,16 +1766,16 @@ const GROOVE: Def[] = [
     // the "and"; a laid-back backbeat drags the whole row behind the grid; human playing nudges each
     // lantern on the hits, while a machine-tight track makes the row tick in crisp half-beat steps.
     origin: 'Q01', name: 'Shuffle Lanterns', energy: [0.2, 0.75], scheme: 'analogous', hue: 0.08,
-    color: { adapt: 0.4, bloom: 1.1, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.9, floor: 1 },
+    color: { adapt: 0.4, bloom: 1.1, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.9, floor: 0.5 },
     chain: [op('translate', { vy: 0.32 }), op('noise', { amp: 0.0006, scale: 2, speed: 0.2 })],
     bodies: [body({
       shape: ['polygon', { n: 6, r: 0.03, round: 0.4 }],
       place: ['row', { count: 5, y: -0.38, wander: 0 }],
       motion: ['sway', { amp: 0.07, period: 1, tilt: 0.6 }],
-      material: ['glow', { gain: 0.45, width: 0.007, base: 0.3, halo: 0.2 }],
+      material: ['glow', { gain: 0.75, width: 0.007, base: 0.3, halo: 0.2 }],
       emit: ['trail', { tip: 0.5 }],
     })],
-    reactions: [rx('bass', 'ma', 0, 'gain', 0.35, { atk: 0.03, rel: 0.3 }), rx('swing', 'mo', 0, 'amp', 0.4, { atk: 0.5, rel: 1.5 })],
+    reactions: [rx('bass', 'ma', 0, 'gain', 0.35, { atk: 0.03, rel: 0.3 }), rx('swing', 'mo', 0, 'amp', 0.4, { atk: 0.5, rel: 1.5 }), rx('hit', 'ma', 0, 'gain', 0.4, { rel: 0.2 })],
     groove: { swing: 1.2, sub: 8, sway: 0.03, off: 0.6, lean: 0.7, crisp: 0.7, tick: 2, jitter: 0.6, accent: 0.4 },
   },
   {
