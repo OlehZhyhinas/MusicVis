@@ -241,8 +241,8 @@ void main() {
       float fres = pow(1.0 - clamp(-rd.y, 0.0, 1.0), 4.0);
       float flow = vnoise(vec2(dx * 6.0, pos.z * 2.0 - uLs[6].x * 1.5));
       lit *= mix(1.0, 0.3, corr);
-      rim += corr * (0.3 + 0.7 * fres) * (0.6 + 0.4 * flow);
-      pg = corr * (haze * 2.0 + 0.25 * smoothstep(0.75, 0.95, flow) * (0.5 + beat));
+      rim += corr * (0.15 + 0.45 * fres) * (0.6 + 0.4 * flow);
+      pg = corr * (0.5 * haze + 0.25 * smoothstep(0.75, 0.95, flow) * (0.5 + beat));
     } else if (lsPath == 3) {
       pg = exp(-pow((adx - 0.22) / lw, 2.0)) * (0.6 + 0.6 * beat);
       lit *= mix(1.0, 0.5 + 0.5 * step(0.3, fract(pos.z * 3.0)), corr);
@@ -357,7 +357,8 @@ export function packLandscape(out: Float32Array, c: LandCtx): void {
   const ahead = path === 2 ? 7 : 5;
   const zt = z + ahead;
   const gt = groundAt(w, now + ahead / K, relief);
-  const yt = path === 2 ? y - 1.4 - height : Math.min(y, gt + ch[0] + ch[1] * height * 0.6) - 0.25;
+  // Look along the ground ahead: up a climb (so the pass stays in view), down into a valley.
+  const yt = path === 2 ? y - 1.4 - height : gt + ch[0] + ch[1] * height * 0.6 - 0.25 - (path === 1 ? 0.3 : 0);
   // Bank into the path's turns (flight most, rail not at all).
   const curv = pathX(z + 1.5, wind) - 2 * x + pathX(z - 1.5, wind);
   const bankK = [0.25, 0.15, 1.1, 0][path] ?? 0;

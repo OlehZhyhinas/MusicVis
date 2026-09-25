@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 36;
+export const SEED_VERSION = 37;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1327,6 +1327,25 @@ const LANDSCAPE: Def[] = [
       rx('bass', 'sh', 0, 'glow', 0.3, { atk: 0.02, rel: 0.3 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
       rx('loud', 'sh', 0, 'rough', 0.15, { atk: 0.1, rel: 1 }),
+    ],
+  },
+  {
+    // A river through a canyon of violet crystal: the water carries the camera between faceted banks
+    // that rise with the music, a glowing ring floats over the river at every section start, and the
+    // key stains the crystal (a change of key ahead shows as a new colour in the distant walls). A long
+    // view (32 s ahead) lets the drop's pass hang on the horizon, ringed and sunlit, for a whole build
+    // before the river runs into its gorge. The vocals brighten the rings, the bass the crystal edges.
+    origin: 'L02', name: 'Crystal River', energy: [0.15, 0.8], scheme: 'split', hue: 0.72,
+    color: { adapt: 0.4, bloom: 1.25, vignette: 0.4 }, carrier: 'warp', decay: 0.8,
+    bodies: [body({
+      shape: ['landscape', { path: 1, ground: 1, mark: 2, res: 0.5, look: 32, height: 0.6, relief: 0.5, rough: 0.6, wind: 0.4, fog: 0.5, glow: 0.7, tint: 0.8, kick: 0.2, rim: 0.7 }],
+      material: ['fill', { gain: 1.1 }],
+      color: ['fixed', { hue: 0, detail: 0.8 }],
+    })],
+    reactions: [
+      rx('vocals', 'sh', 0, 'glow', 0.3, { atk: 0.05, rel: 0.5 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('bass', 'sh', 0, 'rim', 0.2, { atk: 0.02, rel: 0.4 }),
     ],
   },
 ];
