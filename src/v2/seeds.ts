@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 73;
+export const SEED_VERSION = 74;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -946,18 +946,21 @@ const PHYSICS: Def[] = [
     origin: 'V01', name: 'Stage Rig', energy: [0.35, 1], scheme: 'triad', hue: 0.62,
     color: { sat: 0.85, adapt: 0.35, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.12 },
     bodies: [body({
-      shape: ['beams', { count: 8, spread: 1.1, fan: 0.45, sweep: 0.6, pattern: 0, period: 1, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.5, accent: 0.9 }],
+      shape: ['beams', { count: 8, spread: 1.1, fan: 0.35, sweep: 0.55, pattern: 4, period: 1, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.4, accent: 0.8 }],
       place: ['point', { x: 0, y: 0.45 }],
       material: ['glow', { gain: 1 }],
       feel: ['flow', { atk: 0.02, rel: 0.15 }],
     })],
-    // Tuned so the rig reads as following the music rather than drifting: every head swings together
-    // once per bar (turning at the downbeats), the beat chase is strong, drum hits flare the lenses,
-    // the bass fattens the shafts and a build widens the swing.
+    // Run like a lighting operator, not a metronome: every head jumps to a new aim on each beat and
+    // holds, drum hits flare the lenses, the rig dims in quiet passages and blazes when it's loud, the
+    // bass fattens the shafts, and a drop fans every head out wide. The choreography dims and drains the
+    // rig through the build, punches it on the drop and gives each section type its own colour.
     reactions: [
-      rx('build', 'sh', 0, 'sweep', 0.35, { atk: 0.2, rel: 1 }), rx('bass', 'sh', 0, 'width', 0.4, { atk: 0.02, rel: 0.25 }),
-      rx('hit', 'sh', 0, 'flare', 0.5, { rel: 0.2 }),
+      rx('hit', 'sh', 0, 'width', 0.9, { rel: 0.15 }), rx('loud', 'ma', 0, 'gain', 0.8, { atk: 0.05, rel: 0.4 }),
+      rx('bass', 'sh', 0, 'haze', 0.5, { atk: 0.02, rel: 0.25 }), rx('drop', 'sh', 0, 'fan', 0.6, { atk: 0.02, rel: 2 }),
+      rx('build', 'sh', 0, 'sweep', 0.3, { atk: 0.2, rel: 1 }),
     ],
+    choreo: { lead: 4, push: 0.08, drain: 0.5, dim: 0.4, punch: 0.8, relax: 1, scene: 0.35, frame: 0.25, glide: 0 },
   },
   {
     // A Chladni plate: sand gathers on the nodal lines of the standing wave the chord asks for. On a
