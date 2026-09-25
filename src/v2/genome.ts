@@ -1034,6 +1034,15 @@ function fitBudget(g: Genome): void {
     if (estimateCost(g) <= COST_BUDGET_MS * 0.95) return;
     if (b.fuse) dropFuse(b);
   }
+  // Draw-space deform ops go next, the costly noise ops first (e.g. a plasma that inherited a noise op).
+  for (const b of g.bodies) {
+    const ops = b.deform.ops;
+    while (ops?.length && estimateCost(g) > COST_BUDGET_MS * 0.95) {
+      const i = ops.findIndex((o) => o.op === 'noise');
+      ops.splice(i >= 0 ? i : ops.length - 1, 1);
+    }
+    if (ops && !ops.length) delete b.deform.ops;
+  }
   // Physics fields with a fixture count shed fixtures last.
   for (const b of g.bodies) {
     while (b.shape.kind === 'beams' && b.shape.p.count > 1 && estimateCost(g) > COST_BUDGET_MS * 0.95) b.shape.p.count--;

@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 44;
+export const SEED_VERSION = 45;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1297,6 +1297,21 @@ const ECOSYSTEM: Def[] = [
       emit: ['ecosystem', { count: 49152, wD: 0.12, wB: 0.15, wV: 0.35, wO: 1, glyph: 1, size: 3, trail: 0.2, predation: 0.5, bloom: 0.9, graze: 0.3, growth: 0.8, starve: 0.3, decay: 0.994, speed: 0.6, field: 1, hues: 1, body: 0 }],
     })],
     reactions: [rx('vocals', 'em', 0, 'bloom', 0.3, { atk: 0.2, rel: 1.5 }), rx('hit', 'em', 0, 'speed', 0.5, { atk: 0.01, rel: 0.4 }), rx('loud', 'ma', 0, 'gain', 0.2, { atk: 0.05, rel: 0.4 })],
+  },
+  {
+    // A hunt folded into a six-way kaleidoscope: diamond-shaped drum predators outnumber everything else and
+    // lunge on every hit, rings of bass grazers and star pollinators scatter before them, and the plankton
+    // dots they catch vanish and hatch again elsewhere. The mirror turns with the bars, so the chase reads
+    // as a spinning heraldic pattern; a drop sends the hunters into a frenzy.
+    origin: 'B03', name: 'Sigil Hunt', energy: [0.45, 1], scheme: 'complementary', hue: 0.02,
+    color: { adapt: 0.4, bloom: 1.1, vignette: 0.55, contrast: 0.1 }, carrier: 'warp', car: { halfLife: 0.08, floor: 1.5 },
+    chain: [op('rotate', { rate: 0.0008 }), op('kaleido', { n: 6, lock: 0.0625 }, 1, 'view')],
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      material: ['glow', { gain: 0.6, width: 0.01 }],
+      emit: ['ecosystem', { count: 8192, wD: 1, wB: 0.3, wV: 0.3, wO: 0.8, glyph: 3, size: 4, trail: 0.3, predation: 1, bloom: 0.3, graze: 0.5, growth: 1, starve: 0.6, decay: 0.95, speed: 1.4, field: 0.25, hues: 0, body: 0 }],
+    })],
+    reactions: [rx('hit', 'em', 0, 'size', 0.35, { atk: 0.01, rel: 0.25 }), rx('drop', 'em', 0, 'speed', 0.5, { atk: 0.02, rel: 1.5 }), rx('beat', 'ma', 0, 'gain', 0.25, { atk: 0.01, rel: 0.2 })],
   },
 ];
 
