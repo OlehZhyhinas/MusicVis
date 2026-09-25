@@ -1046,6 +1046,15 @@ function fitBudget(g: Genome): void {
     const res = LAND_SCHEMA.res.choices!;
     while (b.shape.kind === 'landscape' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.res > res[0]) b.shape.p.res = res[res.indexOf(b.shape.p.res) - 1];
   }
+  // Last resort: two heavy layers that can't shed enough lose the costlier extra layer.
+  while (g.bodies.length > 1 && estimateCost(g) >= COST_BUDGET_MS) {
+    let worst = 1;
+    for (let i = 2; i < g.bodies.length; i++) if (bodyCost(g.bodies[i]) > bodyCost(g.bodies[worst])) worst = i;
+    g.bodies.splice(worst, 1);
+  }
+  // Still over with one heavy layer: the picture effects go, then the chain ops from the end.
+  if (estimateCost(g) >= COST_BUDGET_MS) { g.tone.p.relief = 0; g.tone.p.huemap = 0; g.tone.p.solar = 0; }
+  while (g.chain.length && estimateCost(g) >= COST_BUDGET_MS) g.chain.pop();
 }
 
 /** Halves a stem ecosystem's agents (down to floor) while the genome is over budget. */

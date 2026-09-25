@@ -180,7 +180,7 @@ function freshGenome(): Genome {
   const curve = repair({ v: 3, bodies: [{ shape: { kind: 'curve' }, material: { kind: 'textured' }, place: { kind: 'grid' } }] }).bodies[0];
   check('repair.curve-rules', curve.material.kind === 'line' && curve.place.kind === 'point', `${curve.material.kind}/${curve.place.kind}`);
   const two = repair({ v: 3, bodies: [{ shape: { kind: 'solid' } }, { shape: { kind: 'solid' } }, { shape: { kind: 'dot' }, emit: { kind: 'sparks' } }, { shape: { kind: 'dot' }, emit: { kind: 'sparks' } }] });
-  check('repair.unique-resources', two.bodies.filter((b) => b.shape.kind === 'solid').length === 1 && two.bodies.filter((b) => b.emit.kind === 'sparks').length === 1, two.bodies.map((b) => `${b.shape.kind}/${b.emit.kind}`).join(','));
+  check('repair.unique-resources', two.bodies.filter((b) => b.shape.kind === 'solid').length <= 1 && two.bodies.filter((b) => b.emit.kind === 'sparks').length <= 1 && two.bodies.length >= 1, two.bodies.map((b) => `${b.shape.kind}/${b.emit.kind}`).join(','));
   const broken = cloneGenome(seedByOrigin('E14'));
   broken.bodies[0].place = { kind: 'stations', p: { count: 9 } } as never;
   check('validate.catches-range', validate(broken).some((e) => e.includes('count')), validate(broken).join(';'));
