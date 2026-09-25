@@ -1,5 +1,5 @@
-// Accents: small built-in gestures every preset gets by default, so the song's riff and its section
-// changes read on screen even when a preset's own reactions miss them.
+// Accents: small built-in gestures every preset gets by default, so the song's riff, its section
+// changes and its drum hits read on screen even when a preset's own reactions miss them.
 //
 //  * hook: on each repeat of the song's hook (src/analysis/hooks.ts) the camera makes the same small
 //    gesture on every note of the motif, a nudge whose direction follows the note's place in the
@@ -9,10 +9,12 @@
 //    looks like the other choruses and not like the verse; an optional framing per section type (a
 //    push, a pan, a lean; off by default: a push-in magnifies fine flickering texture); drop: a zoom,
 //    colour and light punch on each drop that settles over a bar.
+//  * kick: a small zoom and exposure punch on drum hits, for presets without a hit or drums reaction.
 //
 // Everything is a camera / colour pose composed onto the choreography's (see choreo.ts): no extra
-// passes and no flashes (the drop's light lift is one swell per drop). A genome without the gene
-// gets the defaults; the gene tunes each part and a part set to 0 is off. Parts the genome's choreography already does (a scene framing, a scene hue,
+// passes and no full-frame flashes (the kick's exposure punch stays under 10 % at the default, far
+// below the WCAG flash threshold; the drop's light lift is one swell per drop). A genome without the
+// gene gets the defaults; the gene tunes each part and a part set to 0 is off. Parts the genome's choreography already does (a scene framing, a scene hue,
 // a drop punch) are left to the choreography so nothing is applied twice.
 //
 // Pure (no GL, no module state besides the harness switch): the pose is a function of the gene,
@@ -28,7 +30,7 @@ const P = (min: number, max: number, def: number): ParamSpec => ({ min, max, def
 /**
  * hook: strength of the hook gesture; section: the light and colour step per section type; hue: the
  * hue step per section type; frame: how far each section type's framing departs from the plain view
- * (off by default); drop: the punch on drops; shot: which set of framings and gesture directions (a seed).
+ * (off by default); drop: the punch on drops; kick: the punch on drum hits; shot: which set of framings and gesture directions (a seed).
  */
 export const ACCENT_SCHEMA: Schema = {
   hook: P(0, 1, 0.5),
@@ -36,6 +38,7 @@ export const ACCENT_SCHEMA: Schema = {
   hue: P(0, 1, 0.5),
   frame: P(0, 1, 0),
   drop: P(0, 1, 0.5),
+  kick: P(0, 1, 0.5),
   shot: P(0, 1, 0.5),
 };
 
@@ -44,7 +47,7 @@ registerGenomeGene({
   title: 'Accents',
   schemas: ACCENT_SCHEMA,
   optional: true,
-  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
+  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; kick = small zoom and brightness punch on drum hits (applied by default only to presets with no hit/drums reaction); shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
 });
 
 export interface AccentGene {
@@ -150,10 +153,12 @@ export interface AccentPlan {
   hue: number;
   frame: number;
   drop: number;
+  kick: number;
   shot: number;
 }
 
-const OFF: AccentPlan = { hook: 0, section: 0, hue: 0, frame: 0, drop: 0, shot: 0.5 };
+const OFF: AccentPlan = { hook: 0, section: 0, hue: 0, frame: 0, drop: 0, kick: 0, shot: 0.5 };
+const HIT_SIGNALS = new Set(['hit', 'drums']);
 const HOOK_SIGNALS = new Set(['hook', 'hookphase', 'hookon']);
 
 let override: boolean | readonly string[] | null = null;
@@ -166,23 +171,32 @@ export function setAccentOverride(on: boolean | readonly string[] | null): void 
   override = on === true ? null : on;
 }
 
+/** Whether a genome already answers drum hits itself (a hit or drums reaction, or a body moving on hits). */
+export function hasHitResponse(g: Genome): boolean {
+  return g.reactions.some((r) => HIT_SIGNALS.has(r.src)) || g.bodies.some((b) => b.motion.kind === 'hits');
+}
+
 /**
- * What a genome plays. Without an accent gene: the defaults, minus the hook gesture for one that
- * reacts to the hook signals itself. Always: the section framing, hue and drop punch are left to a
+ * What a genome plays. The gene's values (or the defaults), minus the kick for a preset that
+ * already answers drum hits and the hook gesture for one that reacts to the hook signals itself. Always: the section framing, hue and drop punch are left to a
  * choreography that does them.
  */
 export function accentPlan(g: Genome, out: AccentPlan = { ...OFF }): AccentPlan {
   if (override === false) return Object.assign(out, OFF);
   const a = (g as Genome & { accent?: AccentGene }).accent;
   const src = a?.p;
-  const d = (k: string) => (src && typeof src[k] === 'number' ? src[k] : ACCENT_SCHEMA[k].def);
+  const d = (k: string): number => (src && typeof src[k] === 'number' ? src[k] : ACCENT_SCHEMA[k].def);
   out.hook = d('hook');
   out.section = d('section');
   out.hue = d('hue');
   out.frame = d('frame');
   out.drop = d('drop');
+  out.kick = d('kick');
   out.shot = src ? d('shot') : (((g.palette?.p?.hue ?? 0.5) % 1) + 1) % 1;
-  if (!a && g.reactions.some((r) => HOOK_SIGNALS.has(r.src))) out.hook = 0;
+  // Presets that answer drum hits (or the hook signals) themselves keep only their own response,
+  // with or without a gene (a seed's gene may predate a part and carry its default).
+  if (hasHitResponse(g)) out.kick = 0;
+  if (g.reactions.some((r) => HOOK_SIGNALS.has(r.src))) out.hook = 0;
   const c: ChoreoGene | undefined = g.choreo;
   if (c) {
     if (c.p.frame > 0) out.frame = 0;
@@ -204,6 +218,8 @@ export interface AccentInput {
   hookNotePulse: number;
   hookNote: number;
   hookId: number;
+  /** Drum hit envelope (the engine's hit pulse, 0..~1.4). */
+  hit: number;
 }
 
 /** Seconds the camera takes to move into a new section's framing. */
@@ -236,6 +252,9 @@ const DROP_ZOOM = 0.16;
 const DROP_SAT = 0.3;
 const DROP_EXPOSURE = 0.3;
 const DROP_RELAX_BARS = 1;
+/** Kick at full strength: zoom and exposure lift per unit hit pulse. */
+const KICK_ZOOM = 0.035;
+const KICK_EXPOSURE = 0.15;
 
 const TAU = Math.PI * 2;
 const FRAME_A: ChoreoPose = { ...IDENTITY_POSE };
@@ -315,6 +334,11 @@ export function applyAccents(plan: AccentPlan, m: AccentInput, q: ChoreoPose): C
       roll += (m.hookNote % 2 === 0 ? 1 : -1) * HOOK_NOTE_ROLL * TAU * h * np;
     }
     hue += HOOK_START_HUE * h * m.hookPulse;
+  }
+  if (plan.kick > 0 && m.hit > 0) {
+    const k = plan.kick * Math.min(1, m.hit);
+    zoom *= 1 + KICK_ZOOM * k;
+    exposure *= 1 + KICK_EXPOSURE * k;
   }
   q.zoom *= zoom;
   q.tx += tx;

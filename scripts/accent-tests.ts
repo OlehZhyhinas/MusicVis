@@ -4,7 +4,7 @@ import { cloneGenome, repair, validate, type Genome } from '../src/v2/genome';
 import { crossover, mulberry32, mutate } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { IDENTITY_POSE, type ChoreoCue, type ChoreoPose } from '../src/v2/genes/choreo';
-import { ACCENT_SCHEMA, accentPlan, applyAccents, crossAccent, repairAccent, setAccentOverride, validateAccent, type AccentInput } from '../src/v2/genes/accent';
+import { ACCENT_SCHEMA, accentPlan, applyAccents, crossAccent, hasHitResponse, repairAccent, setAccentOverride, validateAccent, type AccentInput } from '../src/v2/genes/accent';
 import { genomeGene } from '../src/v2/geneRegistry';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -12,7 +12,7 @@ type Check = (name: string, ok: boolean, detail: string) => void;
 const cue = (over: Partial<ChoreoCue> = {}): ChoreoCue => ({
   timeToDrop: Infinity, sinceDrop: Infinity, barSeconds: 2, label: 'verse', prevLabel: null, sinceSection: 10, sectionLen: 30, bars: 5, ...over,
 });
-const input = (over: Partial<AccentInput> = {}): AccentInput => ({ cue: cue(), hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, ...over });
+const input = (over: Partial<AccentInput> = {}): AccentInput => ({ cue: cue(), hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0, ...over });
 const pose = (): ChoreoPose => ({ ...IDENTITY_POSE });
 const same = (a: ChoreoPose, b: ChoreoPose) => (Object.keys(a) as (keyof ChoreoPose)[]).every((k) => Math.abs(a[k] - b[k]) < 1e-9);
 const fmt = (q: ChoreoPose) => JSON.stringify(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, +v.toFixed(4)])));
@@ -38,7 +38,7 @@ export function accentTests(check: Check): void {
   check('accent.gene-off', off.hook === 0, JSON.stringify(off));
   const hooked = cloneGenome(plain);
   hooked.reactions = [{ src: 'hook', g: 'col', i: 0, k: 'exposure', gain: 0.3, atk: 0.005, rel: 0.2, thr: 0, q: 0, div: 1 }];
-  check('accent.hook-reaction-opts-out', accentPlan(hooked).hook === 0, 'a preset reacting to the hook signals keeps only its own response');
+  check('accent.hook-reaction-opts-out', accentPlan(hooked).hook === 0 && accentPlan({ ...hooked, accent: repairAccent({}) }).hook === 0, 'a preset reacting to the hook signals keeps only its own response');
   setAccentOverride(false);
   const forced = accentPlan(plain);
   setAccentOverride(null);
@@ -46,7 +46,7 @@ export function accentTests(check: Check): void {
 
   // Pose: identity with no hook; the same pose for the same moment of two repeats (the rhyme);
   // different notes nudge different ways.
-  const plan = { ...accentPlan(plain), section: 0, hue: 0, drop: 0 };
+  const plan = { ...accentPlan(plain), section: 0, hue: 0, drop: 0, kick: 0 };
   const q0 = applyAccents(plan, input(), pose());
   check('accent.identity-outside-hooks', same(q0, IDENTITY_POSE as ChoreoPose), fmt(q0));
   const a = applyAccents(plan, input({ hookOn: 1, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 12.3 }) }), pose());
@@ -81,7 +81,22 @@ export function accentTests(check: Check): void {
   setAccentOverride(['hook']);
   const only = accentPlan(plain);
   setAccentOverride(null);
-  check('accent.override-parts', only.hook > 0 && only.section === 0 && only.hue === 0 && only.frame === 0 && only.drop === 0, JSON.stringify(only));
+  check('accent.override-parts', only.hook > 0 && only.section === 0 && only.hue === 0 && only.frame === 0 && only.drop === 0 && only.kick === 0, JSON.stringify(only));
+
+  // Kick: a small punch on drum hits, by default only for presets that do not answer hits themselves.
+  const noHits = cloneGenome(plain);
+  noHits.reactions = noHits.reactions.filter((x) => x.src !== 'hit' && x.src !== 'drums');
+  noHits.bodies.forEach((b) => { if (b.motion.kind === 'hits') b.motion = { kind: 'none', p: {} }; });
+  const withHits = cloneGenome(noHits);
+  withHits.reactions = [{ src: 'hit', g: 'col', i: 0, k: 'exposure', gain: 0.3, atk: 0.005, rel: 0.2, thr: 0, q: 0, div: 1 }];
+  check('accent.kick-auto', !hasHitResponse(noHits) && accentPlan(noHits).kick > 0 && accentPlan(withHits).kick === 0, `${accentPlan(noHits).kick} / ${accentPlan(withHits).kick}`);
+  const tuned = { ...cloneGenome(noHits), accent: repairAccent({ p: { kick: 0.8 } }) };
+  const tunedHits = { ...cloneGenome(withHits), accent: repairAccent({ p: { hook: 0.25 } }) };
+  check('accent.kick-gene', accentPlan(tuned).kick === 0.8 && accentPlan(tunedHits).kick === 0 && accentPlan(tunedHits).hook === 0.25, 'a gene tunes the kick; a preset that answers hits gets none even when its gene carries the default');
+  const kp = { ...accentPlan(noHits), hook: 0, section: 0, hue: 0, frame: 0, drop: 0 };
+  const k0 = applyAccents(kp, input({ hit: 1.3 }), pose());
+  const k1 = applyAccents(kp, input({ hit: 0 }), pose());
+  check('accent.kick-subtle', k0.zoom > 1.01 && k0.zoom < 1.025 && k0.exposure > 1.05 && k0.exposure <= 1.08 && same(k1, IDENTITY_POSE as ChoreoPose), fmt(k0));
 
   // Breeding: parents without the gene give children without it; a child keeps valid accents otherwise.
   const rng = mulberry32(5);

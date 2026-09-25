@@ -888,13 +888,14 @@ export class Stage {
 
     // Choreography over the song timeline (look-ahead from the offline analysis).
     const cue = cueOf(state);
-    const acc = (this.accIn ??= { cue, hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1 });
+    const acc = (this.accIn ??= { cue, hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0 });
     acc.cue = cue;
     acc.hookOn = F.hookOn;
     acc.hookPulse = F.hookPulse;
     acc.hookNotePulse = F.hookNotePulse;
     acc.hookNote = F.hookNote;
     acc.hookId = F.hookId;
+    acc.hit = F.hitPulse;
     for (const s of slots) {
       let q = this.poses.get(s);
       if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
@@ -903,7 +904,7 @@ export class Stage {
       // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
       this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
       this.lyricize(s, state, sdt, q);
-      // Accents: the hook gesture and section framing every preset gets unless its genome turns them off.
+      // Accents: the hook gesture, section look and drum kick every preset gets unless its genome turns them off.
       applyAccents(accentPlan(s.genome, this.accPlan), acc, q);
     }
     this.harmonyWarp(slots, state);

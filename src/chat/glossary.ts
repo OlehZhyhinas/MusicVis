@@ -37,6 +37,8 @@ picture as a lit surface(0 off); bump=surface height; light=light direction; glo
 metal=liquid-chrome palette reflections;
 huemap=map brightness to cycling palette bands(0 off); bands=cycles; drift=scroll speed; poster=flat steps;
 solar=solarize(bright folds back).
+ACCENTS(built in, no gene needed): riff-note camera nudge, light+colour+hue per section, drop punch, drum
+kick; tune/turn off via add_gene accent (hook/section/hue/frame/drop/kick, 0=off).
 
 FEEL(per body, response curve+clock, always present): flow=levels follow music continuously;
 step=sampled+held on clock grid(staccato). atk/rel=rise/fall time(s); thr=signal below ignored;
@@ -56,9 +58,8 @@ distortion,cymbals). rough=how rough/buzzy/beating. attack=how sharp the onsets 
 noteon=pulse at each melody note start. held=strength of the held melody note(0 between notes).
 legato=0 staccato(short detached notes)..1 legato(held,tied,gliding). glide=how fast the pitch
 slides. vibrato=vibrato depth. voice=how sung the melody sounds(0 steady synth lead..1 voice).
-hook=pulse at each repeat of the song's riff/sung hook and at each note of its motif(same rhythm
-every repeat, so the riff rhymes visually). hookphase=0..1 through the current hook repeat.
-hookon=1 while a hook repeat plays.
+hook=pulse per note of the song's riff/hook(same each repeat). hookphase=0..1 through a repeat.
+hookon=1 during one.
 line=pulse per sung line. valence=words' mood 0 sad..1 happy. arousal=words' intensity(music's
 mood without lyrics).
 `;
@@ -225,6 +226,7 @@ react to vocals: reaction src=vocals ->color mapping amount or place wander.
 build-up to the drop/cinematic: add choreo; push/drain/punch up; lead=bars of tension.
 lyrics/words/karaoke: add lyrics; show=2 karaoke; smear=words melt in.
 on the drop: reaction src=drop/surge ->tone.exposure or carrier.halfLife, fast atk.
+calmer camera: accent.hook 0.
 longer trails: carrier.halfLife x1.5-3.
 shorter trails: carrier.halfLife x0.3-0.5.
 no trails: kind bN.emit none, or kind carrier none.
