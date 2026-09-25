@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 46;
+export const SEED_VERSION = 47;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1606,6 +1606,26 @@ const DEJAVU: Def[] = [
       rx('bass', 'car', 0, 'amount', 0.3, { atk: 0.05, rel: 0.5 }), rx('loud', 'em', 0, 'force', 0.4, { atk: 0.05, rel: 0.4 }),
     ],
     dejavu: { recall: 0.7, blend: 4, snap: 0.75, frame: 0.3, hue: 0.6, motion: 0.2, evolve: 0.5, keep: 1, res: 0.25, cap: 4, min: 0.7 },
+  },
+  {
+    // Six small stars drift on slow Lissajous paths through a gently stirred night, each drawing a long
+    // luminous wake in its instrument's colour, so the sky fills with a constellation of looping trails
+    // that no other moment repeats. When a section returns, its first constellation comes back in a
+    // bar, a quick cut to a memory, framed as it was and slightly turned, and the stars go on drawing
+    // over it while the old wakes fade.
+    origin: 'D03', name: 'Constellation Return', energy: [0.1, 0.7], scheme: 'split', hue: 0.6,
+    color: { adapt: 0.3, bloom: 1.2, vignette: 0.45, contrast: 0.04 }, carrier: 'warp', car: { halfLife: 8, floor: 0.15 },
+    chain: [op('swirl', { amt: 0.004, k: 3 }), op('zoom', { rate: -0.0004 })],
+    bodies: [body({
+      shape: ['star', { n: 5, r: 0.012, inner: 0.45 }],
+      place: ['float', { count: 6, spread: 0.6, speed: 0.15 }],
+      motion: ['spin', { rate: 0.125 }],
+      material: ['line', { gain: 0.9, width: 1.5, halo: 0.3 }],
+      emit: ['trail', { tip: 1 }],
+      color: ['instrument', { amount: 1 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { atk: 0.01, rel: 0.3 }), rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.1, rel: 0.6 })],
+    dejavu: { recall: 0.9, blend: 1, snap: 0.85, frame: 0.7, hue: 0.7, motion: 0.5, evolve: 0.3, keep: 0, res: 0.5, cap: 3, min: 0.7 },
   },
 ];
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU].map(build);
