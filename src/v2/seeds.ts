@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 35;
+export const SEED_VERSION = 36;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1355,6 +1355,27 @@ const HARMONY: Def[] = [
       rx('bass', 'sh', 0, 'r', 0.2, { atk: 0.03, rel: 0.3 }),
     ],
     harmony: { brk: 0.85, warp: 0.3, style: 1, snap: 0.8, settle: 0.3, walk: 0.08, kick: 0.3, modHue: 0.1, modTurn: 0.008, calm: 0.4 },
+  },
+  {
+    // A pendulum harmonograph (its frequency ratios walk the circle of fifths) drawn four ways in a
+    // mirror, leaving long warm trails that sink inward. Consonant chords keep the four quarters in
+    // perfect reflection; tension leans the reflections apart and bends the frame sideways, the trails
+    // lengthen and the colours slide away from home. A resolution lets the quarters fall back
+    // together with a slow, pendulum-like wobble.
+    origin: 'H02', name: 'Suspended Mirror', energy: [0.1, 0.7], scheme: 'split', hue: 0.07,
+    color: { bloom: 0.9, vignette: 0.55, adapt: 0.7 }, carrier: 'warp', decay: 0.975,
+    chain: [op('zoom', { rate: -0.006, wander: 0.1 }), op('rotate', { lock: -0.0625 }), op('mirror', { axis: 2 }, 1, 'view')],
+    bodies: [body({
+      shape: ['curve', { form: 5, radius: 0.38, amp: 0.3, ra: 2, rb: 2 }],
+      material: ['line', { gain: 0.4, width: 1.3, halo: 0.12 }],
+      color: ['age', { rate: 0.03125, detail: 0.7 }],
+    })],
+    reactions: [
+      rx('tension', 'car', 0, 'halfLife', 0.5, { atk: 0.4, rel: 1 }),
+      rx('resolve', 'ma', 0, 'gain', 0.6, { atk: 0.01, rel: 0.8 }),
+      rx('vocals', 'sh', 0, 'amp', 0.25, { atk: 0.1, rel: 0.6 }),
+    ],
+    harmony: { brk: 1, warp: 0.45, style: 0, snap: 0.45, settle: 1.2, walk: 0.12, kick: 0.1, modHue: 0.12, modTurn: -0.006, calm: 0.7 },
   },
 ];
 
