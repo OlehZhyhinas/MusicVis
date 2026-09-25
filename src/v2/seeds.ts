@@ -40,7 +40,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 105;
+export const SEED_VERSION = 106;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -186,7 +186,7 @@ const DEFS: Def[] = [
     origin: 'E03', name: 'Rain Curtains', energy: [0.4, 0.95], scheme: 'analogous', hue: 0.5,
     color: { bloom: 1.1 }, carrier: 'warp', decay: 0.975,
     chain: [op('translate', { vy: -0.22, lanes: 38 })],
-    bodies: [body({ shape: ['edge', { mode: 2, side: 1, density: 0.6 }], material: ['fill', { gain: 0.45 }] })],
+    bodies: [body({ shape: ['edge', { mode: 2, side: 1, density: 0.6 }], material: ['fill', { gain: 0.38 }] })],
     // Its thin streaks flash when magnified or brightened, so the hook gesture is kept small and the
     // built-in hit kick is off (strobe margin).
     accent: { hook: 0.15, kick: 0 },
