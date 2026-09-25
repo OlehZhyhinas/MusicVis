@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 61;
+export const SEED_VERSION = 62;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1672,6 +1672,27 @@ const HARMONY: Def[] = [
     })],
     reactions: [rx('chordchange', 'sh', 0, 'lines', 0.4, { atk: 0.01, rel: 0.5 }), rx('bass', 'sh', 0, 'nodes', 0.2, { atk: 0.03, rel: 0.4 })],
     harmony: { brk: 0.5, warp: 0.4, style: 0, snap: 0.6, settle: 0.3, walk: 0.05, kick: 0.25, modHue: 0.1, modTurn: 0.02, calm: 0.3 },
+  },
+  {
+    // A spectrum skyline standing on a lake: the bars rise from the waterline and the lower half of
+    // the frame mirrors them, while the trails drift slowly upward like heat haze. On the home chord
+    // the reflection is exact; as the harmony strays the reflection slides and tilts out of register
+    // and the whole scene buckles in waves, the colours drifting with each chord; a cadence snaps
+    // the water still with a kick of light. Key changes swing the palette.
+    origin: 'H05', name: 'Reflecting Pool', energy: [0.3, 1], scheme: 'complementary', hue: 0.78,
+    color: { bloom: 1.2, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', decay: 0.94,
+    chain: [op('translate', { vy: 0.06 }), op('mirror', { axis: 1 }, 1, 'view')],
+    bodies: [body({
+      shape: ['bars', { mode: 0, bins: 48, radius: 0.18, len: 0.35, fill: 0.6 }],
+      place: ['point', { x: 0, y: 0.02 }],
+      material: ['line', { gain: 1, width: 1.6, halo: 0.2 }],
+    })],
+    reactions: [
+      rx('tension', 'car', 0, 'halfLife', 0.4, { atk: 0.4, rel: 0.8 }),
+      rx('resolve', 'col', 0, 'bloom', 0.6, { atk: 0.01, rel: 0.6 }),
+      rx('drums', 'sh', 0, 'len', 0.3, { atk: 0.01, rel: 0.2 }),
+    ],
+    harmony: { brk: 0.9, warp: 0.55, style: 2, snap: 0.9, settle: 0.3, walk: 0.14, kick: 0.4, modHue: 0.15, modTurn: -0.01, calm: 0.5 },
   },
 ];
 

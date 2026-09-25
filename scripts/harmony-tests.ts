@@ -244,6 +244,16 @@ export function harmonyTests(check: Check): void {
     check('harmony: cadences follow the new key after a modulation', h.resolutions.some((r) => Math.abs(r.time - 12) < 0.01), JSON.stringify(h.resolutions));
   }
 
+  // --- Key vote: a mis-detected key is corrected by the chords ---
+  {
+    const wrong: KeySegment[] = [{ start: 0, end: 32, tonic: 6, mode: 'minor', confidence: 0.5 }];
+    const { inp } = chromaSong({ name: '', chords: ['D', 'F#m', 'G', 'A', 'D', 'Bm', 'G', 'A'], beats: [8], key: wrong }, 9, 0.2);
+    const h = analyzeHarmony(inp);
+    const k = h.keys[0];
+    check('harmony: chords vote D major over a detected F# minor', h.keys.length === 1 && k.tonic === 2 && k.mode === 'major', JSON.stringify(h.keys));
+    check('harmony: after the vote A -> D resolves (authentic)', h.resolutions.some((r) => r.kind === CADENCE.authentic && Math.abs(r.time - 16) < 0.01), JSON.stringify(h.resolutions));
+  }
+
   // --- Realtime tracker ---
   {
     const p: Prog = { name: '', chords: ['C', 'F', 'G', 'C', 'Am', 'F', 'G', 'C'], beats: [8], key: { tonic: 0, mode: 'major' } };

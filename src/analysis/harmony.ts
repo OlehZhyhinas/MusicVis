@@ -357,6 +357,8 @@ export interface HarmonyTrack {
   segments: ChordSegment[];
   resolutions: Resolution[];
   modulations: Modulation[];
+  /** The keys the harmony was measured against (the detected keys, corrected by the chords' vote). */
+  keys: KeySegment[];
 }
 
 /** Viterbi settings (exported for the tests). */
@@ -424,54 +426,27 @@ export function analyzeHarmony(inp: HarmonyInput): HarmonyTrack {
     energy[i] = wsum / Math.max(1, b - a);
   }
 
-  // Emissions: template scores, the no-chord state, the local key's diatonic prior.
+  // Template scores (the no-chord state competes with a fixed score, or wins on quiet beats).
   const S = NUM_CHORDS + 1; // state 24 = no chord
   const score = new Float64Array(n * S);
-  const emit = new Float64Array(n * S);
   const tmp = new Float64Array(NUM_CHORDS);
-  const keyOf: KeyRef[] = [];
   for (let i = 0; i < n; i++) {
     const tot = chordScores(bc, tmp, i * 12);
-    const k = keyAt(inp.keys, times[i]);
-    keyOf.push(k);
-    for (let c = 0; c < NUM_CHORDS; c++) {
-      score[i * S + c] = tot > 0 ? tmp[c] : 0;
-      emit[i * S + c] = P.sharp * score[i * S + c] + (isDiatonic(c, k) ? P.diatonic : 0);
-    }
-    // Quiet or flat chroma: no chord.
-    const quiet = tot <= 0 || energy[i] < 0.02;
-    score[i * S + NUM_CHORDS] = quiet ? 1 : P.noChord;
-    emit[i * S + NUM_CHORDS] = P.sharp * (quiet ? 1 : P.noChord) + P.diatonic * 0.5;
+    for (let c = 0; c < NUM_CHORDS; c++) score[i * S + c] = tot > 0 ? tmp[c] : 0;
+    score[i * S + NUM_CHORDS] = tot <= 0 || energy[i] < 0.02 ? 1 : P.noChord;
   }
-
-  // Viterbi over the beats.
-  const lStay = Math.log(P.stay);
-  const lMove = Math.log((1 - P.stay) / (S - 1));
-  let prev = new Float64Array(S);
-  let cur = new Float64Array(S);
-  const back = new Int8Array(n * S);
-  for (let s = 0; s < S; s++) prev[s] = emit[s];
-  for (let i = 1; i < n; i++) {
-    let best = 0;
-    for (let s = 1; s < S; s++) if (prev[s] > prev[best]) best = s;
-    for (let s = 0; s < S; s++) {
-      const stay = prev[s] + lStay;
-      const move = prev[best] + lMove;
-      if (stay >= move || best === s) {
-        cur[s] = stay + emit[i * S + s];
-        back[i * S + s] = s;
-      } else {
-        cur[s] = move + emit[i * S + s];
-        back[i * S + s] = best;
-      }
-    }
-    [prev, cur] = [cur, prev];
+  // Pass 1 decodes with the detected keys as a mild prior; the chords then vote for the key each
+  // key segment really is (the detector can mistake a key for a neighbour, e.g. D major for F# minor);
+  // pass 2 decodes again with the voted keys, which the tension and cadences are measured against.
+  let keys = inp.keys;
+  let path = decodeChords(score, times, keys, n);
+  const voted = voteKeys(times, path, dur, inp.keys);
+  if (JSON.stringify(voted) !== JSON.stringify(keys)) {
+    keys = voted;
+    path = decodeChords(score, times, keys, n);
   }
-  const path = new Int8Array(n);
-  let last = 0;
-  for (let s = 1; s < S; s++) if (prev[s] > prev[last]) last = s;
-  path[n - 1] = last;
-  for (let i = n - 1; i > 0; i--) path[i - 1] = back[i * S + path[i]];
+  const keyOf: KeyRef[] = [];
+  for (let i = 0; i < n; i++) keyOf.push(keyAt(keys, times[i]));
 
   const chords = new Int8Array(n);
   const tension = new Float32Array(n);
@@ -521,16 +496,100 @@ export function analyzeHarmony(inp: HarmonyInput): HarmonyTrack {
   }
 
   const modulations: Modulation[] = [];
-  for (let i = 1; i < inp.keys.length; i++) {
-    const a = inp.keys[i - 1];
-    const b = inp.keys[i];
+  for (let i = 1; i < keys.length; i++) {
+    const a = keys[i - 1];
+    const b = keys[i];
     if (a.tonic === b.tonic && a.mode === b.mode) continue;
     const from = { tonic: a.tonic, mode: a.mode };
     const to = { tonic: b.tonic, mode: b.mode };
     modulations.push({ time: b.start, from, to, fifths: keyFifths(from, to) });
   }
 
-  return { times: Float32Array.from(times), chords, tension, segments, resolutions, modulations };
+  return { times: Float32Array.from(times), chords, tension, segments, resolutions, modulations, keys };
+}
+
+/** Viterbi over the beats: the best chord path (state 24 = no chord) given the scores and the keys' diatonic prior. */
+function decodeChords(score: Float64Array, times: number[], keys: KeySegment[], n: number): Int8Array {
+  const P = HARMONY_PARAMS;
+  const S = NUM_CHORDS + 1;
+  const emit = new Float64Array(n * S);
+  for (let i = 0; i < n; i++) {
+    const k = keyAt(keys, times[i]);
+    for (let c = 0; c < NUM_CHORDS; c++) emit[i * S + c] = P.sharp * score[i * S + c] + (isDiatonic(c, k) ? P.diatonic : 0);
+    emit[i * S + NUM_CHORDS] = P.sharp * score[i * S + NUM_CHORDS] + P.diatonic * 0.5;
+  }
+  const lStay = Math.log(P.stay);
+  const lMove = Math.log((1 - P.stay) / (S - 1));
+  let prev = new Float64Array(S);
+  let cur = new Float64Array(S);
+  const back = new Int8Array(n * S);
+  for (let s = 0; s < S; s++) prev[s] = emit[s];
+  for (let i = 1; i < n; i++) {
+    let best = 0;
+    for (let s = 1; s < S; s++) if (prev[s] > prev[best]) best = s;
+    for (let s = 0; s < S; s++) {
+      const stay = prev[s] + lStay;
+      const move = prev[best] + lMove;
+      if (stay >= move || best === s) {
+        cur[s] = stay + emit[i * S + s];
+        back[i * S + s] = s;
+      } else {
+        cur[s] = move + emit[i * S + s];
+        back[i * S + s] = best;
+      }
+    }
+    [prev, cur] = [cur, prev];
+  }
+  const path = new Int8Array(n);
+  let last = 0;
+  for (let s = 1; s < S; s++) if (prev[s] > prev[last]) last = s;
+  path[n - 1] = last;
+  for (let i = n - 1; i > 0; i--) path[i - 1] = back[i * S + path[i]];
+  return path;
+}
+
+/**
+ * The key each detected key segment's chords vote for: every key scores the seconds of chords
+ * diatonic to it (chromatic chords count against), plus its tonic triad and dominant (the chords
+ * that define a key) extra, and the detected key a small bonus so a close vote keeps it. Adjacent
+ * segments that land on the same key merge.
+ */
+export function voteKeys(times: ArrayLike<number>, path: ArrayLike<number>, dur: number, keys: KeySegment[]): KeySegment[] {
+  if (!keys.length) return keys;
+  const out: KeySegment[] = [];
+  const secs = new Float64Array(NUM_CHORDS);
+  for (const seg of keys) {
+    secs.fill(0);
+    let total = 0;
+    for (let i = 0; i < times.length; i++) {
+      const a = times[i];
+      const b = i + 1 < times.length ? times[i + 1] : dur;
+      const c = path[i];
+      if (c < 0 || c >= NUM_CHORDS || b <= seg.start || a >= seg.end) continue;
+      const d = Math.min(b, seg.end) - Math.max(a, seg.start);
+      secs[c] += d;
+      total += d;
+    }
+    let best: KeyRef = { tonic: seg.tonic, mode: seg.mode };
+    if (total > 4) {
+      let bestScore = -Infinity;
+      for (let kk = 0; kk < 24; kk++) {
+        const k: KeyRef = { tonic: kk % 12, mode: kk >= 12 ? 'minor' : 'major' };
+        let sc = 0;
+        for (let c = 0; c < NUM_CHORDS; c++) if (secs[c] > 0) sc += secs[c] * (isDiatonic(c, k) ? 1 : -1);
+        sc += 0.4 * secs[tonicChord(k)] + 0.3 * secs[makeChord(k.tonic + 7, false)];
+        if (k.tonic === seg.tonic && k.mode === seg.mode) sc += 0.05 * total;
+        if (sc > bestScore) {
+          bestScore = sc;
+          best = k;
+        }
+      }
+    }
+    const prev = out[out.length - 1];
+    if (prev && prev.tonic === best.tonic && prev.mode === best.mode) prev.end = seg.end;
+    else out.push({ start: seg.start, end: seg.end, tonic: best.tonic, mode: best.mode, confidence: seg.confidence });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------- realtime
