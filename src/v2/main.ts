@@ -38,6 +38,7 @@ import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
 import { LyricsLibrary, lyricStatusLabel } from '../lyrics/library';
 import { LyricSampler } from '../lyrics/sampler';
+import { LyricOverlay } from '../lyrics/overlay';
 import '../lyrics/lyrics.css';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
@@ -782,6 +783,7 @@ async function main(): Promise<void> {
   (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, presetMap, similarity, play, choose, current, editor };
 
   const hud = new Hud(hudEl);
+  const lyricOverlay = new LyricOverlay(appRoot, canvas);
   let lastTime = performance.now();
   let lastIdle = 0;
   let fps = 60;
@@ -816,6 +818,9 @@ async function main(): Promise<void> {
       choose('drop', 0.35);
     }
 
+    // The shown preset's lyrics gene: the caption on screen, and the copy it smears into the feedback.
+    const cap = lyricOverlay.update(state, eng.current()?.lyrics?.p, dt);
+    eng.setCaption(cap.source, cap.version, cap.alpha);
     try {
       eng.render(state);
     } catch (err) {

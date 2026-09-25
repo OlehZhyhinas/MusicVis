@@ -25,6 +25,7 @@ import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type Chor
 import { HarmonyMotor, IDLE_HARMONY, type HarmonyInputs, type HarmonyOut } from './genes/harmony';
 import { DejaVuBank } from './genes/dejavuGpu';
 import { NEUTRAL_NUDGE, easeNudge, lineKick, lyricTarget, type LyricNudge } from './genes/lyrics';
+import { CaptionLayer } from './genes/lyricsGpu';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
@@ -751,6 +752,8 @@ export class Stage {
   /** Lyrics gene: each slot's eased nudges from the words (genes/lyrics.ts); temporary, never saved. */
   private lyricNudges = new WeakMap<Slot, LyricNudge>();
   private lyricTgt: LyricNudge = { ...NEUTRAL_NUDGE };
+  /** The sung line drawn into the feedback of slots whose lyrics gene smears it (main stage only). */
+  caption: CaptionLayer | null = null;
 
   constructor(private eng: Engine, readonly opts: StageOptions) {
     const gl = eng.gl;
@@ -2471,6 +2474,14 @@ export class Stage {
         this.flame.draw(w * (0.8 + 0.4 * this.sig.F.loud), this.sig.F.aspect, s.cols);
       }
     }
+    // Lyrics gene: the sung line added into the feedback, so the chain carries and smears it. Scaled
+    // by the fade rate so the trail's steady brightness stays about `smear` whatever the half-life.
+    const ly = g.lyrics?.p;
+    if (ly && ly.show > 0 && ly.smear > 0 && g.carrier.kind !== 'none' && this.caption?.has && this.caption.alpha > 0.002) {
+      s.fb.write.bind();
+      const c = s.cols;
+      this.caption.draw(ly.smear * this.caption.alpha * Math.max(0.02, 1 - s.decay) * 0.9, 0.45 + 0.55 * c[0], 0.45 + 0.55 * c[1], 0.45 + 0.55 * c[2]);
+    }
     gl.disable(gl.BLEND);
     s.fb.swap();
   }
@@ -2724,6 +2735,7 @@ export class Stage {
 
   dispose(): void {
     for (const s of this.slots) s.fb.dispose();
+    this.caption?.dispose();
     this.slots = [];
     this.scene?.dispose();
     this.out?.dispose();
@@ -2931,6 +2943,12 @@ export class Engine {
   /** The analysed song, for landscape bodies' world map (null: none, e.g. live input). */
   setSongWorld(r: AnalysisResult | null): void {
     (this.main.land ??= new LandWorld(this.gl)).setSong(r);
+  }
+
+  /** The lyric caption for genomes that smear it into their feedback (null: no line). */
+  setCaption(source: TexImageSource | null, version: number, alpha: number): void {
+    if (!source && !this.main.caption) return;
+    (this.main.caption ??= new CaptionLayer(this.gl, this.fs)).set(source, version, alpha);
   }
 
   render(state: MusicState): void {

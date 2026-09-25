@@ -25,3 +25,66 @@
 .trk .st .trk-lyr[data-s='pending'] {
   opacity: 0.7;
 }
+
+/* The sung line over the visual (lyrics gene 'show'): 1 a subtle caption, 2 karaoke. */
+.lyr-cap {
+  position: absolute;
+  left: calc(var(--cw, 100%) / 2);
+  bottom: 132px;
+  transform: translateX(-50%);
+  width: min(86%, 900px);
+  z-index: 8;
+  text-align: center;
+  pointer-events: none;
+  transition: bottom 0.35s ease;
+}
+#app.ui-hidden .lyr-cap {
+  bottom: 64px;
+}
+.lyr-line {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.lyr-line.in {
+  opacity: 1;
+  transform: none;
+}
+.lyr-fill {
+  font: 500 18px/1.3 var(--f);
+  letter-spacing: 0.01em;
+  color: rgba(244, 244, 248, 0.78);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.55);
+  text-wrap: balance;
+}
+.lyr-cap[data-mode='2'] .lyr-fill {
+  font: 650 30px/1.25 var(--f);
+  letter-spacing: -0.01em;
+  color: transparent;
+  background: linear-gradient(90deg, var(--tx) var(--p, 0%), rgba(244, 244, 248, 0.38) var(--p, 0%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: none;
+  filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.6));
+}
+.lyr-next {
+  min-height: 1.3em;
+  margin-top: 8px;
+  font: 500 16px/1.3 var(--f);
+  color: rgba(244, 244, 248, 0.5);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 12px rgba(0, 0, 0, 0.6);
+}
+.lyr-cap[data-mode='1'] .lyr-next {
+  display: none;
+}
+@media (max-width: 640px) {
+  .lyr-fill {
+    font-size: 15px;
+  }
+  .lyr-cap[data-mode='2'] .lyr-fill {
+    font-size: 22px;
+  }
+  .lyr-next {
+    font-size: 13px;
+  }
+}
