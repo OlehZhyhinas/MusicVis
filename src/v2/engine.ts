@@ -2430,7 +2430,7 @@ export class Stage {
       const PE = (k: string) => s.P('em', s.eco, b.emit.p, k, EMIT_SCHEMAS.ecosystem);
       const gain = s.P('ma', s.eco, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
       const F = this.sig.F;
-      const fill = Math.min(1, Math.max(0.15, (1 - s.decay) * 8));
+      const fill = Math.min(1, Math.max(0.03, (1 - s.decay) * 8));
       this.eco.draw({
         gain, fieldScale: ecoFieldScale(b.emit.p), field: PE('field'), size: PE('size'), trail: PE('trail'), glyph: b.emit.p.glyph, hues: b.emit.p.hues,
         bright: gain * fill * Math.min(1.2, Math.sqrt(16384 / Math.max(1, this.eco.count))), strike: F.onset[0], cols: s.cols,

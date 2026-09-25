@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 53;
+export const SEED_VERSION = 54;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1345,6 +1345,21 @@ const ECOSYSTEM: Def[] = [
       emit: ['ecosystem', { count: 8192, wD: 1, wB: 0.3, wV: 0.3, wO: 0.8, glyph: 3, size: 4, trail: 0.3, predation: 1, bloom: 0.3, graze: 0.5, growth: 1, starve: 0.6, decay: 0.95, speed: 1.4, field: 0.25, hues: 0, body: 0 }],
     })],
     reactions: [rx('hit', 'em', 0, 'size', 0.35, { atk: 0.01, rel: 0.25 }), rx('drop', 'em', 0, 'speed', 0.5, { atk: 0.02, rel: 1.5 }), rx('beat', 'ma', 0, 'gain', 0.25, { atk: 0.01, rel: 0.2 })],
+  },
+  {
+    // Bass herds: heavy grazers dominate the roster, drawn as long comets that plough slowly through the
+    // meadow and leave furrows the vocal pollinators follow. The feedback streams gently outward, so each
+    // herd's path becomes a curving wake that fans toward the edges; the bass drives the herds on, and a
+    // drop makes them stampede. With the bass silent the herds thin out and the meadow grows back.
+    origin: 'B04', name: 'Bass Herds', energy: [0.25, 0.9], scheme: 'split', hue: 0.08,
+    color: { adapt: 0.35, bloom: 1, vignette: 0.45, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.8, floor: 1.2 },
+    chain: [op('zoom', { rate: 0.006 })],
+    bodies: [body({
+      shape: ['dot', { r: 0.01 }],
+      material: ['glow', { gain: 0.7, width: 0.01 }],
+      emit: ['ecosystem', { count: 8192, wD: 0.15, wB: 1, wV: 0.4, wO: 0.3, glyph: 2, size: 2, trail: 0.8, predation: 0.4, bloom: 0.7, graze: 1, growth: 0.7, starve: 0.5, decay: 0.99, speed: 2, field: 0.7, hues: 0, body: 0 }],
+    })],
+    reactions: [rx('bass', 'em', 0, 'speed', 0.5, { atk: 0.05, rel: 0.6 }), rx('drop', 'em', 0, 'trail', 0.3, { atk: 0.02, rel: 2 }), rx('loud', 'ma', 0, 'gain', 0.2, { atk: 0.05, rel: 0.4 })],
   },
 ];
 
