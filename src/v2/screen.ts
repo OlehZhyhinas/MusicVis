@@ -3,8 +3,9 @@
 // MusicState, a few frames per animation frame so the main view never stalls.
 //
 // Rejections: compile error, too slow (cost model or measured), nearly all
-// black / white, frozen, pure noise, and unreactive (moves the same with and
-// without music).
+// black / white, blank for long stretches (a longer, coarse run after the music
+// run: shapes that drift out of a fold's wedge on two unsynced clocks), frozen,
+// pure noise, and unreactive (moves the same with and without music).
 
 import type { MusicState, NoteMark, NoteStats, Section, StemName } from '../types';
 import { COST_BUDGET_MS, estimateCost, type Genome } from './genome';
@@ -168,6 +169,15 @@ const MUSIC_SECS = 3;
 const SILENT_SECS = 1.5;
 const FPS = 60;
 const SAMPLE_EVERY = 2; // read pixels every 2nd frame (30 Hz)
+/**
+ * Long run after the music run (same slot, carrying on): seconds, frame rate (a coarser clock dims
+ * presets whose trails build up per frame), frames per readback, and the window: a window is blank
+ * when every frame read in it is near-black, so a picture that flares on the beat is never blank.
+ */
+const LONG_SECS = 12;
+const LONG_FPS = 20;
+const LONG_READ_EVERY = 2;
+const LONG_WINDOW_S = 0.5;
 
 export interface ScreenMetrics {
   mean: number; // mean sRGB luma 0..1
@@ -190,6 +200,8 @@ export interface ScreenMetrics {
   hitLift: number;
   /** 0..1 cheap reactivity score from events and hitLift (for breeding / fitness). */
   reactivity: number;
+  /** Share of the long run's half-second windows in which every frame is near-black (mean and peak luma under the black thresholds). */
+  blank: number;
 }
 
 export interface ScreenResult {
@@ -214,6 +226,8 @@ export const THRESH = {
   driftEvents: 0.06,
   driftHit: 0.1,
   msPerFrame: 10,
+  /** Reject when more than this share of the long run is near-black. */
+  blankShare: 0.25,
 };
 
 /** Seconds of the music run rendered in lockstep with the metronome lane. */
@@ -344,7 +358,7 @@ export class Screener {
   screen(g: Genome): Promise<ScreenResult> {
     return new Promise((resolve) => {
       const cost = estimateCost(g);
-      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, cost, msPerFrame: 0, events: NaN, hitLift: 0, reactivity: 0 };
+      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, cost, msPerFrame: 0, events: NaN, hitLift: 0, reactivity: 0, blank: 0 };
       const fail = (reason: string, descriptor: number[] = []) => resolve({ ok: false, reason, metrics, descriptor });
       if (cost > COST_BUDGET_MS) {
         fail(`too slow (estimated ${cost.toFixed(1)} ms)`);
@@ -352,7 +366,13 @@ export class Screener {
       }
       let compiled: boolean | null = null;
       const waitStep = this.whenCompiled(g, (ok) => (compiled = ok));
-      let phase: 'compile' | 'music' | 'silent' | 'done' = 'compile';
+      let phase: 'compile' | 'music' | 'long' | 'silent' | 'done' = 'compile';
+      const longFrames = LONG_SECS * LONG_FPS;
+      let longN = 0;
+      let longBlank = 0;
+      let longWins = 0;
+      let winAllBlack = true;
+      const winFrames = Math.max(1, Math.round(LONG_WINDOW_S * LONG_FPS));
       const st = this.stage;
       let slot: ReturnType<Stage['makeSlot']> | null = null;
       let slotB: ReturnType<Stage['makeSlot']> | null = null;
@@ -436,6 +456,25 @@ export class Screener {
           frame(music, true);
           if (music.frames < musicFrames) return false;
           lastPx = this.px.slice();
+          phase = 'long';
+          return false;
+        }
+        if (phase === 'long') {
+          // Carry on with the same slot at a coarse clock and look only for near-black frames.
+          const state = this.music.next(1 / LONG_FPS);
+          withRandom(randA, () => st.render(state, 1 / LONG_FPS, 'out'));
+          longN++;
+          if (longN % LONG_READ_EVERY === 0) {
+            st.readPixels(this.px);
+            if (!this.nearBlack(this.px)) winAllBlack = false;
+          }
+          if (longN % winFrames === 0) {
+            longWins++;
+            if (winAllBlack) longBlank++;
+            winAllBlack = true;
+          }
+          if (longN < longFrames) return false;
+          metrics.blank = longBlank / Math.max(1, longWins);
           phase = 'silent';
           start(true);
           return false;
@@ -456,6 +495,30 @@ export class Screener {
         return true;
       });
     });
+  }
+
+  /** Whether a readback is near-black: mean sRGB luma and its 99.7th percentile under the black thresholds (sampled on a 2 px grid). */
+  private nearBlack(px: Uint8Array): boolean {
+    const W = SCREEN_W, H = SCREEN_H;
+    const hist = new Uint32Array(64);
+    let sum = 0;
+    let n = 0;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        const i = (y * W + x) * 4;
+        const s = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+        sum += s;
+        hist[Math.min(63, Math.floor(s * 64))]++;
+        n++;
+      }
+    }
+    if (sum / n >= THRESH.black) return false;
+    let acc = 0;
+    for (let b = 63; b >= 0; b--) {
+      acc += hist[b];
+      if (acc > n * 0.003) return b / 64 < THRESH.blackPeak;
+    }
+    return true;
   }
 
   /** Per-sample statistics (luma, motion, noise). */
@@ -590,6 +653,7 @@ export class Screener {
     if (m.msPerFrame > THRESH.msPerFrame) return r(`too slow (${m.msPerFrame.toFixed(1)} ms per screening frame)`);
     if (m.mean < THRESH.black && m.peak < THRESH.blackPeak) return r('nearly all black');
     if (m.mean > THRESH.white) return r('nearly all white');
+    if (m.blank > THRESH.blankShare) return r(`blank for ${Math.round(m.blank * 100)}% of a ${LONG_SECS} s run`);
     if (m.noise > THRESH.noiseFrac) return r('pure noise');
     const recent = lastHalf(music.motions);
     if (avg(recent) < THRESH.frozen && Math.max(...recent) < THRESH.frozen * 3 && m.beatCorr < THRESH.frozenCorr) return r('frozen');

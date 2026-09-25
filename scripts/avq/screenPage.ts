@@ -2,6 +2,7 @@
 // with the app's Screener and returns its cheap reactivity metrics.
 import { Engine } from '../../src/v2/engine';
 import { screenSeeds } from './screenCal';
+import type { Genome } from '../../src/v2/genome';
 
 const eng = new Engine(document.getElementById('c') as HTMLCanvasElement);
-(window as unknown as { avqScreen: unknown }).avqScreen = { run: (ids?: string[]) => screenSeeds(eng, ids) };
+(window as unknown as { avqScreen: unknown }).avqScreen = { run: (ids?: string[], extra?: { origin: string; genome: Genome }[]) => screenSeeds(eng, ids, extra) };
