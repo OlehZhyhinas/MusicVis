@@ -24,6 +24,7 @@ import {
 import { SCENE_PASS, sceneField } from './genes/raymarch';
 import { LAND_PASS, landField } from './genes/landscape';
 import { TONNETZ_GLSL } from './genes/tonnetz';
+import { NOTES_GLSL } from './genes/notes';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -104,7 +105,7 @@ uniform vec4 uSeg[48];
 uniform vec4 uSegZ[12];
 uniform int uSegN;
 uniform vec4 uChroma4[3];
-uniform sampler2D uWave, uSpec;
+uniform sampler2D uWave, uSpec, uNote;
 
 float waveAt(float x) { return texture(uWave, vec2(x, 0.5)).r; }
 float specAt(float x) { return texture(uSpec, vec2(clamp(x, 0.0, 1.0), 0.5)).r; }
@@ -464,6 +465,7 @@ vec3 FLD(vec2 p) {
   cells: CELLS_GLSL,
   cymatics: CYMATICS_GLSL,
   tonnetz: TONNETZ_GLSL,
+  notes: NOTES_GLSL,
   terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);

@@ -45,6 +45,7 @@ import { LAND_NO_REACT, LAND_SCHEMA, landCost } from './genes/landscape';
 import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 
 import { TONNETZ_COST, TONNETZ_SCHEMA } from './genes/tonnetz';
+import { NOTES_COST, NOTES_SCHEMA } from './genes/notes';
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 import { HARMONY_COST_MS, repairHarmony, validateHarmony, type HarmonyGene } from './genes/harmony';
@@ -145,7 +146,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -164,6 +165,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   cymatics: 'field',
   landscape: 'field',
   tonnetz: 'field',
+  notes: 'field',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene', 'landscape'];
@@ -202,6 +204,8 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   landscape: LAND_SCHEMA,
   // The harmony map drawn as a lattice walk (see genes/tonnetz.ts).
   tonnetz: TONNETZ_SCHEMA,
+  // The melody's notes drawn as they are played: ribbons for held notes, marks at note starts (see genes/notes.ts).
+  notes: NOTES_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -1312,6 +1316,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
       case 'beams': s.aurora += 2.4 * w; s.spectrum += 0.6; break;
       case 'landscape': s.terrain += 2.6 * w; s.depth += 1.2 * w; break;
       case 'tonnetz': s.spectrum += 1.6 * w; s.mirror += 0.8 * w; break;
+      case 'notes': s.spectrum += 1.4 * w; s.aurora += 0.6 * w; break;
       case 'cells': s.plasma += 2 * w; s.ink += 0.6 * w; if (sp.mode === 2) s.chrome += 0.6 * w; break;
       case 'cymatics': s.plasma += 2.4 * w; s.mirror += 0.8; break;
       case 'terrain': s.terrain += 2.6 * w; break;
@@ -1458,9 +1463,9 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3,
 };
-const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST };
+const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
 /** One evaluation of a shape; a wireframe costs by its segment count (plus the inner solid). */
 function shapeEvalCost(sh: ShapeGene): number {

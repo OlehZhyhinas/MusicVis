@@ -37,6 +37,7 @@ import { choreoTests } from './choreo-tests';
 import { harmonyGeneTests } from './harmony-gene-tests';
 import { grooveGeneTests } from './groove-gene-tests';
 import { timbreGeneTests } from './timbre-gene-tests';
+import { notesGeneTests } from './notes-gene-tests';
 import { driftTests } from './drift-tests';
 import { dejavuTests } from './dejavu-tests';
 import { slimeTests } from './slime-tests';
@@ -1549,6 +1550,10 @@ grooveGeneTests(check);
 // -------------------------------------------------- timbre gene
 
 timbreGeneTests(check);
+
+// -------------------------------------------------- notes gene (articulation)
+
+notesGeneTests(check);
 driftTests(check);
 dejavuTests(check);
 slimeTests(check);

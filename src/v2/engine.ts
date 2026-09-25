@@ -45,6 +45,7 @@ import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
 import { LAND_VEC4, packLandscape } from './genes/landscape';
 import { packTonnetz } from './genes/tonnetz';
+import { NOTE_W, NoteHistory, packNotes } from './genes/notes';
 import { LandWorld } from './genes/landscapeGpu';
 import { packCymatics } from './genes/cymatics';
 import { DriftDriver } from './genes/driftPlay';
@@ -172,6 +173,9 @@ export class Signals {
   songCx: number | null = null;
   readonly waveTex: WebGLTexture;
   readonly specTex: WebGLTexture;
+  /** Melody history and recent notes for the notes shape (genes/notes.ts). */
+  readonly noteTex: WebGLTexture;
+  private readonly noteHist = new NoteHistory();
   readonly chroma = new Float32Array(12);
   private wave = new Float32Array(WAVE_N);
   private waveTmp = new Float32Array(WAVE_N);
@@ -188,6 +192,7 @@ export class Signals {
     const f = formats(gl);
     this.waveTex = createTexture(gl, WAVE_N, 1, f.r16f, gl.LINEAR);
     this.specTex = createTexture(gl, SPEC_N, 1, f.r16f, gl.LINEAR);
+    this.noteTex = createTexture(gl, NOTE_W, 2, f.rgba16f, gl.LINEAR);
   }
 
   reset(): void {
@@ -198,6 +203,7 @@ export class Signals {
     this.clock = 0;
     this.wave.fill(0);
     this.spec.fill(0);
+    this.noteHist.reset();
   }
 
   update(state: MusicState, sdt: number, aspect: number): void {
@@ -368,6 +374,9 @@ export class Signals {
     }
     gl.bindTexture(gl.TEXTURE_2D, this.specTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SPEC_N, 1, gl.RED, gl.FLOAT, this.spec);
+    this.noteHist.push(this.F.notes, dt);
+    gl.bindTexture(gl.TEXTURE_2D, this.noteTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, NOTE_W, 2, gl.RGBA, gl.FLOAT, this.noteHist.data);
     if (state.chroma && state.chroma.length >= 12) for (let i = 0; i < 12; i++) this.chroma[i] = num(state.chroma[i], 0);
   }
 
@@ -421,6 +430,7 @@ export class Signals {
   dispose(): void {
     this.gl.deleteTexture(this.waveTex);
     this.gl.deleteTexture(this.specTex);
+    this.gl.deleteTexture(this.noteTex);
   }
 }
 
@@ -1885,7 +1895,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics': case 'landscape': case 'tonnetz':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics': case 'landscape': case 'tonnetz': case 'notes':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -2004,6 +2014,9 @@ export class Stage {
         packTonnetz(E, o, o - 56, o - 52, P, sh.p, tf, m, key, sdt);
         break;
       }
+      case 'notes':
+        packNotes(E, o, o - 56, o - 52, P, sh.p, F.notes, m, key, sdt);
+        break;
     }
     void copies;
   }
@@ -2613,7 +2626,8 @@ export class Stage {
       .f4v('uChroma4', this.sig.chroma)
       .f1('uBarPulse', F.barPulse)
       .tex('uWave', this.sig.waveTex)
-      .tex('uSpec', this.sig.specTex);
+      .tex('uSpec', this.sig.specTex)
+      .tex('uNote', this.sig.noteTex);
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
     if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
   }
