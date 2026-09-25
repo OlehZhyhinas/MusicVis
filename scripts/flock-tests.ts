@@ -8,7 +8,7 @@ import { crossover, mulberry32, mutate, randomGenome } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { ADJ_POOLS, NOUN_POOLS, nameFor, nounKind } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
-import { FLOCK_SCHEMA, flockCost } from '../src/v2/genes/boids';
+import { FLOCK_SCHEMA, flockCost, flockOverlaySize } from '../src/v2/genes/boids';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -107,6 +107,21 @@ export function flockTests(check: Check): void {
   }
   check('flock.names', nounKind(hidden.bodies[0]) === 'flock' && NOUN_POOLS.flock.includes(nameFor(hidden).split(' ').pop()!) && adj > 10,
     `${nameFor(hidden)}; ${adj}/40 flock names use a flocking adjective`);
+
+  // Overlay: off by default (a genome that never set it keeps its look), reactable, sized in stage
+  // pixels with a floor that still follows osize, costed, and it leaves the shaders alone (a second draw call).
+  const legacy = flockGenome();
+  const noOver = JSON.parse(JSON.stringify(legacy));
+  delete noOver.bodies[0].emit.p.over;
+  delete noOver.bodies[0].emit.p.osize;
+  const lit = flockGenome({ over: 0.7, osize: 3 });
+  const sizes = [flockOverlaySize(2.5, 180), flockOverlaySize(2.5, 1080), flockOverlaySize(2.5, 2160), flockOverlaySize(5, 180)];
+  check('flock.overlay', FLOCK_SCHEMA.over.def === 0 && legacy.bodies[0].emit.p.over === 0 && repair(noOver).bodies[0].emit.p.over === 0
+    && ['over', 'osize'].every((k) => reactable(FLOCK_SCHEMA).includes(k))
+    && sizes[0] === 1.5 && sizes[1] === 2.5 && sizes[2] === 5 && sizes[3] === 3
+    && flockCost(65536, 0.7) > flockCost(65536) && estimateCost(lit) > estimateCost(legacy) && estimateCost(lit) <= COST_BUDGET_MS && !validate(lit).length
+    && JSON.stringify(buildSources(lit)) === JSON.stringify(buildSources(legacy)),
+    `default over ${legacy.bodies[0].emit.p.over}; sizes at 180/1080/2160 px (and osize 5 at 180): ${sizes.join('/')}; cost ${estimateCost(legacy).toFixed(2)} -> ${estimateCost(lit).toFixed(2)} ms`);
 
   // Showcase seed: a P seed leads a flock with its reactions on the flock's own params.
   const ps = SEEDS.filter((x) => /^P\d\d$/.test(x.origin) && x.genome.bodies.some((b) => b.emit.kind === 'flock'));

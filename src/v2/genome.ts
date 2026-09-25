@@ -1504,7 +1504,7 @@ export function bodyCost(b: BodyGene): number {
   let ms = 0;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
-  if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count);
+  if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count, b.emit.p.over ?? 0);
   if (b.emit.kind === 'ecosystem') ms += ecoCost(b.emit.p as { count: number; size: number });
   if (cls === 'flame') {
     ms += (b.shape.p.count / 262144) * b.shape.p.rounds * 1.35;

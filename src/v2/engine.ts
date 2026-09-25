@@ -36,7 +36,7 @@ import {
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
 import { Boids } from './genes/boidsGpu';
-import { FLOCK_GAIN } from './genes/boids';
+import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids';
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
@@ -982,6 +982,7 @@ export class Stage {
     for (const s of slots) {
       for (const c of s.curves) if (c.top) this.drawCurve(s, c, s.weight, sdt, false);
       if (s === partSlot && s.genome.bodies[s.sparks].emit.p.top > 0.5) this.drawParticles(s, s.weight, false);
+      if (s === this.flockOwner && s.flock >= 0) this.drawFlockOverlay(s);
     }
     gl.disable(gl.BLEND);
 
@@ -2378,6 +2379,17 @@ export class Stage {
       out[i * 3 + 2] = whole ? 0.75 : b.place.kind === 'ring' ? b.place.p.radius + R : R * Math.max(0.3, s.cp[j + 3]);
     }
     return n;
+  }
+
+  /** The flock's overlay: the birds drawn again straight onto the composite (emit over > 0), sized in stage pixels. */
+  private drawFlockOverlay(s: Slot): void {
+    if (!this.flock) return;
+    const b = s.genome.bodies[s.flock];
+    const PE = (k: string) => s.P('em', s.flock, b.emit.p, k, EMIT_SCHEMAS.flock);
+    const over = PE('over');
+    if (!(over > 0.001)) return;
+    const gain = s.P('ma', s.flock, b.material.p, 'gain', MATERIAL_SCHEMAS[b.material.kind]);
+    this.flock.draw(flockOverlaySize(PE('osize'), this.h), gain * FLOCK_GAIN * FLOCK_OVERLAY_GAIN * over * s.weight, PE('speed') * this.sig.F.speed, s.cols);
   }
 
   /** Boids: splat into the neighbourhood grid, then align, cohere, separate, home and move (genes/boidsGpu.ts). */

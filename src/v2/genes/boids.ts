@@ -6,7 +6,8 @@
 // bird then reads the grid where it is: it turns toward the local average heading (align), toward
 // denser air while the crowd is thin (cohere) and away from it once crowded (separate), wanders a
 // little (wander) and is pulled toward the body's copies (home), all at about `speed`. The birds are
-// drawn as soft points into the body's feedback, so the carrier turns their paths into trails.
+// drawn as soft points into the body's feedback, so the carrier turns their paths into trails, and
+// optionally once more on top of the picture (over, osize) for responses that must land at once.
 
 import type { ParamSpec, Schema } from '../genome';
 
@@ -29,15 +30,36 @@ export const FLOCK_SCHEMA: Schema = {
   body: P(0, 1, 1),
   // On a drop: 0 nothing, 1 the flock bursts outward from where each bird is, 2 every bird restarts at the body.
   onDrop: C([0, 1, 2], 1),
+  // Overlay: the birds' current positions drawn a second time straight onto the picture (not into the
+  // feedback), so a flash or a size kick shows the same frame instead of being smoothed by the trails;
+  // over = its brightness (0 = off, the default), osize = its point size in pixels at 1080p (at least
+  // 0.6 px per unit on small stages).
+  over: P(0, 1, 0),
+  osize: P(1, 6, 2.5),
 };
 
 /**
  * Estimated GPU ms at 1440p: the grid passes are tiny; the update and above all the blended points
  * scale with the count (timer query: ~1 ms per 65k birds of ~3 px at 800 px, scaled up for 1440p).
  */
-export function flockCost(count: number): number {
-  return 0.1 + (count / 65536) * 1.2;
+export function flockCost(count: number, over = 0): number {
+  return 0.1 + (count / 65536) * (over > 0 ? 1.6 : 1.2);
+}
+
+/**
+ * Overlay point size in stage pixels: `osize` at 1080p, scaled with the stage height, but never below
+ * 0.6 px per unit of osize, so small stages keep a visible (and still reactable) size instead of every
+ * bird clamping to one pixel.
+ */
+export function flockOverlaySize(osize: number, stageH: number): number {
+  return osize * Math.max(0.6, stageH / 1080);
 }
 
 /** Brightness of a bird per unit of material gain. */
 export const FLOCK_GAIN = 0.9;
+/**
+ * The overlay's brightness per unit of `over`, relative to FLOCK_GAIN: a bird in the feedback piles up
+ * over the frames of its trail, a bird in the overlay is drawn once, so over = 1 needs about this
+ * much more light to stand level with the trail it rides on.
+ */
+export const FLOCK_OVERLAY_GAIN = 4;
