@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 52;
+export const SEED_VERSION = 53;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1650,6 +1650,25 @@ const GROOVE: Def[] = [
     })],
     reactions: [rx('humanity', 'em', 0, 'force', 0.4, { atk: 0.3, rel: 1 }), rx('synco', 'ma', 0, 'gain', 0.3, { atk: 0.2, rel: 0.8 })],
     groove: { swing: 1, sub: 8, sway: 0.015, off: 0.6, lean: 0.4, crisp: 0.2, tick: 2, jitter: 1, accent: 0.9 },
+  },
+  {
+    // A funk ring: a full circle of spectrum bars that pumps on the beat, mirrored into a mandala and
+    // spun through a slow tunnel zoom. It is tuned for 16th-note grooves: the ring's pulse lands on
+    // the swung 16th off-beats, syncopated hits (the ghost notes and pushes between the beats) kick
+    // it wide, and the whole ring sways a little around the two-beat backbeat. Straight, busy
+    // techno just pumps it evenly.
+    origin: 'Q05', name: 'Ghost Note Ring', energy: [0.4, 1], scheme: 'complementary', hue: 0.9,
+    color: { adapt: 0.4, bloom: 1, vignette: 0.55, ca: 0.003 }, carrier: 'warp', car: { halfLife: 0.1, floor: 1 },
+    chain: [op('zoom', { rate: 0.025 }), op('mirror', { axis: 2 }, 1, 'view')],
+    bodies: [body({
+      shape: ['bars', { mode: 2, bins: 40, radius: 0.14, len: 0.3, fill: 0.5 }],
+      motion: ['pulse', { amp: 0.25 }],
+      material: ['line', { gain: 0.7, width: 1.4, halo: 0.15 }],
+      emit: ['trail', { tip: 0 }],
+      feel: ['flow', { atk: 0.01, rel: 0.12, sens: 1.2 }],
+    })],
+    reactions: [rx('synco', 'sh', 0, 'len', 0.4, { atk: 0.2, rel: 0.8 }), rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 })],
+    groove: { swing: 1.3, sub: 16, sway: 0.02, off: 1, lean: 0.5, crisp: 0.4, tick: 4, jitter: 0.3, accent: 1 },
   },
 ];
 
