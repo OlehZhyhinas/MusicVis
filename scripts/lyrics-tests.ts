@@ -6,6 +6,7 @@ import { cleanTitle, metaFromFilename, mergeMeta } from '../src/lyrics/filename'
 import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
 import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS, fitsDuration } from '../src/lyrics/lrclib';
 import { LyricsLibrary } from '../src/lyrics/library';
+import { alignLines, shiftTrack, lineOnsetFit } from '../src/lyrics/align';
 import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
 import { LyricSampler } from '../src/lyrics/sampler';
 import { COST_BUDGET_MS, cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
@@ -332,6 +333,82 @@ export async function lyricsTests(check: Check): Promise<void> {
     only = null;
     check('lyrics.library.decoded-duration', before === '[00:07.00]album' && after === '[00:22.00]video' && calls.some((c) => c.includes('duration=235')) && calls.length === n,
       `${before} -> ${after}; ${calls.join(' ')}`);
+  }
+
+  // --------------------------------------------- alignment of synced lyrics to the audio
+  {
+    const FR = 86.1328125;
+    const DUR = 200;
+    const rng = mulberry32(7);
+    // An LRC: three blocks of lines 3..4.5 s apart with instrumental gaps between them.
+    const lrcLines: string[] = [];
+    let t = 6;
+    for (const [count, gap] of [[10, 18], [12, 22], [8, 0]]) {
+      for (let i = 0; i < count; i++) {
+        const s = Math.floor(t);
+        lrcLines.push(`[${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}.${String(Math.round((t - s) * 100)).padStart(2, '0')}]line ${lrcLines.length}`);
+        t += 3 + rng() * 1.5;
+      }
+      t += gap;
+    }
+    const track = parseLrc(lrcLines.join('\n'), DUR);
+    // Vocal onsets for the song as sung at t * scale + offset: a strong onset at each line start and
+    // weaker syllables through the line, over noise and off-beat instrument onsets.
+    const song = (offset: number, scale: number, voice = true) => {
+      const r = mulberry32(11);
+      const o = new Float32Array(Math.floor(DUR * FR));
+      for (let i = 0; i < o.length; i++) o[i] = r() * 0.08;
+      const hit = (sec: number, a: number) => {
+        const i = Math.round(sec * FR);
+        for (let k = 0; k < 4; k++) if (i + k >= 0 && i + k < o.length) o[i + k] = Math.max(o[i + k], a * (1 - k / 4));
+      };
+      for (let x = 0.3; x < DUR; x += 0.5 + r()) hit(x, 0.35 + r() * 0.3);
+      if (voice)
+        for (const l of track.lines) {
+          const a = l.t * scale + offset;
+          hit(a + 0.03, 0.9);
+          for (let y = a + 0.35; y < Math.min(l.end * scale + offset - 0.3, a + 3); y += 0.3 + r() * 0.3) hit(y, 0.3 + r() * 0.25);
+        }
+      return { onsets: o, frameRate: FR, duration: DUR };
+    };
+    const a1 = alignLines(track.lines, song(5.3, 1));
+    check('lyrics.align.offset', a1.applied && Math.abs(a1.offset - 5.3) <= 0.1 && a1.scale === 1 && a1.confidence >= 0.8, JSON.stringify(a1));
+    const a2 = alignLines(track.lines, song(-3.4, 1));
+    check('lyrics.align.negative-offset', a2.applied && Math.abs(a2.offset + 3.4) <= 0.1 && a2.scale === 1, JSON.stringify(a2));
+    // A release running 2% slower: the speed is found and every line lands within 0.1 s.
+    const f3 = song(-2, 1.02);
+    const a3 = alignLines(track.lines, f3);
+    const moved = shiftTrack(track, a3.offset, a3.scale, DUR);
+    const worst = Math.max(...track.lines.map((l, i) => Math.abs(moved.lines[i].t - (l.t * 1.02 - 2))));
+    check('lyrics.align.stretch', a3.applied && Math.abs(a3.scale - 1.02) < 0.003 && worst <= 0.1, `${JSON.stringify(a3)}, worst line ${worst.toFixed(3)} s`);
+    // Already in time: nothing to move.
+    const a4 = alignLines(track.lines, song(0, 1));
+    check('lyrics.align.in-time', !a4.applied && Math.abs(a4.offset) < 0.1 && a4.scale === 1, JSON.stringify(a4));
+    // No voice in the onsets (instruments only): not confident, left as timed.
+    const a5 = alignLines(track.lines, song(4, 1, false));
+    check('lyrics.align.low-confidence', !a5.applied && a5.confidence < 0.5, JSON.stringify(a5));
+    const silent = alignLines(track.lines, { onsets: new Float32Array(1000), frameRate: FR, duration: DUR });
+    check('lyrics.align.no-onsets', !silent.applied && silent.confidence === 0 && alignLines(track.lines.slice(0, 3), song(5, 1)).confidence === 0, JSON.stringify(silent));
+    const fit0 = lineOnsetFit(track.lines, song(5.3, 1));
+    const fit1 = lineOnsetFit(shiftTrack(track, a1.offset).lines, song(5.3, 1));
+    check('lyrics.align.fit-measure', fit1.strength > fit0.strength + 0.25 && fit1.residual <= 0.15 && fit0.residual >= 1, `strength ${fit0.strength.toFixed(2)} -> ${fit1.strength.toFixed(2)}, residual ${fit0.residual.toFixed(2)} -> ${fit1.residual.toFixed(2)} s`);
+    // Shifting clips to the song and drops lines pushed before its start.
+    const cut = track.lines[1].end + 0.1;
+    const early = shiftTrack(track, -cut, 1, DUR);
+    const late = shiftTrack(track, 0, 1.5, DUR);
+    check('lyrics.align.shift-clip', early.lines.length === track.lines.length - 2 && early.lines[0].t === 0 && early.lines[0].text === track.lines[2].text && late.lines.every((l) => l.end <= DUR) && late.lines.length < track.lines.length && shiftTrack(track, 0, 1) === track,
+      `${early.lines.length} of ${track.lines.length} after -${cut.toFixed(2)} s, first at ${early.lines[0].t}; ${late.lines.length} left at x1.5`);
+
+    // The library aligns synced lyrics against the analysis' vocal onsets.
+    const lib = new LyricsLibrary({ fetch: (async () => new Response(JSON.stringify({ trackName: 'Song', artistName: 'Band', duration: 200, syncedLyrics: lrcLines.join('\n') }), { status: 200 })) as typeof fetch, cache: memoryCache() });
+    await new Promise<void>((res) => {
+      lib.onChange = () => res();
+      lib.add('a', Object.assign(new Blob([new Uint8Array(16)]), { name: 'Band - Song.mp3' }));
+    });
+    const fr = song(5.3, 1);
+    const result = { duration: DUR, frameRate: FR, stemOnsets: { vocals: fr.onsets }, stemPresence: {} } as unknown as import('../src/types').AnalysisResult;
+    const lt = lib.lyricTrack('a', result);
+    check('lyrics.align.library', !!lt?.align?.applied && Math.abs(lt.lines[0].t - (track.lines[0].t + 5.3)) <= 0.1 && lib.lyricTrack('a', result) === lt, JSON.stringify(lt?.align));
   }
 
   // --------------------------------------------------------------- lexicon

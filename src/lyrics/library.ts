@@ -11,6 +11,7 @@ import { readFileTags } from './tags';
 import { mergeMeta } from './filename';
 import { idbCache, lookupLyrics, RECHECK_AFTER, type LyricsCache } from './lrclib';
 import { parseLrc, spreadPlain, vocalRegions } from './lrc';
+import { alignLines, shiftTrack } from './align';
 
 export interface TrackLyrics {
   status: LyricStatus;
@@ -102,8 +103,9 @@ export class LyricsLibrary {
   }
 
   /**
-   * The timed lyrics of an analysed track (null: none, or not looked up yet). Synced lyrics keep
-   * their times; plain lyrics are spread over the song's vocal stretches.
+   * The timed lyrics of an analysed track (null: none, or not looked up yet). Synced lyrics are
+   * matched to the song's sung onsets (moved when the match is confident: the LRC was timed for
+   * another release); plain lyrics are spread over the song's vocal stretches.
    */
   lyricTrack(id: string, result: AnalysisResult): LyricTrack | null {
     const it = this.items.get(id);
@@ -111,8 +113,15 @@ export class LyricsLibrary {
     if (it.built?.result === result) return it.built.track;
     let track: LyricTrack | null = null;
     const r = it.result;
-    if (r.status === 'synced' && r.synced) track = parseLrc(r.synced, result.duration);
-    else if (r.status === 'plain' && r.plain) {
+    if (r.status === 'synced' && r.synced) {
+      track = parseLrc(r.synced, result.duration);
+      const onsets = result.stemOnsets?.vocals;
+      if (onsets && track.lines.length) {
+        const a = alignLines(track.lines, { onsets, frameRate: result.frameRate, duration: result.duration });
+        const moved = a.applied ? shiftTrack(track, a.offset, a.scale, result.duration) : track;
+        track = { ...moved, align: { offset: a.offset, scale: a.scale, confidence: a.confidence, applied: a.applied } };
+      }
+    } else if (r.status === 'plain' && r.plain) {
       const voc = result.stemPresence?.vocals;
       track = spreadPlain(r.plain, result.duration, voc ? vocalRegions(voc, result.frameRate) : []);
     }

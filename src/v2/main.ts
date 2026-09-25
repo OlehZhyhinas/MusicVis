@@ -326,7 +326,15 @@ async function main(): Promise<void> {
     const l = cur ? lyrics.get(cur.id) : undefined;
     if (!l) return '–';
     const label = lyricStatusLabel(l.status)?.label ?? l.status;
-    return l.result?.source ? `${label} · ${l.result.source}` : label;
+    let out = l.result?.source ? `${label} · ${l.result.source}` : label;
+    // The matched version's length against the file's, and how the lines were fitted to the audio.
+    if (l.result?.duration && songResult) out += ` · ${Math.round(l.result.duration)}/${Math.round(songResult.duration)} s`;
+    const al = lyricSampler?.track.align;
+    if (al) {
+      const sh = `${al.offset >= 0 ? '+' : ''}${al.offset.toFixed(2)} s${al.scale !== 1 ? ` ×${al.scale.toFixed(3)}` : ''}`;
+      out += al.applied ? ` · auto ${sh} (${Math.round(al.confidence * 100)}%)` : ` · as timed (fit ${sh} ${Math.round(al.confidence * 100)}%)`;
+    }
+    return out;
   }
   function attachLyrics(): void {
     const cur = playlist.currentTrack;

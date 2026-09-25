@@ -23,6 +23,11 @@ export interface LyricTrack {
   lines: LyricLine[];
   /** true: times come from the lyrics (LRC); false: plain lyrics spread over the vocals. */
   synced: boolean;
+  /**
+   * Synced lyrics matched to the audio (see align.ts): the shift and speed found, how sure, and
+   * whether the lines were moved by it.
+   */
+  align?: { offset: number; scale: number; confidence: number; applied: boolean };
 }
 
 /**
