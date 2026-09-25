@@ -146,7 +146,7 @@ float lsH(vec2 q, float py) {
   float adx = abs(q.x - lsPathX(q.y));
   float side = smoothstep(lsCw, lsCw * 3.0 + 0.6, adx);
   float local = nb.w + df;
-  float detA = uLs[3].y * (lsTer == 3 ? 1.8 : 1.3) * side * (0.35 + 0.65 * smoothstep(0.0, 1.5, local));
+  float detA = lsTer == 3 ? uLs[3].y * 1.8 * step(0.5, side) * step(0.75, local) : uLs[3].y * 1.3 * side * (0.35 + 0.65 * smoothstep(0.0, 1.5, local));
   float pkA = w.y * LPEAK * smoothstep(lsCw, lsCw + 2.5, adx) * exp(-max(adx - 3.5, 0.0) * 0.25);
   float h = uLs[3].x * LALT * w.x + 0.35 * side * smoothstep(0.0, 8.0, adx) * (0.5 + uLs[3].y);
   if (lsPath == 1) h -= 0.3 * (1.0 - side);
@@ -214,12 +214,26 @@ void main() {
   float lit = 0.0, shade = 0.5, glow = sky, rim = 0.0;
   if (hit) {
     vec3 pos = ro + rd * t;
-    float e = 0.012 + 0.002 * t;
+    float e = lsTer == 3 ? 0.002 + 0.0004 * t : 0.012 + 0.002 * t;
     float h0 = lsH(pos.xz, -1e9);
     vec3 n = normalize(vec3(h0 - lsH(pos.xz + vec2(e, 0.0), -1e9), e, h0 - lsH(pos.xz + vec2(0.0, e), -1e9)));
-    vec4 nb, nb1; float df, df1;
+    vec4 nb, nb1; float df, df1, win = 0.0;
     vec4 w0 = lsW(0, pos.z / lsK, nb, df);
     vec4 w1 = lsW(1, pos.z / lsK, nb1, df1);
+    if (lsTer == 3) {
+      // City blocks: exact normals (a finite difference across a wall edge speckles). On a wall when
+      // the roof just inside the nearest block edge is above the hit; flat everywhere else.
+      vec2 f = fract((vec2(pos.x, (nb.w + df) * lsK) + nb.z * vec2(37.1, 11.3)) * 0.9) - 0.5;
+      vec2 ax = abs(f.x) > abs(f.y) ? vec2(sign(f.x), 0.0) : vec2(0.0, sign(f.y));
+      n = pos.y < lsH(pos.xz - ax * 0.04, -1e9) - 0.02 ? vec3(ax.x, 0.0, ax.y) : vec3(0.0, 1.0, 0.0);
+      // Lit windows on the walls (a few flicker with the beat).
+      if (n.y < 0.5) {
+        vec2 wq = vec2(ax.x != 0.0 ? pos.z : pos.x, pos.y - uLs[3].x * LALT * w0.x) * vec2(7.0, 6.0);
+        vec2 wf = fract(wq) - 0.5;
+        float on = step(0.55, hash12(floor(wq) + nb.z * 13.0));
+        win = on * step(abs(wf.x), 0.28) * step(abs(wf.y), 0.3) * step(0.15, wq.y / 6.0) * (0.6 + 0.4 * step(0.8, hash12(floor(wq) + 7.0)) * beat);
+      }
+    }
     float dx = pos.x - lsPathX(pos.z), adx = abs(dx);
     float corr = 1.0 - smoothstep(lsCw * 0.8, lsCw * 1.4, adx);
     vec3 ld = normalize(vec3(-0.5, 0.65, 0.55));
@@ -247,7 +261,7 @@ void main() {
       pg = exp(-pow((adx - 0.22) / lw, 2.0)) * (0.6 + 0.6 * beat);
       lit *= mix(1.0, 0.5 + 0.5 * step(0.3, fract(pos.z * 3.0)), corr);
     }
-    glow = pg * glowP;
+    glow = pg * glowP + win * (0.3 + glowP);
   }
   // Landmarks at section starts (analytic, drawn over the terrain when nearer).
   int mk = int(uLs[4].z + 0.5);

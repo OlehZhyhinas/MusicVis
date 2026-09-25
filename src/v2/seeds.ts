@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 47;
+export const SEED_VERSION = 48;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1429,6 +1429,25 @@ const LANDSCAPE: Def[] = [
       rx('bass', 'sh', 0, 'glow', 0.25, { atk: 0.02, rel: 0.4 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
       rx('loud', 'sh', 0, 'relief', 0.15, { atk: 0.2, rel: 2 }),
+    ],
+  },
+  {
+    // A night train on an elevated rail through a neon city: the blocks are drawn only by their lit
+    // edges, towers grow taller in the loud sections and the city thins into open lots in breakdowns,
+    // every chorus passes through the same streets (one layout per section type), black obelisks flank
+    // the line at each section start, and the drop's pass towers over the skyline ahead with its sun.
+    // The rails flash on the beat, the drums jolt the carriage, the bass brightens the edges.
+    origin: 'L04', name: 'Neon Night Line', energy: [0.35, 1], scheme: 'triad', hue: 0.85,
+    color: { adapt: 0.3, bloom: 1.4, vignette: 0.4 }, carrier: 'warp', decay: 0.85,
+    bodies: [body({
+      shape: ['landscape', { path: 3, ground: 3, mark: 0, res: 0.5, look: 16, height: 0.5, relief: 0.5, rough: 0.7, wind: 0.35, fog: 0.35, glow: 0.9, tint: 0.4, kick: 0.5, rim: 0.35 }],
+      material: ['line', { gain: 1.1 }],
+      color: ['age', { rate: 0.0625, detail: 0.8 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'rim', 0.2, { atk: 0.02, rel: 0.3 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.15 }),
+      rx('loud', 'sh', 0, 'rough', 0.2, { atk: 0.2, rel: 1.5 }),
     ],
   },
 ];
