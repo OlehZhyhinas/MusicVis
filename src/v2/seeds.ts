@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 56;
+export const SEED_VERSION = 57;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1434,6 +1434,23 @@ const DRIFT: Def[] = [
     })],
     reactions: [rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('drums', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 })],
     drift: { step: 0.4, kinds: 2, what: 3, ret: 0.6, morph: 1, bound: 0.2, seed: 0.6 },
+  },
+  {
+    // The far traveller: glowing polygons orbit and stream outward, and every section boundary cuts
+    // (no morph) to a new relative of the section before: shapes, placements, materials and space ops
+    // may all change, so the song reads as one family tree walked in order. A returning section type
+    // lands near its first appearance and the outro comes home to the saved preset.
+    origin: 'W05', name: 'Family Tree', energy: [0.3, 1], scheme: 'split', hue: 0.8,
+    color: { sat: 0.95, adapt: 0.4, bloom: 1.15, vignette: 0.45 }, carrier: 'warp', car: { halfLife: 0.5 },
+    chain: [op('zoom', { rate: 0.012 }), op('rotate', { lock: 0.0625 })],
+    bodies: [body({
+      shape: ['polygon', { n: 5, r: 0.06, round: 0.2 }],
+      place: ['orbit', { count: 5, radius: 0.25, rate: 0.25 }],
+      material: ['line', { gain: 1, width: 1.5, halo: 0.3 }],
+      color: ['instrument', { amount: 0.9, detail: 0.5 }],
+    })],
+    reactions: [rx('drums', 'sh', 0, 'r', 0.3, { atk: 0.01, rel: 0.25 }), rx('bass', 'pl', 0, 'radius', 0.25, { atk: 0.05, rel: 0.4 })],
+    drift: { step: 0.6, kinds: 2, what: 0, ret: 0.6, morph: 0, bound: 0.4, seed: 0.7 },
   },
 ];
 
