@@ -8,6 +8,8 @@ import { SEEDS } from '../src/v2/seeds';
 import { ADJ_POOLS, nameFor } from '../src/v2/naming';
 import { buildSources } from '../src/v2/glsl';
 import { genomeGene } from '../src/v2/geneRegistry';
+import { seedChecks, shapeGeneChecks } from './v2-physics';
+import { packTonnetz, type TonnetzFrame } from '../src/v2/genes/tonnetz';
 import {
   HARMONY_COST_MS, HARMONY_SCHEMA, HarmonyMotor, IDLE_HARMONY, repairHarmony, tensionShape, validateHarmony,
   type HarmonyGene, type HarmonyInputs, type HarmonyOut,
@@ -142,5 +144,24 @@ export function harmonyGeneTests(check: Check): void {
     check('harmony.motor-modulation-turns', Math.abs(o.roll - 0.02 * Math.PI * 2) < 0.01 && o.hue > 0.1, `roll ${o.roll.toFixed(3)} hue ${o.hue.toFixed(3)}`);
     const k = m2.update(h, inputs({ keyWalk: 2, chordPulse: 1 }), 0.016, out());
     check('harmony.motor-chord-kick', k.zoom > 1.01, k.zoom.toFixed(3));
+  }
+
+  // --- Tonnetz shape: the lattice walk ---
+  shapeGeneChecks(check, 'tonnetz', 'vec2 tzPlane(', 'lattice', null);
+  seedChecks(check, 'H04', 'tonnetz');
+  {
+    const E = new Float32Array(64 + 16);
+    const mem: Record<string, number> = {};
+    const p = { scale: 0.14, follow: 1, tilt: 0, nodes: 1, lines: 1, fill: 1, echo: 1, trail: 1, pulse: 1 };
+    const P = (k: string) => p[k as keyof typeof p];
+    const fr = (chord: number, x: number, y: number): TonnetzFrame => ({ chord, tonnetzX: x, tonnetzY: y, keyTonic: 0, tension: 0.3, chordPulse: 0, resolve: 0, loud: 0.5 });
+    const key = (k: string) => 't.' + k;
+    packTonnetz(E, 64, 8, 12, P, p, fr(0, 0.5, 0.2887), mem, key, 1 / 60); // C
+    packTonnetz(E, 64, 8, 12, P, p, fr(7, 1.5, 0.2887), mem, key, 1 / 60); // G
+    packTonnetz(E, 64, 8, 12, P, p, fr(9 + 12, 0.1667, 0.5774), mem, key, 1 / 60); // Am
+    check('tonnetz.pack-chord', E[72] === 9 && E[73] === 1 && E[74] === 0, `${E[72]} ${E[73]} ${E[74]}`);
+    check('tonnetz.trail', Math.abs(E[8] - 1.5) < 1e-6 && Math.abs(E[10] - 0.5) < 1e-6 && Math.abs(E[14] - 0.1667) < 1e-6, `${[...E.slice(8, 16)].map((v) => v.toFixed(2))}`);
+    for (let i = 0; i < 300; i++) packTonnetz(E, 64, 8, 12, P, p, fr(9 + 12, 0.1667, 0.5774), mem, key, 1 / 60);
+    check('tonnetz.camera-follows', Math.abs(E[69] - 0.1667) < 0.01 && Math.abs(E[70] - 0.5774) < 0.01, `${E[69].toFixed(3)} ${E[70].toFixed(3)}`);
   }
 }

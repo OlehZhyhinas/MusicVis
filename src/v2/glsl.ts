@@ -22,6 +22,7 @@ import {
 } from './genome';
 import { SCENE_PASS, sceneField } from './genes/raymarch';
 import { LAND_PASS, landField } from './genes/landscape';
+import { TONNETZ_GLSL } from './genes/tonnetz';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -461,6 +462,7 @@ vec3 FLD(vec2 p) {
   beams: BEAMS_GLSL,
   cells: CELLS_GLSL,
   cymatics: CYMATICS_GLSL,
+  tonnetz: TONNETZ_GLSL,
   terrain: /* glsl */ `
 float hzTerrain(vec2 w, float scroll, float amt) {
   float ax = abs(w.x);

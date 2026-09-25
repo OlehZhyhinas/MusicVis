@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 59;
+export const SEED_VERSION = 60;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1655,6 +1655,23 @@ const HARMONY: Def[] = [
       rx('modulation', 'col', 0, 'exposure', 0.4, { atk: 0.02, rel: 1.5 }),
     ],
     harmony: { brk: 0.9, warp: 0.5, style: 2, snap: 1, settle: 0.15, walk: 0.1, kick: 0.4, modHue: 0.22, modTurn: 0.012, calm: 0.2 },
+  },
+  {
+    // The harmony map itself: the tonal lattice (fifths across, thirds on the diagonals) with every
+    // note node glowing as it sounds. The current chord's triangle burns, the last chords leave a
+    // fading path, and the camera drifts after the walk. Tension bends the lattice off true; a
+    // cadence home straightens it with a flash, and a key change turns the whole map.
+    origin: 'H04', name: 'Tonnetz Walk', energy: [0.1, 0.8], scheme: 'analogous', hue: 0.52,
+    color: { sat: 0.85, adapt: 0.3, bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.8,
+    bodies: [body({
+      shape: ['tonnetz', { scale: 0.14, follow: 0.6, tilt: 0, nodes: 0.8, lines: 0.2, fill: 0.85, echo: 0.3, trail: 0.8, pulse: 0.6 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 1 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+    })],
+    reactions: [rx('chordchange', 'sh', 0, 'lines', 0.4, { atk: 0.01, rel: 0.5 }), rx('bass', 'sh', 0, 'nodes', 0.2, { atk: 0.03, rel: 0.4 })],
+    harmony: { brk: 0.5, warp: 0.4, style: 0, snap: 0.6, settle: 0.3, walk: 0.05, kick: 0.25, modHue: 0.1, modTurn: 0.02, calm: 0.3 },
   },
 ];
 

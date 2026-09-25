@@ -42,6 +42,7 @@ import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
 import { LAND_VEC4, packLandscape } from './genes/landscape';
+import { packTonnetz } from './genes/tonnetz';
 import { LandWorld } from './genes/landscapeGpu';
 import { packCymatics } from './genes/cymatics';
 import { DriftDriver } from './genes/driftPlay';
@@ -136,6 +137,8 @@ export interface Frame {
   barPulse: number; bpm: number;
   /** Harmony map: tension 0..1 and the resolve / chord change / modulation pulses. */
   tension: number; resolve: number; chordPulse: number; modPulse: number;
+  /** Harmony map: the current chord (-1 none) and its Tonnetz position relative to the tonic. */
+  chord: number; tonnetzX: number; tonnetzY: number;
   /** Timing feel (swing, push, humanity, syncopation; neutral when not analysed). */
   groove: GrooveStats;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
@@ -151,7 +154,7 @@ export class Signals {
     barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, stem: new Float32Array(4), onset: new Float32Array(4),
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
-    tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, line: 0, valence: 0.5, arousal: 0.5,
+    tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, chord: -1, tonnetzX: 0.5, tonnetzY: 0.2887, line: 0, valence: 0.5, arousal: 0.5,
     groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
   };
   /** Seconds the vocals have been silent (a new line's fallback pulse without lyrics). */
@@ -221,6 +224,9 @@ export class Signals {
     F.resolve = num(state.resolvePulse, 0);
     F.chordPulse = num(state.chordPulse, 0);
     F.modPulse = num(state.modulationPulse, 0);
+    F.chord = num(state.chord, -1);
+    F.tonnetzX = num(state.tonnetzX, 0.5);
+    F.tonnetzY = num(state.tonnetzY, 0.2887);
     const gr = state.groove;
     F.groove.swing = num(gr?.swing, 0);
     F.groove.push = num(gr?.push, 0);
@@ -1837,7 +1843,7 @@ export class Stage {
         }
         return 0.2;
       }
-      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics': case 'landscape':
+      case 'plasma': case 'terrain': case 'edge': case 'beams': case 'scene': case 'cells': case 'cymatics': case 'landscape': case 'tonnetz':
         this.packField(s, b, bi, sdt, copies);
         return 0.2;
       case 'flame':
@@ -1949,6 +1955,11 @@ export class Stage {
       case 'cymatics': {
         const cf = { chroma: this.sig.chroma, spec: this.sig.spec, keyTonic: F.keyTonic, minor: F.minor, sectionIndex: F.sectionIndex, bass: F.stem[1] * F.gate[1], loud: F.loud, bpm: F.bpm };
         packCymatics(E, o, o - 56, P, sh.p, cf, m, key, this.every(s, bi, 'cym', 4 * sh.p.hold), (k, raw) => this.resp(k, raw), sdt);
+        break;
+      }
+      case 'tonnetz': {
+        const tf = { chord: F.chord, tonnetzX: F.tonnetzX, tonnetzY: F.tonnetzY, keyTonic: F.keyTonic, tension: F.tension, chordPulse: F.chordPulse, resolve: F.resolve, loud: F.loud };
+        packTonnetz(E, o, o - 56, o - 52, P, sh.p, tf, m, key, sdt);
         break;
       }
     }

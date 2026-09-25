@@ -21,7 +21,7 @@ function around(b: unknown): Genome {
 }
 
 /** Shared gene checks for a physics shape kind: repair, random bodies, crossover with every seed, mutation, cost, name. */
-function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, noun: string, shed: string | null): void {
+export function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, noun: string, shed: string | null): void {
   const schema = SHAPE_SCHEMAS[kind];
   const rng = mulberry32(4242 + kind.length);
 
@@ -125,7 +125,7 @@ export function physicsChecks(check: Check): void {
 }
 
 /** A showcase seed: valid, under budget, uses its gene; a population saved before it gains it exactly once. */
-function seedChecks(check: Check, origin: string, kind: ShapeKind): void {
+export function seedChecks(check: Check, origin: string, kind: ShapeKind): void {
   const seed = SEEDS.find((x) => x.origin === origin);
   if (!seed) {
     check(`${kind}.seed`, false, `no seed ${origin}`);
