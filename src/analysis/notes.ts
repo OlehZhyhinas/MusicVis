@@ -23,8 +23,8 @@
 // (pitch slope, vibrato removed), vibrato depth, pitch and its height within the song's range, and
 // the voice cue.
 //
-// Offline, PitchFrames is fed each frame of the main STFT analyzePcm already computes (no extra
-// FFT); a frame costs one pass over ~450 bins plus ~600 table lookups. Realtime, NoteTracker is fed
+// Offline, PitchFrames is fed every third frame of the main STFT analyzePcm already computes (no
+// extra FFT; the frames between are interpolated); a frame costs one pass over ~450 bins plus ~600 table lookups. Realtime, NoteTracker is fed
 // the live main spectrum.
 
 import type { NoteEvent, NoteMark, NoteStats, NoteTrack } from '../types';
@@ -33,6 +33,8 @@ import type { NoteEvent, NoteMark, NoteStats, NoteTrack } from '../types';
 export const NOTE_RECENT = 12;
 /** Candidates kept per frame. */
 export const NOTE_K = 4;
+/** Offline, the pitch estimator runs on every PITCH_EVERY-th STFT frame. */
+const PITCH_EVERY = 3;
 
 const F0_LO = 130;
 const F0_HI = 1050;
@@ -70,6 +72,8 @@ export class PitchFrames {
   private readonly slow: Float64Array;
   private readonly nov: Float64Array;
   private readonly sal: Float64Array;
+  private readonly dil: Float64Array;
+  private readonly nb: number;
   private readonly kSlow: number;
 
   constructor(n: number, sr: number, frameRate = sr / (n / 8)) {
@@ -97,6 +101,8 @@ export class PitchFrames {
     this.white = new Float64Array(nb);
     this.slow = new Float64Array(nb);
     this.nov = new Float64Array(nb);
+    this.nb = nb;
+    this.dil = new Float64Array(3 * nb);
     this.sal = new Float64Array(this.nc);
   }
 
@@ -127,6 +133,16 @@ export class PitchFrames {
     this.level = 10 * Math.log10(regPow + TINY);
     this.count = 0;
     if (!(regPow > 1e-12)) return;
+    // The novelty spectrum dilated by one and two bins (the harmonic lookups' search radius).
+    const nb = this.nb, dil = this.dil;
+    for (let k = kLo; k <= kHi; k++) {
+      const a1 = nov[k - 1], a0 = nov[k], b1 = nov[k + 1];
+      const m1 = a1 > a0 ? (a1 > b1 ? a1 : b1) : a0 > b1 ? a0 : b1;
+      const a2 = nov[k - 2], b2 = nov[k + 2];
+      dil[k] = a0;
+      dil[nb + k] = m1;
+      dil[2 * nb + k] = m1 > a2 ? (m1 > b2 ? m1 : b2) : a2 > b2 ? a2 : b2;
+    }
     // Harmonic sums on the coarse grid.
     const nc = this.nc;
     for (let c = 0; c < nc; c++) {
@@ -138,13 +154,7 @@ export class PitchFrames {
           if (h > 0) break;
           continue;
         }
-        const r = rad[o + h];
-        let m = nov[k];
-        for (let j = 1; j <= r; j++) {
-          const u = nov[k - j], v = nov[k + j];
-          if (u > m) m = u;
-          if (v > m) m = v;
-        }
+        const m = dil[rad[o + h] * nb + k];
         s += wt[h] * m;
         if (h === 0) m1 = m;
         if (m > mx) mx = m;
@@ -445,6 +455,22 @@ export function rejectRevealed(notes: RawNote[], c: NoteCands, pitch: Float32Arr
   });
 }
 
+/** 5-tap median of x[a..b) (shrinking at the ends), into out[a..b). */
+function medianRange(x: Float32Array, a: number, b: number, out: Float32Array): void {
+  const w = [0, 0, 0, 0, 0];
+  for (let t = a; t < b; t++) {
+    const lo = Math.max(a, t - 2), hi = Math.min(b - 1, t + 2);
+    const n = hi - lo + 1;
+    for (let j = 0; j < n; j++) w[j] = x[lo + j];
+    for (let i = 1; i < n; i++) for (let j = i; j > 0 && w[j - 1] > w[j]; j--) {
+      const q = w[j];
+      w[j] = w[j - 1];
+      w[j - 1] = q;
+    }
+    out[t] = n & 1 ? w[n >> 1] : 0.5 * (w[(n >> 1) - 1] + w[n >> 1]);
+  }
+}
+
 /** Centred moving average of x[a..b) (width w), into out[a..b). */
 function smoothRange(x: Float32Array, a: number, b: number, w: number, out: Float32Array): void {
   const h = w >> 1;
@@ -481,6 +507,9 @@ export function buildNoteTrack(
   const info: Info[] = [];
   for (const n of raw) {
     const { a, b } = n;
+    // A 5-frame median first: a stray frame on another candidate (an octave off) is neither vibrato nor glide.
+    medianRange(pitch, a, b, sm);
+    for (let t = a; t < b; t++) pitch[t] = sm[t];
     smoothRange(pitch, a, b, wSm, sm);
     const ps: number[] = [];
     let pk = -200, pkAt = a;
@@ -507,7 +536,8 @@ export function buildNoteTrack(
       const span = (hi - lo + 1) / fr;
       const rate = zc / 2 / Math.max(span, 1e-3);
       const depth = Math.sqrt((2 * s2) / (hi - lo + 1));
-      vib[t] = hi - lo + 1 >= wV && rate >= 3 && rate <= 10 ? depth : 0;
+      // A deeper wobble than 1.5 semitones is the line jumping to another sound, not vibrato.
+      vib[t] = hi - lo + 1 >= wV && rate >= 3 && rate <= 10 && depth <= 1.5 ? depth : 0;
       vsum += vib[t];
       vn++;
     }
@@ -596,7 +626,8 @@ export function buildNoteTrack(
       const e = clamp01((energy[t] - eLo) / (eHi - eLo));
       held = Math.max(e, 0.15 * n.str);
       lastP = pitch[t];
-      track.glide[t] = t > n.a + 1 && t < n.b - 2 ? (sm[Math.min(n.b - 1, t + 2)] - sm[Math.max(n.a, t - 2)]) * fr / (Math.min(n.b - 1, t + 2) - Math.max(n.a, t - 2)) : 0;
+      const gl = t > n.a + 1 && t < n.b - 2 ? (sm[Math.min(n.b - 1, t + 2)] - sm[Math.max(n.a, t - 2)]) * fr / (Math.min(n.b - 1, t + 2) - Math.max(n.a, t - 2)) : 0;
+      track.glide[t] = Math.max(-30, Math.min(30, gl));
       track.vibrato[t] = vib[t];
     } else {
       held *= relK;
@@ -660,7 +691,7 @@ export class NoteRecorder {
   constructor(n: number, sr: number, frameRate: number, T: number) {
     this.frameRate = frameRate;
     this.T = T;
-    this.pf = new PitchFrames(n, sr, frameRate / 2);
+    this.pf = new PitchFrames(n, sr, frameRate / PITCH_EVERY);
     const z = () => new Float32Array(T * NOTE_K);
     this.c = { p: z(), o: z(), e: z(), v: z(), n: new Uint8Array(T), level: new Float32Array(T) };
   }
@@ -668,17 +699,8 @@ export class NoteRecorder {
   frame(f: number, pow: Float64Array): void {
     const pf = this.pf;
     const c = this.c;
-    // Every other frame (~43 Hz is plenty for notes, glides and vibrato); odd frames repeat it.
-    if (f & 1 && f > 0) {
-      c.n[f] = c.n[f - 1];
-      c.level[f] = c.level[f - 1];
-      const j = f * NOTE_K;
-      c.p.copyWithin(j, j - NOTE_K, j);
-      c.o.copyWithin(j, j - NOTE_K, j);
-      c.e.copyWithin(j, j - NOTE_K, j);
-      c.v.copyWithin(j, j - NOTE_K, j);
-      return;
-    }
+    // Every third frame (~29 Hz is plenty for notes, glides and vibrato); build() fills the rest in.
+    if (f % PITCH_EVERY !== 0) return;
     pf.push(pow);
     c.n[f] = pf.count;
     c.level[f] = pf.level;
@@ -691,7 +713,46 @@ export class NoteRecorder {
     }
   }
 
+  /**
+   * The frames between analysed ones: each candidate of the frame before that continues (within half
+   * a semitone) into the frame after is interpolated; the others are held from the nearer frame.
+   */
+  private fill(): void {
+    const c = this.c, T = this.T, K = NOTE_K;
+    for (let a = 0; a < T; a += PITCH_EVERY) {
+      const b = a + PITCH_EVERY;
+      for (let f = a + 1; f < Math.min(b, T); f++) {
+        const hasB = b < T;
+        const w = hasB ? (f - a) / PITCH_EVERY : 0;
+        const src = !hasB || w < 0.5 ? a : b;
+        c.level[f] = hasB ? c.level[a] + (c.level[b] - c.level[a]) * w : c.level[a];
+        c.n[f] = c.n[src];
+        for (let i = 0; i < c.n[src]; i++) {
+          const js = src * K + i, jf = f * K + i;
+          c.p[jf] = c.p[js];
+          c.o[jf] = c.o[js];
+          c.e[jf] = c.e[js];
+          c.v[jf] = c.v[js];
+          if (!hasB) continue;
+          // Pair this candidate with its continuation on the other side.
+          const other = src === a ? b : a;
+          for (let q = 0; q < c.n[other]; q++) {
+            const jo = other * K + q;
+            if (Math.abs(c.p[jo] - c.p[js]) >= 0.5) continue;
+            const ja = src === a ? js : jo, jb = src === a ? jo : js;
+            c.p[jf] = c.p[ja] + (c.p[jb] - c.p[ja]) * w;
+            c.o[jf] = c.o[ja] + (c.o[jb] - c.o[ja]) * w;
+            c.e[jf] = c.e[ja] + (c.e[jb] - c.e[ja]) * w;
+            c.v[jf] = c.v[ja] + (c.v[jb] - c.v[ja]) * w;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   build(): NoteTrack {
+    this.fill();
     return buildNoteTrack(this.c, this.T, this.frameRate);
   }
 }
