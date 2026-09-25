@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 45;
+export const SEED_VERSION = 46;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1540,6 +1540,25 @@ const GROOVE: Def[] = [
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { rel: 0.15 }), rx('humanity', 'col', 0, 'bloom', 0.4, { atk: 0.5, rel: 1.5 })],
     groove: { swing: 0.8, sub: 16, sway: 0, off: 0.2, lean: 0.3, crisp: 1, tick: 4, jitter: 0.2, accent: 0.3 },
+  },
+  {
+    // A jam session in ink: one small triangle per instrument stirs a fluid, each moving with its
+    // player (drums jump on hits, bass swings out, vocals follow the melody). The groove makes them
+    // play like people: every hit nudges the players a little, differently each time, so a loose,
+    // human drummer scatters the ink in organic flicks, syncopated hits kick the players hard, and
+    // the dye pushes on the (swung) off-beat. A quantized track keeps them tidy and still.
+    origin: 'Q04', name: 'Loose Ensemble', energy: [0.2, 0.8], scheme: 'triad', hue: 0.3,
+    color: { adapt: 0.35, bloom: 1.05, vignette: 0.45 }, carrier: 'fluid', decay: 0.992, car: { floor: 1.4, amount: 1.1, vort: 32, fnoise: 0.3 },
+    bodies: [body({
+      shape: ['polygon', { n: 3, r: 0.022, round: 0.3 }],
+      place: ['stations', { count: 4, inst: 1, xs: 0.8, jump: 1, wander: 0.05 }],
+      motion: ['hits', { amt: 0.6 }],
+      material: ['glow', { gain: 0.9, width: 0.016, base: 0.2 }],
+      emit: ['dye', { force: 1.2 }],
+      feel: ['flow', { atk: 0.01, rel: 0.25 }],
+    })],
+    reactions: [rx('humanity', 'em', 0, 'force', 0.4, { atk: 0.3, rel: 1 }), rx('synco', 'ma', 0, 'gain', 0.3, { atk: 0.2, rel: 0.8 })],
+    groove: { swing: 1, sub: 8, sway: 0.015, off: 0.6, lean: 0.4, crisp: 0.2, tick: 2, jitter: 1, accent: 0.9 },
   },
 ];
 
