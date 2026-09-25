@@ -1,26 +1,41 @@
-// Accents: small built-in gestures every preset gets by default, so the song's riff reads on
-// screen even when a preset's own reactions miss it.
+// Accents: small built-in gestures every preset gets by default, so the song's riff and its section
+// changes read on screen even when a preset's own reactions miss them.
 //
 //  * hook: on each repeat of the song's hook (src/analysis/hooks.ts) the camera makes the same small
 //    gesture on every note of the motif, a nudge whose direction follows the note's place in the
 //    motif, plus a lift on the repeat's first note. Every repeat moves the same way, so the riff rhymes.
+//  * section: every section type gets its own light, colour and hue step (calm sections dimmer and
+//    paler, choruses and drops fuller), reached in a fraction of a second at the boundary, so a chorus
+//    looks like the other choruses and not like the verse; an optional framing per section type (a
+//    push, a pan, a lean; off by default: a push-in magnifies fine flickering texture); drop: a zoom,
+//    colour and light punch on each drop that settles over a bar.
 //
 // Everything is a camera / colour pose composed onto the choreography's (see choreo.ts): no extra
-// passes and no flashes. A genome without the gene gets the defaults; the gene tunes each part and a
-// part set to 0 is off.
+// passes and no flashes (the drop's light lift is one swell per drop). A genome without the gene
+// gets the defaults; the gene tunes each part and a part set to 0 is off. Parts the genome's choreography already does (a scene framing, a scene hue,
+// a drop punch) are left to the choreography so nothing is applied twice.
 //
 // Pure (no GL, no module state besides the harness switch): the pose is a function of the gene,
 // the genome and the music's position. Imports only types from genome.ts.
 
 import type { Genome, ParamSpec, Params, Schema } from '../genome';
 import { registerGenomeGene } from '../geneRegistry';
-import type { ChoreoCue, ChoreoPose } from './choreo';
+import { IDENTITY_POSE, sceneFraming, type ChoreoCue, type ChoreoGene, type ChoreoPose } from './choreo';
+import type { SectionLabel } from '../../types';
 
 const P = (min: number, max: number, def: number): ParamSpec => ({ min, max, def });
 
-/** hook: strength of the hook gesture; shot: which set of gesture directions (a seed). */
+/**
+ * hook: strength of the hook gesture; section: the light and colour step per section type; hue: the
+ * hue step per section type; frame: how far each section type's framing departs from the plain view
+ * (off by default); drop: the punch on drops; shot: which set of framings and gesture directions (a seed).
+ */
 export const ACCENT_SCHEMA: Schema = {
   hook: P(0, 1, 0.5),
+  section: P(0, 1, 0.5),
+  hue: P(0, 1, 0.5),
+  frame: P(0, 1, 0),
+  drop: P(0, 1, 0.5),
   shot: P(0, 1, 0.5),
 };
 
@@ -29,7 +44,7 @@ registerGenomeGene({
   title: 'Accents',
   schemas: ACCENT_SCHEMA,
   optional: true,
-  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; shot = which set of nudge directions',
+  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
 });
 
 export interface AccentGene {
@@ -131,10 +146,14 @@ export function crossAccent(d: AccentGene | undefined, r: AccentGene | undefined
 /** The accent parts a genome plays, resolved from its gene (or the defaults) and its other genes. */
 export interface AccentPlan {
   hook: number;
+  section: number;
+  hue: number;
+  frame: number;
+  drop: number;
   shot: number;
 }
 
-const OFF: AccentPlan = { hook: 0, shot: 0.5 };
+const OFF: AccentPlan = { hook: 0, section: 0, hue: 0, frame: 0, drop: 0, shot: 0.5 };
 const HOOK_SIGNALS = new Set(['hook', 'hookphase', 'hookon']);
 
 let override: boolean | readonly string[] | null = null;
@@ -147,15 +166,29 @@ export function setAccentOverride(on: boolean | readonly string[] | null): void 
   override = on === true ? null : on;
 }
 
-/** What a genome plays. Without an accent gene: the defaults, minus the hook gesture for one that reacts to the hook signals itself. */
+/**
+ * What a genome plays. Without an accent gene: the defaults, minus the hook gesture for one that
+ * reacts to the hook signals itself. Always: the section framing, hue and drop punch are left to a
+ * choreography that does them.
+ */
 export function accentPlan(g: Genome, out: AccentPlan = { ...OFF }): AccentPlan {
   if (override === false) return Object.assign(out, OFF);
   const a = (g as Genome & { accent?: AccentGene }).accent;
   const src = a?.p;
   const d = (k: string) => (src && typeof src[k] === 'number' ? src[k] : ACCENT_SCHEMA[k].def);
   out.hook = d('hook');
+  out.section = d('section');
+  out.hue = d('hue');
+  out.frame = d('frame');
+  out.drop = d('drop');
   out.shot = src ? d('shot') : (((g.palette?.p?.hue ?? 0.5) % 1) + 1) % 1;
   if (!a && g.reactions.some((r) => HOOK_SIGNALS.has(r.src))) out.hook = 0;
+  const c: ChoreoGene | undefined = g.choreo;
+  if (c) {
+    if (c.p.frame > 0) out.frame = 0;
+    if (c.p.scene > 0) out.hue = 0;
+    if (c.p.punch > 0) out.drop = 0;
+  }
   if (Array.isArray(override)) for (const k of Object.keys(out) as (keyof AccentPlan)[]) if (k !== 'shot' && !override.includes(k)) out[k] = 0;
   return out;
 }
@@ -173,6 +206,8 @@ export interface AccentInput {
   hookId: number;
 }
 
+/** Seconds the camera takes to move into a new section's framing. */
+export const SECTION_GLIDE_S = 0.35;
 /** Hook gesture at full strength: zoom lift on a repeat's first note, zoom and nudge per note (fraction of the frame), roll per note (turns), held push while the hook plays. */
 const HOOK_START_ZOOM = 0.08;
 const HOOK_NOTE_ZOOM = 0.05;
@@ -180,7 +215,64 @@ const HOOK_NOTE_PAN = 0.03;
 const HOOK_NOTE_ROLL = 0.006;
 const HOOK_HOLD_ZOOM = 0.04;
 const HOOK_START_HUE = 0.05;
+/**
+ * Section framing at full strength goes through choreo's sceneFraming with frame = SECTION_FRAME *
+ * frame. Off by default: a push-in magnifies fine flickering texture (rain, sparks), which tipped a
+ * busy preset over the flash limit in the harness, so the default look change is light and colour.
+ */
+const SECTION_FRAME = 0.6;
+/**
+ * Light and colour per section type at full strength (section = 1): exposure and saturation
+ * multipliers. Calm sections are dimmer and paler, loud ones fuller; never brighter than the preset's
+ * own exposure, so a section change cannot add flashes.
+ */
+const SECTION_TONE: Record<SectionLabel, [number, number]> = {
+  intro: [0.7, 0.7], verse: [0.85, 0.85], build: [0.92, 1], chorus: [1, 1.25], drop: [1, 1.35], breakdown: [0.7, 0.65], outro: [0.7, 0.7],
+};
+/** Hue step per section type at full strength, as choreo's scene amount. */
+const SECTION_SCENE = 0.35;
+/** Drop punch at full strength (zoom kick, saturation and exposure lift), settling over DROP_RELAX_BARS. */
+const DROP_ZOOM = 0.16;
+const DROP_SAT = 0.3;
+const DROP_EXPOSURE = 0.3;
+const DROP_RELAX_BARS = 1;
+
 const TAU = Math.PI * 2;
+const FRAME_A: ChoreoPose = { ...IDENTITY_POSE };
+const FRAME_B: ChoreoPose = { ...IDENTITY_POSE };
+const FAKE: ChoreoGene = { p: { frame: 0, scene: 0, shot: 0.5 } };
+
+/** A section type's look: framing, hue, light and colour. */
+function sectionLook(plan: AccentPlan, label: SectionLabel, out: ChoreoPose): ChoreoPose {
+  FAKE.p.frame = SECTION_FRAME * plan.frame;
+  FAKE.p.scene = SECTION_SCENE * plan.hue;
+  FAKE.p.shot = plan.shot;
+  sceneFraming(FAKE, label, out);
+  const [e, sa] = SECTION_TONE[label] ?? [1, 1];
+  const k = Math.min(1, plan.section);
+  out.exposure = 1 + (e - 1) * k;
+  out.sat = 1 + (sa - 1) * k;
+  return out;
+}
+
+/** The look of the current section (gliding in from the previous one's over SECTION_GLIDE_S). */
+function sectionFrame(plan: AccentPlan, cue: ChoreoCue, out: ChoreoPose): ChoreoPose {
+  sectionLook(plan, cue.label, out);
+  const x = clamp(cue.sinceSection / SECTION_GLIDE_S, 0, 1);
+  const g = x * x * (3 - 2 * x);
+  if (g < 1) {
+    const q = cue.prevLabel ? sectionLook(plan, cue.prevLabel, FRAME_B) : IDENTITY_POSE;
+    out.zoom = q.zoom + (out.zoom - q.zoom) * g;
+    out.roll = q.roll + (out.roll - q.roll) * g;
+    out.tx = q.tx + (out.tx - q.tx) * g;
+    out.ty = q.ty + (out.ty - q.ty) * g;
+    out.hue = q.hue + (out.hue - q.hue) * g;
+    out.exposure = q.exposure + (out.exposure - q.exposure) * g;
+    out.sat = q.sat + (out.sat - q.sat) * g;
+  }
+  return out;
+}
+
 /** The nudge direction of a motif note (the same for that note in every repeat). */
 function noteAngle(plan: AccentPlan, note: number, hook: number): number {
   return TAU * (plan.shot + 0.38197 * note + 0.25 * hook);
@@ -193,6 +285,25 @@ export function applyAccents(plan: AccentPlan, m: AccentInput, q: ChoreoPose): C
   let ty = 0;
   let roll = 0;
   let hue = 0;
+  let sat = 1;
+  let exposure = 1;
+  if (plan.section > 0 || plan.hue > 0 || plan.frame > 0) {
+    const f = sectionFrame(plan, m.cue, FRAME_A);
+    zoom *= f.zoom;
+    tx += f.tx;
+    ty += f.ty;
+    roll += f.roll;
+    hue += f.hue;
+    exposure *= f.exposure;
+    sat *= f.sat;
+  }
+  if (plan.drop > 0 && m.cue.sinceDrop < DROP_RELAX_BARS * m.cue.barSeconds) {
+    const x = 1 - m.cue.sinceDrop / (DROP_RELAX_BARS * m.cue.barSeconds);
+    const env = x * x;
+    zoom *= 1 + DROP_ZOOM * plan.drop * env;
+    sat *= 1 + DROP_SAT * plan.drop * env;
+    exposure *= 1 + DROP_EXPOSURE * plan.drop * env;
+  }
   if (plan.hook > 0 && (m.hookOn > 0 || m.hookPulse > 0 || m.hookNotePulse > 0)) {
     const h = plan.hook;
     const np = m.hookNotePulse;
@@ -210,5 +321,7 @@ export function applyAccents(plan: AccentPlan, m: AccentInput, q: ChoreoPose): C
   q.ty += ty;
   q.roll += roll;
   q.hue += hue;
+  q.sat *= sat;
+  q.exposure *= exposure;
   return q;
 }

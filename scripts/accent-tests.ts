@@ -46,7 +46,7 @@ export function accentTests(check: Check): void {
 
   // Pose: identity with no hook; the same pose for the same moment of two repeats (the rhyme);
   // different notes nudge different ways.
-  const plan = accentPlan(plain);
+  const plan = { ...accentPlan(plain), section: 0, hue: 0, drop: 0 };
   const q0 = applyAccents(plan, input(), pose());
   check('accent.identity-outside-hooks', same(q0, IDENTITY_POSE as ChoreoPose), fmt(q0));
   const a = applyAccents(plan, input({ hookOn: 1, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 12.3 }) }), pose());
@@ -56,6 +56,32 @@ export function accentTests(check: Check): void {
   check('accent.notes-differ', Math.hypot(a.tx - c.tx, a.ty - c.ty) > 0.005 && Math.sign(a.roll) !== Math.sign(c.roll), `${fmt(a)} vs ${fmt(c)}`);
   const start = applyAccents(plan, input({ hookOn: 1, hookPulse: 1, hookNotePulse: 1, hookNote: 0, hookId: 0 }), pose());
   check('accent.bounded', start.zoom < 1.15 && Math.abs(start.hue) < 0.1 && start.exposure === 1, fmt(start));
+
+  // Sections: each type its own framing and hue, the same every time it comes back; a quick glide
+  // at the boundary; a punch on drops that settles within a bar; parts the choreography does are its own.
+  const sp = accentPlan(plain);
+  const verse = applyAccents(sp, input({ cue: cue({ label: 'verse', sinceSection: 5 }) }), pose());
+  const verse2 = applyAccents(sp, input({ cue: cue({ label: 'verse', sinceSection: 9, prevLabel: 'chorus', bars: 50 }) }), pose());
+  const chorus = applyAccents(sp, input({ cue: cue({ label: 'chorus', sinceSection: 5, prevLabel: 'verse' }) }), pose());
+  const dz = (x: ChoreoPose, y: ChoreoPose) => Math.abs(x.zoom - y.zoom) + Math.abs(x.tx - y.tx) + Math.abs(x.ty - y.ty) + Math.abs(x.hue - y.hue);
+  check('accent.section-consistent', same(verse, verse2), `${fmt(verse)} vs ${fmt(verse2)}`);
+  check('accent.section-differs', dz(verse, chorus) > 0.05 && Math.abs(chorus.hue - verse.hue) > 0.05, `${fmt(verse)} vs ${fmt(chorus)}`);
+  const edge = applyAccents(sp, input({ cue: cue({ label: 'chorus', sinceSection: 0, prevLabel: 'verse' }) }), pose());
+  const half = applyAccents(sp, input({ cue: cue({ label: 'chorus', sinceSection: 0.17, prevLabel: 'verse' }) }), pose());
+  check('accent.section-glide', same(edge, verse) && dz(half, verse) > 0.01 && dz(half, chorus) > 0.01, `${fmt(edge)} / ${fmt(half)}`);
+  const d0 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: 0 }) }), pose());
+  const d1 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: 2.5 }) }), pose());
+  check('accent.drop-punch', d0.zoom > d1.zoom * 1.05 && d0.exposure > 1.1 && d1.exposure === 1 && d0.exposure < 1.2, `${fmt(d0)} vs ${fmt(d1)}`);
+  const choreo = repair({ ...cloneGenome(plain), choreo: { p: { frame: 0.5, scene: 0, punch: 0.6 } }, accent: repairAccent({ p: { frame: 0.5 } }) } as Genome);
+  const cp = accentPlan(choreo);
+  check('accent.choreo-not-doubled', cp.frame === 0 && cp.drop === 0 && cp.hue > 0 && cp.section > 0 && cp.hook > 0, JSON.stringify(cp));
+  check('accent.section-no-push', verse.zoom === 1 && chorus.zoom === 1 && verse.exposure < 1 && chorus.exposure === 1 && chorus.sat > verse.sat, `default sections change light and colour, not the framing: ${fmt(verse)} / ${fmt(chorus)}`);
+  const framed = applyAccents({ ...sp, frame: 1 }, input({ cue: cue({ label: 'chorus', sinceSection: 5 }) }), pose());
+  check('accent.frame-opt-in', framed.zoom > 1, fmt(framed));
+  setAccentOverride(['hook']);
+  const only = accentPlan(plain);
+  setAccentOverride(null);
+  check('accent.override-parts', only.hook > 0 && only.section === 0 && only.hue === 0 && only.frame === 0 && only.drop === 0, JSON.stringify(only));
 
   // Breeding: parents without the gene give children without it; a child keeps valid accents otherwise.
   const rng = mulberry32(5);

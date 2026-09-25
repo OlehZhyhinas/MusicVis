@@ -903,7 +903,7 @@ export class Stage {
       // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
       this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
       this.lyricize(s, state, sdt, q);
-      // Accents: the hook gesture every preset gets unless its genome turns it off.
+      // Accents: the hook gesture and section framing every preset gets unless its genome turns them off.
       applyAccents(accentPlan(s.genome, this.accPlan), acc, q);
     }
     this.harmonyWarp(slots, state);
