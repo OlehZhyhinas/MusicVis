@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 84;
+export const SEED_VERSION = 85;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1765,17 +1765,20 @@ const GROOVE: Def[] = [
     // kick; the spiral trail records every lurch. Straight electronic tracks turn it into an even,
     // slightly ticking wheel.
     origin: 'Q02', name: 'Laid-Back Orbit', energy: [0.3, 0.85], scheme: 'split', hue: 0.62,
-    color: { adapt: 0.35, bloom: 1.1, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.7, floor: 1 },
-    chain: [op('zoom', { rate: 0.012 }), op('rotate', { lock: 0.0625 })],
+    color: { adapt: 0.35, bloom: 1.1, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.35, floor: 1 },
+    chain: [op('zoom', { rate: 0.006 }), op('rotate', { lock: 0.0625 })],
     bodies: [body({
-      shape: ['star', { n: 5, r: 0.045, inner: 0.45 }],
+      shape: ['star', { n: 5, r: 0.06, inner: 0.45 }],
       place: ['orbit', { count: 3, radius: 0.22, rate: 0.5 }],
       motion: ['spin', { rate: 0.5 }],
       material: ['line', { gain: 1.1, width: 1.6, halo: 0.25 }],
       emit: ['trail', { tip: 0.4 }],
       feel: ['flow', { atk: 0.02, rel: 0.25, sens: 1.3 }],
     })],
-    reactions: [rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.03, rel: 0.3 }), rx('push', 'op', 0, 'rate', 0.35, { atk: 0.4, rel: 1.2 })],
+    reactions: [
+      rx('hit', 'pl', 0, 'radius', 0.5, { atk: 0.005, rel: 0.25 }), rx('bass', 'pl', 0, 'radius', 0.3, { atk: 0.03, rel: 0.35 }),
+      rx('melody', 'pl', 0, 'y', 0.6, { atk: 0.15, rel: 0.5 }),
+    ],
     groove: { swing: 1, sub: 8, sway: 0.008, off: 0.5, lean: 1, crisp: 0.3, tick: 4, jitter: 0.3, accent: 0.5 },
   },
   {
