@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 48;
+export const SEED_VERSION = 49;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1497,6 +1497,27 @@ const HARMONY: Def[] = [
       rx('vocals', 'sh', 0, 'amp', 0.25, { atk: 0.1, rel: 0.6 }),
     ],
     harmony: { brk: 1, warp: 0.45, style: 0, snap: 0.45, settle: 1.2, walk: 0.12, kick: 0.1, modHue: 0.12, modTurn: -0.006, calm: 0.7 },
+  },
+  {
+    // A hexagon keyboard lit by the chroma, folded into a wall of mirrored tiles. On the home chord the tiles meet
+    // seamlessly like a tiled floor; as the harmony strays, each tile turns and slips on its own
+    // (every chord shuffles them a different way) and the whole wall buckles; the resolution clicks
+    // them back flush with a hard flash. Key changes swing the wall's hue far round the wheel and
+    // tilt it, so a modulation reads as a new room.
+    origin: 'H03', name: 'Modulation Tiles', energy: [0.3, 0.9], scheme: 'triad', hue: 0.35,
+    color: { bloom: 1.05, vignette: 0.4, adapt: 0.35 }, carrier: 'warp', decay: 0.9,
+    chain: [op('tile', { n: 2.4 }, 1, 'view')],
+    bodies: [body({
+      shape: ['polygon', { n: 6, r: 0.4965 / 5 }],
+      place: ['grid', { lattice: 1, scale: 5, jitter: 0, density: 1, lit: 0.6, links: 0, twinkle: 0.3, lock: 0.0625 }],
+      material: ['fill', { gain: 2, soft: 0.1, outline: 1, core: 1 }],
+    })],
+    reactions: [
+      rx('chordchange', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.4 }),
+      rx('tension', 'pl', 0, 'jitter', 0.5, { atk: 0.4, rel: 0.8 }),
+      rx('modulation', 'col', 0, 'exposure', 0.4, { atk: 0.02, rel: 1.5 }),
+    ],
+    harmony: { brk: 0.9, warp: 0.5, style: 2, snap: 1, settle: 0.15, walk: 0.1, kick: 0.4, modHue: 0.22, modTurn: 0.012, calm: 0.2 },
   },
 ];
 
