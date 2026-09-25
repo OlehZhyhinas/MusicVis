@@ -197,6 +197,13 @@ async function main(): Promise<void> {
   function nextPreset(): void {
     choose('next', 1.2, true, true);
   }
+  const nextSel = $<HTMLSelectElement>('v2b-next');
+  evo.nextOrder = loadSetting<'random' | 'newest'>('v2.nextOrder', 'random') === 'newest' ? 'newest' : 'random';
+  nextSel.value = evo.nextOrder;
+  nextSel.addEventListener('change', () => {
+    evo.nextOrder = nextSel.value === 'newest' ? 'newest' : 'random';
+    saveSetting('v2.nextOrder', evo.nextOrder);
+  });
 
   function setEvolve(on: boolean): void {
     evolveOn = on;

@@ -93,6 +93,9 @@ export class Evolution {
 
   // ---------------------------------------------------------- choosing
 
+  /** What a manual "next preset" picks: uniformly at random, or stepping from newest to oldest. */
+  nextOrder: 'random' | 'newest' = 'random';
+
   choose(reason: ChooseReason, songCx: number, currentId: string | null): Member | null {
     const pool = this.pop.visible().filter((m) => m.id !== currentId);
     if (!pool.length) return this.pop.visible()[0] ?? null;
@@ -102,6 +105,12 @@ export class Evolution {
       return target < lo ? lo - target : target > hi ? target - hi : 0;
     };
     const recent = new Set(this.history);
+    if (reason === 'next' && this.nextOrder === 'newest') {
+      // Newest first: step to the next-older preset after the current one, wrapping to the newest.
+      const all = this.pop.visible().slice().sort((a, b) => b.created - a.created || b.id.localeCompare(a.id));
+      const at = all.findIndex((m) => m.id === currentId);
+      return all[(at + 1) % all.length] ?? null;
+    }
     if (reason === 'next') {
       // Manual "next preset": uniformly random, ignoring votes and energy, avoiding the last few shown.
       const fresh = pool.filter((m) => !recent.has(m.id));
