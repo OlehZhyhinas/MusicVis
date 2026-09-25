@@ -6,7 +6,7 @@
 // black / white, frozen, pure noise, and unreactive (moves the same with and
 // without music).
 
-import type { MusicState, Section, StemName } from '../types';
+import type { MusicState, NoteMark, NoteStats, Section, StemName } from '../types';
 import { COST_BUDGET_MS, estimateCost, type Genome } from './genome';
 import type { Engine, Stage } from './engine';
 import { Stage as StageClass } from './engine';
@@ -16,6 +16,37 @@ import { Stage as StageClass } from './engine';
 const BPM = 128;
 const SECTION: Section = { start: 0, end: 1e9, label: 'chorus', energy: 0.7 };
 const STEMS: StemName[] = ['drums', 'bass', 'vocals', 'other'];
+
+// A simple melody for previews and screening: bars alternate between a staccato riff (eighth-note
+// "tu tu tu") and a legato phrase (one gliding note per beat), so note-driven genes draw both.
+const MELODY = [0, 4, 7, 12, 11, 7, 4, 2];
+function syntheticNotes(t: number, beatLen: number, s: number): NoteStats | undefined {
+  if (!s) return undefined;
+  const noteAt = (i: number) => {
+    const bar = Math.floor(i / 8);
+    const staccato = bar % 2 === 0;
+    const start = staccato ? i * (beatLen / 2) : i * (beatLen / 2);
+    const len = staccato ? beatLen * 0.22 : beatLen * 0.48;
+    const pitch = 64 + MELODY[i % 8] + (staccato ? 0 : 0.4 * Math.sin(i));
+    return { start, len, pitch, legato: staccato ? 0.15 : 0.9 };
+  };
+  const cur = Math.floor(t / (beatLen / 2));
+  const recent: NoteMark[] = [];
+  for (let i = Math.max(0, cur - 11); i <= cur; i++) {
+    const n = noteAt(i);
+    const age = t - n.start;
+    if (age < 0) continue;
+    recent.push({ age, len: Math.min(age, n.len), ended: age > n.len, height: (n.pitch - 60) / 20, strength: 0.8 });
+  }
+  const n = noteAt(cur);
+  const age = t - n.start;
+  const held = age < n.len ? 0.8 : 0;
+  const vib = n.legato > 0.5 ? 0.25 * Math.sin(t * 2 * Math.PI * 5.5) : 0;
+  return {
+    on: 0.8 * Math.exp(-age / 0.15), held, legato: n.legato, glide: n.legato > 0.5 ? 1.5 : 0, vibrato: n.legato > 0.5 ? 0.25 : 0,
+    pitch: n.pitch + vib, height: (n.pitch + vib - 60) / 20, voice: n.legato > 0.5 ? 0.5 : 0.05, recent,
+  };
+}
 
 /** A 128 bpm groove: kick on beats, hats on eighths, bass, a vocal line. silent=true gives the same clock with no sound. */
 export class SyntheticMusic {
@@ -79,6 +110,7 @@ export class SyntheticMusic {
       loudness: s * (0.55 + 0.25 * kick), complexity: this.silent ? 0.3 : 0.62, songComplexity: 0.6,
       chroma: this.chroma, keyTonic: 0, keyMode: 'major', keyHue: 0.58, keyChangePulse: 0,
       section: SECTION, sectionIndex: 1, sectionProgress: 0.3, sectionChanged: false, dropPulse: 0, buildIntensity: 0,
+      notes: syntheticNotes(t, beatLen, s),
     };
   }
 }

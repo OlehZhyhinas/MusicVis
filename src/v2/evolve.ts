@@ -19,6 +19,22 @@ export interface BreedEvent {
 }
 
 const MAX_TRIES_PER_CHILD = 6;
+/** Bumped when previews rendered before need redrawing (2: the preview music gained a melody). */
+const THUMB_REV = 2;
+function readThumbRev(): number {
+  try {
+    return Number(localStorage.getItem('musicvis.v2.thumbRev') ?? 1) || 1;
+  } catch {
+    return THUMB_REV;
+  }
+}
+function writeThumbRev(v: number): void {
+  try {
+    localStorage.setItem('musicvis.v2.thumbRev', String(v));
+  } catch {
+    /* storage unavailable: previews simply stay as they are */
+  }
+}
 
 export class Evolution {
   pop = Population.seeded();
@@ -46,6 +62,12 @@ export class Evolution {
         if (stale.length) {
           void this.store.deleteThumbs(stale);
           void this.store.set('population', this.pop.toJSON());
+        }
+        // Previews rendered before the preview music had a melody are blank for note-driven presets.
+        if (readThumbRev() < THUMB_REV) {
+          const blank = this.pop.list().filter((m) => m.genome.bodies.some((b) => b.shape.kind === 'notes')).map((m) => m.id);
+          if (blank.length) void this.store.deleteThumbs(blank);
+          writeThumbRev(THUMB_REV);
         }
       }
     } catch (err) {
