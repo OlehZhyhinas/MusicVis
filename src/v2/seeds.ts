@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 94;
+export const SEED_VERSION = 95;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1277,7 +1277,7 @@ const RAYMARCH: Def[] = [
     origin: 'R07', name: 'Sponge Descent', energy: [0.3, 0.9], scheme: 'split', hue: 0.55,
     color: { adapt: 0.3, bloom: 1.3 }, carrier: 'warp', decay: 0.75,
     bodies: [body({
-      shape: ['scene', { scene: 5, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.4, pulse: 0.5, kick: 0.6, vary: 1, rim: 1, ao: 0.6, fog: 0.4, glow: 0.5, roam: 0.9, gap: 0.5, spec: 0.5, iter: 4, fscale: -1.8, fold: 1, power: 8 }],
+      shape: ['scene', { scene: 5, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.25, pulse: 0.5, kick: 0.6, vary: 1, rim: 1, ao: 0.6, fog: 0.4, glow: 0.5, roam: 0.9, gap: 0.5, spec: 0.5, iter: 4, fscale: -1.8, fold: 1, power: 8 }],
       material: ['line', { gain: 1.1 }],
       color: ['age', { rate: 0.0625, detail: 1 }],
     })],
