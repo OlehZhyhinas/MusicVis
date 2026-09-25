@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 100;
+export const SEED_VERSION = 101;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -340,10 +340,13 @@ const DEFS: Def[] = [
     })],
   },
   {
+    // Aurora curtains over a dark horizon, bright enough to always read (it used to sit near black),
+    // flaring on the beat, their waves swelling with the bass.
     origin: 'E16', name: 'Aurora', energy: [0.1, 0.6], scheme: 'analogous', hue: 0.35,
-    color: { adapt: 0.3 }, carrier: 'warp', decay: 0.965, car: { blur: 0.1 },
+    color: { adapt: 0.3 }, carrier: 'warp', decay: 0.965, car: { blur: 0.1, floor: 0.5 },
     chain: [op('noise', { amp: 0.0006, scale: 1.5, speed: 0.5 }), op('translate', { vy: 0.03 })],
-    bodies: [body({ shape: ['aurora', { fall: 5, rays: 24, wav: 1.4 }], place: ['point', { y: 0 }], material: ['glow'] })],
+    bodies: [body({ shape: ['aurora', { fall: 5, rays: 24, wav: 1.4 }], place: ['point', { y: 0 }], material: ['glow', { gain: 2.4 }] })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.3 }), rx('bass', 'sh', 0, 'wav', 0.35, { atk: 0.03, rel: 0.4 })],
   },
   {
     // A hexagon outline tunnelling toward the viewer, turning every bar.
