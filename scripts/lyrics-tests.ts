@@ -7,6 +7,7 @@ import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
 import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS, fitsDuration } from '../src/lyrics/lrclib';
 import { LyricsLibrary } from '../src/lyrics/library';
 import { alignLines, shiftTrack, lineOnsetFit } from '../src/lyrics/align';
+import { LyricNudges, nudgeKey, formatNudge, NUDGE_STEP } from '../src/lyrics/nudge';
 import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
 import { LyricSampler } from '../src/lyrics/sampler';
 import { COST_BUDGET_MS, cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
@@ -409,6 +410,42 @@ export async function lyricsTests(check: Check): Promise<void> {
     const result = { duration: DUR, frameRate: FR, stemOnsets: { vocals: fr.onsets }, stemPresence: {} } as unknown as import('../src/types').AnalysisResult;
     const lt = lib.lyricTrack('a', result);
     check('lyrics.align.library', !!lt?.align?.applied && Math.abs(lt.lines[0].t - (track.lines[0].t + 5.3)) <= 0.1 && lib.lyricTrack('a', result) === lt, JSON.stringify(lt?.align));
+  }
+
+  // ------------------------------------------------------ manual timing nudge
+  {
+    const mem = new Map<string, string>();
+    const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    const meta = { artist: 'Avicii', title: 'Waiting For Love' };
+    const key = nudgeKey(meta, 230.2);
+    const n1 = new LyricNudges(store);
+    let v = 0;
+    for (let i = 0; i < 3; i++) v = n1.set(key, v + NUDGE_STEP);
+    v = n1.set(key, v - NUDGE_STEP);
+    // A new session (page reload) reads it back; another version of the song (other length) and
+    // another song start clean.
+    const n2 = new LyricNudges(store);
+    const other = nudgeKey(meta, 190);
+    check('lyrics.timing.persist', v === 0.5 && n2.get(key) === 0.5 && n2.get(other) === 0 && n2.get(nudgeKey({ artist: 'Avicii', title: 'Levels' }, 230)) === 0 && key === 'avicii|waiting for love|230',
+      `${key} -> ${n2.get(key)}, ${other} -> ${n2.get(other)}`);
+    n2.set(key, 0);
+    const n3 = new LyricNudges(store);
+    const clamped = n3.set(other, 99);
+    mem.set('musicvis:lyricNudge', '{not json');
+    const broken = new LyricNudges(store);
+    check('lyrics.timing.clear+clamp', n3.get(key) === 0 && !mem.get('musicvis:lyricNudge')?.includes('|230') && clamped === 30 && broken.get(other) === 0 && nudgeKey({}, 200) === null && new LyricNudges(null).set(key, 1) === 1,
+      `cleared ${n3.get(key)}, clamped ${clamped}`);
+    check('lyrics.timing.format', formatNudge(0.5) === '+0.50 s' && formatNudge(-1.25) === '−1.25 s' && formatNudge(0) === '0.00 s', formatNudge(-1.25));
+    // The sampler plays every line later by its offset.
+    const ls = new LyricSampler(parseLrc('[00:10.00]first\n[00:14.00]second\n[00:18.00]third', 30));
+    ls.offset = 0.5;
+    const at10 = ls.sample(10.2, 0).text;
+    const at105 = ls.sample(10.6, 0).text;
+    const at142 = ls.sample(14.2, 0).text;
+    ls.offset = -1;
+    ls.reset();
+    const early = ls.sample(13.1, 0).text;
+    check('lyrics.timing.sampler', at10 === '' && at105 === 'first' && at142 === 'first' && early === 'second', `${JSON.stringify([at10, at105, at142, early])}`);
   }
 
   // --------------------------------------------------------------- lexicon

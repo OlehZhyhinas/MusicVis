@@ -31,10 +31,15 @@ function dismiss(el: HTMLElement): void {
   setTimeout(() => el.remove(), 250);
 }
 
-/** Shows a toast: a title, an optional detail line; errors stay until dismissed. */
-export function showToast(title: string, kind: ToastKind = 'info', durationMs = 5000, detail?: string): void {
+/**
+ * Shows a toast: a title, an optional detail line; errors stay until dismissed. A toast with an `id`
+ * replaces the one before it with the same id (a readout that updates, like the lyric nudge).
+ */
+export function showToast(title: string, kind: ToastKind = 'info', durationMs = 5000, detail?: string, id?: string): void {
   const root = ensureContainer();
+  if (id) for (const old of root.querySelectorAll<HTMLElement>('.toast')) if (old.dataset.id === id) old.remove();
   const el = document.createElement('div');
+  if (id) el.dataset.id = id;
   el.className = `toast glass strong fade-in${kind === 'error' ? ' err' : ''}`;
   el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   const [ic, c] = KIND[kind];

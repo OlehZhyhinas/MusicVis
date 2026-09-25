@@ -38,6 +38,7 @@ import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
 import { LyricsLibrary, lyricStatusLabel } from '../lyrics/library';
 import { LyricSampler } from '../lyrics/sampler';
+import { LyricNudges, NUDGE_STEP, formatNudge, nudgeKey } from '../lyrics/nudge';
 import { LyricOverlay } from '../lyrics/overlay';
 import '../lyrics/lyrics.css';
 
@@ -334,13 +335,34 @@ async function main(): Promise<void> {
       const sh = `${al.offset >= 0 ? '+' : ''}${al.offset.toFixed(2)} s${al.scale !== 1 ? ` ×${al.scale.toFixed(3)}` : ''}`;
       out += al.applied ? ` · auto ${sh} (${Math.round(al.confidence * 100)}%)` : ` · as timed (fit ${sh} ${Math.round(al.confidence * 100)}%)`;
     }
+    if (lyricSampler?.offset) out += ` · nudge ${formatNudge(lyricSampler.offset)}`;
     return out;
+  }
+  // Manual lyric timing ([ and ]), remembered per song.
+  const nudges = new LyricNudges();
+  function lyricNudgeKey(): string | null {
+    const cur = playlist.currentTrack;
+    return cur && songResult ? nudgeKey(lyrics.get(cur.id)?.meta, songResult.duration) : null;
   }
   function attachLyrics(): void {
     const cur = playlist.currentTrack;
     const track = cur && songResult ? lyrics.lyricTrack(cur.id, songResult) : null;
     if (track === lyricSampler?.track) return;
     lyricSampler = track ? new LyricSampler(track) : null;
+    if (lyricSampler) lyricSampler.offset = nudges.get(lyricNudgeKey());
+  }
+  /** Moves the playing song's lyrics by `d` seconds (null: back to the automatic timing). */
+  function nudgeLyrics(d: number | null): void {
+    if (!lyricSampler || liveMode.active) {
+      showToast('No lyrics playing to nudge', 'info', 2500, undefined, 'lyr-nudge');
+      return;
+    }
+    const v = nudges.set(lyricNudgeKey(), d === null ? 0 : lyricSampler.offset + d);
+    lyricSampler.offset = v;
+    lyricSampler.reset();
+    const al = lyricSampler.track.align;
+    const auto = al?.applied ? `on top of the automatic ${formatNudge(al.offset)}` : 'lyrics as timed';
+    showToast(`Lyrics ${v === 0 ? 'in time as found' : formatNudge(v)}`, 'info', 2500, `${auto} · [ earlier, ] later`, 'lyr-nudge');
   }
   let songLoaded = false;
   let loadToken = 0;
@@ -671,6 +693,9 @@ async function main(): Promise<void> {
       { group: 'Playback', icon: 'shuffle', label: `Shuffle ${shuffle ? 'off' : 'on'}`, keys: ['S'], run: () => toggleShuffle() },
       { group: 'Playback', icon: repeat === 'one' ? 'repeat1' : 'repeat', label: `Repeat: ${repeat} → ${repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off'}`, run: () => cycleRepeat() },
       { group: 'Playback', icon: 'fullscreen', label: 'Fullscreen', keys: ['F'], run: () => toggleFullscreen() },
+      { group: 'Playback', icon: 'undo', label: `Lyrics ${NUDGE_STEP} s earlier`, keys: ['['], run: () => nudgeLyrics(-NUDGE_STEP) },
+      { group: 'Playback', icon: 'skip', label: `Lyrics ${NUDGE_STEP} s later`, keys: [']'], run: () => nudgeLyrics(NUDGE_STEP) },
+      { group: 'Playback', icon: 'reset', label: `Reset lyric timing${lyricSampler?.offset ? ` (now ${formatNudge(lyricSampler.offset)})` : ''}`, run: () => nudgeLyrics(null) },
       { group: 'Presets', icon: 'up', label: 'Like this preset', keys: ['L'], run: () => vote(true) },
       { group: 'Presets', icon: 'down', label: 'Dislike this preset', keys: ['D'], run: () => vote(false) },
       { group: 'Presets', icon: 'skip', label: 'Next preset', keys: ['N'], run: () => nextPreset() },
@@ -765,6 +790,8 @@ async function main(): Promise<void> {
       case 'm': case 'M':
         toggleMute();
         break;
+      case '[': nudgeLyrics(-NUDGE_STEP); break;
+      case ']': nudgeLyrics(NUDGE_STEP); break;
       default:
         return;
     }

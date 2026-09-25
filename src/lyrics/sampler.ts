@@ -27,6 +27,8 @@ export interface LyricFrame {
 
 export class LyricSampler {
   readonly track: LyricTrack;
+  /** Manual timing nudge (seconds; positive: every line comes later). */
+  offset = 0;
   /** Per-line meaning (the lexicon's reading; may be refined later, e.g. by the chat model). */
   readonly meanings: LineMeaning[];
   /** Per-line blend of the line and its neighbours. */
@@ -77,6 +79,7 @@ export class LyricSampler {
   sample(time: number, dt: number): LyricFrame {
     const f = this.frame;
     const L = this.track.lines;
+    time -= this.offset;
     const i = lineAt(this.track, time);
     // A seek (a jump of more than one line) snaps instead of easing.
     const jump = i >= 0 && (this.last === -2 || (this.held >= 0 && Math.abs(i - this.held) > 1));

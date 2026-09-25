@@ -34,7 +34,7 @@ export interface PaletteDeps {
 type Mode = 'cmd' | 'goto' | 'help';
 
 const SHORTCUTS: [string, [string[], string][]][] = [
-  ['Playback', [[['Space'], 'Play / pause'], [['←', '→'], 'Seek -5 s / +5 s'], [['Shift', '←', '→'], 'Previous / next track'], [['S'], 'Shuffle on / off'], [['M'], 'Mute'], [['F'], 'Fullscreen']]],
+  ['Playback', [[['Space'], 'Play / pause'], [['←', '→'], 'Seek -5 s / +5 s'], [['Shift', '←', '→'], 'Previous / next track'], [['S'], 'Shuffle on / off'], [['M'], 'Mute'], [['F'], 'Fullscreen'], [['[', ']'], 'Lyrics 0.25 s earlier / later']]],
   ['Presets', [[['L'], 'Like'], [['D'], 'Dislike'], [['N'], 'Next preset'], [['G'], 'Go to preset by ID'], [['E'], 'Evolve mode on / off']]],
   ['Panels', [[['P'], 'Playlist'], [['B'], 'Preset browser'], [['K'], 'Gene editor (opens the HUD too)'], [['H'], 'HUD'], [['/'], 'All commands'], [['?'], 'This help'], [['Esc'], 'Close the top panel']]],
 ];
