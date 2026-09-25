@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 91;
+export const SEED_VERSION = 92;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1243,7 +1243,7 @@ const RAYMARCH: Def[] = [
     origin: 'R05', name: 'Wormhole Run', energy: [0.45, 1], scheme: 'triad', hue: 0.95,
     color: { adapt: 0.3, bloom: 1.25 }, carrier: 'warp', decay: 0.8,
     bodies: [body({
-      shape: ['scene', { scene: 2, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.45, pulse: 0.8, kick: 0.7, vary: 1, rim: 0.7, ao: 0.6, fog: 0.55, glow: 0.4, roam: 0.6, gap: 0.5, spec: 0.8 }],
+      shape: ['scene', { scene: 2, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.3, pulse: 0.8, kick: 0.7, vary: 1, rim: 0.7, ao: 0.6, fog: 0.55, glow: 0.4, roam: 0.6, gap: 0.5, spec: 0.8 }],
       material: ['glow', { gain: 1.1 }],
       color: ['age', { rate: 0.0625, detail: 1 }],
     })],
