@@ -18,6 +18,8 @@ export interface SimilarityDeps {
   members(): Member[];
   thumb(id: string): Promise<string>;
   toast(msg: string, detail?: string): void;
+  /** Turn the perceptual embedding on / off (persists the choice). */
+  setEmbedding(on: boolean): Promise<boolean>;
 }
 
 const GROUP_LABEL: Record<string, string> = { colour: 'Colour', detail: 'Detail', structure: 'Structure', motion: 'Motion', response: 'Music response', embedding: 'Perceptual' };
@@ -72,6 +74,10 @@ export class SimilarityPage {
           <button class="btn sm ghost" data-skip title="Neither, or can't tell">Skip <span class="kbd">S</span></button>
         </div>
         <div class="sim-stats" aria-live="polite"></div>
+        <div class="sim-emb">
+          <label class="row" style="gap:8px"><button class="tog" data-emb aria-pressed="false" aria-label="Perceptual embedding"></button><b>Perceptual embedding</b></label>
+          <span class="dim" data-emb-status></span>
+        </div>
       </div>`;
     document.body.appendChild(this.root);
     const cv = this.root.querySelectorAll<HTMLCanvasElement>('canvas');
@@ -84,7 +90,13 @@ export class SimilarityPage {
       const p = t.closest<HTMLElement>('[data-pick]');
       if (p) this.answer(p.dataset.pick === 'a' ? 'a' : 'b');
       if (t.closest('[data-skip]')) this.skip();
+      if (t.closest('[data-emb]')) void this.toggleEmbedding();
     });
+    const prev = this.deps.pheno.embedder?.onStatus;
+    if (this.deps.pheno.embedder) this.deps.pheno.embedder.onStatus = (st) => {
+      prev?.(st);
+      if (!this.root.hidden) this.renderStats();
+    };
     // Capture phase: while open, 1 / 2 / S / Esc are ours and nothing else sees keys.
     window.addEventListener('keydown', (ev) => {
       if (this.root.hidden) return;
@@ -143,8 +155,27 @@ export class SimilarityPage {
   }
 
   private pick(): Triplet | null {
-    const w = GROUPS.map((g) => this.deps.pheno.weights[g]);
-    return chooseTriplet(this.candidates(), this.deps.pheno.norm, w, this.rng, { refCounts: this.refCounts, seen: this.seen });
+    const ph = this.deps.pheno;
+    const w = GROUPS.map((g) => ph.weights[g]);
+    const byId = new Map(this.candidates().map((c) => [c.id, c.fp]));
+    // Where the hand features and the embedding disagree about which candidate is closer.
+    const extraDisagree = ph.embOn
+      ? (r: string, a: string, b: string) => {
+          const ea = ph.embTerm(r, a), eb = ph.embTerm(r, b);
+          if (!Number.isFinite(ea) || !Number.isFinite(eb)) return 0;
+          const ha = ph.distance(byId.get(r)!, byId.get(a)!), hb = ph.distance(byId.get(r)!, byId.get(b)!);
+          return Math.sign(ea - eb) !== Math.sign(ha - hb) ? 1 : 0;
+        }
+      : undefined;
+    return chooseTriplet(this.candidates(), ph.norm, w, this.rng, { refCounts: this.refCounts, seen: this.seen, extraDisagree });
+  }
+
+  private async toggleEmbedding(): Promise<void> {
+    const ph = this.deps.pheno;
+    const on = !ph.embOn;
+    const ok = await this.deps.setEmbedding(on);
+    if (on && !ok) this.deps.toast('Perceptual embedding could not load', ph.embedder?.status.detail);
+    this.renderStats();
   }
 
   /** Show the prefetched triplet (or a fresh one) and prefetch the one after. */
@@ -243,7 +274,32 @@ export class SimilarityPage {
       head = `<b>${n}</b> answers · the metric agrees with you <b class="sim-agree">${pct(f.agreeFit)}</b>${since} · equal weights ${pct(f.agreeEqual)}`;
     }
     const applied = n >= MIN_ANSWERS_TO_APPLY ? 'Fitted weights are in use for novelty, duplicates and the map.' : `Fitted weights apply after ${MIN_ANSWERS_TO_APPLY} answers.`;
-    this.stats.innerHTML = `<div>${head}</div><div class="sim-ws">${bars}</div><div class="dim">${applied} Agreement is cross-validated (each answer predicted by a fit without it).</div>`;
+    const embBar = ph.embOn
+      ? `<div class="sim-w" title="Perceptual embedding (DINOv2) weight ${ph.embWeight.toFixed(2)}"><span>${GROUP_LABEL.embedding}</span><i style="--w:${Math.min(100, (ph.embWeight / 3) * 100)}%"></i><b>${ph.embWeight.toFixed(2)}</b></div>`
+      : '';
+    this.stats.innerHTML = `<div>${head}</div><div class="sim-ws">${bars}${embBar}</div><div class="dim">${applied} Agreement is cross-validated (each answer predicted by a fit without it).</div>`;
+    this.renderEmb();
+  }
+
+  private renderEmb(): void {
+    const ph = this.deps.pheno;
+    const tog = this.root.querySelector<HTMLButtonElement>('[data-emb]')!;
+    tog.setAttribute('aria-pressed', String(ph.embOn));
+    const st = ph.embedder?.status;
+    const el = this.root.querySelector<HTMLElement>('[data-emb-status]')!;
+    const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : '–');
+    if (!ph.embOn) {
+      el.textContent = st?.state === 'error'
+        ? `Could not load: ${st.detail ?? 'unknown error'}`
+        : 'DINOv2-small in your browser (WebGPU): judges looks like a vision model. Downloads about 45 MB once; your answers decide how much it counts.';
+      return;
+    }
+    const total = this.deps.members().length;
+    const done = total - ph.missingEmbeddings().length;
+    const state = st?.state === 'loading' ? `loading${st.progress !== undefined ? ` ${Math.round(st.progress * 100)}%` : ''}…` : st?.state === 'ready' ? st.detail ?? 'ready' : st?.state ?? '';
+    const rep = ph.embReport;
+    const agree = rep ? ` · on ${rep.n} answers with all three embedded: with it ${pct(rep.with)}, without ${pct(rep.without)}` : ' · agreement with vs without shows after 4 answers on embedded presets';
+    el.textContent = `${state} · ${done}/${total} presets embedded${agree}`;
   }
 }
 

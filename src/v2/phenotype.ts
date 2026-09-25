@@ -16,6 +16,7 @@ import {
 import { fitness } from './population';
 import { GROUPS } from './fingerprint';
 import { fitAnswers, parseAnswers, type SimilarityAnswer, type SimilarityFit } from './similarity';
+import { EmbeddingStore, type Embedder } from './embedding';
 
 export interface KV {
   get<T>(key: string): Promise<T | undefined>;
@@ -24,6 +25,7 @@ export interface KV {
 
 const ARCHIVE_KEY = 'novelty-archive';
 const ANSWERS_KEY = 'similarity-answers';
+const EMB_KEY = 'embeddings';
 /** Answers needed before the fitted weights replace equal weights. */
 export const MIN_ANSWERS_TO_APPLY = 8;
 
@@ -56,6 +58,16 @@ export class Phenotype {
   metricVersion = 0;
   /** Agreement history (cross-validated, after each answer), for the similarity page. */
   agreeHistory: number[] = [];
+  /** Perceptual embeddings (opt-in): vectors by member id, the loader, and the blend weight the answers decide. */
+  emb = new EmbeddingStore();
+  embedder: Embedder | null = null;
+  embOn = false;
+  embWeight = 0;
+  /** Agreement on the answers that have embeddings: hand features only vs blended (both cross-validated). */
+  embReport: { n: number; without: number; with: number } | null = null;
+  private embTimer = 0;
+  private embAdded = 0;
+  private embFailed = new Set<string>();
 
   readonly fper: Fingerprinter | null;
   private popRef: () => Population;
@@ -82,6 +94,11 @@ export class Phenotype {
     } catch {
       this.answers = [];
     }
+    try {
+      this.emb = EmbeddingStore.fromJSON(await store.get<unknown>(EMB_KEY));
+    } catch {
+      this.emb = new EmbeddingStore();
+    }
     this.syncArchive();
     this.refitWeights();
   }
@@ -96,16 +113,92 @@ export class Phenotype {
     if (Number.isFinite(this.fit?.agreeFit)) this.agreeHistory.push(this.fit!.agreeFit);
   }
 
-  /** Fit the group weights to the answers; applied once there are enough of them. */
+  /**
+   * Fit the group weights to the answers; applied once there are enough of
+   * them. With the embedding on, answers whose three presets all have
+   * embeddings also fit its blend weight, and agreement with and without it is
+   * reported on that same subset.
+   */
   refitWeights(): void {
     this.fit = this.answers.length ? fitAnswers(this.answers, this.norm) : null;
-    const apply = !!this.fit && this.fit.n >= MIN_ANSWERS_TO_APPLY;
     const w = { ...EQUAL_WEIGHTS };
-    if (apply) GROUPS.forEach((g, i) => (w[g] = Math.max(0.02, this.fit!.weights[i])));
-    if (JSON.stringify(w) !== JSON.stringify(this.weights)) {
+    let we = this.embOn ? 1 : 0;
+    this.embReport = null;
+    if (this.embOn) {
+      for (const a of this.answers) {
+        const ta = this.emb.term(a.ref, a.a), tb = this.emb.term(a.ref, a.b);
+        a.emb = Number.isFinite(ta) && Number.isFinite(tb) ? [ta, tb] : undefined;
+      }
+      const sub = this.answers.filter((a) => a.emb);
+      if (sub.length >= 4) {
+        const both = fitAnswers(sub, this.norm, true);
+        const hand = fitAnswers(sub, this.norm, false);
+        this.embReport = { n: sub.length, without: hand.agreeFit, with: both.agreeFit };
+        if (sub.length >= MIN_ANSWERS_TO_APPLY) {
+          GROUPS.forEach((g, i) => (w[g] = Math.max(0.02, both.weights[i])));
+          we = both.weights[GROUPS.length];
+        }
+      }
+    }
+    if (!this.embReport && this.fit && this.fit.n >= MIN_ANSWERS_TO_APPLY) GROUPS.forEach((g, i) => (w[g] = Math.max(0.02, this.fit!.weights[i])));
+    if (JSON.stringify(w) !== JSON.stringify(this.weights) || we !== this.embWeight) {
       this.weights = w;
+      this.embWeight = we;
+      this.tableKey = '';
       this.metricVersion++;
     }
+  }
+
+  // ---------------------------------------------------------- embedding
+
+  /** Turn the perceptual embedding on (loads the model) or off. Resolves false when it can't load. */
+  async setEmbedding(on: boolean): Promise<boolean> {
+    this.embOn = on;
+    if (on && this.embedder && !(await this.embedder.load())) {
+      this.embOn = false;
+      return false;
+    }
+    this.refitWeights();
+    return true;
+  }
+
+  /** The embedding term between two members (NaN unless both are embedded and the embedding is on). */
+  embTerm(a: string, b: string): number {
+    return this.embOn ? this.emb.term(a, b) : NaN;
+  }
+
+  private blend(): { w: number; term: (a: string, b: string) => number } | undefined {
+    return this.embOn && this.embWeight > 0 && this.emb.size > 2 ? { w: this.embWeight, term: (a, b) => this.emb.term(a, b) } : undefined;
+  }
+
+  /** Members still without an embedding (visible first). */
+  missingEmbeddings(): Member[] {
+    return this.pop.list().filter((m) => !m.hidden && !this.emb.get(m.id)).concat(this.pop.list().filter((m) => m.hidden && !this.emb.get(m.id)));
+  }
+
+  /** Embed one member: a strip of the drop, three frames through DINOv2, pooled. */
+  async embedOne(m: Member): Promise<boolean> {
+    if (!this.fper || !this.embedder || this.embedder.status.state !== 'ready') return false;
+    const frames = await this.fper.strip(m.genome, 12);
+    if (frames.length < 12) return false;
+    const v = await this.embedder.embed([frames[0], frames[5], frames[11]]);
+    if (!v) return false;
+    this.emb.set(m.id, v);
+    this.embAdded++;
+    // Throttled save (a debounce would never fire while embedding runs back to back).
+    if (!this.embTimer) {
+      this.embTimer = setTimeout(() => {
+        this.embTimer = 0;
+        void this.store?.set(EMB_KEY, this.emb.toJSON());
+      }, 2000) as unknown as number;
+    }
+    // Re-lay out and refit every few embeddings, not on each one.
+    if (this.embAdded % 8 === 0 || !this.missingEmbeddings().length) {
+      this.tableKey = '';
+      this.refitWeights();
+      this.metricVersion++;
+    }
+    return true;
   }
 
   /** Every current member's fingerprint is in the archive (migration and imports). */
@@ -140,10 +233,10 @@ export class Phenotype {
   // ------------------------------------------------------------ novelty
 
   private ensureTable(): void {
-    const key = `${this.archive.version}:${this.fitN}:${this.pop.size}:${JSON.stringify(this.weights)}`;
+    const key = `${this.archive.version}:${this.fitN}:${this.pop.size}:${JSON.stringify(this.weights)}:${this.embOn ? this.embWeight : 0}`;
     if (key === this.tableKey) return;
     this.tableKey = key;
-    const t = noveltyTable(this.pop.list(), this.archive, this.norm, this.weights);
+    const t = noveltyTable(this.pop.list(), this.archive, this.norm, this.weights, undefined, this.blend());
     this.table = t.table;
     this.typical = t.typical;
   }
@@ -204,6 +297,13 @@ export class Phenotype {
     return zDistance(this.z(a), this.z(b), this.weights);
   }
 
+  /** Distance between two members: the fingerprint distance, blended with the embedding when it is on. */
+  memberDistance(a: Member, b: Member): number {
+    if (!validFingerprint(a.fp) || !validFingerprint(b.fp)) return NaN;
+    const bl = this.blend();
+    return zDistance(this.z(a.fp), this.z(b.fp), this.weights, bl ? { w: bl.w, t: bl.term(a.id, b.id) } : undefined);
+  }
+
   /** Nearest member whose fingerprint is within the duplicate distance, or null. */
   duplicateOf(fp: number[], extra: { id: string; fp?: number[] }[] = []): DuplicateHit | null {
     let best: DuplicateHit | null = null;
@@ -239,7 +339,19 @@ export class Phenotype {
       if (this.running || document.hidden || !idle()) return;
       this.syncArchive();
       const m = this.missing()[0];
-      if (!m) return;
+      if (!m) {
+        // Fingerprints done: embeddings next (when turned on and loaded).
+        const e = this.embOn && this.embedder?.status.state === 'ready' ? this.missingEmbeddings().find((x) => !this.embFailed.has(x.id)) : undefined;
+        if (!e) return;
+        this.running = true;
+        void this.embedOne(e)
+          .then((ok) => {
+            if (!ok) this.embFailed.add(e.id);
+          })
+          .catch(() => this.embFailed.add(e.id))
+          .finally(() => (this.running = false));
+        return;
+      }
       this.running = true;
       const genome = m.genome;
       void this.fingerprint(genome)

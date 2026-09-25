@@ -11,6 +11,7 @@ import { SpringLayout } from '../src/v2/springLayout';
 import { agreement, answerRows, chooseTriplet, fitAnswers, parseAnswers, type SimilarityAnswer } from '../src/v2/similarity';
 import { MIN_ANSWERS_TO_APPLY } from '../src/v2/phenotype';
 import { groupTerms } from '../src/v2/fingerprint';
+import { EMB_DIM, EMB_MODEL, EmbeddingStore, cosineDistance, normalize, poolFrames } from '../src/v2/embedding';
 import { Phenotype } from '../src/v2/phenotype';
 import {
   EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, parseExploreMode,
@@ -326,7 +327,50 @@ async function similarityTests(check: Check): Promise<void> {
     `fitted weights take over at answer ${appliedAt}; 12 answers reload with the same weights; malformed answers are dropped`);
 }
 
+function embeddingTests(check: Check): void {
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32) - 0.5;
+  const vec = (base?: number[], noise = 1) => Array.from({ length: EMB_DIM }, (_, i) => (base ? base[i] : 0) + rnd() * noise);
+  const a = normalize(vec()), a2 = normalize(vec(a, 0.02)), b = normalize(vec());
+  const pooled = poolFrames([a, a2]);
+  const st = new EmbeddingStore();
+  st.set('A', a);
+  st.set('A2', a2);
+  st.set('B', b);
+  st.set('bad', [1, 2]);
+  const back = EmbeddingStore.fromJSON(JSON.parse(JSON.stringify(st.toJSON())));
+  const other = EmbeddingStore.fromJSON({ ...st.toJSON(), model: 'another/model' });
+  const ok = cosineDistance(a, a) < 1e-6 && cosineDistance(a, a2) < 0.05 && cosineDistance(a, b) > 0.5 && Math.abs(Math.hypot(...pooled) - 1) < 1e-3 &&
+    st.size === 3 && st.term('A', 'A2') < st.term('A', 'B') && Number.isNaN(st.term('A', 'zz')) && back.size === 3 && other.size === 0;
+  check('embedding.store', ok, `cosine distances ${cosineDistance(a, a2).toFixed(3)} (near copy) vs ${cosineDistance(a, b).toFixed(3)} (unrelated); pooled frames unit length; terms scaled by the median distance; save/load keeps ${back.size}; another model's vectors (not ${EMB_MODEL}) are dropped`);
+
+  // Blend weight: answers from a user who sees what the embedding sees raise its weight; a user who ignores it lowers it.
+  const pts = cloud(40, 31, 0, 2);
+  const norm = FeatureNorm.fit(pts);
+  const embs = pts.map(() => normalize(vec()));
+  const est = new EmbeddingStore();
+  embs.forEach((e, i) => est.set(`P${i}`, e));
+  const make = (byEmb: boolean): SimilarityAnswer[] => {
+    const out: SimilarityAnswer[] = [];
+    for (let k = 0; k < 80; k++) {
+      const r = k % 40, x = (k * 7 + 3) % 40, y = (k * 13 + 5) % 40;
+      if (r === x || r === y || x === y) continue;
+      const ea = est.term(`P${r}`, `P${x}`), eb = est.term(`P${r}`, `P${y}`);
+      const ha = groupTerms(norm.z(pts[r]), norm.z(pts[x])).reduce((s2, v) => s2 + v, 0), hb = groupTerms(norm.z(pts[r]), norm.z(pts[y])).reduce((s2, v) => s2 + v, 0);
+      const pick: 'a' | 'b' = (byEmb ? ea < eb : ha < hb) ? 'a' : 'b';
+      out.push({ ref: `P${r}`, a: `P${x}`, b: `P${y}`, pick, t: k, fps: [pts[r], pts[x], pts[y]], emb: [ea, eb] });
+    }
+    return out;
+  };
+  const fe = fitAnswers(make(true), norm, true), fh = fitAnswers(make(false), norm, true);
+  const he = fitAnswers(make(true), norm, false);
+  const we = fe.weights[5], wh = fh.weights[5];
+  check('embedding.blend', we > 2 && wh < 1 && fe.agreeFit > he.agreeFit + 0.15,
+    `embedding weight ${we.toFixed(2)} when answers follow the embedding (agreement ${Math.round(fe.agreeFit * 100)}% with it vs ${Math.round(he.agreeFit * 100)}% without), ${wh.toFixed(2)} when they follow the hand features`);
+}
+
 export function noveltyTests(check: Check): void {
+  embeddingTests(check);
   layoutTests(check);
   // ------------------------------------------------ reference clip
   {

@@ -688,8 +688,12 @@ export function groupTerms(za: Float32Array, zb: Float32Array): number[] {
   });
 }
 
-/** Phenotype distance between two z-scored fingerprints: weighted RMS over groups. */
-export function zDistance(za: Float32Array, zb: Float32Array, w: GroupWeights = EQUAL_WEIGHTS): number {
+/**
+ * Phenotype distance between two z-scored fingerprints: weighted RMS over
+ * groups. `extra` blends in one more term (the perceptual embedding) with its
+ * own weight; a non-finite term is left out.
+ */
+export function zDistance(za: Float32Array, zb: Float32Array, w: GroupWeights = EQUAL_WEIGHTS, extra?: { w: number; t: number }): number {
   let s = 0, ws = 0;
   for (const g of GROUPS) {
     const wg = w[g];
@@ -702,6 +706,10 @@ export function zDistance(za: Float32Array, zb: Float32Array, w: GroupWeights = 
     }
     s += (wg * t) / idx.length;
     ws += wg;
+  }
+  if (extra && extra.w > 0 && Number.isFinite(extra.t)) {
+    s += extra.w * extra.t;
+    ws += extra.w;
   }
   return ws > 0 ? Math.sqrt(s / ws) : 0;
 }

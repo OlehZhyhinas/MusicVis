@@ -24,6 +24,7 @@ import { ExploreControls, loadExploreMode } from './exploreUi';
 import { EXPLORE_LABEL } from './novelty';
 import { PresetMap, ViewSwitch, loadPresetView, type PresetView } from './mapView';
 import { SimilarityPage } from './similarityUi';
+import { Embedder } from './embedding';
 import { fitness, type Member } from './population';
 import { GeneEditor } from './geneEditor';
 import { ChatPane } from '../chat/chatPane';
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
   evo.pheno = pheno;
   pheno.onFingerprint = () => evo.changed();
   pheno.mode = loadExploreMode();
+  pheno.embedder = new Embedder();
   await pheno.attachStore(store);
 
   function resizeCanvas(): void {
@@ -222,7 +224,7 @@ async function main(): Promise<void> {
   const presetMap = new PresetMap({
     members: () => browser.members(),
     currentId: () => currentId,
-    distance: (a, b) => (a.fp && b.fp ? pheno.distance(a.fp, b.fp) : NaN),
+    distance: (a, b) => pheno.memberDistance(a, b),
     novelty: (m) => pheno.novelty(m),
     thumb: (id) => evo.thumb(id),
     metricVersion: () => pheno.metricVersion,
@@ -237,7 +239,13 @@ async function main(): Promise<void> {
     members: () => evo.pop.list(),
     thumb: (id) => evo.thumb(id),
     toast: (msg, detail) => showToast(msg, 'info', 5000, detail),
+    setEmbedding: (on) => setEmbedding(on),
   });
+  async function setEmbedding(on: boolean): Promise<boolean> {
+    const ok = await pheno.setEmbedding(on);
+    saveSetting('v2.embedding', on && ok);
+    return ok;
+  }
   const simBtn = document.createElement('button');
   simBtn.className = 'btn sm';
   simBtn.title = 'Which looks more like this one? Teach the look metric';
@@ -660,6 +668,7 @@ async function main(): Promise<void> {
       { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
       { group: 'Presets', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
       { group: 'Presets', icon: 'sparkle', label: 'Similarity judgements (teach the look metric)…', run: () => similarity.open() },
+      { group: 'Presets', icon: 'cpu', label: `Perceptual embedding (DINOv2) ${pheno.embOn ? 'off' : 'on'}`, run: () => void setEmbedding(!pheno.embOn).then((ok) => showToast(ok ? `Perceptual embedding ${pheno.embOn ? 'on' : 'off'}` : 'Perceptual embedding could not load', ok ? 'info' : 'error', 5000, ok ? undefined : pheno.embedder?.status.detail)) },
       { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
       { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
       { group: 'Panels', icon: 'trash', label: 'Clear playlist', run: () => clearPlaylist() },
@@ -761,6 +770,8 @@ async function main(): Promise<void> {
   // Descriptors for novelty scoring, in the background.
   window.setTimeout(() => void evo.describeMissing(40), 4000);
   window.setTimeout(() => pheno.startIdle(() => !screener.runner.busy && evo.breeding === 0), 6000);
+  // The perceptual embedding stays opt-in: it only loads if the user turned it on before.
+  if (loadSetting<boolean>('v2.embedding', false)) window.setTimeout(() => void setEmbedding(true), 8000);
 
   // The dock starts open on its last tab (a sheet on phones, so not there).
   updateEmpty();

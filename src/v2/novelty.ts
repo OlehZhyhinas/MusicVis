@@ -68,10 +68,19 @@ export class NoveltyArchive {
   }
 }
 
-/** Mean distance to the k nearest z-scored fingerprints (excluding `selfId`). */
-export function knnNovelty(z: Float32Array, others: { id: string; z: Float32Array }[], k = NOVELTY_K, selfId?: string, w: GroupWeights = EQUAL_WEIGHTS): number {
+/** An extra distance term between two ids (the perceptual embedding), with its weight. */
+export interface Blend {
+  w: number;
+  term(a: string, b: string): number;
+}
+
+/** Mean distance to the k nearest z-scored fingerprints (excluding `selfId`; `blend` needs `selfId`). */
+export function knnNovelty(z: Float32Array, others: { id: string; z: Float32Array }[], k = NOVELTY_K, selfId?: string, w: GroupWeights = EQUAL_WEIGHTS, blend?: Blend): number {
   const d: number[] = [];
-  for (const o of others) if (o.id !== selfId) d.push(zDistance(z, o.z, w));
+  for (const o of others) {
+    if (o.id === selfId) continue;
+    d.push(zDistance(z, o.z, w, blend && selfId ? { w: blend.w, t: blend.term(selfId, o.id) } : undefined));
+  }
   if (!d.length) return 0;
   d.sort((a, b) => a - b);
   const n = Math.min(k, d.length);
@@ -87,18 +96,18 @@ export function knnNovelty(z: Float32Array, others: { id: string; z: Float32Arra
  * as a typical archived look", 0.9 "more novel than 90% of them".
  */
 export function noveltyTable(
-  members: { id: string; fp?: number[] }[], archive: NoveltyArchive, norm: FeatureNorm, w: GroupWeights = EQUAL_WEIGHTS, k = NOVELTY_K,
+  members: { id: string; fp?: number[] }[], archive: NoveltyArchive, norm: FeatureNorm, w: GroupWeights = EQUAL_WEIGHTS, k = NOVELTY_K, blend?: Blend,
 ): { table: Map<string, { nov: number; rel: number }>; typical: number[] } {
   const az = archive.entries.map((e) => ({ id: e.id, z: norm.z(e.fp) }));
   // The archive's typical novelty (a sample, for speed), the scale for `rel`.
   const step = Math.max(1, Math.floor(az.length / 200));
   const typ: number[] = [];
-  for (let i = 0; i < az.length; i += step) typ.push(knnNovelty(az[i].z, az, k, az[i].id, w));
+  for (let i = 0; i < az.length; i += step) typ.push(knnNovelty(az[i].z, az, k, az[i].id, w, blend));
   typ.sort((a, b) => a - b);
   const out = new Map<string, { nov: number; rel: number }>();
   for (const m of members) {
     if (!m.fp || !validFingerprint(m.fp)) continue;
-    const nov = knnNovelty(norm.z(m.fp), az, k, m.id, w);
+    const nov = knnNovelty(norm.z(m.fp), az, k, m.id, w, blend);
     out.set(m.id, { nov, rel: relNovelty(nov, typ) });
   }
   return { table: out, typical: typ };
