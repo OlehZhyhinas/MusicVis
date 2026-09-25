@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 90;
+export const SEED_VERSION = 91;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -815,14 +815,16 @@ const MILKDROP: Def[] = [
     ],
   },
   {
-    // Flexi + Martin, tunnel of supraschismatika: a dark chrome pipe flown through at speed, glints
-    // streaking along its polished wall toward you; the bass drives the flight and the twist.
+    // Flexi + Martin, tunnel of supraschismatika: a dark chrome pipe flown through, glints streaking
+    // along its polished wall toward you; the bass drives the flight and the twist, the pipe deepens on
+    // every beat and the glints flash on drum hits. Flown slower than the original so the passing
+    // rings never strobe.
     origin: 'M17', name: 'Tunnel of Supraschismatika (after Flexi & Martin)', energy: [0.3, 0.9], scheme: 'mono', hue: 0.6,
     color: { sat: 0.25, exposure: 0.9, adapt: 0.3, bloom: 1.2, vignette: 0.35, relief: 0.7, bump: 1.6, light: 0.25, gloss: 1, metal: 0.6 },
     carrier: 'warp', decay: 0.9,
     chain: [
-      op('translate', { vx: 0, vy: -0.25 }),
-      op('tunnel', { depth: 0.22, speed: 1, twist: -0.35, sides: 0, rep: 3, fog: 0.9, lock: 0 }, 1, 'view'),
+      op('translate', { vx: 0, vy: -0.08 }),
+      op('tunnel', { depth: 0.22, speed: 0.15, twist: -0.35, sides: 0, rep: 2, fog: 0.9, lock: 0 }, 1, 'view'),
     ],
     bodies: [body({
       shape: ['dot', { r: 0.01 }],
@@ -830,7 +832,7 @@ const MILKDROP: Def[] = [
       material: ['glow', { gain: 1.6, width: 0.012, base: 0.4 }],
       emit: ['trail'],
     })],
-    reactions: [rx('bass', 'op', 1, 'speed', 0.35, { atk: 0.03, rel: 0.4 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.05, rel: 0.6 }), rx('beat', 'col', 0, 'light', 0.2)],
+    reactions: [rx('bass', 'op', 1, 'speed', 0.2, { atk: 0.03, rel: 0.4 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.05, rel: 0.6 }), rx('beat', 'op', 1, 'depth', 0.25, { rel: 0.25 }), rx('hit', 'ma', 0, 'gain', 0.5, { rel: 0.2 })],
   },
   {
     // Waltra, Square Orgy: a turning grid of glossy tiles, each lit by the colour behind it, as bright
