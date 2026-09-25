@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 58;
+export const SEED_VERSION = 59;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -876,6 +876,22 @@ const MILKDROP: Def[] = [
       feel: ['flow', { atk: 0.02, rel: 0.3 }],
     })],
     reactions: [rx('loud', 'sh', 0, 'amp', 0.3, { atk: 0.03, rel: 0.3 }), rx('bass', 'op', 0, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 1, 'amt', 0.2, { atk: 0.05, rel: 0.6 })],
+  },
+  {
+    // martin, mandelbox explorer: a camera dives from outside a Mandelbox deep into its carved stone
+    // corridors and back out every sixteen bars, lit dimly in one murky hue with thick fog and soft
+    // rims; the bass pushes the fold scale so the walls shift, drums lunge the camera deeper.
+    origin: 'M21', name: 'Mandelbox Explorer (after martin)', energy: [0.2, 0.8], scheme: 'mono', hue: 0.35,
+    color: { sat: 0.7, exposure: 0.85, contrast: 0.04, adapt: 0.2, bloom: 0.6, vignette: 0.5 }, carrier: 'warp', decay: 0.8,
+    bodies: [body({
+      shape: ['scene', { scene: 3, cam: 1, res: 0.5, size: 1, blend: 0.3, speed: 0.35, pulse: 0.4, kick: 0.5, vary: 0.4, rim: 0.3, ao: 1, fog: 0.9, glow: 0.1, roam: 0.8, gap: 0.5, spec: 0.3, iter: 8, fscale: -2.2, fold: 1, power: 8 }],
+      material: ['fill', { gain: 0.8 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'fscale', 0.08, { atk: 0.1, rel: 1 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.25 }),
+    ],
   },
 ];
 
