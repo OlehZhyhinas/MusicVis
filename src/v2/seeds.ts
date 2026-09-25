@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 72;
+export const SEED_VERSION = 73;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -961,19 +961,24 @@ const PHYSICS: Def[] = [
   },
   {
     // A Chladni plate: sand gathers on the nodal lines of the standing wave the chord asks for. On a
-    // new chord (checked every bar) the sand scatters and settles onto the new figure over two beats;
+    // new chord (checked every bar) the sand scatters and snaps onto the new figure within half a beat;
     // minor keys give the antisymmetric figures. The plate turns slowly and the bass shakes the grains.
     origin: 'V02', name: 'Chladni Plate', energy: [0.15, 0.8], scheme: 'analogous', hue: 0.08,
     color: { sat: 0.7, adapt: 0.3, bloom: 1.1, vignette: 0.55 }, carrier: 'none',
     bodies: [body({
-      shape: ['cymatics', { plate: 0, size: 0.42, modes: 7, source: 0, hold: 1, settle: 2, sand: 0.8, line: 1.6, shake: 0.4, rim: 0.35 }],
+      shape: ['cymatics', { plate: 0, size: 0.42, modes: 7, source: 0, hold: 1, settle: 0.5, sand: 0.8, line: 1.6, shake: 0.3, rim: 0.35 }],
       place: ['point', { x: 0, y: 0 }],
       motion: ['spin', { rate: 0.0625 }],
       material: ['glow', { gain: 1 }],
       emit: ['none'],
-      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+      feel: ['flow', { atk: 0.01, rel: 0.12 }],
     })],
-    reactions: [rx('bass', 'sh', 0, 'line', 0.25, { atk: 0.03, rel: 0.4 })],
+    // Tuned to dance with the beat: a new figure snaps in within half a beat of the downbeat, drum hits
+    // make the grains jump, and the bass thickens the lines.
+    reactions: [
+      rx('bass', 'sh', 0, 'line', 0.35, { atk: 0.02, rel: 0.25 }), rx('hit', 'sh', 0, 'shake', 0.6, { rel: 0.15 }),
+      rx('loud', 'ma', 0, 'gain', 0.25, { atk: 0.05, rel: 0.3 }),
+    ],
   },
 ];
 
