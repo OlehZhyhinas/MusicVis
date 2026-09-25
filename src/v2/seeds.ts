@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 87;
+export const SEED_VERSION = 88;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -463,11 +463,12 @@ const DEFS: Def[] = [
 const MILKDROP: Def[] = [
   {
     // Geiss, Cosmic Dust 2: a dotted scope throws dust that streams out of a slowly wandering centre
-    // (zoom 1.05) with a gentle warp; bass hits jolt the whole field sideways and the dust colour drifts.
+    // with a gentle warp; drum hits jolt the whole field sideways and the dust colour drifts. The
+    // stream runs a little slower than the original's zoom 1.05, which strobed on fast songs.
     origin: 'M01', name: 'Cosmic Dust 2 (after Geiss)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.72,
     color: { sat: 0.45, adapt: 0.2, bloom: 1, vignette: 0.35, contrast: 0.06 }, carrier: 'warp', decay: 0.96,
     chain: [
-      op('zoom', { rate: 0.05, wander: 0.3 }),
+      op('zoom', { rate: 0.03, wander: 0.3 }),
       op('rotate', { lock: 0, rate: 0.0015, wander: 0.3 }),
       op('noise', { amp: 0.0012, scale: 3.1, speed: 0.4 }),
       op('translate', { vx: 0, vy: 0 }),
@@ -487,7 +488,7 @@ const MILKDROP: Def[] = [
       }),
     ],
     reactions: [
-      rx('hit', 'op', 3, 'vx', 0.5, { rel: 0.25 }), rx('bass', 'op', 3, 'vy', -0.3, { atk: 0.02, rel: 0.3, thr: 0.5 }),
+      rx('hit', 'op', 3, 'vx', 0.3, { rel: 0.35 }), rx('bass', 'op', 3, 'vy', -0.3, { atk: 0.02, rel: 0.3, thr: 0.5 }),
       rx('surge', 'op', 0, 'rate', 0.05, { atk: 0.03, rel: 0.3 }), rx('loud', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 0.2 }),
     ],
   },
