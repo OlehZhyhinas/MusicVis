@@ -10,7 +10,7 @@ import type { ReportCard } from './avq/metrics';
 /** Feature order of a metric vector (scripts/avq report card fields). */
 export const JUDGE_FEATURES = [
   'sync', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond',
-  'cfSync', 'stillness', 'chaos', 'activity',
+  'cfSync', 'stillness', 'chaos', 'activity', 'events',
 ] as const;
 export type JudgeFeature = (typeof JUDGE_FEATURES)[number];
 
@@ -266,11 +266,11 @@ export function loadJudge(): SavedJudge | null {
 
 /**
  * The like-judge's preference (0..1) from the screener's cheap metrics (onset hit lift ->
- * sync, desync sensitivity -> cfSync; the rest unknown), or undefined until the judge applies.
+ * sync, metronome motion divergence -> events; the rest unknown), or undefined until the judge applies.
  */
-export function screenJudge(m: { hitLift: number; desync: number }, j: SavedJudge | null = loadJudge()): number | undefined {
+export function screenJudge(m: { hitLift: number; events: number }, j: SavedJudge | null = loadJudge()): number | undefined {
   if (!j?.applied || !j.like) return undefined;
   const c = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : NaN);
-  const v = JUDGE_FEATURES.map((f) => (f === 'sync' ? c(m.hitLift / 0.5) : f === 'cfSync' ? c(m.desync / 0.6) : NaN));
+  const v = JUDGE_FEATURES.map((f) => (f === 'sync' ? c(m.hitLift / 0.5) : f === 'events' ? c(m.events / 0.5) : NaN));
   return sigmoid(judgeScore(j.like, v));
 }

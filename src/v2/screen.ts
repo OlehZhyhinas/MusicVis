@@ -10,6 +10,7 @@ import type { MusicState, NoteMark, NoteStats, Section, StemName } from '../type
 import { COST_BUDGET_MS, estimateCost, type Genome } from './genome';
 import type { Engine, Stage } from './engine';
 import { Stage as StageClass } from './engine';
+import { mulberry32 } from './ops';
 
 // --------------------------------------------------------- synthetic music
 
@@ -57,9 +58,16 @@ export class SyntheticMusic {
 
   constructor(private silent = false) {}
 
-  reset(silent = this.silent): void {
+  /** Music time runs `shift` seconds ahead of the clock (desync counterfactual); state.time stays on the clock. */
+  private shift = 0;
+  /** Metronome: the same beat / bar clock, every audio value held at its mean (clock-lock counterfactual). */
+  private flat = false;
+
+  reset(silent = this.silent, shift = 0, flat = false): void {
     this.t = 0;
     this.silent = silent;
+    this.shift = shift;
+    this.flat = flat;
   }
 
   get time(): number {
@@ -68,7 +76,7 @@ export class SyntheticMusic {
 
   next(dt: number): MusicState {
     this.t += dt;
-    const t = this.t;
+    const t = this.t + this.shift;
     const beatLen = 60 / BPM;
     const bp = t / beatLen;
     const beatIndex = Math.floor(bp);
@@ -77,34 +85,37 @@ export class SyntheticMusic {
     const barPhase = bp / 4 - barIndex;
     const eighth = (bp * 2) % 1;
     const s = this.silent ? 0 : 1;
-    const kick = Math.exp(-beatPhase * 9) * s;
-    const hat = Math.exp(-eighth * 14) * s;
-    const bass = (0.55 + 0.35 * Math.sin(t * 1.3)) * s;
-    const voc = (0.45 + 0.4 * Math.sin(t * 0.7 + 1)) * s;
-    const other = (0.5 + 0.3 * Math.sin(t * 0.45 + 2)) * s;
+    const flat = this.flat;
+    const tw = flat ? 0 : t; // waveform / spectrum animation freezes under the metronome
+    const pulse = Math.exp(-beatPhase * 9); // the clock's beat pulse (kept under the metronome)
+    const kick = (flat ? 0.111 : pulse) * s;
+    const hat = (flat ? 0.071 : Math.exp(-eighth * 14)) * s;
+    const bass = (0.55 + (flat ? 0 : 0.35 * Math.sin(t * 1.3))) * s;
+    const voc = (0.45 + (flat ? 0 : 0.4 * Math.sin(t * 0.7 + 1))) * s;
+    const other = (0.5 + (flat ? 0 : 0.3 * Math.sin(t * 0.45 + 2))) * s;
     for (let i = 0; i < 1024; i++) {
       const x = i / 1024;
-      this.wave[i] = s * (0.35 * Math.sin(x * 2 * Math.PI * 6 + t * 3) + 0.2 * Math.sin(x * 2 * Math.PI * 17 - t * 5) * voc + 0.25 * kick * Math.sin(x * 2 * Math.PI * 2));
+      this.wave[i] = s * (0.35 * Math.sin(x * 2 * Math.PI * 6 + tw * 3) + 0.2 * Math.sin(x * 2 * Math.PI * 17 - tw * 5) * voc + 0.25 * kick * Math.sin(x * 2 * Math.PI * 2));
     }
     for (let i = 0; i < 512; i++) {
       const f = i / 512;
-      const base = 0.62 * Math.exp(-f * 3.2) + 0.12 * Math.sin(f * 40 + t * 2) * 0.5;
+      const base = 0.62 * Math.exp(-f * 3.2) + 0.12 * Math.sin(f * 40 + tw * 2) * 0.5;
       this.spec[i] = s * Math.max(0, Math.min(1, base + 0.3 * kick * Math.exp(-f * 10) + 0.25 * hat * Math.exp(-(f - 0.6) * (f - 0.6) * 30) + 0.18 * voc * Math.exp(-(f - 0.2) * (f - 0.2) * 80)));
     }
     this.chroma.fill(0.1);
     this.chroma[0] = this.chroma[4] = this.chroma[7] = s;
-    this.chroma[(Math.floor(t / 2) * 5) % 12] = 0.8 * s;
+    this.chroma[(Math.floor(tw / 2) * 5) % 12] = 0.8 * s;
     const lv: Record<StemName, number> = { drums: Math.max(kick, hat * 0.6), bass, vocals: voc, other };
     const on: Record<StemName, number> = { drums: Math.max(kick, hat * 0.7), bass: kick * 0.6, vocals: 0, other: hat * 0.3 };
     const pres: Record<StemName, number> = { drums: s * 0.7, bass: s * 0.6, vocals: s * 0.5, other: s * 0.5 };
     const stems = {} as Record<StemName, number>;
     for (const k of STEMS) stems[k] = lv[k];
     return {
-      time: t, dt, playing: true,
+      time: this.t, dt, playing: true,
       bass: 1 + kick * s, mid: 1, treb: 1 + hat * 0.5, bassAtt: 1, midAtt: 1, trebAtt: 1,
       waveform: this.wave, spectrum: this.spec,
       bpm: BPM, beatIndex, barIndex, beatPhase, barPhase,
-      beatPulse: kick, barPulse: Math.exp(-barPhase * 6) * s,
+      beatPulse: pulse * s, barPulse: Math.exp(-barPhase * 6) * s,
       onBeat: false, onBar: false,
       stems, stemOnsets: on, stemPresence: pres,
       loudness: s * (0.55 + 0.25 * kick), complexity: this.silent ? 0.3 : 0.62, songComplexity: 0.6,
@@ -159,6 +170,17 @@ export interface ScreenMetrics {
   noise: number; // fraction of samples that look like noise
   cost: number; // estimated ms at 1440p
   msPerFrame: number; // measured wall time per screening frame
+  /**
+   * Audio-event drive (the AV harness's metronome counterfactual, cheap version): how differently
+   * the picture moves frame to frame when the same beat clock plays with every audio value held
+   * flat, relative to its own frame-to-frame change. ~0: the motion is the clock's (a constant
+   * spin, a bar-locked sweep) or the preset drifts on its own.
+   */
+  events: number;
+  /** Onset hit lift: share of kicks with a motion peak from 45 ms before to 125 ms after, above chance (-1..1). */
+  hitLift: number;
+  /** 0..1 cheap reactivity score from events and hitLift (for breeding / fitness). */
+  reactivity: number;
 }
 
 export interface ScreenResult {
@@ -179,8 +201,52 @@ export const THRESH = {
   noiseFrac: 0.6,
   reactRatio: 1.15,
   reactCorr: 0.12,
+  /** Clock-locked / drifting: motion ignores audio events (events) and lands no kicks (hitLift). */
+  driftEvents: 0.06,
+  driftHit: 0.1,
   msPerFrame: 10,
 };
+
+/** Seconds of the music run rendered in lockstep with the metronome lane. */
+const LOCKSTEP_SECS = 2;
+
+/** Cheap reactivity score (0..1) from the screener's audio-event drive and onset hit lift. */
+export function reactivityScore(events: number, hitLift: number): number {
+  const c = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+  return c(0.6 * c(events / 0.5) + 0.4 * c(hitLift / 0.5));
+}
+
+/**
+ * Onset hit lift of a 30 Hz motion series against beat frames: a hit is a motion peak (local max
+ * above median + 1.5 MAD of the series) from 1 sample before to 3 after the beat (-45..+125 ms at
+ * 30 Hz, the audiovisual sync window); chance is the same count at every other offset.
+ */
+export function hitLiftOf(motion: number[], beatIdx: number[]): number {
+  const n = motion.length;
+  if (n < 10 || !beatIdx.length) return 0;
+  const sorted = [...motion].sort((a, b) => a - b);
+  const med = sorted[n >> 1];
+  const mad = [...motion].map((x) => Math.abs(x - med)).sort((a, b) => a - b)[n >> 1];
+  const peak = motion.map((x, i) => i > 0 && i + 1 < n && x >= motion[i - 1] && x > motion[i + 1] && x > med + 1.5 * mad + 1e-5);
+  const hitsAt = (off: number) => {
+    let h = 0, tot = 0;
+    for (const b of beatIdx) {
+      const e = b + off;
+      if (e - 1 < 0 || e + 3 >= n) continue;
+      tot++;
+      if (peak.slice(e - 1, e + 4).some(Boolean)) h++;
+    }
+    return tot ? h / tot : 0;
+  };
+  const hit = hitsAt(0);
+  let ch = 0, cn = 0;
+  for (let off = 5; off < 14; off++) {
+    ch += hitsAt(off);
+    cn++;
+  }
+  const chance = cn ? ch / cn : 0;
+  return chance < 1 ? (hit - chance) / (1 - chance) : 0;
+}
 
 const srgbToLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 const LIN = new Float32Array(256).map((_, i) => srgbToLin(i / 255));
@@ -197,10 +263,15 @@ interface Run {
   ms: number;
   cover: number[];
   peaks: number[];
+  /** 4x4-averaged luma grid per sample after the settle (for the metronome comparison). */
+  grids: Float32Array[];
+  /** Sample indices (after the settle) where a beat started. */
+  beatIdx: number[];
+  lastBeat: number;
 }
 
 function newRun(): Run {
-  return { frames: 0, sample: 0, lumas: [], motions: [], beats: [], noiseHits: 0, samples: 0, prev: null, ms: 0, cover: [], peaks: [] };
+  return { frames: 0, sample: 0, lumas: [], motions: [], beats: [], noiseHits: 0, samples: 0, prev: null, ms: 0, cover: [], peaks: [], grids: [], beatIdx: [], lastBeat: -1 };
 }
 
 function corr(a: number[], b: number[]): number {
@@ -226,13 +297,19 @@ function corr(a: number[], b: number[]): number {
 export class Screener {
   readonly runner = new JobRunner();
   private stage: Stage;
+  /** Second stage rendering the metronome counterfactual in lockstep with the music run. */
+  private stageB: Stage;
   private thumbStage: Stage;
   private px = new Uint8Array(SCREEN_W * SCREEN_H * 4);
+  private pxB = new Uint8Array(SCREEN_W * SCREEN_H * 4);
   private music = new SyntheticMusic();
+  private musicB = new SyntheticMusic();
 
   constructor(private eng: Engine) {
     this.stage = new StageClass(eng, { offscreen: true, particleCap: 16384, flameCap: 32768 });
     this.stage.resize(SCREEN_W, SCREEN_H);
+    this.stageB = new StageClass(eng, { offscreen: true, particleCap: 16384, flameCap: 32768 });
+    this.stageB.resize(SCREEN_W, SCREEN_H);
     this.thumbStage = new StageClass(eng, { offscreen: true, particleCap: 32768, flameCap: 131072 });
     this.thumbStage.resize(320, 180);
   }
@@ -258,7 +335,7 @@ export class Screener {
   screen(g: Genome): Promise<ScreenResult> {
     return new Promise((resolve) => {
       const cost = estimateCost(g);
-      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, cost, msPerFrame: 0 };
+      const metrics: ScreenMetrics = { mean: 0, peak: 0, coverage: 0, motion: 0, motionSilent: 0, beatCorr: 0, noise: 0, cost, msPerFrame: 0, events: NaN, hitLift: 0, reactivity: 0 };
       const fail = (reason: string, descriptor: number[] = []) => resolve({ ok: false, reason, metrics, descriptor });
       if (cost > COST_BUDGET_MS) {
         fail(`too slow (estimated ${cost.toFixed(1)} ms)`);
@@ -269,6 +346,12 @@ export class Screener {
       let phase: 'compile' | 'music' | 'silent' | 'done' = 'compile';
       const st = this.stage;
       let slot: ReturnType<Stage['makeSlot']> | null = null;
+      let slotB: ReturnType<Stage['makeSlot']> | null = null;
+      const metroRun = newRun();
+      const lockstepFrames = LOCKSTEP_SECS * FPS;
+      // Both lanes draw the same random stream, so only the music differs between them.
+      let randA = mulberry32(9);
+      let randB = mulberry32(9);
       const music = newRun();
       const silent = newRun();
       const musicFrames = MUSIC_SECS * FPS;
@@ -285,16 +368,45 @@ export class Screener {
         st.slots = [slot];
         st.resetHistory();
         this.music.reset(silentRun);
+        randA = mulberry32(9);
+        if (!silentRun) {
+          if (slotB) this.stageB.disposeSlot(slotB);
+          slotB = this.stageB.makeSlot(g, progs);
+          this.stageB.slots = [slotB];
+          this.stageB.resetHistory();
+          this.musicB.reset(false, 0, true);
+          randB = mulberry32(9);
+        }
+      };
+
+      const withRandom = (r: () => number, f: () => void) => {
+        const save = Math.random;
+        Math.random = r;
+        try {
+          f();
+        } finally {
+          Math.random = save;
+        }
       };
 
       const frame = (run: Run, isMusic: boolean) => {
         const t0 = performance.now();
         const state = this.music.next(1 / FPS);
-        st.render(state, 1 / FPS, 'out');
+        withRandom(randA, () => st.render(state, 1 / FPS, 'out'));
         run.frames++;
+        const lockstep = isMusic && run.frames <= lockstepFrames;
+        if (lockstep) {
+          const sb = this.musicB.next(1 / FPS);
+          withRandom(randB, () => this.stageB.render(sb, 1 / FPS, 'out'));
+          metroRun.frames++;
+        }
         if (run.frames % SAMPLE_EVERY === 0) {
           st.readPixels(this.px);
-          this.analyse(run, state.beatPulse, isMusic, lastLin, meanRGB, () => rgbN++);
+          this.analyse(run, state.beatPulse, isMusic, lastLin, meanRGB, () => rgbN++, state.beatIndex);
+          if (lockstep && run.frames >= 30) {
+            this.stageB.readPixels(this.pxB);
+            metroRun.grids.push(this.smallGrid(this.pxB));
+          }
         }
         run.ms += performance.now() - t0;
       };
@@ -325,6 +437,9 @@ export class Screener {
           phase = 'done';
           if (slot) st.disposeSlot(slot);
           slot = null;
+          if (slotB) this.stageB.disposeSlot(slotB);
+          slotB = null;
+          this.reactivity(music, metroRun, metrics);
           const res = this.verdict(g, music, silent, metrics, meanRGB, rgbN, lastPx);
           resolve(res);
           return true;
@@ -335,7 +450,43 @@ export class Screener {
   }
 
   /** Per-sample statistics (luma, motion, noise). */
-  private analyse(run: Run, beat: number, isMusic: boolean, lastLin: Float32Array, meanRGB: number[], bump: () => void): void {
+  /** 4x4-averaged sRGB luma grid of a readback. */
+  private smallGrid(px: Uint8Array): Float32Array {
+    const W = SCREEN_W;
+    const SW = SCREEN_W >> 2, SH = SCREEN_H >> 2;
+    const small = new Float32Array(SW * SH);
+    for (let y = 0; y < SH * 4; y++) {
+      for (let x = 0; x < SW * 4; x++) {
+        const i = (y * W + x) * 4;
+        small[(y >> 2) * SW + (x >> 2)] += (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255 / 16;
+      }
+    }
+    return small;
+  }
+
+  /** Audio-event drive (music lane vs metronome lane) and onset hit lift of the music run (see ScreenMetrics). */
+  private reactivity(music: Run, metro: Run, m: ScreenMetrics): void {
+    const A = music.grids;
+    const B = metro.grids;
+    const diff = (a: Float32Array, b: Float32Array) => {
+      let s = 0;
+      for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+      return s / a.length;
+    };
+    let d = 0, self = 0;
+    const n = Math.min(A.length, B.length);
+    for (let i = 1; i < n; i++) {
+      const sa = diff(A[i], A[i - 1]);
+      const sb = diff(B[i], B[i - 1]);
+      d += Math.abs(sa - sb);
+      self += sa;
+    }
+    m.events = self > 1e-5 ? d / self : d > 1e-4 ? 1 : 0;
+    m.hitLift = hitLiftOf(music.motions, music.beatIdx);
+    m.reactivity = reactivityScore(m.events, m.hitLift);
+  }
+
+  private analyse(run: Run, beat: number, isMusic: boolean, lastLin: Float32Array, meanRGB: number[], bump: () => void, beatIndex = -1): void {
     const W = SCREEN_W, H = SCREEN_H;
     const px = this.px;
     const lin = new Float32Array(W * H);
@@ -377,6 +528,11 @@ export class Screener {
     run.lumas.push(mean);
     run.motions.push(motion);
     run.beats.push(beat);
+    run.grids.push(small);
+    if (beatIndex !== run.lastBeat) {
+      if (run.lastBeat >= 0) run.beatIdx.push(run.motions.length - 1);
+      run.lastBeat = beatIndex;
+    }
     if (motion > THRESH.noiseTemporal && spatial / n > THRESH.noiseSpatial) run.noiseHits++;
     run.cover.push(cover / n);
     // 99.7th percentile of luma from a coarse histogram.
@@ -429,6 +585,7 @@ export class Screener {
     const recent = lastHalf(music.motions);
     if (avg(recent) < THRESH.frozen && Math.max(...recent) < THRESH.frozen * 3 && m.beatCorr < THRESH.frozenCorr) return r('frozen');
     if (m.motion < m.motionSilent * THRESH.reactRatio && m.beatCorr < THRESH.reactCorr) return r('unreactive (same motion without music)');
+    if (m.events < THRESH.driftEvents && m.hitLift < THRESH.driftHit) return r(`clock-locked or drifting (motion ignores the audio: events ${m.events.toFixed(2)}, hit lift ${m.hitLift.toFixed(2)})`);
     void g;
     return { ok: true, metrics: m, descriptor };
   }

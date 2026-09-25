@@ -7,6 +7,7 @@ import { BREED_EVERY, POP_CAP, Population, fitness, type Member } from './popula
 import type { ScreenResult, Screener } from './screen';
 import type { Store } from './store';
 import type { Phenotype } from './phenotype';
+import { screenJudge } from './judge';
 
 export type BreedMode = 'cross' | 'mutate';
 export type ChooseReason = 'evolve' | 'new' | 'drop' | 'next';
@@ -229,6 +230,9 @@ export class Evolution {
         }
         const child = this.pop.addChild(cloneGenome(g), parents, Date.now(), tag);
         child.descriptor = res.descriptor;
+        child.react = res.metrics.reactivity;
+        const j = screenJudge(res.metrics);
+        if (j !== undefined) child.judge = j;
         if (fp) this.pheno!.adopt(child, fp);
         out.push(child);
         onEvent?.({ kind: 'child', member: child, tried });

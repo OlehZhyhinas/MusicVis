@@ -41,6 +41,10 @@ export interface Member {
   fp?: number[];
   /** FP_VERSION the fingerprint was made with (another version is recomputed). */
   fpv?: number;
+  /** Screener reactivity 0..1 (desync sensitivity + onset hit lift; screen.ts), for children screened with it. */
+  react?: number;
+  /** The AV judge's preference 0..1 for this member at screening (duelUi.ts), once the judge has enough answers. */
+  judge?: number;
 }
 
 /**
@@ -104,7 +108,12 @@ export function wilson(pos: number, n: number): number {
 export function fitness(m: Member): number {
   const pos = m.likes + 0.3 * m.weakLikes + 1;
   const n = m.likes + m.dislikes + 0.3 * (m.weakLikes + m.softDislikes) + 2;
-  return wilson(pos, n);
+  const base = wilson(pos, n);
+  // Drifting, unreactive children rank a little lower (up to -20 %), and the AV judge nudges
+  // by up to +-10 % once it is trained; members without these scores are unaffected.
+  const react = m.react === undefined ? 1 : 0.8 + 0.2 * Math.max(0, Math.min(1, m.react));
+  const judge = m.judge === undefined ? 1 : 0.9 + 0.2 * Math.max(0, Math.min(1, m.judge));
+  return base * react * judge;
 }
 
 export function descriptorDistance(a?: number[], b?: number[]): number {
