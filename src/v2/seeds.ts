@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 99;
+export const SEED_VERSION = 100;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -541,8 +541,10 @@ const MILKDROP: Def[] = [
   {
     // fiShbRaiN, witchcraft: four pens wander the screen, steered by the bass one way and the treble the
     // other, scribbling glowing curls that a slow swirl twists further; a mirrored echo doubles them.
+    // The pens wrap round the edges instead of sliding along them, and their curls linger (a long,
+    // low-floor trail) so the scribble fills the frame.
     origin: 'M04', name: 'Witchcraft (after fiShbRaiN)', energy: [0.2, 0.75], scheme: 'triad', hue: 0.8,
-    color: { sat: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'warp', car: { halfLife: 0.6 },
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.1 }, carrier: 'warp', car: { halfLife: 2.5, floor: 0.3 },
     chain: [
       op('zoom', { rate: -0.0005 }),
       op('noise', { amp: 0.0016, scale: 2.2, speed: 0.3 }),
@@ -551,18 +553,18 @@ const MILKDROP: Def[] = [
     ],
     bodies: [
       body({
-        shape: ['dot', { r: 0.002 }],
-        place: ['walker', { heads: 2, step: 0.13, every: 1, square: 0, wrap: 0, curve: 2, turn: 1.5 }],
+        shape: ['dot', { r: 0.004 }],
+        place: ['walker', { heads: 2, step: 0.13, every: 1, square: 0, wrap: 1, curve: 2, turn: 1.5 }],
         motion: ['hits', { amt: 0.8 }],
-        material: ['glow', { gain: 1.3, width: 0.004 }],
+        material: ['glow', { gain: 1.3, width: 0.008 }],
         emit: ['trail', { tip: 0.3 }],
         feel: ['flow', { atk: 0.01, rel: 0.15 }],
       }),
       body({
-        shape: ['dot', { r: 0.002 }],
-        place: ['walker', { heads: 2, step: 0.09, every: 2, square: 0, wrap: 0, curve: 1.2, turn: 1.5 }],
+        shape: ['dot', { r: 0.004 }],
+        place: ['walker', { heads: 2, step: 0.09, every: 2, square: 0, wrap: 1, curve: 1.2, turn: 1.5 }],
         motion: ['hits', { amt: 0.8 }],
-        material: ['glow', { gain: 1.3, width: 0.004 }],
+        material: ['glow', { gain: 1.3, width: 0.008 }],
         emit: ['trail', { tip: 0.3 }],
         feel: ['flow', { atk: 0.01, rel: 0.15 }],
         color: ['instrument', { hue: 0.5 }],
