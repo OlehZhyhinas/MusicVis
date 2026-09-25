@@ -23,6 +23,7 @@ export const MUSIC_FIELDS = [
   'repeatGroup', 'repeatIndex', 'repeatSim',
   'chord', 'tension', 'chordPulse', 'keyHue',
   'melMidi', 'melSal', // melody probe: MIDI pitch (NaN when unpitched) and salience
+  'tBright', 'tNoise', 'complexity', // mix timbre brightness / noisiness, musical density
   'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11', // chroma
 ] as const;
 

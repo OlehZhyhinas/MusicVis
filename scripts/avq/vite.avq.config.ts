@@ -33,6 +33,8 @@ const avqIo: Plugin = {
   configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       const url = new URL(req.url ?? '/', 'http://x');
+      // Never let Chrome reuse a stale module between harness runs.
+      res.setHeader('Cache-Control', 'no-store');
       try {
         if (url.pathname === '/avq/file' && req.method === 'GET') {
           const p = url.searchParams.get('p') ?? '';

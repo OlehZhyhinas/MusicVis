@@ -65,9 +65,12 @@ export class Tab {
   private pending = new Map<number, (m: { result?: unknown; error?: { message: string } }) => void>();
   readonly logs: string[] = [];
   targetId = '';
+  /** Node's WebSocket does not keep the event loop alive while we wait on Chrome. */
+  private keepAlive: ReturnType<typeof setInterval> | null = null;
 
   static async open(): Promise<Tab> {
     const t = new Tab();
+    t.keepAlive = setInterval(() => undefined, 1000);
     const target = (await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/new?about:blank`, { method: 'PUT' })).json()) as { id: string; webSocketDebuggerUrl: string };
     t.targetId = target.id;
     t.ws = new WebSocket(target.webSocketDebuggerUrl);
@@ -100,7 +103,15 @@ export class Tab {
     });
   }
 
+  /** Evaluate an expression (awaiting promises); page-side rejections come back as thrown Errors. */
   async eval<T = unknown>(expr: string): Promise<T> {
+    const wrapped = `Promise.resolve().then(() => (${expr})).then((v) => ({ ok: v }), (e) => ({ err: String(e && e.stack || e) }))`;
+    const out = await this.evalRaw<{ ok?: T; err?: string }>(wrapped);
+    if (out && out.err) throw new Error(out.err);
+    return out?.ok as T;
+  }
+
+  async evalRaw<T = unknown>(expr: string): Promise<T> {
     const r = await this.send<{ result: { value?: T }; exceptionDetails?: { exception?: { description?: string }; text: string } }>('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
     return r.result.value as T;
@@ -112,7 +123,7 @@ export class Tab {
     for (let i = 0; i < 200; i++) {
       await sleep(100);
       try {
-        if (await this.eval<boolean>('!!window.avq')) return;
+        if (await this.evalRaw<boolean>('!!window.avq')) return;
       } catch {
         /* navigating */
       }
@@ -121,6 +132,7 @@ export class Tab {
   }
 
   async close(): Promise<void> {
+    if (this.keepAlive) clearInterval(this.keepAlive);
     this.ws.close();
     await fetch(`http://127.0.0.1:${CDP_PORT}/json/close/${this.targetId}`).catch(() => undefined);
   }

@@ -18,6 +18,12 @@ import { autoWindows, findHooks, songMoments, type ClipWindow, type Hook, type M
 
 // ------------------------------------------------------------------ io
 
+/** Progress marker the driver can poll (avq.status()). */
+let statusText = 'idle';
+function status(s: string): void {
+  statusText = s;
+}
+
 async function save(rel: string, data: BodyInit): Promise<void> {
   const r = await fetch('/avq/save?p=' + encodeURIComponent(rel), { method: 'POST', body: data });
   if (!r.ok) throw new Error('save failed ' + rel + ': ' + (await r.text()));
@@ -99,13 +105,17 @@ function songData(r: AnalysisResult): SongData {
 async function loadSong(path: string): Promise<Song> {
   const have = songs.get(path);
   if (have) return have;
+  status('fetch ' + path);
   const buf = await (await fetch('/avq/file?p=' + encodeURIComponent(path))).arrayBuffer();
+  status('decode');
   const key = path + ':' + buf.byteLength;
   const ctx = new OfflineAudioContext(2, 1, 44100);
   const audio = await ctx.decodeAudioData(buf);
   const t0 = performance.now();
+  status('cache');
   let result = await cacheGet(key);
   if (!result) {
+    status('analyse');
     result = await analyzeAudio(audio);
     await cachePut(key, result);
   }
@@ -169,14 +179,23 @@ function engine(): Engine {
   return (eng ??= new Engine(document.getElementById('c') as HTMLCanvasElement));
 }
 
-const tick = () => new Promise((r) => setTimeout(r, 0));
+// Yield to the event loop without timers (background tabs throttle setTimeout).
+const chan = new MessageChannel();
+const waiters: (() => void)[] = [];
+chan.port1.onmessage = () => waiters.shift()?.();
+const tick = () =>
+  new Promise<void>((r) => {
+    waiters.push(r);
+    chan.port2.postMessage(0);
+  });
 
 async function programs(e: Engine, g: Genome) {
   for (let i = 0; i < 2000; i++) {
     const p = e.cache.get(g, i > 20);
     if (p) return p;
     if (e.cache.failed(g)) throw new Error('compile failed: ' + e.cache.failed(g));
-    await new Promise((r) => setTimeout(r, 10));
+    const t = performance.now();
+    while (performance.now() - t < 10) await tick();
   }
   throw new Error('compile timeout');
 }
@@ -193,6 +212,7 @@ function writeMusic(row: Float32Array, s: MusicState, mel: { midi: number; salie
     s.repeatGroup ?? -1, s.repeatIndex ?? -1, s.repeatSim ?? 0,
     s.chord ?? -1, s.tension ?? 0, s.chordPulse ?? 0, s.keyHue,
     mel.midi, mel.salience,
+    s.timbre?.mix.bright ?? 0, s.timbre?.mix.noise ?? 0, s.complexity,
     ...Array.from(s.chroma),
   ];
   if (v.length !== MUSIC_FIELDS.length) throw new Error(`music row ${v.length} != ${MUSIC_FIELDS.length}`);
@@ -201,7 +221,9 @@ function writeMusic(row: Float32Array, s: MusicState, mel: { midi: number; salie
 
 async function renderWindow(song: Song, g: Genome, presetId: string, presetName: string, win: ClipWindow, o: Required<Omit<RenderOpts, 'genome' | 'preset' | 'clips' | 'name' | 'song'>>): Promise<{ base: string; frames: number; ms: number }> {
   const e = engine();
+  status('compile');
   const progs = await programs(e, g);
+  status('render ' + win.label);
   Math.random = mulberry32(o.seed);
   const st = new Stage(e, { offscreen: true, particleCap: o.particleCap, flameCap: o.flameCap });
   st.resize(o.w, o.h);
@@ -242,7 +264,13 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     const t = t0 + k * dt;
     const state = sampler.sample(t, dt, true, live.read(t, dt));
     st.render(state, dt, 'out');
-    if (k <= kStart) continue;
+    if (k <= kStart) {
+      if (k % 30 === 0) {
+        status(`warm ${win.label} ${k}/${kStart}`);
+        await tick();
+      }
+      continue;
+    }
     const i = k - kStart - 1;
     st.readPixels(px);
     const mel = melody.read(t, specs.subarray(i * SPEC_BANDS, (i + 1) * SPEC_BANDS));
@@ -258,7 +286,10 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
       batch.push(canvas.convertToBlob({ type: 'image/jpeg', quality: o.jpegQuality }));
       if (batch.length >= 60) await flush();
     }
-    if (i % 90 === 0) await tick();
+    if (i % 90 === 0) {
+      status(`render ${win.label} ${i}/${n}`);
+      await tick();
+    }
   }
   await flush();
   const ms = performance.now() - tStart;
@@ -315,6 +346,6 @@ async function songInfo(path: string) {
   };
 }
 
-const api = { song: songInfo, render, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
+const api = { status: () => statusText, song: songInfo, render, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
 (window as unknown as { avq: typeof api }).avq = api;
 document.getElementById('log')!.textContent = 'avq ready';
