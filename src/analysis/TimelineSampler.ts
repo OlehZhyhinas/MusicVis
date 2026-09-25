@@ -70,6 +70,8 @@ function keyHueOf(k: KeySegment): number {
   return ((major * 7) % 12) / 12;
 }
 
+const z = () => ({ bright: 0, noise: 0, rough: 0, attack: 0 });
+
 function wrap01(x: number): number {
   return x - Math.floor(x);
 }
@@ -370,6 +372,20 @@ export class TimelineSampler {
       g.push = gr.push[i0] + (gr.push[i1] - gr.push[i0]) * f;
       g.humanity = gr.humanity[i0] + (gr.humanity[i1] - gr.humanity[i0]) * f;
       g.synco = gr.synco[i0] + (gr.synco[i1] - gr.synco[i0]) * f;
+    }
+
+    // --- Timbre ---
+    const tt = r.timbre;
+    if (tt && T > 0 && tt.mix.bright.length >= T) {
+      const out = (s.timbre ??= { mix: z(), drums: z(), bass: z(), vocals: z(), other: z() });
+      for (const key of ['mix', 'drums', 'bass', 'vocals', 'other'] as const) {
+        const a = tt[key];
+        const o = out[key];
+        o.bright = a.bright[i0] + (a.bright[i1] - a.bright[i0]) * f;
+        o.noise = a.noise[i0] + (a.noise[i1] - a.noise[i0]) * f;
+        o.rough = a.rough[i0] + (a.rough[i1] - a.rough[i0]) * f;
+        o.attack = a.attack[i0] + (a.attack[i1] - a.attack[i0]) * f;
+      }
     }
 
     this.synced = true;

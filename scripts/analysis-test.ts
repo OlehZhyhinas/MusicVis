@@ -7,6 +7,7 @@ import type { AnalysisResult, LiveAudioFrame, StemName } from '../src/types';
 import { harmonyTests } from './harmony-tests';
 import { repetitionTests } from './repetition-tests';
 import { grooveTests } from './groove-tests';
+import { timbreTests } from './timbre-tests';
 
 const SR = 44100;
 const BPM = Number(process.env.BPM ?? 128);
@@ -628,6 +629,10 @@ repetitionTests(check);
 // ---------------------------------------------------------------- groove (timing feel)
 console.log('\nGroove on synthetic click tracks:');
 grooveTests(check);
+
+// ---------------------------------------------------------------- timbre
+console.log('\nTimbre on synthetic signals:');
+timbreTests(check);
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);
 process.exitCode = failures === 0 ? 0 : 1;

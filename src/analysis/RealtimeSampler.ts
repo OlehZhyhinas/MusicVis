@@ -216,6 +216,11 @@ export class RealtimeSampler {
     gs.humanity = gr.humanity;
     gs.synco = gr.synco;
 
+    // --- Timbre (running estimate) ---
+    const tl = a.timbreLive.out;
+    const ts = (s.timbre ??= { mix: { ...tl.mix }, drums: { ...tl.drums }, bass: { ...tl.bass }, vocals: { ...tl.vocals }, other: { ...tl.other } });
+    for (const key of ['mix', 'drums', 'bass', 'vocals', 'other'] as const) Object.assign(ts[key], tl[key]);
+
     this.synced = true;
     return s;
   }

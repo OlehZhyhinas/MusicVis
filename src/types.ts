@@ -42,6 +42,21 @@ export interface GrooveStats {
   synco: number;
 }
 
+/** Timbre of one stem (or the mix) now (src/analysis/timbre.ts), all 0..1, absolute across songs. */
+export interface TimbreStats {
+  /** Spectral centroid in the stem's range: dull 0 .. brilliant 1. */
+  bright: number;
+  /** Spectral flatness: pure tone 0 .. noise 1 (breath, distortion, cymbals). */
+  noise: number;
+  /** Sensory roughness: beating partials (a sine 0, a buzzy saw or a detuned chord high). */
+  rough: number;
+  /** Onset sharpness: a pluck or hit near 1, a slow swell near 0 (held briefly, then relaxing). */
+  attack: number;
+}
+
+/** Per-frame timbre tracks for the mix and each stem. */
+export type TimbreTrack = Record<'mix' | StemName, { bright: Float32Array; noise: Float32Array; rough: Float32Array; attack: Float32Array }>;
+
 /** Per-frame groove tracks plus song and section summaries. */
 export interface GrooveTrack {
   swing: Float32Array;
@@ -96,6 +111,8 @@ export interface AnalysisResult {
   repeats?: SectionRepeat[];
   /** Timing feel (optional: older cached results lack it). */
   groove?: GrooveTrack;
+  /** Timbre per stem and for the mix (optional: older cached results lack it). */
+  timbre?: TimbreTrack;
 }
 
 /** How a section relates to the rest of the song (src/analysis/repetition.ts). */
@@ -230,6 +247,9 @@ export interface MusicState {
 
   // --- Groove (timing feel; songs from the offline groove track, live input from a running estimate) ---
   groove?: GrooveStats;
+
+  // --- Timbre (per stem and the mix; songs from the offline track, live input from the running estimate) ---
+  timbre?: Record<'mix' | StemName, TimbreStats>;
 
   // --- Lyrics (src/lyrics/sampler.ts; undefined when the song has no lyrics or for live input) ---
   /** The line being sung ('' between lines), and the next one. */
