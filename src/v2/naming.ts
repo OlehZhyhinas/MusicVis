@@ -220,6 +220,7 @@ const GRADED = ['Graded', 'Layered', 'Tiered', 'Stratified', 'Terraced', 'Shaded
 const STEPPED = ['Stepping', 'Ticking', 'Clockwork', 'Staccato', 'Metered', 'Marching', 'Pulsed', 'Chopped', 'Stuttering', 'Measured', 'Tapping', 'Syncopated'];
 const PAINTED = ['Painted', 'Brushed', 'Inked', 'Daubed', 'Lacquered', 'Glazed', 'Enameled', 'Varnished', 'Stroked', 'Scrawled', 'Scribbled', 'Penned'];
 const STAGED = ['Cinematic', 'Staged', 'Choreographed', 'Theatrical', 'Scripted', 'Plotted', 'Framed', 'Directed', 'Scenic', 'Dramatic', 'Orchestrated', 'Rehearsed'];
+const LYRICAL = ['Lyrical', 'Poetic', 'Storied', 'Sung', 'Balladic', 'Narrated', 'Worded', 'Rhymed', 'Chanted', 'Versed', 'Recited', 'Told'];
 const REMEMBERED = ['Remembered', 'Recurring', 'Haunted', 'Nostalgic', 'Returning', 'Familiar', 'Recalled', 'Wistful', 'Deja-Vu', 'Reminiscent', 'Homecoming', 'Revenant'];
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
 const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
@@ -379,6 +380,11 @@ function traits(g: Genome): Trait[] {
     const dp = g.dejavu.p;
     add('remembered', REMEMBERED, clamp01(0.3 + dp.recall * 0.45 + dp.frame * 0.15 + dp.hue * 0.1));
   }
+  // Lyrics: the sung words steer the picture, named by how far they steer it (and a shown caption).
+  if (g.lyrics) {
+    const lp = g.lyrics.p;
+    add('lyrical', LYRICAL, clamp01(0.3 + lp.strength * 0.4 + (lp.show > 0 ? 0.15 : 0) + lp.smear * 0.1));
+  }
 
   list.sort((a, b) => b.weight - a.weight);
   return list;
@@ -422,7 +428,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, flocking: FLOCKING, teeming: TEEMING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
   staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED, swung: SWUNG, lockstep: LOCKSTEP,
-  harmonic: HARMONIC, remembered: REMEMBERED,
+  harmonic: HARMONIC, remembered: REMEMBERED, lyrical: LYRICAL,
 };
 
 /**

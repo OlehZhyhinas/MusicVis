@@ -16,6 +16,7 @@ import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
 import { crossGroove, jitterGroove, randomGroove } from './genes/groove';
 import { crossDejaVu, jitterDejaVu, randomDejaVu } from './genes/dejavu';
+import { crossLyrics, jitterLyrics, randomLyrics } from './genes/lyrics';
 
 export type Rng = () => number;
 
@@ -775,6 +776,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (groove) child.groove = groove;
     const dejavu = crossDejaVu(D.dejavu, R.dejavu, rng);
     if (dejavu) child.dejavu = dejavu;
+    const lyrics = crossLyrics(D.lyrics, R.lyrics, rng);
+    if (lyrics) child.lyrics = lyrics;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1158,6 +1161,18 @@ const MUTATORS: [number, string, Mutator][] = [
   [1, 'jitter-groove', (g, rng, amt) => {
     if (!g.groove) return false;
     jitterGroove(g.groove, rng, amt);
+    return true;
+  }],
+  // Lyrics (the sung words steer the picture): rarely gained (or lost), nudged when present.
+  [0.5, 'lyrics', (g, rng) => {
+    if (!g.lyrics) g.lyrics = randomLyrics(rng);
+    else if (rng() < 0.3) delete g.lyrics;
+    else jitterLyrics(g.lyrics, rng);
+    return true;
+  }],
+  [1, 'jitter-lyrics', (g, rng, amt) => {
+    if (!g.lyrics) return false;
+    jitterLyrics(g.lyrics, rng, amt);
     return true;
   }],
 ];

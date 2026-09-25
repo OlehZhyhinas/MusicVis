@@ -52,9 +52,8 @@ harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=p
 modulation=pulse on a key change. swing=how swung the playing is(0 straight..1 triplet). push=how far
 the backbeat leans off the grid(laid back or pushed). humanity=how loose/human the timing is. synco=
 syncopation density(hits on weak off-beats).
-line=pulse per sung lyric line(vocal entry without lyrics).
-valence=mood of the words 0 sad..1 happy(music's mood without lyrics). arousal=intensity of the words
-0 calm..1 intense(music's activity without lyrics).
+line=pulse per sung line. valence=words' mood 0 sad..1 happy. arousal=words' intensity(music's
+mood without lyrics).
 `;
 
 /**
@@ -182,6 +181,7 @@ export const ENTRIES: Record<string, string> = {
   'gene.groove': 'GROOVE(optional): motion takes the music\'s timing feel. Swung music: spins/sways/pulses land late on the off-beat(swing=share of the measured swing, sub 8|16=which pairs); sway=sideways lilt over 2 beats; off=pulse on the swung off-beat; lean=laid-back/pushed backbeat drags/leads motion; quantized music ticks(crisp=hold-then-snap, tick=ticks/beat); human timing: jitter=nudges on each hit; accent=kicks on syncopated hits.',
   'gene.drift': 'DRIFT(optional, performance layer): the preset travels through gene space over the song, each section a small mutation of the last; step=how far per section; morph=bars to morph(0=cut); kinds 0 params only,1 shapes change on drops,2 any section; what 0 all,1 form,2 colour,3 motion; ret=returning section type goes back to its earlier look; bound=max distance from the saved preset; seed=which journey. The saved preset stays the home.',
   'gene.dejavu': 'DEJAVU(optional, knows which sections repeat): a returning section (2nd chorus, riff) recalls its first appearance. recall=how strongly the remembered picture folds back in; blend=bars it takes; snap=where in the first appearance it is remembered; frame=camera returns to the remembered framing; hue=colours return; motion=spins/drifts rewind; evolve=each return more turned/pushed/hue-shifted; keep 1=re-remember every appearance; res=memory sharpness; cap=scenes held; min=how alike a return must be.',
+  'gene.lyrics': 'LYRICS(optional, reads the sung words; no effect without lyrics): imagery words steer the picture, temporarily. pal=1 hue leans to the words (fire warm, water/cold blue, love pink, nature green, night deep blue, space violet, gold amber); tone=1 night/dark dim, light/gold brighten, happy lines vivid, sad pale; motion=1 rise/sky pull back+lift, fall sinks, speed/intense lines faster, dream/calm slower, storm shakes; chain=1 swells existing ripple/noise/swirl ops and water. strength=how far; lag=seconds to follow; kick=camera kick per new line; show 0 off,1 subtle caption,2 karaoke(next line too); smear=caption drawn into the feedback so the visual smears it.',
 };
 
 export const LEXICON = `
@@ -213,6 +213,7 @@ punchier/on the beat: feel.lock=1; feel div=beat/bar; motion=pulse/hits; reactio
 react to bass: reaction src=bass ->material gain, shape size, or motion amp.
 react to vocals: reaction src=vocals ->color mapping amount or place wander.
 build-up to the drop/cinematic: add choreo; push/drain/punch up; lead=bars of tension.
+lyrics/words/karaoke: add lyrics; show=2 karaoke; smear=words melt in.
 on the drop: reaction src=drop/surge ->tone.exposure or carrier.halfLife, fast atk.
 longer trails: carrier.halfLife x1.5-3.
 shorter trails: carrier.halfLife x0.3-0.5.

@@ -24,6 +24,7 @@ import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shader
 import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type ChoreoPose } from './genes/choreo';
 import { HarmonyMotor, IDLE_HARMONY, type HarmonyInputs, type HarmonyOut } from './genes/harmony';
 import { DejaVuBank } from './genes/dejavuGpu';
+import { NEUTRAL_NUDGE, easeNudge, lineKick, lyricTarget, type LyricNudge } from './genes/lyrics';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
@@ -741,6 +742,9 @@ export class Stage {
   private harmSeed = 0;
   /** Visual deja vu: each slot's snapshots of returning sections (genes/dejavu.ts). */
   readonly dejavu: DejaVuBank;
+  /** Lyrics gene: each slot's eased nudges from the words (genes/lyrics.ts); temporary, never saved. */
+  private lyricNudges = new WeakMap<Slot, LyricNudge>();
+  private lyricTgt: LyricNudge = { ...NEUTRAL_NUDGE };
 
   constructor(private eng: Engine, readonly opts: StageOptions) {
     const gl = eng.gl;
@@ -836,13 +840,20 @@ export class Stage {
       this.harmonize(s, state, sdt, q);
       // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
       this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
+      this.lyricize(s, state, sdt, q);
     }
     this.harmonyWarp(slots, state);
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
     cameraUniforms(this.pose, this.w / this.h, this.cam);
 
     if (slots.some((s) => s.progs.land)) (this.land ??= new LandWorld(gl)).update(state, sdt);
-    for (const s of slots) this.tick(s, sdt);
+    // The lyrics gene sets each slot's pace (F.speed is shared, so it is set per slot and restored).
+    const speed0 = F.speed;
+    for (const s of slots) {
+      F.speed = speed0 * (this.lyricNudges.get(s)?.speed ?? 1);
+      this.tick(s, sdt);
+    }
+    F.speed = speed0;
 
     // Fluid, particles, flame: owned by the heaviest slot that uses them.
     const fluidSlot = slots.filter((s) => s.genome.carrier.kind === 'fluid').sort((a, b) => b.weight - a.weight)[0];
@@ -979,6 +990,8 @@ export class Stage {
       if (j < MAX_REACTIONS) s.meters[j * 2 + 1] = x;
       s.delta.set(key, (s.delta.get(key) ?? 0) + r.gain * x);
     });
+    const ln = this.lyricNudges.get(s);
+    if (ln) this.lyricDeltas(s, ln);
 
     // Palette
     const tp = g.tone.p;
@@ -2381,7 +2394,7 @@ export class Stage {
       .tex('uVel', fl && g.carrier.kind === 'fluid' ? fl.velocityTex : eng.black)
       .f2('uSimTexel', fl ? fl.texelX : 0, fl ? fl.texelY : 0)
       .f1('uFluidAmt', s.P('car', 0, cp, 'amount', CARRIER_SCHEMA))
-      .f1('uBlur', cp.blur)
+      .f1('uBlur', cp.blur + 0.08 * (this.lyricNudges.get(s)?.blur ?? 0))
       .f1('uDecaySub', (eng.hq ? 0.0015 : 1.5 / 255) * cp.floor * sdt * 60)
       .f1('uFlowAmt', s.P('car', 0, cp, 'famt', CARRIER_SCHEMA) * sdt * 60 * this.sig.F.speed)
       .f1('uFlowScale', cp.fscale);
@@ -2541,6 +2554,41 @@ export class Stage {
       .tex('uSpec', this.sig.specTex);
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
     if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
+  }
+
+  /** Lyrics gene: eases the slot's nudges toward what the words ask for and composes them onto its pose. */
+  private lyricize(s: Slot, state: MusicState, sdt: number, q: ChoreoPose): void {
+    const g = s.genome.lyrics;
+    if (!g) {
+      this.lyricNudges.delete(s);
+      return;
+    }
+    let n = this.lyricNudges.get(s);
+    if (!n) this.lyricNudges.set(s, (n = { ...NEUTRAL_NUDGE }));
+    const F = this.sig.F;
+    const words = { tags: state.lyricTags, valence: num(state.lyricValence, 0.5), arousal: num(state.lyricArousal, 0.5), presence: num(state.lyricPresence, 0), pulse: 0 };
+    lyricTarget(g, words, F.keyHue + s.genome.palette.p.hue + q.hue, F.time, this.lyricTgt);
+    easeNudge(n, this.lyricTgt, sdt, g.p.lag);
+    q.zoom *= n.zoom * lineKick(g, num(state.lyricPulse, 0));
+    q.ty -= n.lift; // + lift moves the picture up (the camera looks lower)
+    q.roll += n.roll;
+    q.hue += n.hue;
+    q.sat *= n.sat;
+    q.exposure *= n.exposure;
+  }
+
+  /** Lyrics gene, chain group: swells the warp ops and carrier settings the genome already has. */
+  private lyricDeltas(s: Slot, n: LyricNudge): void {
+    const add = (key: string, d: number) => {
+      if (Math.abs(d) > 1e-4) s.delta.set(key, (s.delta.get(key) ?? 0) + d);
+    };
+    s.genome.chain.forEach((o, i) => {
+      if (o.op === 'ripple') add(`op${i}.amp`, 0.8 * n.ripple);
+      else if (o.op === 'noise') add(`op${i}.amp`, 0.8 * n.noise);
+      else if (o.op === 'swirl') add(`op${i}.amt`, (o.p.amt < 0 ? -0.6 : 0.6) * n.swirl);
+      else if (o.op === 'twist') add(`op${i}.amt`, (o.p.amt < 0 ? -0.4 : 0.4) * n.swirl);
+    });
+    if (s.genome.carrier.kind !== 'none' && s.genome.carrier.p.water > 0.001) add('car0.water', 0.6 * n.water);
   }
 
   /** Harmony gene: runs the slot's motor and composes its pose onto the choreography's. */

@@ -7,6 +7,15 @@ import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
 import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS } from '../src/lyrics/lrclib';
 import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
 import { LyricSampler } from '../src/lyrics/sampler';
+import { cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
+import { crossover, mulberry32, mutate, MUTATION_NAMES } from '../src/v2/ops';
+import { SEEDS } from '../src/v2/seeds';
+import { ADJ_POOLS, nameFor } from '../src/v2/naming';
+import { genomeGene } from '../src/v2/geneRegistry';
+import {
+  LYRICS_SCHEMA, NEUTRAL_NUDGE, TAG_EFFECTS, crossLyrics, easeNudge, lineKick, lyricTarget, lyricsCost, randomLyrics, repairLyrics, validateLyrics,
+  type LyricNudge,
+} from '../src/v2/genes/lyrics';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -308,5 +317,100 @@ export async function lyricsTests(check: Check): Promise<void> {
     (state as { time: number }).time = 7;
     ls.apply(state, 1 / 60);
     check('lyrics.sampler.state', state.lyricLine === 'Burning, burning, fire' && state.lyricSynced === true && state.lyricTags!.length === TAG_COUNT && typeof state.lyricValence === 'number', JSON.stringify({ l: state.lyricLine, p: state.lyricProgress }));
+  }
+
+  // ------------------------------------------------------------ the gene
+  {
+    const def = repairLyrics({});
+    const bad = repairLyrics({ p: { strength: 7, pal: 0.4, show: 1.7, lag: -1, smear: NaN, junk: 3 } });
+    check('lyrics.gene.repair', !validateLyrics(def).length && bad.p.strength === 1 && bad.p.pal === 0 && bad.p.show === 2 && bad.p.lag === LYRICS_SCHEMA.lag.min && bad.p.smear === 0 && !('junk' in bad.p) && !validateLyrics(bad).length,
+      JSON.stringify(bad.p));
+    const spec = genomeGene('lyrics');
+    check('lyrics.gene.registered', !!spec && spec.optional && !!spec.glossary && Object.keys(TAG_EFFECTS).join() === LYRIC_TAGS.join(), spec?.title ?? 'missing');
+    const base = SEEDS[0].genome;
+    const withG = repair({ ...cloneGenome(base), lyrics: { p: { strength: 0.8, show: 2, smear: 0.5 } } });
+    const broken = { ...cloneGenome(withG), lyrics: { p: { ...withG.lyrics!.p, strength: 3 } } } as Genome;
+    check('lyrics.gene.genome', !validate(withG).length && withG.lyrics!.p.show === 2 && validate(broken).some((e) => e.startsWith('lyrics.')) && !repair(cloneGenome(base)).lyrics,
+      validate(withG).join(',') || 'kept through repair, validated');
+    const dc = estimateCost(withG) - estimateCost(base);
+    check('lyrics.gene.cost', Math.abs(dc - lyricsCost(withG.lyrics!.p)) < 1e-9 && lyricsCost({ ...def.p, smear: 0 }) === 0.01 && lyricsCost({ ...def.p, smear: 0.4 }) > 0.01, `+${dc.toFixed(3)} ms`);
+    // Crossover: both parents blend; one parent passes it on about half the time; none draws no rng.
+    const rng = mulberry32(7);
+    let carried = 0;
+    let validAll = true;
+    for (let i = 0; i < 200; i++) {
+      const c = crossLyrics(def, undefined, rng);
+      if (c) carried++;
+      const both = crossLyrics(randomLyrics(rng), randomLyrics(rng), rng)!;
+      if (validateLyrics(both).length) validAll = false;
+    }
+    let draws = 0;
+    const counting = () => (draws++, 0.5);
+    const none = crossLyrics(undefined, undefined, counting);
+    check('lyrics.gene.crossover', carried > 60 && carried < 140 && validAll && none === undefined && draws === 0, `${carried}/200 carried from one parent, ${draws} draws with none`);
+    const other = SEEDS[5].genome;
+    let kids = 0;
+    let kidsWith = 0;
+    let probs: string[] = [];
+    const r2 = mulberry32(11);
+    for (let i = 0; i < 40; i++) {
+      const c = crossover(withG, other, r2);
+      kids++;
+      if (c.lyrics) kidsWith++;
+      const v = validate(c);
+      if (v.length) probs.push(v[0]);
+    }
+    check('lyrics.gene.breeds', !probs.length && kidsWith > 5 && kidsWith < kids, probs[0] ?? `${kidsWith}/${kids} children inherit it`);
+    const r3 = mulberry32(5);
+    let gained = 0;
+    let mutProbs = 0;
+    for (let i = 0; i < 400; i++) {
+      const m = mutate(base, r3, 1);
+      if (m.lyrics) gained++;
+      if (validate(m).length) mutProbs++;
+      const m2 = mutate(withG, r3, 2);
+      if (validate(m2).length) mutProbs++;
+    }
+    check('lyrics.gene.mutation', MUTATION_NAMES.includes('lyrics') && MUTATION_NAMES.includes('jitter-lyrics') && gained > 0 && gained < 60 && !mutProbs, `${gained}/400 mutations gained it, ${mutProbs} invalid`);
+    const lyrical = SEEDS.slice(0, 24).filter((x) => ADJ_POOLS.lyrical.includes(nameFor(repair({ ...cloneGenome(x.genome), lyrics: { p: { strength: 1, show: 2, smear: 0.6 } } })).split(' ')[0])).length;
+    check('lyrics.gene.name', lyrical >= 3, `${lyrical}/24 originals named lyrical with a strong lyrics gene`);
+
+    // Nudges: neutral without words, bounded with any words, and they lean the right way.
+    const tags = (o: Partial<Record<(typeof LYRIC_TAGS)[number], number>>) => Float32Array.from(LYRIC_TAGS.map((t) => o[t] ?? 0));
+    const w = (o: Partial<Record<(typeof LYRIC_TAGS)[number], number>>, extra: Partial<{ valence: number; arousal: number; presence: number }> = {}) => ({ tags: tags(o), valence: 0.5, arousal: 0.5, presence: 1, pulse: 0, ...extra });
+    const same = (n: LyricNudge) => (Object.keys(NEUTRAL_NUDGE) as (keyof LyricNudge)[]).every((k) => Math.abs(n[k] - NEUTRAL_NUDGE[k]) < 1e-9);
+    const g1 = repairLyrics({ p: { strength: 1, chain: 1 } });
+    check('lyrics.nudge.neutral', same(lyricTarget(g1, { valence: 0.9, arousal: 0.9, presence: 1, pulse: 1 }, 0.3, 1)) && same(lyricTarget(g1, w({ fire: 1 }, { presence: 0 }), 0.3, 1)) && same(lyricTarget(undefined, w({ fire: 1 }), 0.3, 1)) && same(lyricTarget(repairLyrics({ p: { strength: 0 } }), w({ fire: 1 }), 0.3, 1)),
+      'no lyrics, no presence, no gene, zero strength: identity');
+    const fire = lyricTarget(g1, w({ fire: 0.9 }), 0.5, 1);
+    const water = lyricTarget(g1, w({ water: 0.9 }), 0.2, 1);
+    const night = lyricTarget(g1, w({ night: 0.9, dark: 0.6 }), 0.5, 1);
+    const rise = lyricTarget(g1, w({ rise: 0.9 }), 0.5, 1);
+    const fall = lyricTarget(g1, w({ fall: 0.9 }), 0.5, 1);
+    const fast = lyricTarget(g1, w({ speed: 0.9 }, { arousal: 0.9 }), 0.5, 1);
+    const calm = lyricTarget(g1, w({ dream: 0.9 }, { arousal: 0.1 }), 0.5, 1);
+    const hue = (base: number, n: LyricNudge) => (((base + n.hue) % 1) + 1) % 1;
+    check('lyrics.nudge.direction',
+      hue(0.5, fire) < 0.5 && fire.lift > 0 && water.hue > 0 && water.ripple > 0 && water.water > 0 && night.exposure < 0.9 && rise.lift > 0 && rise.zoom < fall.zoom && fall.lift < 0 && fast.speed > 1.3 && calm.speed < 0.85 && calm.blur > 0,
+      JSON.stringify({ fireHue: hue(0.5, fire).toFixed(2), waterHue: hue(0.2, water).toFixed(2), nightExp: night.exposure.toFixed(2), riseZoom: rise.zoom.toFixed(3), fallZoom: fall.zoom.toFixed(3), fast: fast.speed.toFixed(2), calm: calm.speed.toFixed(2) }));
+    const rr = mulberry32(99);
+    let outOfBounds = 0;
+    for (let i = 0; i < 500; i++) {
+      const tg = Float32Array.from(LYRIC_TAGS.map(() => (rr() < 0.4 ? rr() : 0)));
+      const n = lyricTarget(randomLyrics(rr), { tags: tg, valence: rr(), arousal: rr(), presence: rr(), pulse: rr() }, rr(), rr() * 100);
+      if (Math.abs(n.hue) > 0.5 || n.sat < 0.65 || n.sat > 1.3 || n.exposure < 0.7 || n.exposure > 1.25 || n.zoom < 1 || n.zoom > 1.2 || Math.abs(n.lift) > 0.035 || Math.abs(n.roll) > 0.03 || n.speed < 0.6 || n.speed > 1.6 || [n.ripple, n.swirl, n.noise, n.water, n.blur].some((x) => x < 0 || x > 1)) outOfBounds++;
+    }
+    const off = repairLyrics({ p: { strength: 1, pal: 0, tone: 0, motion: 0, chain: 0 } });
+    check('lyrics.nudge.bounded+groups', !outOfBounds && same(lyricTarget(off, w({ fire: 1, storm: 1 }, { arousal: 1 }), 0.2, 3)), `${outOfBounds}/500 random nudges out of bounds; all groups off = identity`);
+    // Easing follows over the lag and never overshoots; the kick is separate and decays with the pulse.
+    const cur = { ...NEUTRAL_NUDGE };
+    for (let i = 0; i < 90; i++) easeNudge(cur, fast, 1 / 60, 1.5);
+    const half = cur.speed;
+    for (let i = 0; i < 900; i++) easeNudge(cur, fast, 1 / 60, 1.5);
+    check('lyrics.nudge.ease+kick', half > 1 && half < fast.speed && Math.abs(cur.speed - fast.speed) < 1e-3 && lineKick(g1, 1) > 1 && lineKick(g1, 0) === 1 && lineKick(undefined, 1) === 1, `after 1.5 s ${half.toFixed(3)} of ${fast.speed.toFixed(3)}; kick ${lineKick(g1, 1).toFixed(3)}`);
+    // The nudges never touch the genome: computing them leaves it byte-identical.
+    const before = JSON.stringify(withG);
+    for (let i = 0; i < 20; i++) lyricTarget(withG.lyrics, w({ fire: 1, water: 1 }), 0.4, i);
+    check('lyrics.nudge.not-saved', JSON.stringify(withG) === before, 'genome unchanged');
   }
 }
