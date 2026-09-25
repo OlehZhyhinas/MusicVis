@@ -12,7 +12,7 @@ import { paramsFor } from '../../src/v2/engine';
 import { Embedder, EMB_DIM } from '../../src/v2/embedding';
 import { analyzeAudio } from '../../src/analysis/analyze';
 import { TimelineSampler } from '../../src/analysis/TimelineSampler';
-import type { AnalysisResult, MusicState } from '../../src/types';
+import type { AnalysisResult, MusicState, NoteStats } from '../../src/types';
 import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix, stemRegion, type StemId } from './audio';
 import { VIS_FIELDS, VisualFeatures } from './features';
 import { FIELDS, MUSIC_FIELDS, THUMB_BYTES, THUMB_H, THUMB_W, parseClip, type CfResult, type ClipHeader } from './format';
@@ -477,6 +477,8 @@ interface SongMeans {
   bass: number;
   mid: number;
   treb: number;
+  /** Mean articulation of the melody line (when the analysis has notes). */
+  notes: Omit<NoteStats, 'recent'> | null;
 }
 const meansCache = new WeakMap<Song, SongMeans>();
 function songMeans(song: Song): SongMeans {
@@ -498,7 +500,9 @@ function songMeans(song: Song): SongMeans {
     mid += fr.mid / N;
     treb += fr.treb / N;
   }
-  m = { stems: per(r.stems), onsets: per(r.stemOnsets), presence: per(r.stemPresence), loudness: avg(r.loudness), complexity: r.songComplexity, chroma, spectrum, bass: bass || 1, mid: mid || 1, treb: treb || 1 };
+  const nt = r.notes;
+  const notes = nt ? { on: avg(nt.on), held: avg(nt.held), legato: avg(nt.legato), glide: 0, vibrato: avg(nt.vibrato), pitch: avg(nt.pitch), height: avg(nt.height), voice: avg(nt.voice) } : null;
+  m = { stems: per(r.stems), onsets: per(r.stemOnsets), presence: per(r.stemPresence), loudness: avg(r.loudness), complexity: r.songComplexity, chroma, spectrum, bass: bass || 1, mid: mid || 1, treb: treb || 1, notes };
   meansCache.set(song, m);
   return m;
 }
@@ -508,7 +512,7 @@ class MusicSource {
   private live: OfflineLive;
   private gains: Float32Array | null = null;
   private flatWave = new Float32Array(1024);
-  private held: { chord?: number; tx?: number; ty?: number } | null = null;
+  private held: { chord?: number; tx?: number; ty?: number; recent?: NoteStats['recent'] } | null = null;
   constructor(private song: Song, private v: Variant | null) {
     this.sampler = new TimelineSampler(song.result);
     this.live = new OfflineLive(song.pcm, song.sr);
@@ -548,7 +552,8 @@ class MusicSource {
       s.waveform = this.flatWave;
       s.chroma = m.chroma;
       if (s.timbre) for (const k of Object.keys(s.timbre) as (keyof typeof s.timbre)[]) s.timbre[k] = { bright: 0.5, noise: 0.3, rough: 0.3, attack: 0.3 };
-      this.held ??= { chord: s.chord, tx: s.tonnetzX, ty: s.tonnetzY };
+      this.held ??= { chord: s.chord, tx: s.tonnetzX, ty: s.tonnetzY, recent: s.notes?.recent.map((x) => ({ ...x })) };
+      if (s.notes && m.notes) s.notes = { ...m.notes, recent: this.held.recent ?? [] };
       s.chord = this.held.chord;
       s.tonnetzX = this.held.tx;
       s.tonnetzY = this.held.ty;

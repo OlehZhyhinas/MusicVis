@@ -1,15 +1,15 @@
 // Live clip recorder: collects the per-frame MusicState fields and visual features the AV
 // metrics need while presets render in the app (the clip-duel page), and exposes them as a
 // ClipLike so the same report card code runs in the app and in the offline harness
-// (scripts/avq). No melody probe here (no PCM access in the render loop): melody-based
-// scores come out as unknown (NaN), not zero.
+// (scripts/avq). Melody comes from the analysis' note line (MusicState.notes) instead of the
+// harness's pitch probe; without notes, melody-based scores come out as unknown (NaN).
 
 import type { MusicState } from '../../types';
 import { THUMB_H, THUMB_W, VIS_FIELDS, VisualFeatures } from './features';
 import type { ClipLike } from './metrics';
 import type { Hook, Moment, SectionLite } from './music';
 
-const MUSIC = ['t', 'drums', 'bass', 'vocals', 'other', 'onDrums', 'onBass', 'onVocals', 'onOther', 'prDrums', 'prBass', 'prVocals', 'prOther', 'loud', 'onBeat', 'melMidi', 'melSal', 'tBright'] as const;
+const MUSIC = ['t', 'drums', 'bass', 'vocals', 'other', 'onDrums', 'onBass', 'onVocals', 'onOther', 'prDrums', 'prBass', 'prVocals', 'prOther', 'loud', 'onBeat', 'melMidi', 'melSal', 'tBright', 'barPhase', 'beatPhase', 'beatIndex'] as const;
 
 export interface SongContext {
   fps: number;
@@ -45,7 +45,10 @@ export class LiveRecorder {
       t: s.time, drums: s.stems.drums, bass: s.stems.bass, vocals: s.stems.vocals, other: s.stems.other,
       onDrums: s.stemOnsets.drums, onBass: s.stemOnsets.bass, onVocals: s.stemOnsets.vocals, onOther: s.stemOnsets.other,
       prDrums: s.stemPresence.drums, prBass: s.stemPresence.bass, prVocals: s.stemPresence.vocals, prOther: s.stemPresence.other,
-      loud: s.loudness, onBeat: s.onBeat ? 1 : 0, melMidi: NaN, melSal: 0, tBright: s.timbre?.mix.bright ?? 0,
+      loud: s.loudness, onBeat: s.onBeat ? 1 : 0, tBright: s.timbre?.mix.bright ?? 0,
+      // The analysis' melody line (notes gene) stands in for the harness's pitch probe.
+      melMidi: s.notes && s.notes.held > 0.1 ? s.notes.pitch : NaN, melSal: s.notes ? Math.min(1, s.notes.held * 1.2) : 0,
+      barPhase: s.barPhase, beatPhase: s.beatPhase, beatIndex: s.beatIndex,
     };
     for (const k of MUSIC) this.cols.get(k)!.push(m[k]);
     const v = this.vis.update(px);

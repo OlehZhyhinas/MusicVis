@@ -49,6 +49,12 @@ function syntheticNotes(t: number, beatLen: number, s: number): NoteStats | unde
   };
 }
 
+/** Notes held flat for the metronome lane: the synthetic melody's mean articulation, one frozen snapshot of the recent marks. */
+function flatNotesOf(n: NoteStats | undefined): NoteStats | undefined {
+  if (!n) return undefined;
+  return { on: 0.12, held: 0.45, legato: 0.5, glide: 0, vibrato: 0.12, pitch: 70, height: 0.5, voice: 0.3, recent: n.recent.map((r) => ({ ...r })) };
+}
+
 /** A 128 bpm groove: kick on beats, hats on eighths, bass, a vocal line. silent=true gives the same clock with no sound. */
 export class SyntheticMusic {
   private wave = new Float32Array(1024);
@@ -62,12 +68,15 @@ export class SyntheticMusic {
   private shift = 0;
   /** Metronome: the same beat / bar clock, every audio value held at its mean (clock-lock counterfactual). */
   private flat = false;
+  /** The melody under the metronome: articulation at its mean, the recent marks frozen. */
+  private flatNotes: NoteStats | undefined;
 
   reset(silent = this.silent, shift = 0, flat = false): void {
     this.t = 0;
     this.silent = silent;
     this.shift = shift;
     this.flat = flat;
+    this.flatNotes = undefined;
   }
 
   get time(): number {
@@ -121,7 +130,7 @@ export class SyntheticMusic {
       loudness: s * (0.55 + 0.25 * kick), complexity: this.silent ? 0.3 : 0.62, songComplexity: 0.6,
       chroma: this.chroma, keyTonic: 0, keyMode: 'major', keyHue: 0.58, keyChangePulse: 0,
       section: SECTION, sectionIndex: 1, sectionProgress: 0.3, sectionChanged: false, dropPulse: 0, buildIntensity: 0,
-      notes: syntheticNotes(t, beatLen, s),
+      notes: flat ? (this.flatNotes ??= flatNotesOf(syntheticNotes(t, beatLen, s))) : syntheticNotes(t, beatLen, s),
     };
   }
 }
