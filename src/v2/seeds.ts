@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 80;
+export const SEED_VERSION = 81;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1087,13 +1087,17 @@ const AVS: Def[] = [
       }),
       body({
         shape: ['dot', { r: 0.004 }],
-        place: ['point', { x: 0, y: 0 }],
+        place: ['stations', { count: 1, inst: 1, xs: 0.8, jump: 1, wander: 0 }],
         material: ['glow', { gain: 0.6, width: 0.006 }],
-        emit: ['sparks', { count: 16384, size: 2.2, speed: 0.7, curl: 0.05, zoomFlow: 0, lift: -0.06, drag: 3, life: 0.55, spread: 0.12, surge: 1, top: 0, body: 0.1 }],
+        emit: ['sparks', { count: 8192, size: 2.2, speed: 0.7, curl: 0.05, zoomFlow: 0, lift: -0.06, drag: 3, life: 0.55, spread: 0.12, surge: 1, top: 0, body: 0.1 }],
         color: ['age', { hue: 0.5, rate: 0.25, detail: 1 }],
       }),
     ],
-    reactions: [rx('hit', 'em', 1, 'speed', 0.5, { rel: 0.3 }), rx('bass', 'sh', 0, 'height', 0.4, { atk: 0.05, rel: 0.5 }), rx('loud', 'ma', 1, 'gain', 0.3, { atk: 0.05, rel: 0.4 })],
+    reactions: [
+      rx('hit', 'em', 1, 'speed', 0.8, { rel: 0.3 }), rx('hit', 'ma', 1, 'gain', 0.6, { rel: 0.15 }),
+      rx('beat', 'ma', 1, 'gain', 0.3, { rel: 0.25 }), rx('bass', 'em', 1, 'lift', 0.4, { atk: 0.03, rel: 0.4 }),
+      rx('melody', 'em', 1, 'lift', 0.5, { atk: 0.1, rel: 0.3 }),
+    ],
   },
   {
     // El-vis, hubble002: spiral galaxies of a thousand spectrum-pushed dots, re-coloured and moved
