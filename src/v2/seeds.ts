@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 92;
+export const SEED_VERSION = 93;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -177,11 +177,12 @@ const DEFS: Def[] = [
     reactions: [rx('beat', 'col', 0, 'exposure', 0.875), rx('bass', 'col', 0, 'exposure', 0.625)],
   },
   {
-    // Rain born on the eighth-note grid, fuller on each downbeat; columns fall at 1x or 2x speed.
+    // Rain born on the eighth-note grid, fuller on each downbeat; columns fall at 1x or 2x speed, dim
+    // and slow enough that the drops never strobe on fast songs.
     origin: 'E03', name: 'Rain Curtains', energy: [0.4, 0.95], scheme: 'analogous', hue: 0.5,
-    color: { bloom: 1.1 }, carrier: 'warp', decay: 0.962,
-    chain: [op('translate', { vy: -0.4, lanes: 38 })],
-    bodies: [body({ shape: ['edge', { mode: 2, side: 1, density: 0.6 }], material: ['fill'] })],
+    color: { bloom: 1.1 }, carrier: 'warp', decay: 0.975,
+    chain: [op('translate', { vy: -0.22, lanes: 38 })],
+    bodies: [body({ shape: ['edge', { mode: 2, side: 1, density: 0.6 }], material: ['fill', { gain: 0.45 }] })],
   },
   {
     // A row of smoke sources along the bottom, glowing with their instruments and throwing sparks on top.
