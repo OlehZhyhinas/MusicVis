@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 67;
+export const SEED_VERSION = 68;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2009,6 +2009,21 @@ const TIMBRE: Def[] = [
     })],
     reactions: [rx('other', 'ma', 0, 'gain', 0.3, { atk: 0.2, rel: 1 }), rx('noisy', 'ma', 0, 'soft', 0.4, { atk: 0.3, rel: 1.2 })],
     timbre: { src: 4, sheen: 0.4, glass: 0.7, grain: 0.15, scale: 40, velvet: 1, edge: 0.5, emboss: 0 },
+  },
+  {
+    // A slow plasma of contour bands, lit as a surface by the bass's timbre: a clean sub bass leaves
+    // it a soft, barely raised sheet, a growling, distorted bass hammers it into deep, rough relief,
+    // and a bright, buzzy bass turns the relief to glossy liquid metal reflecting the palette.
+    origin: 'T05', name: 'Molten Bass', energy: [0.35, 1], scheme: 'split', hue: 0.08,
+    color: { adapt: 0.4, bloom: 1.05, vignette: 0.5, exposure: 1.15, gloss: 0.5, bump: 1.4, light: 0.3 }, carrier: 'warp', car: { halfLife: 0.2, floor: 1 },
+    chain: [op('swirl', { amt: 0.006, k: 4 })],
+    bodies: [body({
+      shape: ['plasma', { scale: 1.4, warp: 2.2, bands: 7, lines: 0.35, speed: 0.12, tempo: 0.4, pulse: 0.5, melHue: 0 }],
+      material: ['fill', { gain: 0.9 }],
+      emit: ['trail', { tip: 0 }],
+    })],
+    reactions: [rx('bass', 'sh', 0, 'warp', 0.35, { atk: 0.03, rel: 0.4 }), rx('rough', 'sh', 0, 'lines', 0.5, { atk: 0.1, rel: 0.6 })],
+    timbre: { src: 2, sheen: 0.5, glass: 0.3, grain: 0.5, scale: 18, velvet: 0.2, edge: 0.3, emboss: 1 },
   },
 ];
 

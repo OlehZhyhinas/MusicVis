@@ -61,7 +61,7 @@ export function timbreGeneTests(check: Check): void {
 
   // Cost: counted per distance-field evaluation, plus the emboss.
   {
-    const worst = SEEDS.filter((s) => !s.genome.drift).map((s) => s.genome).sort((a, b) => estimateCost(b) - estimateCost(a))[0];
+    const worst = SEEDS.filter((s) => !s.genome.drift && !s.genome.timbre).map((s) => s.genome).sort((a, b) => estimateCost(b) - estimateCost(a))[0];
     const g = withTimbre(worst, repairTimbre({ p: { emboss: 1 } }));
     check('timbre.cost', estimateCost(g) > estimateCost(repair(cloneGenome(worst))) && estimateCost(g) <= COST_BUDGET_MS, `costliest seed with timbre ${estimateCost(g).toFixed(2)} ms`);
   }
