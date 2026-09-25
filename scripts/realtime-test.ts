@@ -277,6 +277,9 @@ interface Trace {
   sectionChanged: boolean;
   dropPulse: number;
   build: number;
+  /** Articulation: note-on pulse and legato (notes.ts live tracker). */
+  noteOn: number;
+  legato: number;
 }
 
 interface RunResult {
@@ -308,6 +311,8 @@ function finiteState(s: MusicState): string | null {
     nums.push([`stems.${k}`, s.stems[k]], [`onsets.${k}`, s.stemOnsets[k]], [`presence.${k}`, s.stemPresence[k]]);
   }
   for (let k = 0; k < 12; k++) nums.push([`chroma${k}`, s.chroma[k]]);
+  const nt = s.notes;
+  if (nt) for (const k of ['on', 'held', 'legato', 'glide', 'vibrato', 'pitch', 'height', 'voice'] as const) nums.push([`notes.${k}`, nt[k]]);
   for (const [n, v] of nums) if (!Number.isFinite(v)) return n;
   if (!(s.beatPhase >= 0 && s.beatPhase < 1) || !(s.barPhase >= 0 && s.barPhase < 1)) return 'phase range';
   if (!(s.complexity >= 0 && s.complexity <= 1)) return `complexity range ${s.complexity}`;
@@ -351,6 +356,8 @@ function run(left: Float32Array, right: Float32Array, sr: number, block = 128): 
         sectionChanged: s.sectionChanged,
         dropPulse: s.dropPulse,
         build: s.buildIntensity,
+        noteOn: s.notes?.on ?? 0,
+        legato: s.notes?.legato ?? 0,
       });
       nextFrame += frameDt;
     }
@@ -483,6 +490,19 @@ function edmCase(bpm: number, sr: number): void {
   const cIntro = meanOf(trace, P[0].start + 4, P[0].end, (x) => x.cx);
   const cVerse = meanOf(trace, P[1].start + 3, P[1].end, (x) => x.cx);
   const cDrop = meanOf(trace, P[3].start + 3, P[3].end, (x) => x.cx);
+  {
+    // Articulation: the vocal line sings two long notes per bar (85% duty, vibrato): note starts
+    // near two per bar, and legato.
+    const vs = P[1].start, ve = P[1].end;
+    let ons = 0, last = 0;
+    for (const x of trace) {
+      if (x.t >= vs && x.t < ve && x.noteOn > last + 0.2) ons++;
+      last = x.noteOn;
+    }
+    const expect = 2 * 16;
+    const leg = meanOf(trace, vs + 4, ve, (x) => x.legato);
+    check(`${tag} notes`, Math.abs(ons - expect) <= expect * 0.3 && leg > 0.6, `verse note starts ${ons} (sung ${expect}), legato ${leg.toFixed(2)}`);
+  }
   check(`${tag} complexity`, cIntro < 0.35 && cDrop > 0.6 && cDrop > cVerse && cVerse > cIntro, `intro ${cIntro.toFixed(3)}, verse ${cVerse.toFixed(3)}, build ${meanOf(trace, P[2].start + 2, P[2].end, (x) => x.cx).toFixed(3)}, drop ${cDrop.toFixed(3)}; songComplexity ${a.songComplexity.toFixed(3)}`);
 }
 

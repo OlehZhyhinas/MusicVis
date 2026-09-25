@@ -539,7 +539,10 @@ export interface CarrierGene {
 // Lyrics (src/lyrics): line = a pulse on each sung line; valence / arousal = the words' mood (the music's without lyrics).
 // Timbre (src/analysis/timbre.ts, the mix): bright = spectral brightness; noisy = noisiness (breath, distortion,
 // cymbals); rough = roughness (beating, buzzy, inharmonic partials); attack = how sharp the onsets are.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal', 'bright', 'noisy', 'rough', 'attack'] as const;
+// Articulation (src/analysis/notes.ts, the melody line): noteon = a pulse at each note start; held = the held
+// note's strength (0 between notes); legato = 0 staccato .. 1 legato; glide = how fast the pitch slides;
+// vibrato = vibrato depth; voice = how much the melody sounds sung (vs a steady synth lead).
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal', 'bright', 'noisy', 'rough', 'attack', 'noteon', 'held', 'legato', 'glide', 'vibrato', 'voice'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,

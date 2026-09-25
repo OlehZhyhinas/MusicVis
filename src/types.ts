@@ -57,6 +57,73 @@ export interface TimbreStats {
 /** Per-frame timbre tracks for the mix and each stem. */
 export type TimbreTrack = Record<'mix' | StemName, { bright: Float32Array; noise: Float32Array; rough: Float32Array; attack: Float32Array }>;
 
+/** One tracked melody note (src/analysis/notes.ts). Times in seconds, pitch in MIDI (continuous). */
+export interface NoteEvent {
+  start: number;
+  end: number;
+  /** Median pitch over the note. */
+  pitch: number;
+  /** Pitch contour while held, one value per analysis frame from `start`. */
+  contour: Float32Array;
+  /** Loudness of the note's harmonics, 0..1 within the song. */
+  strength: number;
+  /** How legato this note is played: 0 short and detached .. 1 held into the next, gliding or with vibrato. */
+  legato: number;
+  /** Voice-likeness of the note: 0 steady on-grid pitch (a synth) .. 1 vibrato, drift, scoops (a singer). */
+  voice: number;
+}
+
+/** A recent note as a mark (newest last in NoteStats.recent). */
+export interface NoteMark {
+  /** Seconds since the note started. */
+  age: number;
+  /** Seconds it has been (or was) held. */
+  len: number;
+  /** True once the note has ended. */
+  ended: boolean;
+  /** Pitch height 0..1 at the note's start (within the song's melodic range). */
+  height: number;
+  strength: number;
+}
+
+/** Articulation now: the melody line's notes (src/analysis/notes.ts). */
+export interface NoteStats {
+  /** Note-on pulse: 1 at a note start (scaled by its strength), decaying over ~0.15 s. */
+  on: number;
+  /** Strength of the note being held, 0 between notes. */
+  held: number;
+  /** 0 staccato (short detached notes, "tu tu tu") .. 1 legato (held, tied, gliding, vibrato), around now. */
+  legato: number;
+  /** Pitch slope of the held note, semitones per second (signed, vibrato removed). */
+  glide: number;
+  /** Vibrato depth of the held note, semitones (peak). */
+  vibrato: number;
+  /** Pitch of the held (or last) note, MIDI, continuous. */
+  pitch: number;
+  /** Pitch height 0..1 within the song's melodic range. */
+  height: number;
+  /** Voice-likeness of the melody: 0 steady synth lead .. 1 sung voice (vibrato, pitch drift, scoops). */
+  voice: number;
+  /** Latest notes, newest last (at most NOTE_RECENT). */
+  recent: NoteMark[];
+}
+
+/** Per-frame articulation tracks plus the note events. */
+export interface NoteTrack {
+  notes: NoteEvent[];
+  on: Float32Array;
+  held: Float32Array;
+  legato: Float32Array;
+  glide: Float32Array;
+  vibrato: Float32Array;
+  pitch: Float32Array;
+  height: Float32Array;
+  voice: Float32Array;
+  /** The song's melodic range used for height (MIDI). */
+  lo: number;
+  hi: number;
+}
+
 /** Per-frame groove tracks plus song and section summaries. */
 export interface GrooveTrack {
   swing: Float32Array;
@@ -113,6 +180,8 @@ export interface AnalysisResult {
   groove?: GrooveTrack;
   /** Timbre per stem and for the mix (optional: older cached results lack it). */
   timbre?: TimbreTrack;
+  /** Melody notes and articulation (optional: older cached results lack it). */
+  notes?: NoteTrack;
 }
 
 /** How a section relates to the rest of the song (src/analysis/repetition.ts). */
@@ -250,6 +319,9 @@ export interface MusicState {
 
   // --- Timbre (per stem and the mix; songs from the offline track, live input from the running estimate) ---
   timbre?: Record<'mix' | StemName, TimbreStats>;
+
+  // --- Articulation (melody notes; songs from the offline note track, live input from a running tracker) ---
+  notes?: NoteStats;
 
   // --- Lyrics (src/lyrics/sampler.ts; undefined when the song has no lyrics or for live input) ---
   /** The line being sung ('' between lines), and the next one. */

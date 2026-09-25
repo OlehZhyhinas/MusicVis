@@ -2,6 +2,7 @@
 // once per animation frame. Cursor-based lookups (amortized O(1) during normal
 // playback, binary search after jumps); no per-frame allocation.
 
+import { neutralNotes, sampleNoteTrack } from './notes';
 import type { AnalysisResult, KeySegment, LiveAudioFrame, MusicState, Section, SectionRepeat, StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import { detectRepeats } from './repetition';
@@ -387,6 +388,9 @@ export class TimelineSampler {
         o.attack = a.attack[i0] + (a.attack[i1] - a.attack[i0]) * f;
       }
     }
+
+    // --- Articulation (melody notes) ---
+    if (r.notes && T > 0 && r.notes.on.length >= T) sampleNoteTrack(r.notes, r.frameRate, time, (s.notes ??= neutralNotes()));
 
     this.synced = true;
     this.lastTime = time;

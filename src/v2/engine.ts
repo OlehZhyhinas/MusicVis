@@ -14,7 +14,7 @@ import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
 import type { AnalysisResult, MusicState, Section, StemName } from '../types';
 import { grooveClock, grooveOffset, type GrooveOffset } from './genes/groove';
-import type { GrooveStats, TimbreStats } from '../types';
+import type { GrooveStats, NoteStats, TimbreStats } from '../types';
 import { timbreLook, timbreSource, timbreTone, timbreUniforms, type TimbreLook } from './genes/timbre';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
@@ -145,6 +145,8 @@ export interface Frame {
   groove: GrooveStats;
   /** Timbre per stem and the mix (undefined when not analysed). */
   timbre: Record<'mix' | StemName, TimbreStats> | undefined;
+  /** Melody notes and articulation (undefined when not analysed). */
+  notes: NoteStats | undefined;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
   surge: number;
   /** Lyrics: new-line pulse, and the words' valence / arousal (the music's own mood where no words are sung). */
@@ -161,6 +163,7 @@ export class Signals {
     tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, chord: -1, tonnetzX: 0.5, tonnetzY: 0.2887, line: 0, valence: 0.5, arousal: 0.5,
     groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
     timbre: undefined,
+    notes: undefined,
   };
   /** Seconds the vocals have been silent (a new line's fallback pulse without lyrics). */
   private vocalRest = 0;
@@ -238,6 +241,7 @@ export class Signals {
     F.groove.humanity = num(gr?.humanity, 0);
     F.groove.synco = num(gr?.synco, 0);
     F.timbre = state.timbre;
+    F.notes = state.notes;
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     this.sectionPulse *= Math.exp(-dt * 1.5);
     if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
@@ -397,6 +401,12 @@ export class Signals {
       case 'noisy': return num(F.timbre?.mix.noise, 0);
       case 'rough': return num(F.timbre?.mix.rough, 0);
       case 'attack': return num(F.timbre?.mix.attack, 0);
+      case 'noteon': return num(F.notes?.on, 0);
+      case 'held': return num(F.notes?.held, 0);
+      case 'legato': return num(F.notes?.legato, 0.5);
+      case 'glide': return Math.min(1, Math.abs(num(F.notes?.glide, 0)) / 12);
+      case 'vibrato': return Math.min(1, num(F.notes?.vibrato, 0) / 0.6);
+      case 'voice': return num(F.notes?.voice, 0);
       case 'line': return F.line;
       case 'valence': return F.valence;
       case 'arousal': return F.arousal;

@@ -12,6 +12,7 @@ import { detectRepeats } from './repetition';
 import { computeComplexity, type ComplexityFeatures } from './complexity';
 import { analyzeGroove } from './groove';
 import { TimbreRecorder } from './timbre';
+import { NoteRecorder } from './notes';
 
 export type ProgressFn = (stage: string, progress: number) => void;
 
@@ -65,9 +66,11 @@ export function analyzePcm(
   const sideB = new Float32Array(T * B);
   const every = Math.max(1, Math.floor(T / 20));
   const timbre = new TimbreRecorder(n, sr, frameRate, T);
+  const noteRec = new NoteRecorder(n, sr, frameRate, T);
   stftPower(mid, n, hop, T, (f, pow) => {
     bandPower(pow, bands, midB, f * B);
     timbre.frame(f, pow);
+    noteRec.frame(f, pow);
     if (f % every === 0) report('Spectrum', 0.05 + 0.1 * (f / T));
   });
   if (stereo) stftPower(side, n, hop, T, (f, pow) => bandPower(pow, bands, sideB, f * B));
@@ -185,6 +188,7 @@ export function analyzePcm(
     keys,
     groove,
     timbre: timbre.track,
+    notes: noteRec.build(),
   };
   result.repeats = detectRepeats(result);
   return result;

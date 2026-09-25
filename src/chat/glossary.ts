@@ -53,6 +53,9 @@ modulation=pulse on a key change. swing=how swung the playing is(0 straight..1 t
 the backbeat leans off the grid(laid back or pushed). humanity=how loose/human the timing is. synco=
 syncopation density(hits on weak off-beats). bright=how bright the sound is. noisy=how noisy(breath,
 distortion,cymbals). rough=how rough/buzzy/beating. attack=how sharp the onsets are(plucks, hits).
+noteon=pulse at each melody note start. held=strength of the held melody note(0 between notes).
+legato=0 staccato(short detached notes)..1 legato(held,tied,gliding). glide=how fast the pitch
+slides. vibrato=vibrato depth. voice=how sung the melody sounds(0 steady synth lead..1 voice).
 line=pulse per sung line. valence=words' mood 0 sad..1 happy. arousal=words' intensity(music's
 mood without lyrics).
 `;

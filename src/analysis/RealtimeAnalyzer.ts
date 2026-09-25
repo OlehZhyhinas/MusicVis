@@ -14,6 +14,7 @@
 
 import { GrooveTracker } from './groove';
 import { TimbreFrames } from './timbre';
+import { NoteTracker } from './notes';
 import type { StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import { RealFFT } from './fft';
@@ -200,6 +201,8 @@ export class RealtimeAnalyzer {
   readonly groove = new GrooveTracker();
   /** Running timbre per stem and the mix (timbre.ts), from the main spectrum. */
   readonly timbreLive: TimbreFrames;
+  /** Running melody notes and articulation (notes.ts), from the main spectrum. */
+  readonly notesLive: NoteTracker;
   readonly key: KeyTracker;
   /** Realtime-lite chord tracking (harmony map). */
   readonly harmony = new HarmonyTracker();
@@ -438,6 +441,7 @@ export class RealtimeAnalyzer {
     this.beat = new BeatTracker(fr);
     this.key = new KeyTracker();
     this.timbreLive = new TimbreFrames(n, this.sr, fr);
+    this.notesLive = new NoteTracker(n, this.sr, fr);
     this.structure = new StructureTracker();
   }
 
@@ -523,6 +527,7 @@ export class RealtimeAnalyzer {
     this.fft.power(this.buf, this.pow);
     bandPower(this.pow, this.bands, this.midB, 0);
     this.timbreLive.push(this.pow);
+    this.notesLive.push(this.pow);
     if (this.stereo) {
       this.windowed(this.ringS, n, this.win, this.buf);
       this.fft.power(this.buf, this.pow);

@@ -221,6 +221,13 @@ export class RealtimeSampler {
     const ts = (s.timbre ??= { mix: { ...tl.mix }, drums: { ...tl.drums }, bass: { ...tl.bass }, vocals: { ...tl.vocals }, other: { ...tl.other } });
     for (const key of ['mix', 'drums', 'bass', 'vocals', 'other'] as const) Object.assign(ts[key], tl[key]);
 
+    // --- Articulation (running note tracker) ---
+    const nl = a.notesLive.out;
+    const ns = (s.notes ??= { ...nl, recent: [] });
+    Object.assign(ns, nl, { recent: ns.recent });
+    ns.recent.length = nl.recent.length;
+    for (let i = 0; i < nl.recent.length; i++) ns.recent[i] = Object.assign(ns.recent[i] ?? {}, nl.recent[i]);
+
     this.synced = true;
     return s;
   }
