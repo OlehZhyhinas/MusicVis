@@ -34,12 +34,13 @@ import {
 import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
+import { ACCENT_SCHEMA } from './genes/accent';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 103;
+export const SEED_VERSION = 104;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -120,6 +121,8 @@ interface Def {
   timbre?: Record<string, number>;
   /** Visual deja vu: returning sections recall their first appearance (src/v2/genes/dejavu.ts); omitted = none. */
   dejavu?: Record<string, number>;
+  /** Built-in accents (hook gesture, section response): only set to tune them down; omitted = the defaults (src/v2/genes/accent.ts). */
+  accent?: Record<string, number>;
   /** What the sung words are about steers the picture, and the line is shown (src/v2/genes/lyrics.ts); omitted = none. */
   lyrics?: Record<string, number>;
 }
@@ -144,6 +147,7 @@ function build(d: Def): Seed {
   if (d.groove) g.groove = { p: { ...defaultParams(GROOVE_SCHEMA), ...d.groove } };
   if (d.timbre) g.timbre = { p: { ...defaultParams(TIMBRE_SCHEMA), ...d.timbre } };
   if (d.dejavu) g.dejavu = { p: { ...defaultParams(DEJAVU_SCHEMA), ...d.dejavu } };
+  if (d.accent) g.accent = { p: { ...defaultParams(ACCENT_SCHEMA), ...d.accent } };
   if (d.lyrics) g.lyrics = { p: { ...defaultParams(LYRICS_SCHEMA), ...d.lyrics } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
@@ -183,6 +187,8 @@ const DEFS: Def[] = [
     color: { bloom: 1.1 }, carrier: 'warp', decay: 0.975,
     chain: [op('translate', { vy: -0.22, lanes: 38 })],
     bodies: [body({ shape: ['edge', { mode: 2, side: 1, density: 0.6 }], material: ['fill', { gain: 0.45 }] })],
+    // Its thin streaks flash when magnified, so the hook gesture is kept small (strobe margin).
+    accent: { hook: 0.25 },
   },
   {
     // A row of smoke sources along the bottom, glowing with their instruments and throwing sparks on top.
