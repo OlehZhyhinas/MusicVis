@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 54;
+export const SEED_VERSION = 55;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1514,6 +1514,27 @@ const LANDSCAPE: Def[] = [
       rx('bass', 'sh', 0, 'rim', 0.2, { atk: 0.02, rel: 0.3 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.15 }),
       rx('loud', 'sh', 0, 'rough', 0.2, { atk: 0.2, rel: 1.5 }),
+    ],
+  },
+  {
+    // A fast run through an abstract world of terraced ribbons, mirrored top to bottom (a mirror
+    // placement) so the road runs along the middle of the screen with terrain and horizon both above
+    // and below it: only 10 s of the song is in view, so the world rushes by, each drop's pass looms up
+    // quickly and the road plunges over its cliff, light pillars flash past at every section start and
+    // the terraces trail behind in the feedback. The loudness raises the terraces, the drums jolt the
+    // camera, the bass lights the road.
+    origin: 'L05', name: 'Ribbon Rush', energy: [0.45, 1], scheme: 'triad', hue: 0.95,
+    color: { adapt: 0.3, bloom: 1.3, vignette: 0.3 }, carrier: 'warp', decay: 0.9,
+    bodies: [body({
+      shape: ['landscape', { path: 0, ground: 4, mark: 3, res: 0.5, look: 10, height: 0.6, relief: 0.9, rough: 0.9, wind: 0.6, fog: 0.25, glow: 0.8, tint: 0.6, kick: 0.5, rim: 0.7 }],
+      place: ['mirror', { axis: 1, x: 0, y: 0.2 }],
+      material: ['fill', { gain: 1.1 }],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('loud', 'sh', 0, 'relief', 0.1, { atk: 0.2, rel: 1.5 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.15 }),
+      rx('bass', 'sh', 0, 'glow', 0.2, { atk: 0.02, rel: 0.3 }),
     ],
   },
 ];
