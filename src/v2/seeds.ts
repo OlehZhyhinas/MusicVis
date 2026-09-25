@@ -38,7 +38,7 @@ import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 65;
+export const SEED_VERSION = 66;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1988,6 +1988,23 @@ const TIMBRE: Def[] = [
     })],
     reactions: [rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 }), rx('attack', 'op', 0, 'rate', 0.4, { atk: 0.02, rel: 0.4 })],
     timbre: { src: 1, sheen: 0.3, glass: 0, grain: 1, scale: 14, velvet: 0, edge: 0.9, emboss: 0.8 },
+  },
+  {
+    // Three soft moons float on slow drifting paths, sized by their instruments. They wear the other
+    // instruments' timbre: breathy pads and airy synths turn them to plush velvet wrapped in a soft
+    // bloom, a clean electric piano or bell to translucent glass, a bright lead to a satin sheen,
+    // and a plucked or struck note lights a thin edge around each moon.
+    origin: 'T04', name: 'Velvet Moons', energy: [0, 0.6], scheme: 'triad', hue: 0.72,
+    color: { adapt: 0.3, bloom: 1.25, vignette: 0.6, sat: 0.8 }, carrier: 'warp', car: { halfLife: 0.1, floor: 1 },
+    bodies: [body({
+      shape: ['dot', { r: 0.075 }],
+      place: ['float', { count: 3, spread: 0.5, speed: 0.07 }],
+      material: ['fill', { gain: 1.1, soft: 0.35, halo: 0.6, core: 0.6 }],
+      emit: ['none'],
+      feel: ['flow', { atk: 0.2, rel: 1.2 }],
+    })],
+    reactions: [rx('other', 'ma', 0, 'gain', 0.3, { atk: 0.2, rel: 1 }), rx('noisy', 'ma', 0, 'soft', 0.4, { atk: 0.3, rel: 1.2 })],
+    timbre: { src: 4, sheen: 0.4, glass: 0.7, grain: 0.15, scale: 40, velvet: 1, edge: 0.5, emboss: 0 },
   },
 ];
 
