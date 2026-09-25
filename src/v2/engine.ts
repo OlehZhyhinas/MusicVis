@@ -2491,9 +2491,12 @@ export class Stage {
       const cc = s.cols;
       const a = (k % 3) * 3;
       const b = ((k + 1) % 3) * 3;
-      const lvl = 0.35 + 0.5 * F.stem[1];
+      // The bass swell is smoothed (about 0.15 s): the border floods the whole frame under a strong
+      // inward flow, and a raw sixteenth-note bass line made that flood strobe.
+      const bass = (s.mem['bord.b'] = approach(s.mem['bord.b'] ?? F.stem[1], F.stem[1], 11, sdt));
+      const lvl = 0.35 + 0.5 * bass;
       p.f1('uBorder', Math.min(1, border))
-        .f1('uBorderW', 0.004 + 0.01 * F.stem[1] * border)
+        .f1('uBorderW', 0.004 + 0.01 * bass * border)
         .f3('uBorderCol', (cc[a] + (cc[b] - cc[a]) * f) * lvl, (cc[a + 1] + (cc[b + 1] - cc[a + 1]) * f) * lvl, (cc[a + 2] + (cc[b + 2] - cc[a + 2]) * f) * lvl);
     } else p.f1('uBorder', 0);
     const water = g.carrier.kind === 'none' ? 0 : s.P('car', 0, cp, 'water', CARRIER_SCHEMA);
