@@ -13,7 +13,7 @@ import {
   addLayer, crossover, crossoverTagged, makeFuse, morphParams, mulberry32, mutate, randomBody, randomGene, randomGenome,
   randomOp, MUTATION_NAMES,
 } from '../src/v2/ops';
-import { SEEDS, SEED_VERSION } from '../src/v2/seeds';
+import { SEEDS, SEED_VERSION, SEED_DECLARED_REACTIONS } from '../src/v2/seeds';
 import { Population, fitness, POPULATION_VERSION, uniqueName } from '../src/v2/population';
 import {
   TONE_SCHEMA, CARRIER_KINDS, CARRIER_SCHEMA, DRAW_OPS, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, OP_KINDS, OP_SCHEMAS, PALETTE_KINDS, REACTION_SCHEMA,
@@ -100,6 +100,20 @@ function freshGenome(): Genome {
   check('seeds.validate', !badValid.length, badValid.join(' | ') || `all ${SEEDS.length} valid`);
   check('seeds.repair-idempotent', !badIdem.length, badIdem.join(',') || `repair(seed) === seed for all ${SEEDS.length}`);
   check('seeds.serialization-roundtrip', !badTrip.length, badTrip.join(',') || `all ${SEEDS.length} survive JSON + repair unchanged`);
+  // Repair silently moves a reaction whose declared target cannot be reacted (a structural switch
+  // such as 'rate' or 'turn', a missing op or body) onto another parameter, or drops it; a seed must
+  // ship with every reaction doing what its author wrote.
+  const moved: string[] = [];
+  for (const s of SEEDS) {
+    const want = SEED_DECLARED_REACTIONS[s.origin] ?? [];
+    const got = s.genome.reactions;
+    want.forEach((r, i) => {
+      const q = got[i];
+      if (!q || q.src !== r.src || q.g !== r.g || q.i !== r.i || q.k !== r.k) moved.push(`${s.origin} r${i} ${r.src}>${r.g}${r.i}.${r.k} -> ${q ? `${q.src}>${q.g}${q.i}.${q.k}` : 'dropped'}`);
+    });
+    if (got.length > want.length) moved.push(`${s.origin}: ${got.length - want.length} reaction(s) not declared`);
+  }
+  check('seeds.reactions-as-declared', !moved.length, moved.join(' | ') || `all ${SEEDS.length} seeds keep their declared reaction targets`);
   check('seeds.under-budget', !over.length, over.join(',') || `all under ${COST_BUDGET_MS} ms`);
   check('seeds.version', SEED_VERSION >= 8, `SEED_VERSION=${SEED_VERSION}`);
 

@@ -578,10 +578,14 @@ export const REACTION_SCHEMA: Schema = {
   q: C([0, 1], 0), div: C([0.5, 1, 2, 4, 8, 16], 1),
 };
 export const MAX_REACTIONS = 6;
-/** Parameters reactions may not touch (structural switches, counts, clocks). */
+/**
+ * Parameters reactions may not touch (structural switches, counts, clocks). The bar-locked rates
+ * (orbit, outline, spin, wobble) are choice lists and so never reactable; the chain's zoom and rotate
+ * rates are continuous speeds the engine reads through its reaction lookup, so they may react.
+ */
 const NO_REACT = new Set([
   'mode', 'form', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'sides', 'ra', 'rb', 'n',
-  'bins', 'halfLife', 'lanes', 'strips', 'drive', 'rate', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
+  'bins', 'halfLife', 'lanes', 'strips', 'drive', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
   'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q', 'rep',
   ...SCENE_NO_REACT,
   ...LAND_NO_REACT,

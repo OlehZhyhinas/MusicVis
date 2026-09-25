@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 85;
+export const SEED_VERSION = 86;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -210,7 +210,7 @@ const DEFS: Def[] = [
       place: ['orbit', { count: 2, radius: 0.3, follow: 0.35, rate: 0.5 }],
       material: ['glow', { gain: 0.9, width: 0.018 }],
     })],
-    reactions: [rx('bass', 'op', 0, 'rate', -0.2), rx('beat', 'op', 0, 'rate', -0.33)],
+    reactions: [rx('bass', 'op', 0, 'rate', -0.08, { atk: 0.03, rel: 0.3 }), rx('beat', 'op', 0, 'rate', -0.132, { atk: 0.03, rel: 0.3 })],
   },
   {
     // Pure fluid; the sources move with their instruments (drums jump every bar, bass swings out, vocals
@@ -285,11 +285,11 @@ const DEFS: Def[] = [
       place: ['point', { x: 0, y: -0.42 }],
       material: ['fill', { gain: 2.6, soft: 0 }],
     })],
-    reactions: [rx('beat', 'op', 0, 'rate', 0.3)],
+    reactions: [rx('beat', 'op', 0, 'rate', 0.12, { atk: 0.03, rel: 0.3 })],
   },
   {
     // Sparks from the centre; warp speed surges on every beat (fast attack, slow ease), cruises with the
-    // loudness and jumps on a drop; the tunnel zoom follows the same surge.
+    // loudness and jumps on a drop. (A zoom-rate surge on top pushed the streaks past the strobe limit.)
     origin: 'E12', name: 'Warp Speed', energy: [0.55, 1], scheme: 'analogous', hue: 0.58,
     color: { sat: 0.35, bloom: 1.1 }, carrier: 'warp', decay: 0.86,
     chain: [op('rotate', { lock: 0.0625 }), op('zoom', { rate: 0.0082 })],
@@ -299,7 +299,7 @@ const DEFS: Def[] = [
       material: ['glow', { gain: 1.57 }],
       emit: ['sparks', { count: 5120, size: 3.4, speed: 0.1, curl: 0, life: 0.2, zoomFlow: 1.1, drag: 4, spread: 0.12, surge: 1, top: 0, body: 0 }],
     })],
-    reactions: [rx('surge', 'op', 1, 'rate', 0.4)],
+    reactions: [rx('surge', 'ma', 0, 'gain', 0.2, { atk: 0.02, rel: 0.3 })],
   },
   {
     // Stars on a jittered grid; each is a pitch class that shines with the chroma, twinkles, drifts, and
@@ -355,7 +355,7 @@ const DEFS: Def[] = [
       material: ['line', { gain: 1.6, width: 1.8, halo: 0.12 }],
       feel: ['flow', { atk: 0.03, rel: 0.3 }],
     })],
-    reactions: [rx('bass', 'op', 0, 'rate', 0.5), rx('beat', 'op', 0, 'rate', 0.8), rx('build', 'op', 0, 'rate', 0.5)],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.2, { atk: 0.03, rel: 0.3 }), rx('beat', 'op', 0, 'rate', 0.32, { atk: 0.03, rel: 0.3 }), rx('build', 'op', 0, 'rate', 0.2, { atk: 0.03, rel: 0.3 })],
   },
   {
     // A waveform arc folded eight ways, zooming out and turning.
@@ -488,7 +488,7 @@ const MILKDROP: Def[] = [
     ],
     reactions: [
       rx('hit', 'op', 3, 'vx', 0.5, { rel: 0.25 }), rx('bass', 'op', 3, 'vy', -0.3, { atk: 0.02, rel: 0.3, thr: 0.5 }),
-      rx('surge', 'op', 0, 'rate', 0.25), rx('loud', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 0.2 }),
+      rx('surge', 'op', 0, 'rate', 0.05, { atk: 0.03, rel: 0.3 }), rx('loud', 'em', 0, 'speed', 0.4, { atk: 0.02, rel: 0.2 }),
     ],
   },
   {
@@ -513,7 +513,7 @@ const MILKDROP: Def[] = [
         material: ['glow'],
       }),
     ],
-    reactions: [rx('bass', 'op', 1, 'rate', 0.35, { atk: 0.05, rel: 0.8 }), rx('other', 'car', 0, 'sharpen', 0.1, { atk: 0.1, rel: 0.5 })],
+    reactions: [rx('bass', 'op', 1, 'rate', 0.14, { atk: 0.05, rel: 0.8 }), rx('other', 'car', 0, 'sharpen', 0.1, { atk: 0.1, rel: 0.5 })],
   },
   {
     // Eo.S., glowsticks v2 05 and proton lights: glowing sticks swing along looping paths in the dark,
@@ -582,7 +582,7 @@ const MILKDROP: Def[] = [
       material: ['line', { gain: 1.2, width: 1.6 }],
       color: ['age', { rate: 0.0625 }],
     })],
-    reactions: [rx('bass', 'op', 0, 'rate', 0.5, { atk: 0.02, rel: 0.35, thr: 0.35 }), rx('hit', 'car', 0, 'sharpen', 0.25, { rel: 0.3 })],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.2, { atk: 0.03, rel: 0.35, thr: 0.35 }), rx('hit', 'car', 0, 'sharpen', 0.25, { rel: 0.3 })],
   },
   {
     // Flexi, mindblob: two ink sources on springy circles, pulled around by their instruments, stir a
@@ -637,12 +637,13 @@ const MILKDROP: Def[] = [
       material: ['line', { gain: 1.1, width: 2.4, halo: 0.3 }],
       color: ['age', { rate: 0.125, detail: 0.5 }],
     })],
-    reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 2, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.3)],
+    reactions: [rx('bass', 'op', 1, 'amt', -0.35, { atk: 0.05, rel: 0.6 }), rx('bass', 'op', 2, 'amt', -0.2, { atk: 0.05, rel: 0.6 }), rx('surge', 'op', 0, 'rate', 0.06, { atk: 0.03, rel: 0.3 })],
   },
   {
     // Krash + Rovastar, Rainbow Orb: a small circular waveform, shifting sideways with the loudness, is
     // spun by a rotation strongest at the centre and streamed outward by a fast zoom, so its colour
-    // history lays down rainbow rings; the echo mirrors it and the treble holds the zoom back.
+    // history lays down rainbow rings; the echo mirrors it. (A treble hold on the zoom rate pushed the
+    // rings past the strobe limit on fast songs, so the zoom runs free.)
     origin: 'M09', name: 'Rainbow Orb (after Krash & Rovastar)', energy: [0.4, 1], scheme: 'triad', hue: 0,
     color: { sat: 1, adapt: 0.35, bloom: 1.2 }, carrier: 'warp', decay: 0.975,
     chain: [
@@ -658,7 +659,7 @@ const MILKDROP: Def[] = [
       color: ['age', { rate: 0.5, detail: 1 }],
     })],
     reactions: [
-      rx('loud', 'pl', 0, 'x', 0.25, { atk: 0.05, rel: 0.3 }), rx('other', 'op', 0, 'rate', -0.3, { atk: 0.05, rel: 0.4 }),
+      rx('loud', 'pl', 0, 'x', 0.25, { atk: 0.05, rel: 0.3 }),
       rx('bass', 'op', 1, 'amt', -0.07, { atk: 0.05, rel: 0.4 }),
     ],
   },
@@ -778,7 +779,7 @@ const MILKDROP: Def[] = [
         feel: ['flow', { atk: 0.01, rel: 0.2, thr: 0.35, sens: 1.8 }],
       }),
     ],
-    reactions: [rx('bass', 'op', 0, 'rate', 0.15, { atk: 0.02, rel: 0.3 }), rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.25, thr: 0.5 })],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.06, { atk: 0.03, rel: 0.3 }), rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.25, thr: 0.5 })],
   },
   {
     // martin, tunnel race: waveform bands scroll up the carried picture, which is wrapped onto the wall
@@ -865,7 +866,7 @@ const MILKDROP: Def[] = [
       place: ['grid', { lattice: 0, scale: 9, jitter: 0.6, density: 0.4, lit: 0.5, twinkle: 0.6 }],
       material: ['glow', { gain: 1.4, width: 0.006, base: 0.3 }],
     })],
-    reactions: [rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 }), rx('drums', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.2 })],
+    reactions: [rx('bass', 'op', 0, 'rate', 0.12, { atk: 0.03, rel: 0.3 }), rx('drums', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.2 })],
   },
   {
     // Geiss, Tokamak Plus 2: two waveforms are drawn across the screen and a slowly turning strain flow
@@ -923,7 +924,7 @@ const CHOREO: Def[] = [
       material: ['line', { gain: 1, width: 2 }],
       color: ['age', { rate: 0.125 }],
     })],
-    reactions: [rx('beat', 'ma', 0, 'gain', 0.5), rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.05, rel: 0.4 })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.5), rx('bass', 'op', 0, 'rate', 0.12, { atk: 0.05, rel: 0.4 })],
     choreo: { lead: 8, curve: 2.5, push: 0.25, roll: 0.015, drain: 0.8, dim: 0.35, punch: 1, relax: 2 },
   },
   {
@@ -1061,7 +1062,7 @@ const AVS: Def[] = [
       material: ['line', { gain: 0.9, width: 2, halo: 0.25, blend: 1 }],
       color: ['instrument', { hue: 0, amount: 0.35 }],
     })],
-    reactions: [rx('beat', 'op', 2, 'vx', 0.25, { rel: 0.4 }), rx('hit', 'op', 2, 'vy', -0.2, { rel: 0.4 }), rx('loud', 'op', 0, 'rate', 0.3, { atk: 0.05, rel: 0.6 })],
+    reactions: [rx('beat', 'op', 2, 'vx', 0.25, { rel: 0.4 }), rx('hit', 'op', 2, 'vy', -0.2, { rel: 0.4 }), rx('loud', 'op', 0, 'rate', 0.12, { atk: 0.05, rel: 0.6 })],
   },
   {
     // Yathosho (Jan T. Sott, movement by David Hansen), sakura: three soft blobs in blue, pink and
@@ -1141,7 +1142,7 @@ const AVS: Def[] = [
       material: ['line', { gain: 0.9, width: 1.6, halo: 0.2 }],
       feel: ['flow', { atk: 0.1, rel: 1 }],
     })],
-    reactions: [rx('hit', 'op', 1, 'rate', 0.4, { rel: 0.8 }), rx('bass', 'op', 0, 'rate', -0.3, { atk: 0.1, rel: 1 }), rx('vocals', 'sh', 0, 'radius', 0.2, { atk: 0.1, rel: 0.6 })],
+    reactions: [rx('hit', 'op', 1, 'rate', 0.16, { rel: 0.8, atk: 0.03 }), rx('bass', 'op', 0, 'rate', -0.12, { atk: 0.1, rel: 1 }), rx('vocals', 'sh', 0, 'radius', 0.2, { atk: 0.1, rel: 0.6 })],
   },
   {
     // Jheriko, Alien Device (gallery remix by Zamuz): an icosahedron of pentagons turns in space
@@ -1500,7 +1501,7 @@ const DRIFT: Def[] = [
       color: ['age', { rate: 0.125, detail: 0.8 }],
       feel: ['flow', { atk: 0.03, rel: 0.4 }],
     })],
-    reactions: [rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('drums', 'op', 0, 'rate', 0.3, { atk: 0.02, rel: 0.3 })],
+    reactions: [rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('drums', 'op', 0, 'rate', 0.12, { atk: 0.03, rel: 0.3 })],
     drift: { step: 0.4, kinds: 2, what: 3, ret: 0.6, morph: 1, bound: 0.2, seed: 0.6 },
   },
   {
@@ -1644,7 +1645,7 @@ const HARMONY: Def[] = [
     })],
     reactions: [
       rx('chordchange', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.4 }),
-      rx('tension', 'op', 0, 'rate', 0.35, { atk: 0.3, rel: 0.6 }),
+      rx('tension', 'op', 0, 'rate', 0.14, { atk: 0.3, rel: 0.6 }),
       rx('bass', 'sh', 0, 'r', 0.2, { atk: 0.03, rel: 0.3 }),
     ],
     harmony: { brk: 0.85, warp: 0.3, style: 1, snap: 0.8, settle: 0.3, walk: 0.08, kick: 0.3, modHue: 0.1, modTurn: 0.008, calm: 0.4 },
@@ -1664,7 +1665,7 @@ const HARMONY: Def[] = [
       color: ['age', { rate: 0.03125, detail: 0.7 }],
     })],
     reactions: [
-      rx('tension', 'car', 0, 'halfLife', 0.5, { atk: 0.4, rel: 1 }),
+      rx('tension', 'car', 0, 'floor', -0.5, { atk: 0.4, rel: 1 }),
       rx('resolve', 'ma', 0, 'gain', 0.6, { atk: 0.01, rel: 0.8 }),
       rx('vocals', 'sh', 0, 'amp', 0.25, { atk: 0.1, rel: 0.6 }),
     ],
@@ -1729,7 +1730,7 @@ const HARMONY: Def[] = [
       material: ['line', { gain: 1, width: 1.6, halo: 0.2 }],
     })],
     reactions: [
-      rx('tension', 'car', 0, 'halfLife', 0.4, { atk: 0.4, rel: 0.8 }),
+      rx('tension', 'car', 0, 'floor', -0.4, { atk: 0.4, rel: 0.8 }),
       rx('resolve', 'col', 0, 'bloom', 0.6, { atk: 0.01, rel: 0.6 }),
       rx('drums', 'sh', 0, 'len', 0.3, { atk: 0.01, rel: 0.2 }),
     ],
@@ -1921,7 +1922,7 @@ const DEJAVU: Def[] = [
       material: ['line', { gain: 1, width: 2, halo: 0.25 }],
       feel: ['flow', { lock: 0, atk: 0.02, rel: 0.25 }],
     })],
-    reactions: [rx('beat', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.25 }), rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.03, rel: 0.3 })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.25 }), rx('bass', 'op', 0, 'rate', 0.12, { atk: 0.03, rel: 0.3 })],
     dejavu: { recall: 1, blend: 0.5, snap: 0.6, frame: 1, hue: 0.8, motion: 1, evolve: 0.5, keep: 0, res: 0.25, cap: 3, min: 0.7 },
   },
   {
@@ -2034,7 +2035,7 @@ const TIMBRE: Def[] = [
       material: ['fill', { gain: 2, soft: 0, outline: 1, core: 0.3 }],
       emit: ['trail', { tip: 0 }],
     })],
-    reactions: [rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 }), rx('attack', 'op', 0, 'rate', 0.4, { atk: 0.02, rel: 0.4 })],
+    reactions: [rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 }), rx('attack', 'op', 0, 'rate', 0.16, { atk: 0.03, rel: 0.4 })],
     timbre: { src: 1, sheen: 0.3, glass: 0, grain: 1, scale: 14, velvet: 0, edge: 0.9, emboss: 0.8 },
   },
   {
@@ -2092,7 +2093,7 @@ const LYRICS: Def[] = [
     reactions: [
       rx('beat', 'ma', 0, 'gain', 0.35, { rel: 0.25 }),
       rx('line', 'sh', 0, 'size', 0.35, { atk: 0.02, rel: 0.6 }),
-      rx('arousal', 'op', 0, 'rate', 0.4, { atk: 1, rel: 2 }),
+      rx('arousal', 'op', 0, 'rate', 0.16, { atk: 1, rel: 2 }),
     ],
     lyrics: { strength: 0.75, pal: 1, tone: 1, motion: 1, chain: 0, lag: 1.2, kick: 0.6, show: 2, smear: 0.45 },
   },
@@ -2230,4 +2231,7 @@ const NOTES: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES].map(build);
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES];
+export const SEEDS: Seed[] = ALL_DEFS.map(build);
+/** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
+export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries(ALL_DEFS.map((d) => [d.origin, d.reactions ?? []]));
