@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 42;
+export const SEED_VERSION = 43;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1488,6 +1488,25 @@ const GROOVE: Def[] = [
     })],
     reactions: [rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.03, rel: 0.3 }), rx('push', 'op', 0, 'rate', 0.35, { atk: 0.4, rel: 1.2 })],
     groove: { swing: 1, sub: 8, sway: 0.008, off: 0.5, lean: 1, crisp: 0.3, tick: 4, jitter: 0.3, accent: 0.5 },
+  },
+  {
+    // A hexagonal lattice of six-point stars, each a pitch class that lights with the chroma, the whole
+    // lattice turning on the bar and each star spinning. On a machine-tight track everything ticks:
+    // the stars hold still, then snap a notch forward on every 16th with a tiny click of scale, like a
+    // watch movement; a kaleidoscope folds it into a mandala. Loose, swung playing melts the ticks into
+    // a lilting, rolling turn.
+    origin: 'Q03', name: 'Clockwork Lattice', energy: [0.35, 0.95], scheme: 'triad', hue: 0.55,
+    color: { adapt: 0.4, bloom: 1, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.12, floor: 1 },
+    chain: [op('kaleido', { n: 6, lock: 0 }, 1, 'view')],
+    bodies: [body({
+      shape: ['star', { n: 6, r: 0.075, inner: 0.4 }],
+      place: ['grid', { lattice: 1, scale: 5, jitter: 0, density: 0.85, lit: 1, links: 0.5, twinkle: 0.2, lock: 0.125 }],
+      motion: ['spin', { rate: 0.5 }],
+      material: ['fill', { gain: 2.2, soft: 0.1, outline: 1, core: 0.6 }],
+      emit: ['none'],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { rel: 0.15 }), rx('humanity', 'col', 0, 'bloom', 0.4, { atk: 0.5, rel: 1.5 })],
+    groove: { swing: 0.8, sub: 16, sway: 0, off: 0.2, lean: 0.3, crisp: 1, tick: 4, jitter: 0.2, accent: 0.3 },
   },
 ];
 
