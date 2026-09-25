@@ -2050,12 +2050,12 @@ const TIMBRE: Def[] = [
     // grit and emboss the whole streaming picture into a rough, lit relief (glossier on bright
     // cymbals), a soft kit leaves it smooth, and every sharp hit flashes the star outlines.
     origin: 'T03', name: 'Snare Grit', energy: [0.45, 1], scheme: 'complementary', hue: 0.05,
-    color: { adapt: 0.4, bloom: 1, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.4, floor: 1 },
-    chain: [op('zoom', { rate: 0.018 }), op('rotate', { lock: -0.0625 })],
+    color: { adapt: 0.4, bloom: 1, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.4, floor: 0.4 },
+    chain: [op('zoom', { rate: 0.01 }), op('rotate', { lock: -0.0625 })],
     bodies: [body({
       shape: ['star', { n: 4, r: 0.06, inner: 0.35 }],
-      place: ['grid', { lattice: 0, scale: 7, jitter: 0, density: 0.7, lit: 0.7, links: 0, twinkle: 0.3, lock: 0.0625 }],
-      material: ['fill', { gain: 2, soft: 0, outline: 1, core: 0.3 }],
+      place: ['grid', { lattice: 0, scale: 7, jitter: 0, density: 0.7, lit: 1, links: 0, twinkle: 0.3, lock: 0.0625 }],
+      material: ['fill', { gain: 3, soft: 0, outline: 1, core: 0.6 }],
       emit: ['trail', { tip: 0 }],
     })],
     reactions: [rx('drums', 'ma', 0, 'gain', 0.3, { atk: 0.01, rel: 0.2 }), rx('attack', 'op', 0, 'rate', 0.16, { atk: 0.03, rel: 0.4 })],
