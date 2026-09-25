@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 75;
+export const SEED_VERSION = 76;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2123,6 +2123,27 @@ const NOTES: Def[] = [
       rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.2 }),
       rx('legato', 'sh', 0, 'thick', 0.4, { atk: 0.4, rel: 0.8 }),
       rx('hit', 'sh', 0, 'glow', 0.3, { atk: 0.005, rel: 0.25 }),
+    ],
+  },
+  {
+    // A music box seen from above: the last six seconds of melody wind round a clock face, the
+    // present at twelve o'clock and pitch pushing outward. Plucked notes flare as four-pointed sparks
+    // round the rim and linger a moment after their notes end; a held or sung line draws arcs of
+    // light that bend in and out with the pitch, and the trails curl inward in a slow spiral.
+    origin: 'N02', name: 'Music Box Clock', energy: [0.1, 0.8], scheme: 'split', hue: 0.62,
+    color: { adapt: 0.35, bloom: 1.2, vignette: 0.55 }, carrier: 'warp', decay: 0.9,
+    chain: [op('rotate', { lock: 0.0625 }), op('zoom', { rate: -0.004 })],
+    bodies: [body({
+      shape: ['notes', { mode: 1, span: 6, len: 1.1, height: 0.55, now: 0, tilt: 0, ribbon: 0.8, thick: 0.007, marks: 1, form: 1, size: 0.045, fade: 0.6, rise: 0.05, shimmer: 0.6, hues: 0.8, glow: 0.5 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 1.1 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.01, rel: 0.15 }],
+    })],
+    reactions: [
+      rx('noteon', 'sh', 0, 'size', 0.35, { atk: 0.005, rel: 0.25 }),
+      rx('legato', 'sh', 0, 'ribbon', 0.3, { atk: 0.5, rel: 1 }),
+      rx('bar', 'sh', 0, 'tilt', 0.15, { atk: 0.5, rel: 1 }),
     ],
   },
 ];
