@@ -1894,7 +1894,9 @@ export class Stage {
       }
       case 'aurora': {
         const t = set('t', (mm('t') + sdt * F.speed * 0.15) % 512);
-        const lvl = Math.max(F.stem[2], F.stem[3] * 0.7 * (1 - F.gate[2])) + 0.08 * F.loud;
+        // A standing glow (0.15) keeps the curtains visible through instrumental stretches with no
+        // vocals or melody, which otherwise left the whole screen black.
+        const lvl = 0.15 + Math.max(F.stem[2], F.stem[3] * 0.7 * (1 - F.gate[2])) + 0.08 * F.loud;
         if (fused) {
           E[o + 1] = P('fall'); E[o + 2] = P('rays'); E[o + 3] = P('wav');
           E[o + 4] = t; E[o + 5] = lvl;
