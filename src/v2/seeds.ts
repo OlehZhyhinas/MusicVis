@@ -37,8 +37,9 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
+import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 66;
+export const SEED_VERSION = 67;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -119,6 +120,8 @@ interface Def {
   timbre?: Record<string, number>;
   /** Visual deja vu: returning sections recall their first appearance (src/v2/genes/dejavu.ts); omitted = none. */
   dejavu?: Record<string, number>;
+  /** What the sung words are about steers the picture, and the line is shown (src/v2/genes/lyrics.ts); omitted = none. */
+  lyrics?: Record<string, number>;
 }
 
 function build(d: Def): Seed {
@@ -141,6 +144,7 @@ function build(d: Def): Seed {
   if (d.groove) g.groove = { p: { ...defaultParams(GROOVE_SCHEMA), ...d.groove } };
   if (d.timbre) g.timbre = { p: { ...defaultParams(TIMBRE_SCHEMA), ...d.timbre } };
   if (d.dejavu) g.dejavu = { p: { ...defaultParams(DEJAVU_SCHEMA), ...d.dejavu } };
+  if (d.lyrics) g.lyrics = { p: { ...defaultParams(LYRICS_SCHEMA), ...d.lyrics } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
 
@@ -2008,4 +2012,55 @@ const TIMBRE: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE].map(build);
+// Y01.. showcase the lyrics gene (genes/lyrics.ts): the sung words steer the picture and are shown.
+// Both are complete presets without lyrics (instrumentals, live input): the words only add to them.
+const LYRICS: Def[] = [
+  {
+    // One wireframe dodecahedron turning a full turn per bar, flying slowly outward through its own
+    // trails. The line being sung fills in karaoke style beneath it and a faint copy is drawn into
+    // the trails, so every line streams away behind the solid. Each new line (or, without lyrics,
+    // each vocal entry) swells the solid; the words tint it (fire warm, night deep blue, love pink),
+    // dim or brighten it, lift or sink the camera, and intense lines speed the flight.
+    origin: 'Y01', name: 'Sung Prism', energy: [0.3, 0.9], scheme: 'triad', hue: 0.58,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.9,
+    chain: [op('zoom', { rate: 0.007 }), op('rotate', { lock: 0.0625 })],
+    bodies: [body({
+      shape: ['solid', { solid: 5, size: 0.19, tilt: 0.5, inner: 0.8 }],
+      motion: ['spin', { rate: 1 }],
+      material: ['line', { gain: 1.2, width: 1.5, halo: 0.18 }],
+      feel: ['flow', { atk: 0.04, rel: 0.4 }],
+    })],
+    reactions: [
+      rx('beat', 'ma', 0, 'gain', 0.35, { rel: 0.25 }),
+      rx('line', 'sh', 0, 'size', 0.35, { atk: 0.02, rel: 0.6 }),
+      rx('arousal', 'op', 0, 'rate', 0.4, { atk: 1, rel: 2 }),
+    ],
+    lyrics: { strength: 0.75, pal: 1, tone: 1, motion: 1, chain: 0, lag: 1.2, kick: 0.6, show: 2, smear: 0.45 },
+  },
+  {
+    // Rain on the words: the waveform, one glowing line across the frame, sheds its trail upward
+    // through rippling water; drops fall on the beats and the rings bend the rising lines, the line
+    // flares on every beat and swells with the vocals. The sung line shows as a quiet caption and
+    // melts upward into the trails. Water words swell the ripples, storms stir them, dream words
+    // swirl and blur; the mood of the song (the words', or without lyrics the music's major or minor
+    // feel) slowly turns the colours.
+    origin: 'Y02', name: 'Rain on the Words', energy: [0.15, 0.8], scheme: 'analogous', hue: 0.55,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.4 }, carrier: 'warp', car: { halfLife: 1.4, blur: 0.04, water: 0.75, wsize: 0.04 },
+    chain: [op('ripple', { amp: 0.0012, freq: 7, speed: 0.6, radial: 1 }), op('translate', { vy: 0.07 }), op('swirl', { amt: 0.002, k: 3 })],
+    bodies: [body({
+      shape: ['curve', { form: 0, amp: 0.2 }],
+      place: ['point', { y: -0.12 }],
+      material: ['line', { gain: 0.75, width: 1.4, halo: 0.2 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+    })],
+    reactions: [
+      rx('beat', 'ma', 0, 'gain', 0.35, { rel: 0.3 }),
+      rx('vocals', 'sh', 0, 'amp', 0.35, { atk: 0.08, rel: 0.6 }),
+      rx('valence', 'pal', 0, 'hue', 0.25, { atk: 2, rel: 3 }),
+      rx('bass', 'car', 0, 'water', 0.3, { atk: 0.03, rel: 0.5 }),
+    ],
+    lyrics: { strength: 0.8, pal: 1, tone: 1, motion: 1, chain: 1, lag: 2.5, kick: 0.2, show: 1, smear: 0.6 },
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS].map(build);

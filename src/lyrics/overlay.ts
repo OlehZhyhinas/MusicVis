@@ -92,7 +92,9 @@ export class LyricOverlay {
       o.source = this.canvas;
       o.version = this.version;
     } else if (smear <= 0) o.source = null;
-    o.alpha = smear > 0 ? this.vis : 0;
+    // Released mostly as the line starts, so the words stream off into the visual and the crisp
+    // caption on top stays readable (a faint steady copy keeps the trail fed while it is sung).
+    o.alpha = smear > 0 ? this.vis * Math.max(0.12, Math.min(1, state.lyricPulse ?? 0)) : 0;
     return o;
   }
 
@@ -110,9 +112,9 @@ export class LyricOverlay {
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, w, h);
-    const lr = this.lineEl.getBoundingClientRect();
+    const lr = this.fillEl.getBoundingClientRect();
     const fs = parseFloat(getComputedStyle(this.fillEl).fontSize) || (show === 2 ? 30 : 18);
-    ctx.font = `600 ${fs * scale * 1.15}px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif`;
+    ctx.font = `600 ${fs * scale}px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';

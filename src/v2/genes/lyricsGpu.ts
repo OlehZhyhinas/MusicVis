@@ -12,9 +12,14 @@ in vec2 vUv;
 uniform sampler2D uTex;
 uniform float uValue;
 uniform vec3 uColor;
+uniform vec4 uCamM; // the final pass camera: scene uv = 0.5 + (I + M)(screen uv - 0.5) + T
+uniform vec2 uCamT;
 out vec4 o;
 void main() {
-  float a = texture(uTex, vec2(vUv.x, 1.0 - vUv.y)).a;
+  // The caption sits in screen space; find the screen point this scene point is shown at.
+  mat2 A = mat2(1.0 + uCamM.x, uCamM.z, uCamM.y, 1.0 + uCamM.w);
+  vec2 uv = 0.5 + inverse(A) * (vUv - 0.5 - uCamT);
+  float a = texture(uTex, vec2(uv.x, 1.0 - uv.y)).a;
   o = vec4(uColor * (uValue * a), 0.0);
 }`;
 
@@ -55,9 +60,9 @@ export class CaptionLayer {
   }
 
   /** Adds the caption into the bound target (additive blending must be on). */
-  draw(value: number, r: number, g: number, b: number): void {
+  draw(value: number, r: number, g: number, b: number, cam: Float32Array): void {
     if (!this.tex || !this.has || value <= 1e-4) return;
-    this.prog.use().tex('uTex', this.tex).f1('uValue', value).f3('uColor', r, g, b);
+    this.prog.use().tex('uTex', this.tex).f1('uValue', value).f3('uColor', r, g, b).f4('uCamM', cam[0], cam[1], cam[2], cam[3]).f2('uCamT', cam[4], cam[5]);
     this.fs.draw();
   }
 

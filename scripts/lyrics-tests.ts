@@ -7,7 +7,7 @@ import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
 import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS } from '../src/lyrics/lrclib';
 import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
 import { LyricSampler } from '../src/lyrics/sampler';
-import { cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
+import { COST_BUDGET_MS, cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
 import { crossover, mulberry32, mutate, MUTATION_NAMES } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { ADJ_POOLS, nameFor } from '../src/v2/naming';
@@ -412,5 +412,14 @@ export async function lyricsTests(check: Check): Promise<void> {
     const before = JSON.stringify(withG);
     for (let i = 0; i < 20; i++) lyricTarget(withG.lyrics, w({ fire: 1, water: 1 }), 0.4, i);
     check('lyrics.nudge.not-saved', JSON.stringify(withG) === before, 'genome unchanged');
+  }
+
+  // --------------------------------------------------------------- seeds
+  {
+    const ys = SEEDS.filter((x) => /^Y\d\d$/.test(x.origin));
+    const bad = ys.filter((x) => !x.genome.lyrics || validate(x.genome).length || estimateCost(x.genome) >= COST_BUDGET_MS || !x.genome.reactions.some((r) => ['line', 'valence', 'arousal'].includes(r.src)));
+    const shows = ys.map((x) => x.genome.lyrics?.p.show).join(',');
+    check('lyrics.seeds', ys.map((x) => x.origin).join() === 'Y01,Y02' && !bad.length && shows === '2,1' && ys.every((x) => (x.genome.lyrics?.p.smear ?? 0) > 0 && x.genome.carrier.kind !== 'none'),
+      `${ys.map((x) => `${x.origin} ${x.name} ${estimateCost(x.genome).toFixed(2)} ms`).join('; ')}${bad.length ? ' bad: ' + bad.map((x) => x.origin + ':' + validate(x.genome)[0]).join(',') : ''}`);
   }
 }

@@ -291,8 +291,9 @@ export class Signals {
     const F = this.F;
     const pres = clamp01(num(state.lyricPresence, 0));
     const musV = (F.minor ? 0.38 : 0.62) - 0.15 * (F.tension - 0.3);
-    F.valence = clamp01(musV + (num(state.lyricValence, 0.5) - musV) * pres);
-    F.arousal = clamp01(F.act + (num(state.lyricArousal, 0.5) - F.act) * pres);
+    // The words lead the mood while they are sung, the music keeps a share (arousal is mostly heard).
+    F.valence = clamp01(musV + (num(state.lyricValence, 0.5) - musV) * pres * 0.7);
+    F.arousal = clamp01(F.act + (num(state.lyricArousal, 0.5) - F.act) * pres * 0.5);
     if (state.lyricPulse !== undefined) F.line = num(state.lyricPulse, 0);
     else {
       F.line *= Math.exp(-dt * 4);
@@ -2508,7 +2509,7 @@ export class Stage {
     if (ly && ly.show > 0 && ly.smear > 0 && g.carrier.kind !== 'none' && this.caption?.has && this.caption.alpha > 0.002) {
       s.fb.write.bind();
       const c = s.cols;
-      this.caption.draw(ly.smear * this.caption.alpha * Math.max(0.02, 1 - s.decay) * 0.9, 0.45 + 0.55 * c[0], 0.45 + 0.55 * c[1], 0.45 + 0.55 * c[2]);
+      this.caption.draw(ly.smear * this.caption.alpha * Math.max(0.06, 1 - s.decay) * 0.6, 0.45 + 0.55 * c[0], 0.45 + 0.55 * c[1], 0.45 + 0.55 * c[2], this.cam);
     }
     gl.disable(gl.BLEND);
     s.fb.swap();
