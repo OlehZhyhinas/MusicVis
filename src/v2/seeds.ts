@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 96;
+export const SEED_VERSION = 97;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -359,16 +359,17 @@ const DEFS: Def[] = [
     reactions: [rx('bass', 'op', 0, 'rate', 0.2, { atk: 0.03, rel: 0.3 }), rx('beat', 'op', 0, 'rate', 0.32, { atk: 0.03, rel: 0.3 }), rx('build', 'op', 0, 'rate', 0.2, { atk: 0.03, rel: 0.3 })],
   },
   {
-    // A waveform arc folded eight ways, zooming out and turning.
+    // A waveform arc folded eight ways into a flower, zooming out and turning; it flares on the beat,
+    // drum hits throw its petals outward and the bass roughens the waveform. The arc and the fold
+    // stay put so the flower never slips out of the kaleidoscope's wedge and leaves the screen black.
     origin: 'E18', name: 'Mandala', energy: [0.5, 1], scheme: 'triad', hue: 0.1,
     color: { bloom: 1.1 }, carrier: 'warp', decay: 0.94,
-    chain: [op('rotate', { lock: 0.125 }), op('zoom', { rate: 0.006 }), op('kaleido', { n: 8, lock: 0.0625 }, 1, 'view')],
+    chain: [op('rotate', { lock: 0.125 }), op('zoom', { rate: 0.006 }), op('kaleido', { n: 8, lock: 0 }, 1, 'view')],
     bodies: [body({
       shape: ['curve', { form: 4, radius: 0.27, amp: 0.25, turns: 3 }],
-      motion: ['spin', { rate: 0.0625 }],
       material: ['line', { gain: 0.8, width: 1.8 }],
     })],
-    reactions: [rx('beat', 'ma', 0, 'gain', 0.6)],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.6, { rel: 0.2 }), rx('bass', 'sh', 0, 'amp', 0.4, { atk: 0.02, rel: 0.25 }), rx('hit', 'sh', 0, 'radius', 0.25, { rel: 0.2 })],
   },
   {
     // Ratios step every 2 bars through a circle-of-fifths order from the key and glide; phases advance
