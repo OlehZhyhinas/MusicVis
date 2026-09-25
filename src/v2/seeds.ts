@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 78;
+export const SEED_VERSION = 79;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2185,6 +2185,27 @@ const NOTES: Def[] = [
       rx('noteon', 'car', 0, 'water', 0.35, { atk: 0.01, rel: 0.4 }),
       rx('vibrato', 'sh', 0, 'shimmer', 0.3, { atk: 0.1, rel: 0.5 }),
       rx('legato', 'sh', 0, 'thick', 0.35, { atk: 0.4, rel: 0.8 }),
+    ],
+  },
+  {
+    // Fireflies over warm smoke: each note lights a firefly at its pitch that lingers after the note
+    // and drifts up as it fades, so a staccato riff sets off a swarm and a pause lets it settle; a
+    // sung line trails a ribbon of glowing smoke that the air curls and carries away. Note starts
+    // puff the air, drum hits stir it harder.
+    origin: 'N05', name: 'Firefly Smoke', energy: [0.15, 0.85], scheme: 'analogous', hue: 0.1,
+    color: { adapt: 0.35, bloom: 1.2, vignette: 0.5 }, carrier: 'fluid', car: { halfLife: 1.1, floor: 0.7, amount: 0.9, vort: 24, fnoise: 0.4 },
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 6, len: 1.6, height: 0.55, now: 0.3, tilt: 0.03, ribbon: 0.7, thick: 0.007, marks: 1, form: 0, size: 0.032, fade: 1.2, rise: 0.08, shimmer: 0.5, hues: 0.5, glow: 0.9 }],
+      place: ['point', { x: 0, y: -0.04 }],
+      material: ['glow', { gain: 1.35 }],
+      emit: ['dye', { force: 0.7 }],
+      feel: ['flow', { atk: 0.01, rel: 0.2 }],
+    })],
+    reactions: [
+      rx('noteon', 'em', 0, 'force', 0.4, { atk: 0.005, rel: 0.3 }),
+      rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'car', 0, 'amount', 0.3, { atk: 0.01, rel: 0.4 }),
+      rx('legato', 'sh', 0, 'ribbon', 0.3, { atk: 0.4, rel: 0.8 }),
     ],
   },
 ];
