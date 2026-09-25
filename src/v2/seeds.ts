@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 71;
+export const SEED_VERSION = 72;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -942,16 +942,22 @@ const CHOREO: Def[] = [
 const PHYSICS: Def[] = [
   {
     // A concert rig on an overhead truss: eight moving heads throw shafts through drifting haze, the
-    // swing rippling along the truss every two bars and the beat chasing from head to head.
+    // heads swinging together once a bar and the beat chasing from head to head.
     origin: 'V01', name: 'Stage Rig', energy: [0.35, 1], scheme: 'triad', hue: 0.62,
     color: { sat: 0.85, adapt: 0.35, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.12 },
     bodies: [body({
-      shape: ['beams', { count: 8, spread: 1.1, fan: 0.45, sweep: 0.5, pattern: 2, period: 2, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.6, accent: 0.6 }],
+      shape: ['beams', { count: 8, spread: 1.1, fan: 0.45, sweep: 0.6, pattern: 0, period: 1, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.5, accent: 0.9 }],
       place: ['point', { x: 0, y: 0.45 }],
       material: ['glow', { gain: 1 }],
-      feel: ['flow', { atk: 0.03, rel: 0.4 }],
+      feel: ['flow', { atk: 0.02, rel: 0.15 }],
     })],
-    reactions: [rx('build', 'sh', 0, 'sweep', 0.5, { atk: 0.2, rel: 1 }), rx('bass', 'sh', 0, 'width', 0.2, { atk: 0.05, rel: 0.5 })],
+    // Tuned so the rig reads as following the music rather than drifting: every head swings together
+    // once per bar (turning at the downbeats), the beat chase is strong, drum hits flare the lenses,
+    // the bass fattens the shafts and a build widens the swing.
+    reactions: [
+      rx('build', 'sh', 0, 'sweep', 0.35, { atk: 0.2, rel: 1 }), rx('bass', 'sh', 0, 'width', 0.4, { atk: 0.02, rel: 0.25 }),
+      rx('hit', 'sh', 0, 'flare', 0.5, { rel: 0.2 }),
+    ],
   },
   {
     // A Chladni plate: sand gathers on the nodal lines of the standing wave the chord asks for. On a
