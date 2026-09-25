@@ -7,11 +7,12 @@
 
 import { Engine, Stage } from '../../src/v2/engine';
 import { SEEDS } from '../../src/v2/seeds';
-import type { Genome } from '../../src/v2/genome';
+import { cloneGenome, schemaFor, type Genome } from '../../src/v2/genome';
+import { paramsFor } from '../../src/v2/engine';
 import { analyzeAudio } from '../../src/analysis/analyze';
 import { TimelineSampler } from '../../src/analysis/TimelineSampler';
 import type { AnalysisResult, MusicState } from '../../src/types';
-import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix } from './audio';
+import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix, stemRegion, type StemId } from './audio';
 import { VIS_FIELDS, VisualFeatures } from './features';
 import { FIELDS, MUSIC_FIELDS, THUMB_BYTES, THUMB_H, THUMB_W, type ClipHeader } from './format';
 import { autoWindows, findHooks, songMoments, type ClipWindow, type Hook, type Moment, type SongData } from './music';
@@ -230,6 +231,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
   const slot = st.makeSlot(g, progs);
   st.slots = [slot];
   st.resetHistory();
+  const inst = new Instrument(st, slot, g);
   const sampler = new TimelineSampler(song.result);
   const live = new OfflineLive(song.pcm, song.sr);
   const melody = new MelodyProbe(song.pcm, song.sr);
@@ -277,6 +279,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     writeMusic(row, state, mel);
     row.set(vis.update(px), MUSIC_FIELDS.length);
     rows.set(row, i * F);
+    inst.record();
     thumbs.set(vis.thumb, i * THUMB_BYTES);
     if (ctx2 && img && canvas) {
       const W4 = o.w * 4;
@@ -309,6 +312,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     framesDir: o.frames ? framesDir : undefined,
   };
   await save(`clips/${base}.bin`, new Blob([rows, thumbs, specs] as BlobPart[]));
+  await save(`clips/${base}.inst.json`, inst.json());
   await save(`clips/${base}.json`, JSON.stringify(header));
   return { base, frames: n, ms };
 }
@@ -336,6 +340,295 @@ async function render(opts: RenderOpts) {
   return { preset: id, name, song: song.slug, analysisMs: Math.round(song.analysisMs), hooks: song.hooks.map((h) => ({ bars: h.bars, n: h.occurrences.length, len: +h.len.toFixed(2), score: +h.score.toFixed(3) })), clips: out };
 }
 
+
+
+// ------------------------------------------------------------------ engine instrumentation
+
+/**
+ * Per-frame readout from the engine itself (not pixels): each reaction's source signal, its
+ * response after the curve and the driven parameter's value; the engine's frame signals
+ * (activity, speed, spin, hit, surge, melody, harmony pulses); the harmony gene's motor output;
+ * the blended camera / choreography pose. Stage internals are read through `any` so the app
+ * stays untouched.
+ */
+export class Instrument {
+  readonly names: string[] = [];
+  readonly cols: number[][] = [];
+  private slot: any;
+  private stage: any;
+  private g: Genome;
+  constructor(stage: Stage, slot: unknown, g: Genome) {
+    this.stage = stage;
+    this.slot = slot;
+    this.g = g;
+    g.reactions.slice(0, 6).forEach((r, j) => {
+      const tag = `rx${j}:${r.src}>${r.g}${r.i}.${r.k}`;
+      this.names.push(`${tag}:src`, `${tag}:resp`, `${tag}:value`);
+    });
+    this.names.push(
+      'F.act', 'F.speed', 'F.spin', 'F.hit', 'F.hitPulse', 'F.surge', 'F.melody', 'F.loud', 'F.drop', 'F.build',
+      'F.tension', 'F.resolve', 'F.chordPulse', 'F.modPulse', 'F.chord', 'F.tonnetzX', 'F.tonnetzY',
+      'harm.brk', 'harm.warp', 'harm.zoom', 'harm.roll', 'harm.hue', 'harm.sat', 'harm.exposure',
+      'pose.zoom', 'pose.roll', 'pose.tx', 'pose.ty', 'pose.hue', 'pose.sat', 'pose.exposure', 'flash',
+    );
+    for (let i = 0; i < this.names.length; i++) this.cols.push([]);
+  }
+  record(): void {
+    const v: number[] = [];
+    const s = this.slot;
+    this.g.reactions.slice(0, 6).forEach((r, j) => {
+      const schema = schemaFor(this.g, r.g, r.i);
+      const p = paramsFor(this.g, r.g, r.i);
+      const value = schema && p && r.k in schema ? s.P(r.g, r.i, p, r.k, schema) : NaN;
+      v.push(s.meters[j * 2], s.meters[j * 2 + 1], value);
+    });
+    const F = this.stage.sig.F;
+    v.push(F.act, F.speed, F.spin, F.hit, F.hitPulse, F.surge, F.melody, F.loud, F.drop, F.build, F.tension, F.resolve, F.chordPulse, F.modPulse, F.chord, F.tonnetzX, F.tonnetzY);
+    const h = this.stage.harmOut?.get(s);
+    v.push(h?.brk ?? 0, h?.warp ?? 0, h?.zoom ?? 1, h?.roll ?? 0, h?.hue ?? 0, h?.sat ?? 1, h?.exposure ?? 1);
+    const q = this.stage.pose;
+    v.push(q.zoom, q.roll, q.tx, q.ty, q.hue, q.sat, q.exposure, this.stage.flash);
+    for (let i = 0; i < v.length; i++) this.cols[i].push(Math.round(v[i] * 1e5) / 1e5);
+  }
+  json(): string {
+    return JSON.stringify({ names: this.names, cols: this.cols.map((c) => c.map((x) => (Number.isFinite(x) ? x : null))) });
+  }
+}
+
+// ------------------------------------------------------------------ counterfactuals
+
+/**
+ * A counterfactual variant of the base render. All variants render in lockstep with the base
+ * (own Stage, own seeded Math.random stream, same frame clock), so any divergence comes from
+ * the change alone:
+ *   shift   the music timeline moved by `beats` (the animation clock stays; only MusicState
+ *           and the live frame come from t + shift): does the picture follow the timing?
+ *   offset  the music from `seconds` later in the song (content, not just timing)
+ *   mute    one stem removed: its MusicState fields zeroed (stems, onsets, presence, timbre)
+ *           and its spectral region (audio.ts stemRegion, scaled by the stem's presence) taken
+ *           out of the emulated live spectrum / levels / waveform
+ *   ablate  one reaction's gain set to 0 (same programs, same indices)
+ *   gain    every level-like music value scaled by `factor` (0.98: an inaudible change). The
+ *           divergence it causes is the chaos floor: how much the preset amplifies a
+ *           perturbation that carries no musical meaning.
+ */
+export type Variant =
+  | { kind: 'shift'; beats: number }
+  | { kind: 'offset'; seconds: number }
+  | { kind: 'mute'; stem: StemId }
+  | { kind: 'ablate'; reaction: number }
+  | { kind: 'gain'; factor: number };
+
+export const variantId = (v: Variant): string =>
+  v.kind === 'shift' ? `shift${v.beats}b` : v.kind === 'offset' ? `offset${Math.round(v.seconds)}s` : v.kind === 'mute' ? `mute-${v.stem}` : v.kind === 'gain' ? `gain${v.factor}` : `ablate-r${v.reaction}`;
+
+class MusicSource {
+  private sampler: TimelineSampler;
+  private live: OfflineLive;
+  private gains: Float32Array | null = null;
+  constructor(private song: Song, private v: Variant | null) {
+    this.sampler = new TimelineSampler(song.result);
+    this.live = new OfflineLive(song.pcm, song.sr);
+    if (v?.kind === 'mute') {
+      this.gains = new Float32Array(1024);
+      this.live.gain = this.gains;
+    }
+  }
+  state(t: number, dt: number): MusicState {
+    const v = this.v;
+    const dur = this.song.data.duration;
+    let tm = t;
+    if (v?.kind === 'shift') tm = t + (v.beats * 60) / (this.song.data.bpm || 120);
+    else if (v?.kind === 'offset') tm = (((t + v.seconds) % dur) + dur) % dur;
+    if (v?.kind === 'mute' && this.gains) {
+      const r = this.song.result;
+      const f = Math.max(0, Math.min(r.numFrames - 1, Math.round(tm * r.frameRate)));
+      const pres = r.stemPresence[v.stem][f];
+      const hz = this.song.sr / 2048;
+      for (let k = 0; k < 1024; k++) this.gains[k] = Math.max(0, 1 - pres * stemRegion(v.stem, k * hz));
+    }
+    const s = this.sampler.sample(Math.max(0, tm), dt, true, this.live.read(Math.max(0, tm), dt));
+    s.time = t;
+    if (v?.kind === 'gain') {
+      const f = v.factor;
+      for (const k of ['drums', 'bass', 'vocals', 'other'] as StemId[]) {
+        s.stems[k] *= f;
+        s.stemOnsets[k] *= f;
+      }
+      s.loudness *= f;
+      s.bass *= f;
+      s.mid *= f;
+      s.treb *= f;
+      s.bassAtt *= f;
+      s.midAtt *= f;
+      s.trebAtt *= f;
+      for (let i = 0; i < s.spectrum.length; i++) s.spectrum[i] *= f;
+      for (let i = 0; i < s.waveform.length; i++) s.waveform[i] *= f;
+    }
+    if (v?.kind === 'mute') {
+      s.stems[v.stem] = 0;
+      s.stemOnsets[v.stem] = 0;
+      s.stemPresence[v.stem] = 0;
+      if (s.timbre) s.timbre[v.stem] = { bright: 0, noise: 0, rough: 0, attack: 0 };
+    }
+    return s;
+  }
+}
+
+/** Box-downsample an RGBA bottom-up frame to gw x gh RGB floats 0..1. */
+function shrink(px: Uint8Array, w: number, h: number, gw: number, gh: number, out: Float32Array): void {
+  out.fill(0);
+  const sx = gw / w;
+  const sy = gh / h;
+  for (let y = 0; y < h; y++) {
+    const gy = Math.min(gh - 1, Math.floor(y * sy));
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const k = (gy * gw + Math.min(gw - 1, Math.floor(x * sx))) * 3;
+      out[k] += px[i];
+      out[k + 1] += px[i + 1];
+      out[k + 2] += px[i + 2];
+    }
+  }
+  const norm = 1 / (255 * (w / gw) * (h / gh));
+  for (let k = 0; k < out.length; k++) out[k] *= norm;
+}
+
+function meanAbs(a: Float32Array, b: Float32Array): number {
+  let s = 0;
+  for (let k = 0; k < a.length; k++) s += Math.abs(a[k] - b[k]);
+  return s / a.length;
+}
+
+export interface CfOpts {
+  song: string;
+  preset?: string;
+  genome?: Genome;
+  name?: string;
+  clips?: 'auto' | ClipWindow[];
+  /** Default: half-bar shift, a far offset, each stem muted, each reaction ablated. */
+  variants?: Variant[];
+  w?: number;
+  h?: number;
+  fps?: number;
+  seed?: number;
+  warm?: number;
+  particleCap?: number;
+  flameCap?: number;
+}
+
+async function counterfactual(opts: CfOpts) {
+  const song = await loadSong(opts.song);
+  let g = opts.genome;
+  let id = opts.name ?? 'custom';
+  let name = opts.name ?? 'custom';
+  if (!g) {
+    const seed = SEEDS.find((x) => x.origin === opts.preset);
+    if (!seed) throw new Error('no seed ' + opts.preset);
+    g = seed.genome;
+    id = seed.origin;
+    name = seed.name;
+  }
+  const bpb = Math.max(2, song.data.beatsPerBar || 4);
+  const variants: Variant[] = opts.variants ?? [
+    { kind: 'shift', beats: bpb / 2 },
+    // Chaos floor: an inaudible 2 % level change; divergence here is amplification, not meaning.
+    { kind: 'gain', factor: 0.98 },
+    { kind: 'offset', seconds: Math.round(song.data.duration * 0.37) },
+    ...(['drums', 'bass', 'vocals', 'other'] as StemId[]).map((stem) => ({ kind: 'mute' as const, stem })),
+    ...g.reactions.slice(0, 6).map((_, reaction) => ({ kind: 'ablate' as const, reaction })),
+  ];
+  const w = opts.w ?? 320, h = opts.h ?? 180, fps = opts.fps ?? 30, seed = opts.seed ?? 1, warm = opts.warm ?? 3;
+  const wins = !opts.clips || opts.clips === 'auto' ? autoWindows(song.data, song.hooks) : opts.clips;
+  const e = engine();
+  const results = [];
+  for (const win of wins) {
+    const tStart = performance.now();
+    const all: (Variant | null)[] = [null, ...variants];
+    const lanes = [];
+    for (const v of all) {
+      const gv = v?.kind === 'ablate' ? cloneGenome(g) : g;
+      if (v?.kind === 'ablate') gv.reactions[v.reaction].gain = 0;
+      status('compile ' + (v ? variantId(v) : 'base'));
+      const progs = await programs(e, gv);
+      const st = new Stage(e, { offscreen: true, particleCap: opts.particleCap ?? 262144, flameCap: opts.flameCap ?? 524288 });
+      st.resize(w, h);
+      const slot = st.makeSlot(gv, progs);
+      st.slots = [slot];
+      st.resetHistory();
+      lanes.push({ v, st, slot, src: new MusicSource(song, v), rand: mulberry32(seed), px: new Uint8Array(w * h * 4), small: new Float32Array(80 * 45 * 3) });
+    }
+    const dt = 1 / fps;
+    const t0 = Math.max(0, win.start - warm);
+    const kStart = Math.round((win.start - t0) * fps);
+    const kEnd = Math.round((win.end - t0) * fps);
+    const n = kEnd - kStart;
+    const lagF = Math.max(1, Math.round((bpb / 2) * (60 / (song.data.bpm || 120)) * fps)); // half a bar
+    const hist: Float32Array[] = [];
+    const motion = new Float32Array(n); // |base(t) - base(t - half bar)|
+    const step = new Float32Array(n); // |base(t) - base(t - 1)|
+    const div = variants.map(() => new Float32Array(n));
+    const realRandom = Math.random;
+    for (let k = 1; k <= kEnd; k++) {
+      const t = t0 + k * dt;
+      for (const L of lanes) {
+        Math.random = L.rand;
+        L.st.render(L.src.state(t, dt), dt, 'out');
+      }
+      if (k <= kStart) {
+        if (k % 30 === 0) await tick();
+        continue;
+      }
+      const i = k - kStart - 1;
+      for (const L of lanes) {
+        L.st.readPixels(L.px);
+        shrink(L.px, w, h, 80, 45, L.small);
+      }
+      const base = lanes[0].small;
+      for (let j = 1; j < lanes.length; j++) div[j - 1][i] = meanAbs(base, lanes[j].small);
+      hist.push(base.slice());
+      if (hist.length > lagF + 1) hist.shift();
+      step[i] = hist.length >= 2 ? meanAbs(base, hist[hist.length - 2]) : 0;
+      motion[i] = hist.length > lagF ? meanAbs(base, hist[0]) : NaN;
+      if (i % 30 === 0) {
+        status(`cf ${win.label} ${i}/${n}`);
+        await tick();
+      }
+    }
+    Math.random = realRandom;
+    for (const L of lanes) L.st.disposeSlot(L.slot);
+    let mSum = 0, mN = 0, sSum = 0;
+    for (let i = 0; i < n; i++) {
+      if (Number.isFinite(motion[i])) (mSum += motion[i]), mN++;
+      sSum += step[i];
+    }
+    const M = mN ? mSum / mN : 0;
+    const r4 = (x: number) => Math.round(x * 1e5) / 1e5;
+    const out = {
+      version: 1,
+      preset: { id, name },
+      song: { slug: song.slug, path: song.path, bpm: song.data.bpm, beatsPerBar: bpb },
+      clip: { label: win.label, start: t0 + kStart * dt, end: t0 + kEnd * dt, warm },
+      render: { w, h, fps, seed, ms: Math.round(performance.now() - tStart) },
+      halfBarFrames: lagF,
+      /** Mean |base(t) - base(t - half bar)| on an 80x45 RGB grid: the preset's own motion scale. */
+      motion: r4(M),
+      /** Mean |base(t) - base(t - 1 frame)|. */
+      step: r4(sSum / Math.max(1, n)),
+      reactions: g.reactions.slice(0, 6).map((r) => ({ src: r.src, target: `${r.g}${r.i}.${r.k}`, gain: r.gain })),
+      variants: variants.map((v, j) => {
+        const m = div[j].reduce((a, b) => a + b, 0) / Math.max(1, n);
+        return { id: variantId(v), ...v, mean: r4(m), rel: r4(M > 1e-6 ? m / M : 0), series: Array.from(div[j], r4) };
+      }),
+      motionSeries: Array.from(motion, (x) => (Number.isFinite(x) ? r4(x) : null)),
+    };
+    const base = `${id}/${song.slug}__${win.label}`;
+    await save(`cf/${base}.json`, JSON.stringify(out));
+    results.push({ base, frames: n, ms: out.render.ms, motion: out.motion, variants: out.variants.map((v) => `${v.id} ${v.rel.toFixed(2)}`) });
+  }
+  return { preset: id, name, song: song.slug, clips: results };
+}
+
 async function songInfo(path: string) {
   const s = await loadSong(path);
   return {
@@ -346,6 +639,6 @@ async function songInfo(path: string) {
   };
 }
 
-const api = { status: () => statusText, song: songInfo, render, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
+const api = { status: () => statusText, song: songInfo, render, counterfactual, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
 (window as unknown as { avq: typeof api }).avq = api;
 document.getElementById('log')!.textContent = 'avq ready';

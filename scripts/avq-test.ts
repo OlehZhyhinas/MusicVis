@@ -2,7 +2,7 @@
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/avq-test.ts
 
 import {
-  correspondences, flowStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
+  cfSummary, correspondences, flowStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
   syncStats, thumbChange, visualResponse, couplingStats, featureSeries, type ClipLike,
 } from './avq/metrics';
 import type { Hook } from './avq/music';
@@ -247,6 +247,28 @@ function flashes(n: number, at: number[], amp = 0.3): Float32Array {
   const finite = Object.entries(rc.headline).filter(([k]) => k !== 'hookRhyme' && k !== 'structure').every(([, v]) => Number.isFinite(v) && v >= 0 && v <= 1);
   check('report card: headline scores in 0..1', finite, JSON.stringify(rc.headline, (_, v) => (typeof v === 'number' ? +v.toFixed(2) : v)));
   check('report card: beat-locked flashes score sync > 0.6', rc.headline.sync > 0.6, rc.headline.sync.toFixed(2));
+}
+
+// ---------------------------------------------------------------- counterfactual summary
+
+{
+  const cf = {
+    motion: 0.05,
+    reactions: [{ src: 'bass', target: 'sh0.scale', gain: 0.3 }, { src: 'vocals', target: 'sh0.hue', gain: 0.2 }],
+    variants: [
+      { id: 'shift2b', kind: 'shift', beats: 2, rel: 0.9 },
+      { id: 'gain0.98', kind: 'gain', rel: 0.1 },
+      { id: 'offset80s', kind: 'offset', rel: 1.2 },
+      { id: 'mute-drums', kind: 'mute', stem: 'drums', rel: 0.6 },
+      { id: 'mute-other', kind: 'mute', stem: 'other', rel: 0.11 },
+      { id: 'ablate-r0', kind: 'ablate', reaction: 0, rel: 0.4 },
+      { id: 'ablate-r1', kind: 'ablate', reaction: 1, rel: 0.12 },
+    ],
+  };
+  const s = cfSummary(cf);
+  check('cf: sync sensitivity = desync - chaos floor', Math.abs(s.syncSensitivity - 0.8) < 1e-9, s.syncSensitivity.toFixed(2));
+  check('cf: stem footprints subtract the floor', Math.abs(s.stems.drums - 0.5) < 1e-9 && s.stems.other < 0.02, JSON.stringify(s.stems));
+  check('cf: a reaction within the chaos floor is dead', s.reactions[1].dead && !s.reactions[0].dead && s.dead === 1, JSON.stringify(s.reactions));
 }
 
 console.log(failed ? `FAILED: ${failed} check(s)` : 'PASSED: 0 failing check(s)');

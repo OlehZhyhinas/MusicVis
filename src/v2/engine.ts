@@ -2795,7 +2795,7 @@ export interface RenderStats {
 }
 
 /** The parameter set a reaction target names (see schemaFor). */
-function paramsFor(g: Genome, group: GeneGroup, i: number): Params | null {
+export function paramsFor(g: Genome, group: GeneGroup, i: number): Params | null {
   switch (group) {
     case 'op': return g.chain[i]?.p ?? null;
     case 'car': return g.carrier.p;

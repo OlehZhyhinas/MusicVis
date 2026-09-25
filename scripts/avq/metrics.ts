@@ -806,6 +806,8 @@ export interface ReportCard {
   structure: StructureStats;
   flow: FlowStats;
   interest: InterestStats;
+  /** Present when counterfactual renders exist for the same clip. */
+  counterfactual?: CfSummary;
   notes: string[];
 }
 
@@ -862,4 +864,56 @@ export function reportCard(c: ClipLike, meta: { preset: string; song: string; cl
   if (interest.activity > 0.08 && interest.predictability < 0.15) notes.push('chaotic: high change with little predictability');
   if (Number.isFinite(structure.score) && structure.score < 0.2 && structure.boundaries.length) notes.push(`section changes barely visible (look-change ratio ${f2(mean(structure.boundaries.map((b) => b.ratio)))})`);
   return { preset: meta.preset, song: meta.song, clip: meta.clip, frames: c.n, headline, sync, coupling, rhyme, melody, correspond, structure, flow, interest, notes };
+}
+
+// ------------------------------------------------------------------ counterfactuals
+
+/** Minimal shape of a counterfactual result (scripts/avq/page.ts counterfactual()). */
+export interface CfLike {
+  motion: number;
+  variants: { id: string; kind: string; rel: number; stem?: string; reaction?: number; beats?: number }[];
+  reactions: { src: string; target: string; gain: number }[];
+}
+
+export interface CfSummary {
+  /** Divergence under a half-bar desync, relative to the preset's own half-bar motion. */
+  desync: number;
+  /** Divergence under an inaudible 2 % level change (amplification of meaningless perturbations: chaos). */
+  chaos: number;
+  /** desync - chaos, floored at 0: what the timing itself explains. */
+  syncSensitivity: number;
+  /** Divergence with the music from elsewhere in the song. */
+  content: number;
+  /** Each stem's visual footprint (divergence when it is removed, relative), minus the chaos floor. */
+  stems: Record<string, number>;
+  /** dead: no visible effect beyond the chaos floor; masked: the preset is too chaotic (floor >= 0.3) to tell. */
+  reactions: { index: number; src: string; target: string; rel: number; dead: boolean; masked: boolean }[];
+  dead: number;
+  /** 0..1 headline: timing sensitivity. */
+  score: number;
+}
+
+export const DEAD_REACTION = 0.03;
+/** Chaos floor above which single-change counterfactuals cannot be told from amplified noise. */
+export const CHAOTIC = 0.3;
+
+export function cfSummary(cf: CfLike): CfSummary {
+  const find = (pred: (v: CfLike['variants'][number]) => boolean) => cf.variants.find(pred)?.rel ?? NaN;
+  const shifts = cf.variants.filter((v) => v.kind === 'shift').sort((a, b) => (a.beats ?? 0) - (b.beats ?? 0));
+  const desync = shifts.length ? shifts[shifts.length - 1].rel : NaN;
+  const chaos = find((v) => v.kind === 'gain');
+  const floor = Number.isFinite(chaos) ? chaos : 0;
+  const stems: Record<string, number> = {};
+  for (const v of cf.variants) if (v.kind === 'mute' && v.stem) stems[v.stem] = Math.max(0, v.rel - floor);
+  const reactions = cf.variants
+    .filter((v) => v.kind === 'ablate' && v.reaction !== undefined)
+    .map((v) => {
+      const masked = floor >= CHAOTIC && v.rel < floor * 1.5;
+      return { index: v.reaction!, src: cf.reactions[v.reaction!]?.src ?? '?', target: cf.reactions[v.reaction!]?.target ?? '?', rel: v.rel, masked, dead: !masked && v.rel - floor < DEAD_REACTION };
+    });
+  const syncSensitivity = Math.max(0, (Number.isFinite(desync) ? desync : shifts.at(-1)?.rel ?? 0) - floor);
+  return {
+    desync, chaos, syncSensitivity, content: find((v) => v.kind === 'offset'), stems, reactions,
+    dead: reactions.filter((r) => r.dead).length, score: clamp01(syncSensitivity / 0.6),
+  };
 }

@@ -12,6 +12,8 @@
 //   --frames                    also save every frame as JPEG (for review clips / filmstrips)
 //   --jobs N                    parallel tabs (default 1, max 3)
 //   --info                      only analyse the songs and print sections, moments, hooks, windows
+//   --cf                        counterfactual lockstep renders instead (half-bar shift, far offset,
+//                               each stem muted, each reaction ablated) -> .testdata/avq/cf/
 //   --keep                      leave vite/chrome running afterwards
 
 import { readdirSync } from 'node:fs';
@@ -53,6 +55,8 @@ export interface Job {
   preset: string;
   song: string;
   opts: Record<string, unknown>;
+  /** Page method: 'render' (default) or 'counterfactual'. */
+  method?: string;
 }
 
 /** Run jobs over up to `jobs` tabs, one page load per job. */
@@ -66,7 +70,7 @@ export async function runJobs(jobs: Job[], parallel: number, onDone: (j: Job, r:
         try {
           tab.logs.length = 0;
           await tab.load();
-          const r = await tab.eval(`avq.render(${JSON.stringify({ preset: j.preset, song: j.song, ...j.opts })})`);
+          const r = await tab.eval(`avq.${j.method ?? 'render'}(${JSON.stringify({ preset: j.preset, song: j.song, ...j.opts })})`);
           onDone(j, r);
         } catch (e) {
           onDone(j, null, new Error(String((e as Error).message) + (tab.logs.length ? ' | ' + tab.logs.slice(-3).join(' | ') : '')));
@@ -102,7 +106,9 @@ async function main() {
     for (const k of ['w', 'h', 'fps', 'seed', 'warm']) if (a[k] !== undefined) opts[k] = Number(a[k]);
     if (a.frames) opts.frames = true;
     const jobs: Job[] = [];
-    for (const s of songs) for (const p of presets) jobs.push({ preset: p, song: s, opts });
+    const method = a.cf ? 'counterfactual' : 'render';
+    if (a.cf) delete opts.frames;
+    for (const s of songs) for (const p of presets) jobs.push({ preset: p, song: s, opts, method });
     const t0 = Date.now();
     let done = 0;
     await runJobs(jobs, Number(a.jobs ?? 1), (j, r, err) => {

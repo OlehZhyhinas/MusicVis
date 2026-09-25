@@ -19,7 +19,7 @@ export function listClips(filter: { preset?: string; song?: string; label?: stri
     if (filter.preset && p !== filter.preset) continue;
     const pd = join(dir, p);
     for (const f of readdirSync(pd).sort()) {
-      if (!f.endsWith('.json')) continue;
+      if (!f.endsWith('.json') || f.endsWith('.inst.json')) continue;
       const b = f.slice(0, -5);
       const [song, label] = b.split('__');
       if (filter.song && song !== filter.song) continue;
@@ -47,4 +47,27 @@ export function loadSong(slug: string): SongDump {
   const j = JSON.parse(readFileSync(join(OUT, 'songs', slug + '.json'), 'utf8'));
   const dec = (r: Record<string, string>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, f32(v)]));
   return { ...j, chroma: f32(j.chroma), loudness: f32(j.loudness), complexity: f32(j.complexity), stems: dec(j.stems), stemOnsets: dec(j.stemOnsets), stemPresence: dec(j.stemPresence) };
+}
+
+/** Engine instrumentation recorded with a clip (per-frame columns by name), or null. */
+export function loadInst(base: string, dir = join(OUT, 'clips')): { names: string[]; cols: (number | null)[][] } | null {
+  const p = join(dir, base + '.inst.json');
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
+}
+
+export interface CfResult {
+  preset: { id: string; name: string };
+  song: { slug: string; bpm: number; beatsPerBar: number };
+  clip: { label: string; start: number; end: number };
+  halfBarFrames: number;
+  motion: number;
+  step: number;
+  reactions: { src: string; target: string; gain: number }[];
+  variants: { id: string; kind: string; mean: number; rel: number; series: number[]; stem?: string; reaction?: number }[];
+  motionSeries: (number | null)[];
+}
+
+export function loadCf(base: string): CfResult | null {
+  const p = join(OUT, 'cf', base + '.json');
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
 }

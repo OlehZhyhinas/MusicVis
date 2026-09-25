@@ -84,6 +84,13 @@ export class OfflineLive {
   }
 
   /** The LiveAudioFrame an AnalyserNode would give with the playhead at time t. */
+  /**
+   * Optional per-bin magnitude gain (1024 bins of sr/2048 Hz) applied before smoothing, for
+   * counterfactual renders that take a stem out of the live path; the waveform is scaled by
+   * the resulting RMS ratio.
+   */
+  gain: Float32Array | null = null;
+
   read(t: number, dt: number): LiveAudioFrame {
     const end = Math.round(t * this.sr);
     const pcm = this.pcm;
@@ -95,10 +102,22 @@ export class OfflineLive {
     const x = new Float32Array(this.N);
     for (let i = 0; i < this.N; i++) x[i] = this.buf[i] * this.win[i];
     this.fft.forward(x, this.re, this.im);
+    const gain = this.gain;
+    let pAll = 0;
+    let pKept = 0;
     for (let k = 0; k < 1024; k++) {
-      const mag = Math.hypot(this.re[k], this.im[k]) / this.N;
+      let mag = Math.hypot(this.re[k], this.im[k]) / this.N;
+      if (gain) {
+        pAll += mag * mag;
+        mag *= gain[k];
+        pKept += mag * mag;
+      }
       this.smooth[k] = 0.5 * this.smooth[k] + 0.5 * mag;
       this.freqDb[k] = this.smooth[k] > 0 ? 20 * Math.log10(this.smooth[k]) : -Infinity;
+    }
+    if (gain && pAll > 0) {
+      const g = Math.sqrt(pKept / pAll);
+      for (let i = 0; i < waveform.length; i++) waveform[i] *= g;
     }
     const spectrumDb = downsampleAverage(this.freqDb, 512);
     const spectrum = new Float32Array(512);
@@ -207,5 +226,27 @@ export class MelodyProbe {
     const off = den !== 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (p0 - p2)) / den)) : 0;
     const f = (best + off) * hz;
     return { midi: 69 + 12 * Math.log2(f / 440), salience };
+  }
+}
+
+export type StemId = 'drums' | 'bass' | 'vocals' | 'other';
+
+/**
+ * Rough spectral region of each stem (weight 0..1 per frequency), used to take a stem out of
+ * the emulated live spectrum in stem-removal counterfactuals. The analysis only has stem
+ * ENVELOPES (HPSS + mid/side, no audio), so this is an approximation: the removed share of a
+ * bin is region weight x the stem's absolute presence at that moment.
+ */
+export function stemRegion(stem: StemId, hz: number): number {
+  const ramp = (x: number, a: number, b: number) => Math.max(0, Math.min(1, (x - a) / (b - a)));
+  switch (stem) {
+    case 'bass':
+      return 1 - ramp(hz, 200, 400);
+    case 'vocals':
+      return ramp(hz, 150, 300) * (1 - ramp(hz, 3500, 6000));
+    case 'other':
+      return 0.3 + 0.7 * ramp(hz, 200, 300) * (1 - 0.5 * ramp(hz, 5000, 8000));
+    case 'drums':
+      return hz < 150 ? 0.6 : hz < 2000 ? 0.5 : hz < 5000 ? 0.6 : 0.8;
   }
 }

@@ -6,8 +6,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { OUT } from './cdp';
 import type { Clip } from './format';
-import { listClips, loadClip } from './load';
-import { reportCard, type ClipLike, type ReportCard } from './metrics';
+import { listClips, loadCf, loadClip } from './load';
+import { cfSummary, reportCard, type ClipLike, type ReportCard } from './metrics';
 
 export function asClipLike(c: Clip): ClipLike {
   const h = c.header;
@@ -28,6 +28,17 @@ export const clipT0 = (c: Clip) => c.header.clip.start;
 export function cardFor(base: string): ReportCard {
   const c = loadClip(base);
   const card = reportCard(asClipLike(c), { preset: c.header.preset.id, song: c.header.song.slug, clip: c.header.clip.label, clipT0: clipT0(c) });
+  const cf = loadCf(base);
+  if (cf) {
+    const s = cfSummary(cf);
+    card.counterfactual = s;
+    const f2 = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a');
+    if (s.syncSensitivity < 0.15) card.notes.push(`desync-blind: a half-bar shift changes the picture by ${f2(s.desync)} of its own motion (chaos floor ${f2(s.chaos)})`);
+    for (const r of s.reactions) if (r.dead) card.notes.push(`dead reaction r${r.index} ${r.src}>${r.target}: removing it changes ${f2(r.rel)} of the motion`);
+    if (s.chaos >= 0.3) card.notes.push(`chaotic: an inaudible 2% level change already moves the picture by ${f2(s.chaos)} of its motion, so single-change counterfactuals are masked`);
+    const silent = Object.entries(s.stems).filter(([, v]) => v < 0.03).map(([k]) => k);
+    if (silent.length && s.chaos < 0.3) card.notes.push(`no visual footprint from ${silent.join(', ')}`);
+  }
   const p = join(OUT, 'cards', base + '.json');
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify(card, (_, v) => (typeof v === 'number' ? (Number.isFinite(v) ? +v.toFixed(4) : null) : v)));
@@ -42,12 +53,12 @@ async function main() {
   for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
   const bases = listClips({ preset: a.preset as string, song: a.song as string, label: a.label as string });
   const cols = ['overall', 'sync', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'] as const;
-  if (!a.json) console.log('clip'.padEnd(48) + cols.map((c) => c.slice(0, 8).padStart(9)).join(''));
+  if (!a.json) console.log('clip'.padEnd(48) + cols.map((c) => c.slice(0, 8).padStart(9)).join('') + '  cfSync');
   for (const b of bases) {
     const card = cardFor(b);
     if (a.json) console.log(JSON.stringify(card));
     else {
-      console.log(b.padEnd(48) + cols.map((c) => f2(card.headline[c]).padStart(9)).join(''));
+      console.log(b.padEnd(48) + cols.map((c) => f2(card.headline[c]).padStart(9)).join('') + (card.counterfactual ? f2(card.counterfactual.score).padStart(8) : ''));
       for (const n of card.notes) console.log('    - ' + n);
     }
   }
