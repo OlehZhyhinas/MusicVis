@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 77;
+export const SEED_VERSION = 78;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2165,6 +2165,26 @@ const NOTES: Def[] = [
       rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.25 }),
       rx('hit', 'car', 0, 'blur', 0.3, { atk: 0.01, rel: 0.3 }),
       rx('glide', 'sh', 0, 'glow', 0.4, { atk: 0.05, rel: 0.4 }),
+    ],
+  },
+  {
+    // A night pond: the melody skims across just above the waterline and is mirrored in it. Every
+    // note start drops a ring that spreads and fades on the surface, so a staccato riff rains
+    // circles; a sung line glides over the water as a thin shimmering thread, beading on vibrato.
+    // Note starts stir the water under the picture, which blurs the reflection.
+    origin: 'N04', name: 'Ripple Pond', energy: [0.1, 0.75], scheme: 'triad', hue: 0.5,
+    color: { adapt: 0.35, bloom: 1.2, vignette: 0.5, reflect: 1, reflectY: -0.04 }, carrier: 'warp', car: { halfLife: 0.5, blur: 0.03, water: 0.35, wsize: 0.05 },
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 5, len: 1.7, height: 0.36, now: 0.15, ribbon: 0.75, thick: 0.005, marks: 1, form: 3, size: 0.05, fade: 0.8, shimmer: 0.7, hues: 0.9, glow: 0.6 }],
+      place: ['point', { x: 0, y: 0.17 }],
+      material: ['glow', { gain: 1.1 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.01, rel: 0.2 }],
+    })],
+    reactions: [
+      rx('noteon', 'car', 0, 'water', 0.35, { atk: 0.01, rel: 0.4 }),
+      rx('vibrato', 'sh', 0, 'shimmer', 0.3, { atk: 0.1, rel: 0.5 }),
+      rx('legato', 'sh', 0, 'thick', 0.35, { atk: 0.4, rel: 0.8 }),
     ],
   },
 ];

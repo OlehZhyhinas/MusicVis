@@ -155,7 +155,7 @@ vec3 FLD(vec2 p) {
     } else if (form == 3) {
       // Ripple: a ring spreading from the note start.
       float rr = r * (0.4 + mage * 3.0);
-      v = glow(abs(dd - rr), aa + r * 0.12) * exp(-mage * 1.5) * 1.3 + glow(dd, r * 0.3 + aa) * env;
+      v = glow(abs(dd - rr), aa + r * 0.18) * exp(-mage * 1.2) * 1.8 + glow(dd, r * 0.35 + aa) * env;
     } else {
       v = glow(dd, r * 0.5 + aa) + glow(dd, r * 1.8) * 0.3;
     }
