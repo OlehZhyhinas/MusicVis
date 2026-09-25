@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 43;
+export const SEED_VERSION = 44;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1335,6 +1335,24 @@ const DRIFT: Def[] = [
     })],
     reactions: [rx('drums', 'sh', 0, 'r', 0.3, { atk: 0.01, rel: 0.25 }), rx('bass', 'pl', 0, 'radius', 0.25, { atk: 0.05, rel: 0.4 })],
     drift: { step: 0.8, kinds: 1, what: 1, ret: 0.9, morph: 2, bound: 0.3, seed: 0.9 },
+  },
+  {
+    // Stained glass: a slow Voronoi lattice of lead veins with glowing panes. The window itself never
+    // changes; only the light through it does. Each section the palette, saturation, bloom and contrast
+    // drift a long way over eight bars, like the day passing behind the glass, and a returning section
+    // brings its own light back.
+    origin: 'W03', name: 'Stained Glass Seasons', energy: [0.1, 0.7], scheme: 'analogous', hue: 0.1,
+    color: { sat: 0.9, exposure: 1.05, adapt: 0.3, bloom: 0.8, vignette: 0.35, contrast: 0.04 },
+    carrier: 'warp', car: { halfLife: 0.2, floor: 0.2 },
+    chain: [op('rotate', { lock: 0, rate: 0.0004 })],
+    bodies: [body({
+      shape: ['cells', { mode: 1, scale: 3, speed: 0.15, warp: 0.4, wall: 0.55, fill: 0.8, var: 0.45, pulse: 0.25 }],
+      material: ['fill', { gain: 1 }],
+      emit: ['trail'],
+      color: ['pitch', { detail: 0.8 }],
+    })],
+    reactions: [rx('loud', 'sh', 0, 'fill', 0.25, { atk: 0.05, rel: 0.5 }), rx('beat', 'sh', 0, 'pulse', 0.3, { atk: 0.01, rel: 0.3 })],
+    drift: { step: 1, kinds: 0, what: 2, ret: 0.7, morph: 8, bound: 0.3, seed: 0.44 },
   },
 ];
 
