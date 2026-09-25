@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 41;
+export const SEED_VERSION = 42;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1377,6 +1377,25 @@ const LANDSCAPE: Def[] = [
       rx('vocals', 'sh', 0, 'glow', 0.3, { atk: 0.05, rel: 0.5 }),
       rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
       rx('bass', 'sh', 0, 'rim', 0.2, { atk: 0.02, rel: 0.4 }),
+    ],
+  },
+  {
+    // Flying low over an endless desert of dunes at dusk, banking with the wind's curves: the dunes swell
+    // taller as the song gets louder and flatten into salt pans in breakdowns, pairs of light pillars
+    // stand at every section start like beacons marking the route, and each drop rises from the horizon
+    // as a sunlit pass the flight climbs toward through the whole build (40 s of the song in view).
+    // The kick drum jolts the glider, the bass swells the beacons, the loudness raises the dunes.
+    origin: 'L03', name: 'Dune Glider', energy: [0.1, 0.75], scheme: 'complementary', hue: 0.08,
+    color: { adapt: 0.4, bloom: 1.3, vignette: 0.45 }, carrier: 'warp', decay: 0.75,
+    bodies: [body({
+      shape: ['landscape', { path: 2, ground: 2, mark: 3, res: 0.5, look: 40, height: 0.3, relief: 0.8, rough: 0.8, wind: 0.8, fog: 0.3, glow: 0.8, tint: 0.3, kick: 0.4, rim: 0.4 }],
+      material: ['fill', { gain: 1.15 }],
+      color: ['height', { amount: 0.3 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'glow', 0.25, { atk: 0.02, rel: 0.4 }),
+      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }),
+      rx('loud', 'sh', 0, 'relief', 0.15, { atk: 0.2, rel: 2 }),
     ],
   },
 ];

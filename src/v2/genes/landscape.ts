@@ -330,7 +330,7 @@ export interface LandCtx {
   keyHue: number;
 }
 
-const CAM_H = [[0.25, 0.8], [0.15, 0.5], [1.0, 3.0], [0.45, 1.2]];
+const CAM_H = [[0.25, 0.8], [0.15, 0.5], [2.2, 3.0], [0.45, 1.2]];
 
 /** Fills the landscape pass uniforms (LAND_VEC4 vec4s) for this frame. */
 export function packLandscape(out: Float32Array, c: LandCtx): void {
@@ -358,7 +358,7 @@ export function packLandscape(out: Float32Array, c: LandCtx): void {
   const zt = z + ahead;
   const gt = groundAt(w, now + ahead / K, relief);
   // Look along the ground ahead: up a climb (so the pass stays in view), down into a valley.
-  const yt = path === 2 ? y - 1.4 - height : gt + ch[0] + ch[1] * height * 0.6 - 0.25 - (path === 1 ? 0.3 : 0);
+  const yt = path === 2 ? y - 1.1 - 0.6 * height : gt + ch[0] + ch[1] * height * 0.6 - 0.25 - (path === 1 ? 0.3 : 0);
   // Bank into the path's turns (flight most, rail not at all).
   const curv = pathX(z + 1.5, wind) - 2 * x + pathX(z - 1.5, wind);
   const bankK = [0.25, 0.15, 1.1, 0][path] ?? 0;
