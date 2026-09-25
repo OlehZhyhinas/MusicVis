@@ -114,9 +114,9 @@ export async function drawSheet(d: SheetData): Promise<HTMLCanvasElement> {
   text(`${h.song.slug}   window ${h.clip.label} ${tOf(0).toFixed(2)}-${tOf(n - 1).toFixed(2)} s   ${h.song.bpm.toFixed(1)} bpm   ${h.render.w}x${h.render.h} @ ${fps} fps, seed ${h.render.seed}`, PAD, PAD + 30, COLORS.dim, 14);
   if (d.card) {
     const hl = d.card.headline as unknown as Record<string, number>;
-    const keys = ['overall', 'sync', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'];
+    const keys = ['overall', 'sync', 'events', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'];
     keys.forEach((k, j) => {
-      const x = PAD + j * 170;
+      const x = PAD + j * 155;
       text(k, x, PAD + 56, COLORS.dim, 12);
       text(fmt(hl[k]), x, PAD + 72, hl[k] < 0.2 ? COLORS.miss : hl[k] > 0.6 ? COLORS.hit : COLORS.text, 22, true);
     });

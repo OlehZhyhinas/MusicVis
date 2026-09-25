@@ -74,7 +74,7 @@ async function main() {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
   const bases = listClips({ preset: a.preset as string, song: a.song as string, label: a.label as string });
-  const cols = ['overall', 'sync', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'] as const;
+  const cols = ['overall', 'sync', 'events', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'] as const;
   if (!a.json) console.log('clip'.padEnd(48) + cols.map((c) => c.slice(0, 8).padStart(9)).join('') + '  cfSync');
   for (const b of bases) {
     const card = cardFor(b);

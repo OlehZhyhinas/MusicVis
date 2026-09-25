@@ -25,7 +25,7 @@ import { JUDGE_FEATURES, judgeVector } from '../../src/v2/judge';
 
 const slugOf = (path: string) => path.split('/').pop()!.replace(/\.[^.]+$/, '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'song';
 
-const HEAD = ['overall', 'sync', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'] as const;
+const HEAD = ['overall', 'sync', 'events', 'coupling', 'hookRhyme', 'melody', 'structure', 'flow', 'interest', 'correspond'] as const;
 
 /** Map a report-card note to a failure-mode category. */
 export function noteCategory(n: string): string {
@@ -35,6 +35,9 @@ export function noteCategory(n: string): string {
   if (n.startsWith('hook rhyme')) return 'no hook rhyme';
   if (n.startsWith('stems not distinguishable')) return 'stems not distinguishable';
   if (n.startsWith('chaotic:')) return 'chaotic (counterfactuals masked)';
+  if (n.startsWith('steady motion')) return 'steady motion (constant spin / sweep)';
+  if (n.startsWith('clock-driven motion')) return 'clock-driven motion (metronome gives the same motion)';
+  if (n.startsWith('clock-locked')) return 'bar-locked motion';
   if (n.startsWith('chaotic')) return 'chaotic motion';
   if (n.startsWith('section changes barely visible')) return 'section changes invisible';
   if (n.startsWith('desync-blind')) return 'desync-blind';
