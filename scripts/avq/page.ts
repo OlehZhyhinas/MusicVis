@@ -112,12 +112,14 @@ async function loadSong(path: string): Promise<Song> {
   status('fetch ' + path);
   const buf = await (await fetch('/avq/file?p=' + encodeURIComponent(path))).arrayBuffer();
   status('decode');
-  const key = path + ':' + buf.byteLength;
+  // Bump when the analysis gains outputs (n1: note tracking); a cached result without them is redone.
+  const key = 'n1:' + path + ':' + buf.byteLength;
   const ctx = new OfflineAudioContext(2, 1, 44100);
   const audio = await ctx.decodeAudioData(buf);
   const t0 = performance.now();
   status('cache');
   let result = await cacheGet(key);
+  if (result && !result.notes) result = undefined;
   if (!result) {
     status('analyse');
     result = await analyzeAudio(audio);
