@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 38;
+export const SEED_VERSION = 39;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1432,6 +1432,26 @@ const GROOVE: Def[] = [
     })],
     reactions: [rx('bass', 'ma', 0, 'gain', 0.35, { atk: 0.03, rel: 0.3 }), rx('swing', 'mo', 0, 'amp', 0.4, { atk: 0.5, rel: 1.5 })],
     groove: { swing: 1.2, sub: 8, sway: 0.03, off: 0.6, lean: 0.7, crisp: 0.7, tick: 2, jitter: 0.6, accent: 0.4 },
+  },
+  {
+    // Three stars circle the centre and spin while the picture streams outward into a spiral tunnel.
+    // The orbit runs on the groove's clock: in a swung song the stars rush through the downbeat and
+    // hang back into the off-beat, and a laid-back backbeat drags the whole wheel a touch behind the
+    // kick; the spiral trail records every lurch. Straight electronic tracks turn it into an even,
+    // slightly ticking wheel.
+    origin: 'Q02', name: 'Laid-Back Orbit', energy: [0.3, 0.85], scheme: 'split', hue: 0.62,
+    color: { adapt: 0.35, bloom: 1.1, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.7, floor: 1 },
+    chain: [op('zoom', { rate: 0.012 }), op('rotate', { lock: 0.0625 })],
+    bodies: [body({
+      shape: ['star', { n: 5, r: 0.045, inner: 0.45 }],
+      place: ['orbit', { count: 3, radius: 0.22, rate: 0.5 }],
+      motion: ['spin', { rate: 0.5 }],
+      material: ['line', { gain: 1.1, width: 1.6, halo: 0.25 }],
+      emit: ['trail', { tip: 0.4 }],
+      feel: ['flow', { atk: 0.02, rel: 0.25, sens: 1.3 }],
+    })],
+    reactions: [rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.03, rel: 0.3 }), rx('push', 'op', 0, 'rate', 0.35, { atk: 0.4, rel: 1.2 })],
+    groove: { swing: 1, sub: 8, sway: 0.008, off: 0.5, lean: 1, crisp: 0.3, tick: 4, jitter: 0.3, accent: 0.5 },
   },
 ];
 
