@@ -15,6 +15,7 @@ import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
 import { crossGroove, jitterGroove, randomGroove } from './genes/groove';
+import { crossTimbre, jitterTimbre, randomTimbre } from './genes/timbre';
 import { crossDejaVu, jitterDejaVu, randomDejaVu } from './genes/dejavu';
 import { crossLyrics, jitterLyrics, randomLyrics } from './genes/lyrics';
 
@@ -774,6 +775,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (harmony) child.harmony = harmony;
     const groove = crossGroove(D.groove, R.groove, rng);
     if (groove) child.groove = groove;
+    const timbre = crossTimbre(D.timbre, R.timbre, rng);
+    if (timbre) child.timbre = timbre;
     const dejavu = crossDejaVu(D.dejavu, R.dejavu, rng);
     if (dejavu) child.dejavu = dejavu;
     const lyrics = crossLyrics(D.lyrics, R.lyrics, rng);
@@ -1161,6 +1164,18 @@ const MUTATORS: [number, string, Mutator][] = [
   [1, 'jitter-groove', (g, rng, amt) => {
     if (!g.groove) return false;
     jitterGroove(g.groove, rng, amt);
+    return true;
+  }],
+  // Timbre as material: rarely gained (or lost), nudged when present.
+  [0.5, 'timbre', (g, rng) => {
+    if (!g.timbre) g.timbre = randomTimbre(rng);
+    else if (rng() < 0.3) delete g.timbre;
+    else jitterTimbre(g.timbre, rng);
+    return true;
+  }],
+  [1, 'jitter-timbre', (g, rng, amt) => {
+    if (!g.timbre) return false;
+    jitterTimbre(g.timbre, rng, amt);
     return true;
   }],
   // Lyrics (the sung words steer the picture): rarely gained (or lost), nudged when present.

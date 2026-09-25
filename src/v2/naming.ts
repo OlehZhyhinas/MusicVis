@@ -227,6 +227,8 @@ const REMEMBERED = ['Remembered', 'Recurring', 'Haunted', 'Nostalgic', 'Returnin
 const EMBOSSED = ['Embossed', 'Burnished', 'Chromed', 'Sculpted', 'Chiseled', 'Polished', 'Hammered', 'Beaten', 'Gilded', 'Mercurial', 'Pewter', 'Repousse'];
 const PSYCHEDELIC = ['Psychedelic', 'Acid', 'Lysergic', 'Trippy', 'Dayglo', 'Technicolor', 'Hallucinatory', 'Kandy', 'Lava-Lamp', 'Tie-Dyed', 'Op-Art', 'Blacklight'];
 const SWUNG = ['Swung', 'Loping', 'Shuffling', 'Jazzy', 'Grooving', 'Swaggering', 'Sauntering', 'Strutting', 'Swinging', 'Bopping', 'Ambling', 'Tight'];
+const LUSTROUS = ['Lustrous', 'Gleaming', 'Glassine', 'Vitreous', 'Opaline', 'Silvered', 'Sheened', 'Refractive', 'Prismed', 'Porcelain', 'Satin', 'Sleek'];
+const GRITTY = ['Gritty', 'Velvet', 'Velveteen', 'Plush', 'Frosted', 'Sandy', 'Fuzzy', 'Matte', 'Suede', 'Rasping', 'Sandblasted', 'Gauzy'];
 const LOCKSTEP = ['Metronomic', 'Quantized', 'Precise', 'Gridlocked', 'Exacting', 'Machined', 'Robotic', 'Mechanical', 'Punctual', 'Calibrated', 'Clipped', 'Clockbound'];
 const SHIFTING = ['Journeying', 'Morphing', 'Mutating', 'Evolving', 'Shapeshifting', 'Protean', 'Metamorphic', 'Transforming', 'Changeling', 'Chameleon', 'Fluxing', 'Migrant'];
 const HARMONIC = ['Harmonic', 'Cadential', 'Resolving', 'Tonal', 'Consonant', 'Chordal', 'Modulating', 'Diatonic', 'Suspended', 'Chromatic', 'Tempered', 'Tuned'];
@@ -371,6 +373,14 @@ function traits(g: Genome): Trait[] {
     add('shifting', SHIFTING, clamp01(0.4 + dp.step * 0.4 + dp.bound * 0.5 + dp.kinds * 0.1));
   }
   // Groove: motion with the music's timing feel, named swung or lockstep by what it leans on.
+  // Timbre as material: named lustrous (sheen, glass) or gritty (grain, velvet) by what it leans on.
+  if (g.timbre) {
+    const tp = g.timbre.p;
+    const smooth = tp.sheen + tp.glass;
+    const rough = tp.grain + tp.velvet;
+    if (smooth >= rough) add('lustrous', LUSTROUS, clamp01(0.4 + smooth * 0.3));
+    else add('gritty', GRITTY, clamp01(0.4 + rough * 0.3));
+  }
   if (g.groove) {
     const gp = g.groove.p;
     const loose = gp.swing * 0.4 + gp.sway * 6 + gp.jitter * 0.3 + gp.off * 0.2;
@@ -429,7 +439,7 @@ export const ADJ_POOLS: Record<string, readonly string[]> = {
   energetic: ENERGETIC, pale: PALE, vivid: VIVID, mono: MONO, twoTone: TWO_TONE, prismatic: PRISMATIC,
   shadowed: SHADOWED, reflected: REFLECTED, reaching: REACHING, darting: DARTING, stippled: STIPPLED, mottled: MOTTLED,
   sparking: SPARKING, veined: VEINED, flocking: FLOCKING, teeming: TEEMING, painted: PAINTED, stepped: STEPPED, graded: GRADED, generic: GENERIC_ADJ,
-  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED, swung: SWUNG, lockstep: LOCKSTEP,
+  staged: STAGED, embossed: EMBOSSED, psychedelic: PSYCHEDELIC, shifting: SHIFTING, layered: LAYERED, swung: SWUNG, lockstep: LOCKSTEP, lustrous: LUSTROUS, gritty: GRITTY,
   harmonic: HARMONIC, remembered: REMEMBERED, lyrical: LYRICAL,
 };
 

@@ -49,6 +49,7 @@ import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from '.
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 import { HARMONY_COST_MS, repairHarmony, validateHarmony, type HarmonyGene } from './genes/harmony';
 import { GROOVE_COST_MS, repairGroove, validateGroove, type GrooveGene } from './genes/groove';
+import { repairTimbre, timbreCost, validateTimbre, type TimbreGene } from './genes/timbre';
 import { dejavuCost, repairDejaVu, validateDejaVu, type DejaVuGene } from './genes/dejavu';
 import { lyricsCost, repairLyrics, validateLyrics, type LyricsGene } from './genes/lyrics';
 export { FLAME_VARIATIONS };
@@ -536,7 +537,9 @@ export interface CarrierGene {
 // Groove (src/analysis/groove.ts): swing = how swung the playing is (0 straight .. 1 triplet); push = how far the
 // backbeat leans off the grid (either way); humanity = how loose the timing is; synco = syncopation density.
 // Lyrics (src/lyrics): line = a pulse on each sung line; valence / arousal = the words' mood (the music's without lyrics).
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal'] as const;
+// Timbre (src/analysis/timbre.ts, the mix): bright = spectral brightness; noisy = noisiness (breath, distortion,
+// cymbals); rough = roughness (beating, buzzy, inharmonic partials); attack = how sharp the onsets are.
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal', 'bright', 'noisy', 'rough', 'attack'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,
@@ -605,6 +608,8 @@ export interface Genome {
   harmony?: HarmonyGene;
   /** Optional: motion takes the music's timing feel (src/v2/genes/groove.ts). */
   groove?: GrooveGene;
+  /** Optional: the sound's timbre becomes the bodies' material (src/v2/genes/timbre.ts). */
+  timbre?: TimbreGene;
   /** Optional: a returning section recalls its first appearance (src/v2/genes/dejavu.ts). */
   dejavu?: DejaVuGene;
   /** Optional: what the sung words are about steers the picture, and the line can be shown (src/v2/genes/lyrics.ts). */
@@ -959,6 +964,7 @@ export function repair(input: unknown): Genome {
   if (isObj(g.drift)) out.drift = repairDrift(g.drift);
   if (isObj(g.harmony)) out.harmony = repairHarmony(g.harmony);
   if (isObj(g.groove)) out.groove = repairGroove(g.groove);
+  if (isObj(g.timbre)) out.timbre = repairTimbre(g.timbre);
   if (isObj(g.dejavu)) out.dejavu = repairDejaVu(g.dejavu);
   if (isObj(g.lyrics)) out.lyrics = repairLyrics(g.lyrics);
   fitBudget(out);
@@ -1223,6 +1229,7 @@ export function validate(g: Genome): string[] {
   if (g.drift !== undefined) errs.push(...validateDrift(g.drift));
   if (g.harmony !== undefined) errs.push(...validateHarmony(g.harmony));
   if (g.groove !== undefined) errs.push(...validateGroove(g.groove));
+  if (g.timbre !== undefined) errs.push(...validateTimbre(g.timbre));
   if (g.dejavu !== undefined) errs.push(...validateDejaVu(g.dejavu));
   if (g.lyrics !== undefined) errs.push(...validateLyrics(g.lyrics));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
@@ -1266,7 +1273,7 @@ export function bodyKey(b: BodyGene): string {
 export function structuralKey(g: Genome): string {
   const ops = g.chain.map((o) => `${o.op}${o.stage === 'view' ? '@v' : ''}`).join(',');
   const bodies = g.bodies.map(bodyKey).join(',');
-  return `${ops}|${bodies}|${g.carrier.kind}|r${g.tone.p.reflect}t${g.tone.p.tonemap}`;
+  return `${ops}|${bodies}|${g.carrier.kind}|r${g.tone.p.reflect}t${g.tone.p.tonemap}${g.timbre ? '|tmb' : ''}`;
 }
 
 export function genomeHash(g: Genome): number {
@@ -1431,6 +1438,15 @@ export function estimateCost(g: Genome): number {
   // A drifting preset may play genomes up to driftCost() of its own (the planner rejects dearer
   // ones), so its cost is the worst case over any path.
   if (g.groove) ms += GROOVE_COST_MS;
+  if (g.timbre) {
+    // The surface wraps each material evaluation of a distance-field body.
+    const evals = g.bodies.map((b) => {
+      const c = SHAPE_CLASS[b.shape.kind];
+      if (!(c === 'sdf' || (c === 'curve' && b.fuse))) return 0;
+      return b.place.p.fuse > 0 ? 1 : Math.min(evalCount(b), 3);
+    });
+    ms += timbreCost(g.timbre, evals, g.tone.p.relief > 0.001);
+  }
   if (g.drift) ms = driftCost(ms) + DRIFT_COST_MS;
   return ms;
 }

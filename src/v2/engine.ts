@@ -14,7 +14,8 @@ import { hueMapUniforms } from './genes/huemap';
 import { reliefUniforms } from './genes/relief';
 import type { AnalysisResult, MusicState, Section, StemName } from '../types';
 import { grooveClock, grooveOffset, type GrooveOffset } from './genes/groove';
-import type { GrooveStats } from '../types';
+import type { GrooveStats, TimbreStats } from '../types';
+import { timbreLook, timbreSource, timbreTone, timbreUniforms, type TimbreLook } from './genes/timbre';
 import { Bloom } from '../render/bloom';
 import { Flame, type FlameSpec } from '../render/flame';
 import { Fluid } from '../render/fluid';
@@ -142,6 +143,8 @@ export interface Frame {
   chord: number; tonnetzX: number; tonnetzY: number;
   /** Timing feel (swing, push, humanity, syncopation; neutral when not analysed). */
   groove: GrooveStats;
+  /** Timbre per stem and the mix (undefined when not analysed). */
+  timbre: Record<'mix' | StemName, TimbreStats> | undefined;
   /** Beat surge envelope: fast attack, slow ease; cruises with loudness, jumps on drops (0..~3). */
   surge: number;
   /** Lyrics: new-line pulse, and the words' valence / arousal (the music's own mood where no words are sung). */
@@ -157,6 +160,7 @@ export class Signals {
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
     tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, chord: -1, tonnetzX: 0.5, tonnetzY: 0.2887, line: 0, valence: 0.5, arousal: 0.5,
     groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
+    timbre: undefined,
   };
   /** Seconds the vocals have been silent (a new line's fallback pulse without lyrics). */
   private vocalRest = 0;
@@ -233,6 +237,7 @@ export class Signals {
     F.groove.push = num(gr?.push, 0);
     F.groove.humanity = num(gr?.humanity, 0);
     F.groove.synco = num(gr?.synco, 0);
+    F.timbre = state.timbre;
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     this.sectionPulse *= Math.exp(-dt * 1.5);
     if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
@@ -387,6 +392,10 @@ export class Signals {
       case 'push': return Math.abs(F.groove.push);
       case 'humanity': return F.groove.humanity;
       case 'synco': return F.groove.synco;
+      case 'bright': return num(F.timbre?.mix.bright, 0);
+      case 'noisy': return num(F.timbre?.mix.noise, 0);
+      case 'rough': return num(F.timbre?.mix.rough, 0);
+      case 'attack': return num(F.timbre?.mix.attack, 0);
       case 'line': return F.line;
       case 'valence': return F.valence;
       case 'arousal': return F.arousal;
@@ -935,7 +944,11 @@ export class Stage {
         .f1('uSat', (1 - 0.45 * F.build) * this.poses.get(s)!.sat)
         .f1('uSweep', F.keyPulse)
         .f1('uReflectY', g.tone.p.reflectY);
-      const rl = reliefUniforms((k) => s.P('col', 0, g.tone.p, k, TONE_SCHEMA));
+      const tget = (k: string) => s.P('col', 0, g.tone.p, k, TONE_SCHEMA);
+      // Timbre: a rough / noisy sound embosses the picture, glossier and more metallic when bright.
+      const tmbG = g.timbre;
+      const tmbT = tmbG ? timbreSource(tmbG, F.timbre) : null;
+      const rl = reliefUniforms(tmbG && tmbT ? (k) => timbreTone(tmbG, tmbT, tget, k) : tget);
       p.f4('uRelief', rl.v[0], rl.v[1], rl.v[2], rl.v[3]).f1('uMetal', rl.metal);
       // Hue-map drift runs on the bar clock, accumulated per slot so the 48-bar wrap never jumps.
       const db = (F.bars - (s.mem['hm.b'] ?? F.bars) + 48) % 48;
@@ -1199,6 +1212,13 @@ export class Stage {
     // Copies: placement, then motion.
     const copies = this.placeCopies(s, b, bi, sdt);
     this.applyMotion(s, b, bi, copies, sdt);
+    if (s.genome.timbre) {
+      // Timbre as material: the surface amounts for this body (smoothed per slot).
+      const tg = s.genome.timbre;
+      let st = this.tmbState.get(s);
+      if (!st || st.u.length !== s.nb * 8) this.tmbState.set(s, (st = { u: new Float32Array(s.nb * 8), m: new Float32Array(s.nb * 5) }));
+      timbreUniforms(tg, timbreLook(tg, timbreSource(tg, F.timbre), this.tmbLook), st.m, bi, F.time, sdt, st.u);
+    }
     if (s.genome.groove) {
       // Groove: sway, off-beat pulse, crisp ticks, onset nudges and syncopated accents.
       const go = grooveOffset(s.genome.groove, F.groove, { beat: F.beats, period: 60 / Math.max(1, F.bpm), dt: sdt, onset: F.onset[0] }, s.mem, `b${bi}.g`, this.grooveOff);
@@ -1350,6 +1370,14 @@ export class Stage {
   }
 
   private grooveOff: GrooveOffset = { dx: 0, dy: 0, da: 0, s: 1 };
+  /** Timbre surface uniforms (two vec4 per body) and their smoothing state, per slot. */
+  private tmbState = new WeakMap<Slot, { u: Float32Array; m: Float32Array }>();
+  private tmbLook: TimbreLook = { sheen: 0, glass: 0, grain: 0, velvet: 0, edge: 0 };
+  private tmbZero = new Float32Array(24);
+  /** A slot's timbre surface uniforms (zeros when the genome has no timbre gene). */
+  private tmbUniforms(s: Slot): Float32Array {
+    return this.tmbState.get(s)?.u ?? this.tmbZero;
+  }
   private clk: BodyClock = { mul: 1, s: 1, lock: true, bars: 0, spin: 0, barPhase: 0, beatPhase: 0 };
   private respBody = { s: null as Slot | null, bi: 0, b: null as BodyGene | null };
 
@@ -2562,6 +2590,7 @@ export class Stage {
       .f4v('uOpA', s.opA)
       .f4v('uOpB', s.opB)
       .f4v('uBd', s.bd)
+      .f4v('uTmb', this.tmbUniforms(s))
       .f4v('uCp', s.cp)
       .f4v('uCq', s.cq)
       .f4v('uWv', s.wv)

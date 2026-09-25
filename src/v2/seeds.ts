@@ -35,9 +35,10 @@ import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
+import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 62;
+export const SEED_VERSION = 63;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -114,6 +115,8 @@ interface Def {
   harmony?: Record<string, number>;
   /** Timing feel for the motion (src/v2/genes/groove.ts); omitted = none. */
   groove?: Record<string, number>;
+  /** The sound's timbre as the bodies' material (src/v2/genes/timbre.ts); omitted = none. */
+  timbre?: Record<string, number>;
   /** Visual deja vu: returning sections recall their first appearance (src/v2/genes/dejavu.ts); omitted = none. */
   dejavu?: Record<string, number>;
 }
@@ -136,6 +139,7 @@ function build(d: Def): Seed {
   if (d.drift) g.drift = { p: { ...defaultParams(DRIFT_SCHEMA), ...d.drift } };
   if (d.harmony) g.harmony = { p: { ...defaultParams(HARMONY_SCHEMA), ...d.harmony } };
   if (d.groove) g.groove = { p: { ...defaultParams(GROOVE_SCHEMA), ...d.groove } };
+  if (d.timbre) g.timbre = { p: { ...defaultParams(TIMBRE_SCHEMA), ...d.timbre } };
   if (d.dejavu) g.dejavu = { p: { ...defaultParams(DEJAVU_SCHEMA), ...d.dejavu } };
   return { origin: d.origin, name: d.name, genome: repair(g) };
 }
@@ -1928,4 +1932,27 @@ const EVOLVED: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED].map(build);
+
+// T01.. showcase timbre as material (src/v2/genes/timbre.ts): what the sound is made of becomes what the
+// bodies are made of: bright sound metallic, pure tones glass, noise and distortion grit, breath velvet.
+const TIMBRE: Def[] = [
+  {
+    // Three liquid blobs orbit and melt into one another. Their surface is the sound: a bright synth
+    // lead turns them to polished chrome with a white highlight, a pure sine pad to clear glass with a
+    // glowing rim, distorted guitars and hi-hat noise to sparkling grit, a breathy vocal to soft velvet
+    // with a bloom around it; every sharp pluck flashes their outline.
+    origin: 'T01', name: 'Timbre Blobs', energy: [0.15, 0.8], scheme: 'analogous', hue: 0.55,
+    color: { adapt: 0.4, bloom: 1.1, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.08, floor: 1 },
+    bodies: [body({
+      shape: ['dot', { r: 0.09 }],
+      place: ['orbit', { count: 3, radius: 0.1, rate: 0.25, follow: 0.1, fuse: 0.12 }],
+      motion: ['pulse', { amp: 0.12 }],
+      material: ['fill', { gain: 1.3, soft: 0.15, halo: 0.3, core: 0.4 }],
+      emit: ['none'],
+    })],
+    reactions: [rx('loud', 'ma', 0, 'gain', 0.25, { atk: 0.05, rel: 0.4 }), rx('bright', 'pl', 0, 'radius', 0.3, { atk: 0.3, rel: 1 })],
+    timbre: { src: 0, sheen: 0.9, glass: 0.8, grain: 0.7, scale: 22, velvet: 0.6, edge: 0.6, emboss: 0 },
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE].map(build);

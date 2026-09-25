@@ -5,6 +5,7 @@
 // structure changes the source, so compiled programs are cached by
 // structuralKey().
 
+import { timbreGlsl, timbreWrap } from './genes/timbre';
 import { MOSAIC_GLSL } from './genes/mosaic';
 import { TUNNEL_GLSL } from './genes/tunnel';
 import { HUEMAP_GLSL } from './genes/huemap';
@@ -1004,7 +1005,7 @@ export function buildSources(g: Genome): Sources {
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
   if (g.tone.p.reflect > 0.5) defs.push('REFLECT');
   if (g.tone.p.tonemap > 0.5) defs.push('LOG_TONE');
-  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL + BLEND_GLSL;
+  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL + BLEND_GLSL + (g.timbre ? timbreGlsl(nb) : '');
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
   const viewOps = g.chain.map((o, i) => (o.stage === 'view' ? opCode(o, i) : '')).join('');
@@ -1015,7 +1016,7 @@ export function buildSources(g: Genome): Sources {
   let masks = '';
   g.bodies.forEach((b, bi) => {
     const bc = bodyCode(b, bi);
-    code += bc.code + '\n';
+    code += (g.timbre ? timbreWrap(bc.code, bi) : bc.code) + '\n';
     if (bodyLayer(b) === 'fb') fbDraw += bc.call('p');
     else topDraw += bc.call('q');
     if (bc.fbMask) masks += `  c *= mix(0.88, 1.0, ${bc.fbMask}(p));\n`;
