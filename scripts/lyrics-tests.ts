@@ -334,6 +334,26 @@ export async function lyricsTests(check: Check): Promise<void> {
     only = null;
     check('lyrics.library.decoded-duration', before === '[00:07.00]album' && after === '[00:22.00]video' && calls.some((c) => c.includes('duration=235')) && calls.length === n,
       `${before} -> ${after}; ${calls.join(' ')}`);
+    // Decoded while the first lookup (without a duration) is still in flight: asked again after it.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((res) => (release = res));
+    let started = 0;
+    const slow = (async (u: string | URL, i?: RequestInit) => {
+      started++;
+      await gate;
+      return mock(u, i);
+    }) as typeof fetch;
+    const lib2 = new LyricsLibrary({ fetch: slow, cache: memoryCache() });
+    only = [2, 3];
+    const seen: (string | undefined)[] = [];
+    const settled = new Promise<void>((res) => (lib2.onChange = () => { seen.push(lib2.get('t2')?.result?.synced); if (seen.length === 2) res(); }));
+    lib2.add('t2', Object.assign(new Blob([new Uint8Array(64)]), { name: 'Band - Song.mp3' }));
+    while (!started) await new Promise((r) => setTimeout(r, 1));
+    lib2.setDuration('t2', 234.8);
+    release();
+    await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
+    only = null;
+    check('lyrics.library.decoded-in-flight', seen[0] === '[00:07.00]album' && seen[1] === '[00:22.00]video', JSON.stringify(seen));
   }
 
   // --------------------------------------------- alignment of synced lyrics to the audio

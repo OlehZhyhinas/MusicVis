@@ -23,6 +23,8 @@ interface Item extends TrackLyrics {
   file: Blob & { name?: string };
   /** The decoded audio's duration (seconds), once known. */
   decoded?: number;
+  /** The duration the last lookup asked with (undefined: none). */
+  askedFor?: number;
   built?: { result: AnalysisResult; track: LyricTrack | null };
 }
 
@@ -88,10 +90,17 @@ export class LyricsLibrary {
     if (!it || !(seconds > 0) || it.decoded === seconds) return;
     it.decoded = seconds;
     if (it.meta) it.meta = { ...it.meta, duration: seconds };
-    const r = it.result;
-    const found = r && (r.status === 'synced' || r.status === 'plain' || r.status === 'instrumental');
-    if (!found || this.queue.includes(id)) return;
-    if (r.duration !== undefined && Math.abs(r.duration - seconds) <= RECHECK_AFTER) return;
+    this.recheck(id);
+  }
+
+  /** Queues a found result for another lookup when it was not asked with the decoded duration and is timed for another length. */
+  private recheck(id: string): void {
+    const it = this.items.get(id);
+    const r = it?.result;
+    if (!it?.decoded || !r || this.queue.includes(id)) return;
+    if (r.status !== 'synced' && r.status !== 'plain' && r.status !== 'instrumental') return;
+    if (it.askedFor !== undefined && Math.abs(it.askedFor - it.decoded) < 0.5) return;
+    if (r.duration !== undefined && Math.abs(r.duration - it.decoded) <= RECHECK_AFTER) return;
     this.queue.unshift(id);
     void this.pump();
   }
@@ -149,11 +158,14 @@ export class LyricsLibrary {
             it.meta = mergeMeta(tags, it.file.name ?? '');
             if (it.decoded) it.meta.duration = it.decoded;
           }
+          it.askedFor = it.meta.duration;
           const res = await lookupLyrics(it.meta, { cache: this.cache, fetch: this.fetchFn });
           if (!this.items.has(id)) continue;
           it.result = res;
           it.status = res.status;
           it.built = undefined;
+          // Decoded while this lookup was in flight: asked again with the real duration.
+          this.recheck(id);
         } catch {
           it.status = 'offline';
         }
