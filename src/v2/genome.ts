@@ -47,6 +47,7 @@ import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 import { TONNETZ_COST, TONNETZ_SCHEMA } from './genes/tonnetz';
 import { NOTES_COST, NOTES_SCHEMA } from './genes/notes';
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
+import { repairAccent, validateAccent, type AccentGene } from './genes/accent';
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
 import { HARMONY_COST_MS, repairHarmony, validateHarmony, type HarmonyGene } from './genes/harmony';
 import { GROOVE_COST_MS, repairGroove, validateGroove, type GrooveGene } from './genes/groove';
@@ -624,6 +625,8 @@ export interface Genome {
   groove?: GrooveGene;
   /** Optional: the sound's timbre becomes the bodies' material (src/v2/genes/timbre.ts). */
   timbre?: TimbreGene;
+  /** Optional: tunes the built-in accents (hook gesture...) every preset gets by default; absent = the defaults (src/v2/genes/accent.ts). */
+  accent?: AccentGene;
   /** Optional: a returning section recalls its first appearance (src/v2/genes/dejavu.ts). */
   dejavu?: DejaVuGene;
   /** Optional: what the sung words are about steers the picture, and the line can be shown (src/v2/genes/lyrics.ts). */
@@ -981,6 +984,7 @@ export function repair(input: unknown): Genome {
   if (isObj(g.timbre)) out.timbre = repairTimbre(g.timbre);
   if (isObj(g.dejavu)) out.dejavu = repairDejaVu(g.dejavu);
   if (isObj(g.lyrics)) out.lyrics = repairLyrics(g.lyrics);
+  if (isObj(g.accent)) out.accent = repairAccent(g.accent);
   fitBudget(out);
 
   for (const r of Array.isArray(g.reactions) ? g.reactions : []) {
@@ -1246,6 +1250,7 @@ export function validate(g: Genome): string[] {
   if (g.timbre !== undefined) errs.push(...validateTimbre(g.timbre));
   if (g.dejavu !== undefined) errs.push(...validateDejaVu(g.dejavu));
   if (g.lyrics !== undefined) errs.push(...validateLyrics(g.lyrics));
+  if (g.accent !== undefined) errs.push(...validateAccent(g.accent));
   if (!(g.energy?.[0] >= 0 && g.energy[1] <= 1 && g.energy[0] < g.energy[1])) errs.push('energy');
   if (g.reactions?.length > MAX_REACTIONS) errs.push('reaction count');
   g.reactions?.forEach((r, i) => {

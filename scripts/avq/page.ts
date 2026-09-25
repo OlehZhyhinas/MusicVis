@@ -7,6 +7,7 @@
 
 import { Engine, Stage } from '../../src/v2/engine';
 import { SEEDS } from '../../src/v2/seeds';
+import { setAccentOverride } from '../../src/v2/genes/accent';
 import { cloneGenome, schemaFor, type Genome } from '../../src/v2/genome';
 import { paramsFor } from '../../src/v2/engine';
 import { Embedder, EMB_DIM } from '../../src/v2/embedding';
@@ -180,6 +181,10 @@ export interface RenderOpts {
   flameCap?: number;
   /** Embed every Nth recorded frame with DINOv2-small (0 = off). Written to <base>.emb.json. */
   embedEvery?: number;
+  /** false: render with the built-in accents off (src/v2/genes/accent.ts), for before / after comparisons; true: the genome's own accents; a list: only those parts (e.g. ['hook']). */
+  accent?: boolean | string[];
+  /** Appended to the preset folder and id as '<id>@<tag>', so variant renders sit beside the plain ones. */
+  tag?: string;
 }
 
 let embedder: Embedder | null = null;
@@ -234,7 +239,7 @@ function writeMusic(row: Float32Array, s: MusicState, mel: { midi: number; salie
   row.set(v, 0);
 }
 
-async function renderWindow(song: Song, g: Genome, presetId: string, presetName: string, win: ClipWindow, o: Required<Omit<RenderOpts, 'genome' | 'preset' | 'clips' | 'name' | 'song'>>): Promise<{ base: string; frames: number; ms: number }> {
+async function renderWindow(song: Song, g: Genome, presetId: string, presetName: string, win: ClipWindow, o: Required<Omit<RenderOpts, 'genome' | 'preset' | 'clips' | 'name' | 'song' | 'accent' | 'tag'>>): Promise<{ base: string; frames: number; ms: number }> {
   const e = engine();
   status('compile');
   const progs = await programs(e, g);
@@ -364,6 +369,8 @@ async function render(opts: RenderOpts) {
     id = seed.origin;
     name = seed.name;
   }
+  if (opts.accent !== undefined) setAccentOverride(opts.accent);
+  if (opts.tag) id = `${id}@${opts.tag}`;
   const o = {
     w: opts.w ?? 320, h: opts.h ?? 180, fps: opts.fps ?? 30, seed: opts.seed ?? 1, warm: opts.warm ?? 3,
     frames: opts.frames ?? false, jpegQuality: opts.jpegQuality ?? 0.85, particleCap: opts.particleCap ?? 262144, flameCap: opts.flameCap ?? 524288,

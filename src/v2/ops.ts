@@ -12,6 +12,7 @@ import {
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema, type ShapeGene, type ShapeKind,
 } from './genome';
 import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
+import { crossAccent, jitterAccent, randomAccent } from './genes/accent';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
 import { crossGroove, jitterGroove, randomGroove } from './genes/groove';
@@ -781,6 +782,8 @@ export function crossoverTagged(aIn: Genome, bIn: Genome, rng: Rng, bias = 0): C
     if (dejavu) child.dejavu = dejavu;
     const lyrics = crossLyrics(D.lyrics, R.lyrics, rng);
     if (lyrics) child.lyrics = lyrics;
+    const accent = crossAccent(D.accent, R.accent, rng);
+    if (accent) child.accent = accent;
     const reactions = homologousReactions(remapReactions(D, child, di, 0), remapReactions(R, child, R.bodies.indexOf(rb), 0), rng);
     if (main.fuse && rng() < 0.6) {
       // The fused shape breathes with the music: the blend radius or the morph follows a stem.
@@ -1188,6 +1191,17 @@ const MUTATORS: [number, string, Mutator][] = [
   [1, 'jitter-lyrics', (g, rng, amt) => {
     if (!g.lyrics) return false;
     jitterLyrics(g.lyrics, rng, amt);
+    return true;
+  }],  // Accents (the built-in hook gesture, section framing...): a tuned copy is rarely gained (or dropped back to the defaults), nudged when present.
+  [0.3, 'accent', (g, rng) => {
+    if (!g.accent) g.accent = randomAccent(rng);
+    else if (rng() < 0.3) delete g.accent;
+    else jitterAccent(g.accent, rng);
+    return true;
+  }],
+  [0.5, 'jitter-accent', (g, rng, amt) => {
+    if (!g.accent) return false;
+    jitterAccent(g.accent, rng, amt);
     return true;
   }],
 ];

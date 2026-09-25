@@ -23,6 +23,7 @@ import { Fullscreen, GL, PendingProgram, PingPong, Program, Target, TexFormat, c
 import { Particles, type ParticleUpdate } from '../render/particles';
 import { EXPOSURE_FS, FINAL_FS, FULLSCREEN_VS, SCALE_FS } from '../render/shaders';
 import { IDENTITY_POSE, blendPoses, cameraUniforms, choreoPose, cueOf, type ChoreoPose } from './genes/choreo';
+import { accentPlan, applyAccents, type AccentInput, type AccentPlan } from './genes/accent';
 import { HarmonyMotor, IDLE_HARMONY, type HarmonyInputs, type HarmonyOut } from './genes/harmony';
 import { DejaVuBank } from './genes/dejavuGpu';
 import { NEUTRAL_NUDGE, easeNudge, lineKick, lyricTarget, type LyricNudge } from './genes/lyrics';
@@ -782,6 +783,9 @@ export class Stage {
   /** Choreography: each slot's pose this frame, their blend, and the final pass camera. */
   private poses = new WeakMap<Slot, ChoreoPose>();
   private pose: ChoreoPose = { ...IDENTITY_POSE };
+  /** Accents (genes/accent.ts): the slot's resolved parts and this frame's music input. */
+  private accPlan = {} as AccentPlan;
+  private accIn: AccentInput | null = null;
   private cam = new Float32Array(6);
   /** Harmony gene: each slot's spring state and effect this frame, and the final pass warp. */
   private motors = new WeakMap<Slot, HarmonyMotor>();
@@ -884,6 +888,13 @@ export class Stage {
 
     // Choreography over the song timeline (look-ahead from the offline analysis).
     const cue = cueOf(state);
+    const acc = (this.accIn ??= { cue, hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1 });
+    acc.cue = cue;
+    acc.hookOn = F.hookOn;
+    acc.hookPulse = F.hookPulse;
+    acc.hookNotePulse = F.hookNotePulse;
+    acc.hookNote = F.hookNote;
+    acc.hookId = F.hookId;
     for (const s of slots) {
       let q = this.poses.get(s);
       if (!q) this.poses.set(s, (q = { ...IDENTITY_POSE }));
@@ -892,6 +903,8 @@ export class Stage {
       // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
       this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
       this.lyricize(s, state, sdt, q);
+      // Accents: the hook gesture every preset gets unless its genome turns it off.
+      applyAccents(accentPlan(s.genome, this.accPlan), acc, q);
     }
     this.harmonyWarp(slots, state);
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);

@@ -34,6 +34,7 @@ import { TUNNEL_SCHEMA } from '../src/v2/genes/tunnel';
 import { MOSAIC_SCHEMA } from '../src/v2/genes/mosaic';
 import { repair as repairV2, upgradeV2, EMITTER_SCHEMAS as V2_SCHEMAS } from '../src/v2/legacy';
 import { choreoTests } from './choreo-tests';
+import { accentTests } from './accent-tests';
 import { harmonyGeneTests } from './harmony-gene-tests';
 import { grooveGeneTests } from './groove-gene-tests';
 import { timbreGeneTests } from './timbre-gene-tests';
@@ -1555,6 +1556,7 @@ landscapeChecks(check);
 // -------------------------------------------------- choreography
 
 choreoTests(check);
+accentTests(check);
 harmonyGeneTests(check);
 
 // -------------------------------------------------- groove gene
