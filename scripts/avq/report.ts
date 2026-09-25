@@ -6,8 +6,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { OUT } from './cdp';
 import type { Clip } from './format';
-import { listClips, loadCf, loadClip } from './load';
-import { cfSummary, reportCard, type ClipLike, type ReportCard } from './metrics';
+import { listClips, loadCf, loadClip, loadInst } from './load';
+import { cfSummary, readoutStats, reportCard, type ClipLike, type ReportCard } from './metrics';
 
 export function asClipLike(c: Clip): ClipLike {
   const h = c.header;
@@ -38,6 +38,19 @@ export function cardFor(base: string): ReportCard {
     if (s.chaos >= 0.3) card.notes.push(`chaotic: an inaudible 2% level change already moves the picture by ${f2(s.chaos)} of its motion, so single-change counterfactuals are masked`);
     const silent = Object.entries(s.stems).filter(([, v]) => v < 0.03).map(([k]) => k);
     if (silent.length && s.chaos < 0.3) card.notes.push(`no visual footprint from ${silent.join(', ')}`);
+  }
+  const inst = loadInst(base);
+  if (inst) {
+    const ro = readoutStats(asClipLike(c), inst, card.counterfactual);
+    card.readout = ro;
+    for (const r of ro.reactions) {
+      if (r.verdict === 'visible' || r.verdict === 'masked') continue;
+      const why = r.verdict === 'idle source' ? `its source is active in only ${(r.srcActive * 100).toFixed(0)}% of frames`
+        : r.verdict === 'pinned' ? 'the driven value sits at a parameter limit'
+        : r.verdict === 'tiny travel' ? `the driven value moves ${(r.travel * 100).toFixed(1)}% of its range`
+        : `the value moves ${(r.travel * 100).toFixed(0)}% of its range but nothing visible follows (r ${r.visible.toFixed(2)}${r.footprint !== undefined ? `, footprint ${r.footprint.toFixed(2)}` : ''})`;
+      card.notes.push(`reaction r${r.index} ${r.src}>${r.target} ${r.verdict}: ${why}`);
+    }
   }
   const p = join(OUT, 'cards', base + '.json');
   mkdirSync(dirname(p), { recursive: true });

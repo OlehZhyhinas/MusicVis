@@ -354,6 +354,8 @@ async function render(opts: RenderOpts) {
 export class Instrument {
   readonly names: string[] = [];
   readonly cols: number[][] = [];
+  /** Per reaction: the driven parameter's spec range and genome value (to tell a pinned parameter). */
+  readonly reactions: { src: string; target: string; gain: number; min: number; max: number; base: number }[] = [];
   private slot: any;
   private stage: any;
   private g: Genome;
@@ -364,6 +366,9 @@ export class Instrument {
     g.reactions.slice(0, 6).forEach((r, j) => {
       const tag = `rx${j}:${r.src}>${r.g}${r.i}.${r.k}`;
       this.names.push(`${tag}:src`, `${tag}:resp`, `${tag}:value`);
+      const spec = schemaFor(g, r.g, r.i)?.[r.k];
+      const p = paramsFor(g, r.g, r.i);
+      this.reactions.push({ src: r.src, target: `${r.g}${r.i}.${r.k}`, gain: r.gain, min: spec?.min ?? NaN, max: spec?.max ?? NaN, base: p?.[r.k] ?? NaN });
     });
     this.names.push(
       'F.act', 'F.speed', 'F.spin', 'F.hit', 'F.hitPulse', 'F.surge', 'F.melody', 'F.loud', 'F.drop', 'F.build',
@@ -391,7 +396,7 @@ export class Instrument {
     for (let i = 0; i < v.length; i++) this.cols[i].push(Math.round(v[i] * 1e5) / 1e5);
   }
   json(): string {
-    return JSON.stringify({ names: this.names, cols: this.cols.map((c) => c.map((x) => (Number.isFinite(x) ? x : null))) });
+    return JSON.stringify({ reactions: this.reactions, names: this.names, cols: this.cols.map((c) => c.map((x) => (Number.isFinite(x) ? x : null))) });
   }
 }
 

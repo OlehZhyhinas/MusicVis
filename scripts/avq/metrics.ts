@@ -808,6 +808,8 @@ export interface ReportCard {
   interest: InterestStats;
   /** Present when counterfactual renders exist for the same clip. */
   counterfactual?: CfSummary;
+  /** Present when the clip has an engine readout (.inst.json). */
+  readout?: ReadoutStats;
   notes: string[];
 }
 
@@ -916,4 +918,82 @@ export function cfSummary(cf: CfLike): CfSummary {
     desync, chaos, syncSensitivity, content: find((v) => v.kind === 'offset'), stems, reactions,
     dead: reactions.filter((r) => r.dead).length, score: clamp01(syncSensitivity / 0.6),
   };
+}
+
+// ------------------------------------------------------------------ engine readout
+
+export interface InstLike {
+  reactions?: { src: string; target: string; gain: number; min: number; max: number; base: number }[];
+  names: string[];
+  cols: (number | null)[][];
+}
+
+export interface ReactionReadout {
+  index: number;
+  src: string;
+  target: string;
+  /** Share of frames the source signal is above 0.1. */
+  srcActive: number;
+  /** p95 - p5 of the driven value over the parameter's spec range. */
+  travel: number;
+  /** The value sits within 2 % of a spec limit for > 80 % of frames. */
+  pinned: boolean;
+  /** Best |r| (null-corrected) between the reaction's response and a visual change feature. */
+  visible: number;
+  /** Counterfactual footprint (from the ablation), when available. */
+  footprint?: number;
+  verdict: 'idle source' | 'pinned' | 'tiny travel' | 'invisible' | 'visible' | 'masked';
+}
+
+export interface ReadoutStats {
+  reactions: ReactionReadout[];
+  /** p95 - p5 of the camera / pose terms. */
+  pose: Record<string, number>;
+}
+
+export function readoutStats(c: ClipLike, inst: InstLike, cf?: CfSummary): ReadoutStats {
+  const col = (name: string) => {
+    const k = inst.names.indexOf(name);
+    return k < 0 ? null : Float32Array.from(inst.cols[k], (x) => (x === null ? NaN : x));
+  };
+  const n = Math.min(c.n, inst.cols[0]?.length ?? 0);
+  const tch = thumbChange(c);
+  const vis: Float32Array[] = [c.col('lum'), c.col('coverage'), c.col('spread'), c.col('colorful'), c.col('diff'), c.col('flowMag'), c.col('edge'), c.col('div'), c.col('curl'), tch].map((x) => highpass(x.subarray(0, n), Math.round(c.fps)));
+  const maxLag = Math.round(0.2 * c.fps);
+  const shifts = nullShifts(n, Math.round(2 * c.fps));
+  const reactions: ReactionReadout[] = [];
+  (inst.reactions ?? []).forEach((r, j) => {
+    const tag = `rx${j}:${r.src}>${r.target}`;
+    const src = col(`${tag}:src`);
+    const resp = col(`${tag}:resp`);
+    const val = col(`${tag}:value`);
+    if (!src || !resp || !val) return;
+    let active = 0;
+    for (let i = 0; i < n; i++) if (src[i] > 0.1) active++;
+    const range = r.max - r.min;
+    const travel = range > 0 ? (quantile(val, 0.95) - quantile(val, 0.05)) / range : 0;
+    let atLimit = 0;
+    for (let i = 0; i < n; i++) if (range > 0 && (val[i] - r.min < 0.02 * range || r.max - val[i] < 0.02 * range)) atLimit++;
+    const hp = highpass(resp.subarray(0, n), Math.round(c.fps));
+    const best = (x: Float32Array) => Math.max(...vis.map((v) => Math.abs(laggedCorr(x, v, maxLag).r)));
+    const raw = best(hp);
+    const nul = shifts.length ? mean(shifts.map((k) => best(roll(hp, k)))) : 0;
+    const visible = Math.max(0, raw - nul);
+    const cfr = cf?.reactions.find((x) => x.index === j);
+    const pinned = atLimit / Math.max(1, n) > 0.8;
+    let verdict: ReactionReadout['verdict'];
+    if (active / Math.max(1, n) < 0.03) verdict = 'idle source';
+    else if (pinned) verdict = 'pinned';
+    else if (travel < 0.03) verdict = 'tiny travel';
+    else if (cfr?.masked) verdict = visible > 0.1 ? 'visible' : 'masked';
+    else if (cfr ? cfr.dead : visible < 0.1) verdict = 'invisible';
+    else verdict = 'visible';
+    reactions.push({ index: j, src: r.src, target: r.target, srcActive: active / Math.max(1, n), travel, pinned, visible, footprint: cfr?.rel, verdict });
+  });
+  const pose: Record<string, number> = {};
+  for (const k of ['pose.zoom', 'pose.roll', 'pose.tx', 'pose.ty', 'pose.hue', 'pose.exposure', 'harm.warp', 'harm.brk', 'flash', 'F.speed', 'F.spin']) {
+    const x = col(k);
+    if (x) pose[k] = quantile(x, 0.95) - quantile(x, 0.05);
+  }
+  return { reactions, pose };
 }

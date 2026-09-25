@@ -2,7 +2,7 @@
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/avq-test.ts
 
 import {
-  cfSummary, correspondences, flowStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
+  cfSummary, correspondences, flowStats, readoutStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
   syncStats, thumbChange, visualResponse, couplingStats, featureSeries, type ClipLike,
 } from './avq/metrics';
 import type { Hook } from './avq/music';
@@ -269,6 +269,40 @@ function flashes(n: number, at: number[], amp = 0.3): Float32Array {
   check('cf: sync sensitivity = desync - chaos floor', Math.abs(s.syncSensitivity - 0.8) < 1e-9, s.syncSensitivity.toFixed(2));
   check('cf: stem footprints subtract the floor', Math.abs(s.stems.drums - 0.5) < 1e-9 && s.stems.other < 0.02, JSON.stringify(s.stems));
   check('cf: a reaction within the chaos floor is dead', s.reactions[1].dead && !s.reactions[0].dead && s.dead === 1, JSON.stringify(s.reactions));
+}
+
+// ---------------------------------------------------------------- engine readout verdicts
+
+{
+  const n = 600;
+  const r = rng(9);
+  const src = Float32Array.from({ length: n }, (_, i) => ((i % 15) < 3 ? 1 : 0));
+  const resp = Float32Array.from(src, (v, i) => (i ? 0.5 * v + 0.5 * src[i - 1] : v));
+  const lum = Float32Array.from(resp, (v, i) => 0.3 + 0.2 * (resp[i - 1] ?? 0) + 0.01 * r());
+  const c = clip({ n, cols: { lum } });
+  const arr = (x: ArrayLike<number>) => Array.from(x);
+  const inst = {
+    reactions: [
+      { src: 'beat', target: 'sh0.scale', gain: 0.5, min: 0, max: 1, base: 0.3 },
+      { src: 'bass', target: 'sh0.nodes', gain: 0.2, min: 0, max: 1, base: 1 },
+      { src: 'drop', target: 'sh0.fill', gain: 0.5, min: 0, max: 1, base: 0.5 },
+      { src: 'vocals', target: 'sh0.hue', gain: 0.5, min: 0, max: 1, base: 0.2 },
+    ],
+    names: ['rx0:beat>sh0.scale:src', 'rx0:beat>sh0.scale:resp', 'rx0:beat>sh0.scale:value',
+      'rx1:bass>sh0.nodes:src', 'rx1:bass>sh0.nodes:resp', 'rx1:bass>sh0.nodes:value',
+      'rx2:drop>sh0.fill:src', 'rx2:drop>sh0.fill:resp', 'rx2:drop>sh0.fill:value',
+      'rx3:vocals>sh0.hue:src', 'rx3:vocals>sh0.hue:resp', 'rx3:vocals>sh0.hue:value'],
+    cols: [arr(src), arr(resp), arr(resp.map((v) => 0.3 + 0.4 * v)),
+      arr(src), arr(resp), arr(new Float32Array(n).fill(0.995)),
+      arr(new Float32Array(n)), arr(new Float32Array(n)), arr(new Float32Array(n).fill(0.5)),
+      arr(src.map((_, i) => 0.5 + 0.4 * Math.sin(i / 7))), arr(src.map((_, i) => 0.5 + 0.4 * Math.sin(i / 7))), arr(src.map((_, i) => 0.2 + 0.3 * Math.sin(i / 7)))],
+  };
+  const ro = readoutStats(c, inst);
+  const v = ro.reactions.map((x) => x.verdict);
+  check('readout: a reaction the picture follows is visible', v[0] === 'visible', `${v[0]} r ${ro.reactions[0].visible.toFixed(2)}`);
+  check('readout: a value parked at its limit is pinned', v[1] === 'pinned', v[1]);
+  check('readout: a silent source is idle', v[2] === 'idle source', v[2]);
+  check('readout: a moving value nothing follows is invisible', v[3] === 'invisible', `${v[3]} r ${ro.reactions[3].visible.toFixed(2)}`);
 }
 
 console.log(failed ? `FAILED: ${failed} check(s)` : 'PASSED: 0 failing check(s)');
