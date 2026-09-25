@@ -47,7 +47,7 @@ export async function ensureServers(log = (s: string) => console.error(s)): Prom
       '--headless=new', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${prof}`,
       '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-      '--no-first-run', '--no-default-browser-check', '--mute-audio', 'about:blank',
+      '--autoplay-policy=no-user-gesture-required', '--no-first-run', '--no-default-browser-check', '--mute-audio', 'about:blank',
     ], { stdio: ['ignore', out, out] }));
     for (let i = 0; i < 60 && !(await up(`http://127.0.0.1:${CDP_PORT}/json/version`)); i++) await sleep(500);
     if (!(await up(`http://127.0.0.1:${CDP_PORT}/json/version`))) throw new Error('chrome did not come up');

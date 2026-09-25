@@ -21,6 +21,14 @@ export function cardFor(base: string): ReportCard {
   if (cf) {
     const s = cfSummary(cf);
     card.counterfactual = s;
+    // Audio-event drive from the metronome render: mostly the motion (what a constant spin or a
+    // bar-locked sweep fails), a little the look.
+    if (Number.isFinite(s.motionEvents)) {
+      const lookE = Number.isFinite(s.events) ? Math.min(1, s.events / 0.8) : 0;
+      card.headline.events = Math.max(0, Math.min(1, (0.85 * s.motionEvents) / 0.5 + 0.15 * lookE));
+      card.headline.overall = overallOf(card.headline);
+      if (s.motionEvents < 0.2) card.notes.push(`clock-driven motion: with the same beat grid but flat audio (metronome) the picture moves almost the same way (motion divergence ${s.motionEvents.toFixed(2)})`);
+    }
     const f2 = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a');
     if (s.syncSensitivity < 0.15) card.notes.push(`desync-blind: a half-bar shift changes the picture by ${f2(s.desync)} of its own motion (chaos floor ${f2(s.chaos)})`);
     if (!loadInst(base)) for (const r of s.reactions) if (r.dead) card.notes.push(`dead reaction r${r.index} ${r.src}>${r.target}: removing it changes ${f2(r.rel)} of the motion`);

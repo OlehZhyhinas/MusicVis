@@ -109,6 +109,6 @@ export interface CfResult {
   motion: number;
   step: number;
   reactions: { src: string; target: string; gain: number }[];
-  variants: { id: string; kind: string; mean: number; rel: number; series: number[]; stem?: string; reaction?: number }[];
+  variants: { id: string; kind: string; mean: number; rel: number; motionRel?: number; series: number[]; stem?: string; reaction?: number }[];
   motionSeries: (number | null)[];
 }

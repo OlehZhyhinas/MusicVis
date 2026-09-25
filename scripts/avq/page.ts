@@ -447,6 +447,9 @@ export class Instrument {
  *           and its spectral region (audio.ts stemRegion, scaled by the stem's presence) taken
  *           out of the emulated live spectrum / levels / waveform
  *   ablate  one reaction's gain set to 0 (same programs, same indices)
+ *   metronome  the same beat / bar grid and sections, but every audio-driven value held at its
+ *           song mean (stems, onsets, presence, loudness, live levels, spectrum, chroma, timbre,
+ *           harmony). What still matches the base is driven by the clock alone.
  *   gain    every level-like music value scaled by `factor` (0.98: an inaudible change). The
  *           divergence it causes is the chaos floor: how much the preset amplifies a
  *           perturbation that carries no musical meaning.
@@ -456,15 +459,56 @@ export type Variant =
   | { kind: 'offset'; seconds: number }
   | { kind: 'mute'; stem: StemId }
   | { kind: 'ablate'; reaction: number }
-  | { kind: 'gain'; factor: number };
+  | { kind: 'gain'; factor: number }
+  | { kind: 'metronome' };
 
 export const variantId = (v: Variant): string =>
-  v.kind === 'shift' ? `shift${v.beats}b` : v.kind === 'offset' ? `offset${Math.round(v.seconds)}s` : v.kind === 'mute' ? `mute-${v.stem}` : v.kind === 'gain' ? `gain${v.factor}` : `ablate-r${v.reaction}`;
+  v.kind === 'shift' ? `shift${v.beats}b` : v.kind === 'offset' ? `offset${Math.round(v.seconds)}s` : v.kind === 'mute' ? `mute-${v.stem}` : v.kind === 'gain' ? `gain${v.factor}` : v.kind === 'metronome' ? 'metronome' : `ablate-r${v.reaction}`;
+
+/** Song means for the metronome variant (computed once per song). */
+interface SongMeans {
+  stems: Record<StemId, number>;
+  onsets: Record<StemId, number>;
+  presence: Record<StemId, number>;
+  loudness: number;
+  complexity: number;
+  chroma: Float32Array;
+  spectrum: Float32Array;
+  bass: number;
+  mid: number;
+  treb: number;
+}
+const meansCache = new WeakMap<Song, SongMeans>();
+function songMeans(song: Song): SongMeans {
+  let m = meansCache.get(song);
+  if (m) return m;
+  const r = song.result;
+  const avg = (x: Float32Array) => x.reduce((a, b) => a + b, 0) / Math.max(1, x.length);
+  const per = (rec: Record<StemId, Float32Array>) => Object.fromEntries((['drums', 'bass', 'vocals', 'other'] as StemId[]).map((k) => [k, avg(rec[k])])) as Record<StemId, number>;
+  const chroma = new Float32Array(12);
+  for (let f = 0; f < r.numFrames; f++) for (let c = 0; c < 12; c++) chroma[c] += r.chroma[f * 12 + c] / r.numFrames;
+  const live = new OfflineLive(song.pcm, song.sr);
+  const spectrum = new Float32Array(512);
+  let bass = 0, mid = 0, treb = 0;
+  const N = 48;
+  for (let k = 0; k < N; k++) {
+    const fr = live.read(((k + 0.5) / N) * r.duration, 1 / 30);
+    for (let i = 0; i < 512; i++) spectrum[i] += fr.spectrum[i] / N;
+    bass += fr.bass / N;
+    mid += fr.mid / N;
+    treb += fr.treb / N;
+  }
+  m = { stems: per(r.stems), onsets: per(r.stemOnsets), presence: per(r.stemPresence), loudness: avg(r.loudness), complexity: r.songComplexity, chroma, spectrum, bass: bass || 1, mid: mid || 1, treb: treb || 1 };
+  meansCache.set(song, m);
+  return m;
+}
 
 class MusicSource {
   private sampler: TimelineSampler;
   private live: OfflineLive;
   private gains: Float32Array | null = null;
+  private flatWave = new Float32Array(1024);
+  private held: { chord?: number; tx?: number; ty?: number } | null = null;
   constructor(private song: Song, private v: Variant | null) {
     this.sampler = new TimelineSampler(song.result);
     this.live = new OfflineLive(song.pcm, song.sr);
@@ -488,6 +532,32 @@ class MusicSource {
     }
     const s = this.sampler.sample(Math.max(0, tm), dt, true, this.live.read(Math.max(0, tm), dt));
     s.time = t;
+    if (v?.kind === 'metronome') {
+      const m = songMeans(this.song);
+      for (const k of ['drums', 'bass', 'vocals', 'other'] as StemId[]) {
+        s.stems[k] = m.stems[k];
+        s.stemOnsets[k] = m.onsets[k];
+        s.stemPresence[k] = m.presence[k];
+      }
+      s.loudness = m.loudness;
+      s.complexity = m.complexity;
+      s.bass = s.bassAtt = m.bass;
+      s.mid = s.midAtt = m.mid;
+      s.treb = s.trebAtt = m.treb;
+      s.spectrum = m.spectrum;
+      s.waveform = this.flatWave;
+      s.chroma = m.chroma;
+      if (s.timbre) for (const k of Object.keys(s.timbre) as (keyof typeof s.timbre)[]) s.timbre[k] = { bright: 0.5, noise: 0.3, rough: 0.3, attack: 0.3 };
+      this.held ??= { chord: s.chord, tx: s.tonnetzX, ty: s.tonnetzY };
+      s.chord = this.held.chord;
+      s.tonnetzX = this.held.tx;
+      s.tonnetzY = this.held.ty;
+      s.tension = 0.35;
+      s.chordPulse = 0;
+      s.resolvePulse = 0;
+      s.modulationPulse = 0;
+      s.keyChangePulse = 0;
+    }
     if (v?.kind === 'gain') {
       const f = v.factor;
       for (const k of ['drums', 'bass', 'vocals', 'other'] as StemId[]) {
@@ -573,6 +643,8 @@ async function counterfactual(opts: CfOpts) {
     { kind: 'shift', beats: bpb / 2 },
     // Chaos floor: an inaudible 2 % level change; divergence here is amplification, not meaning.
     { kind: 'gain', factor: 0.98 },
+    // Clock only: same beat grid, flat audio.
+    { kind: 'metronome' },
     { kind: 'offset', seconds: Math.round(song.data.duration * 0.37) },
     ...(['drums', 'bass', 'vocals', 'other'] as StemId[]).map((stem) => ({ kind: 'mute' as const, stem })),
     ...g.reactions.slice(0, 6).map((_, reaction) => ({ kind: 'ablate' as const, reaction })),
@@ -595,7 +667,7 @@ async function counterfactual(opts: CfOpts) {
       const slot = st.makeSlot(gv, progs);
       st.slots = [slot];
       st.resetHistory();
-      lanes.push({ v, st, slot, src: new MusicSource(song, v), rand: mulberry32(seed), px: new Uint8Array(w * h * 4), small: new Float32Array(80 * 45 * 3) });
+      lanes.push({ v, st, slot, src: new MusicSource(song, v), rand: mulberry32(seed), px: new Uint8Array(w * h * 4), small: new Float32Array(80 * 45 * 3), prev: null as Float32Array | null, step: 0 });
     }
     const dt = 1 / fps;
     const t0 = Math.max(0, win.start - warm);
@@ -607,6 +679,8 @@ async function counterfactual(opts: CfOpts) {
     const motion = new Float32Array(n); // |base(t) - base(t - half bar)|
     const step = new Float32Array(n); // |base(t) - base(t - 1)|
     const div = variants.map(() => new Float32Array(n));
+    // Motion divergence: |step_base(t) - step_variant(t)|, where step = change since the previous frame.
+    const mdiv = variants.map(() => new Float32Array(n));
     const realRandom = Math.random;
     for (let k = 1; k <= kEnd; k++) {
       const t = t0 + k * dt;
@@ -622,9 +696,14 @@ async function counterfactual(opts: CfOpts) {
       for (const L of lanes) {
         L.st.readPixels(L.px);
         shrink(L.px, w, h, 80, 45, L.small);
+        L.step = L.prev ? meanAbs(L.small, L.prev) : 0;
+        L.prev = L.small.slice();
       }
       const base = lanes[0].small;
-      for (let j = 1; j < lanes.length; j++) div[j - 1][i] = meanAbs(base, lanes[j].small);
+      for (let j = 1; j < lanes.length; j++) {
+        div[j - 1][i] = meanAbs(base, lanes[j].small);
+        mdiv[j - 1][i] = Math.abs(lanes[0].step - lanes[j].step);
+      }
       hist.push(base.slice());
       if (hist.length > lagF + 1) hist.shift();
       step[i] = hist.length >= 2 ? meanAbs(base, hist[hist.length - 2]) : 0;
@@ -657,7 +736,9 @@ async function counterfactual(opts: CfOpts) {
       reactions: g.reactions.slice(0, 6).map((r) => ({ src: r.src, target: `${r.g}${r.i}.${r.k}`, gain: r.gain })),
       variants: variants.map((v, j) => {
         const m = div[j].reduce((a, b) => a + b, 0) / Math.max(1, n);
-        return { id: variantId(v), ...v, mean: r4(m), rel: r4(M > 1e-6 ? m / M : 0), series: Array.from(div[j], r4) };
+        const md = mdiv[j].reduce((a, b) => a + b, 0) / Math.max(1, n);
+        const S = sSum / Math.max(1, n);
+        return { id: variantId(v), ...v, mean: r4(m), rel: r4(M > 1e-6 ? m / M : 0), motionRel: r4(S > 1e-6 ? md / S : 0), series: Array.from(div[j], r4) };
       }),
       motionSeries: Array.from(motion, (x) => (Number.isFinite(x) ? r4(x) : null)),
     };
@@ -706,6 +787,6 @@ async function songInfo(path: string) {
   };
 }
 
-const api = { status: () => statusText, song: songInfo, render, counterfactual, sheet, seeds: () => SEEDS.map((s) => s.origin), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
+const api = { status: () => statusText, song: songInfo, render, counterfactual, sheet, seeds: () => SEEDS.map((s) => s.origin), seedNames: () => SEEDS.map((s) => [s.origin, s.name]), fields: () => [...FIELDS], vis: () => [...VIS_FIELDS] };
 (window as unknown as { avq: typeof api }).avq = api;
 document.getElementById('log')!.textContent = 'avq ready';

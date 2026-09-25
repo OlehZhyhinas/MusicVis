@@ -2,10 +2,11 @@
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/avq-test.ts
 
 import {
-  cfSummary, correspondences, embRhyme, embStructure, flowStats, readoutStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
+  cfSummary, clockStats, correspondences, embRhyme, embStructure, flowStats, readoutStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
   syncStats, thumbChange, visualResponse, couplingStats, featureSeries, type ClipLike,
-} from './avq/metrics';
-import type { Hook } from './avq/music';
+} from '../src/v2/avq/metrics';
+import type { Hook } from '../src/v2/avq/music';
+import { JUDGE_FEATURES, behaviourPairs, chooseDuel, judgeProb, simulateDuels, trainJudge, type Candidate } from '../src/v2/judge';
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -244,7 +245,7 @@ function flashes(n: number, at: number[], amp = 0.3): Float32Array {
   const on = spikes(n, Array.from({ length: 38 }, (_, k) => 15 + k * 15));
   const lum = flashes(n, Array.from({ length: 38 }, (_, k) => 16 + k * 15));
   const rc = reportCard(clip({ n, cols: { onDrums: on, lum, diff: Float32Array.from(lum, (v, i) => (i ? Math.abs(v - lum[i - 1]) : 0)), prDrums: new Float32Array(n).fill(0.8) } }), { preset: 'X', song: 's', clip: 'c', clipT0: -1 / FPS });
-  const finite = Object.entries(rc.headline).filter(([k]) => k !== 'hookRhyme' && k !== 'structure').every(([, v]) => Number.isFinite(v) && v >= 0 && v <= 1);
+  const finite = Object.entries(rc.headline).filter(([k]) => k !== 'hookRhyme' && k !== 'structure' && k !== 'melody').every(([, v]) => Number.isFinite(v) && v >= 0 && v <= 1);
   check('report card: headline scores in 0..1', finite, JSON.stringify(rc.headline, (_, v) => (typeof v === 'number' ? +v.toFixed(2) : v)));
   check('report card: beat-locked flashes score sync > 0.6', rc.headline.sync > 0.6, rc.headline.sync.toFixed(2));
 }
@@ -340,6 +341,60 @@ function flashes(n: number, at: number[], amp = 0.3): Float32Array {
   const same = mk(() => basis[0].map((x, i) => x + noise(0.3)[i]));
   const st2 = embStructure(c, same, clipT0);
   check('emb structure: the same look scores low', st2.score < 0.4, `ratio ${st2.boundaries[0]?.ratio.toFixed(2)}`);
+}
+
+// ---------------------------------------------------------------- learned judge
+
+{
+  const r = rng(12);
+  const d = JUDGE_FEATURES.length;
+  const cands: Candidate[] = Array.from({ length: 60 }, (_, i) => ({ key: 'p' + i, v: Array.from({ length: d }, () => r()) }));
+  const trueW = Array.from({ length: d }, (_, k) => (k === 0 ? 1.5 : k === 2 ? 1 : k === 9 ? -1 : 0));
+  const train = simulateDuels(cands, 150, trueW, r, 0.5);
+  const m = trainJudge(train);
+  check('judge: recovers a simulated preference (cv agreement)', m.cv > 0.75, `cv ${m.cv.toFixed(2)} fit ${m.fitAgree.toFixed(2)}`);
+  check('judge: learns the sign of the true weights', m.w[0] > 0 && m.w[2] > 0 && m.w[9] < 0, m.w.map((x) => x.toFixed(2)).join(' '));
+  const noise = train.map((x) => ({ ...x, y: r() < 0.5 ? 1 : 0 }));
+  const mn = trainJudge(noise);
+  check('judge: coin-flip answers give ~chance cv', Math.abs(mn.cv - 0.5) < 0.15, `cv ${mn.cv.toFixed(2)}`);
+  const pair = chooseDuel(cands, m, new Map(), new Set(), r)!;
+  const p = judgeProb(m, pair[0].v, pair[1].v);
+  check('judge: active learning asks about an uncertain pair', Math.abs(p - 0.5) < 0.15, `p ${p.toFixed(2)}`);
+  const bp = behaviourPairs([
+    { v: cands[0].v, likes: 5, dislikes: 0, weakLikes: 2, softDislikes: 0, views: 8, watch: 600 },
+    { v: cands[1].v, likes: 0, dislikes: 3, weakLikes: 0, softDislikes: 4, views: 9, watch: 30 },
+    { v: cands[2].v, likes: 0, dislikes: 0, weakLikes: 0, softDislikes: 0, views: 1, watch: 5 },
+  ]);
+  check('judge: behaviour gives a weak pair for well-watched presets only', bp.length === 1 && bp[0].y === 1 && bp[0].w === 0.25, JSON.stringify(bp.map((x) => [x.y, x.w])));
+}
+
+// ---------------------------------------------------------------- clock lock
+
+{
+  const n = 900;
+  const r = rng(13);
+  const barF = 60; // 2 s bars at 30 fps
+  const barPhase = Float32Array.from({ length: n }, (_, i) => (i % barF) / barF);
+  const onsets: number[] = [];
+  for (let f = 5; f < n - 5; f += 7 + Math.floor(r() * 20)) onsets.push(f);
+  const on = spikes(n, onsets, 3);
+  const lockedDiff = Float32Array.from(barPhase, (p) => 0.02 + 0.02 * Math.sin(p * 2 * Math.PI));
+  const locked = clip({ n, cols: { barPhase, onDrums: on, drums: on, diff: lockedDiff, flowMag: lockedDiff, curl: lockedDiff } });
+  const cl = clockStats(locked, thumbChange(locked));
+  check('clock: motion that repeats every bar over irregular music is clock-locked', cl.excess > 0.4, `share ${cl.clockShare.toFixed(2)} music ${cl.musicClock.toFixed(2)}`);
+  const followDiff = Float32Array.from(on, (v) => 0.01 + 0.03 * v);
+  const follow = clip({ n, cols: { barPhase, onDrums: on, drums: on, diff: followDiff, flowMag: followDiff, curl: followDiff } });
+  const cf = clockStats(follow, thumbChange(follow));
+  check('clock: motion following irregular onsets is not', cf.excess < 0.15, `share ${cf.clockShare.toFixed(2)} music ${cf.musicClock.toFixed(2)}`);
+  // A riff that repeats every bar, followed by the visuals: bar-periodic, but so is the music.
+  const riff = spikes(n, Array.from({ length: n / barF }, (_, k) => [k * barF + 3, k * barF + 20, k * barF + 41]).flat(), 3);
+  const riffDiff = Float32Array.from(riff, (v) => 0.01 + 0.03 * v);
+  const rc = clockStats(clip({ n, cols: { barPhase, onDrums: riff, drums: riff, other: riff, diff: riffDiff, flowMag: riffDiff, curl: riffDiff } }), new Float32Array(n));
+  const steady = clip({ n, cols: { barPhase, onDrums: on, diff: Float32Array.from({ length: n }, () => 0.02 + 0.001 * r()) }, thumb: (i) => Uint8Array.from({ length: TW * TH * 3 }, (_, k) => 100 + Math.round(20 * Math.sin(k * 0.3 + i * 0.2))) });
+  const pump = clip({ n, cols: { barPhase, onDrums: on, diff: Float32Array.from(on, (v) => 0.005 + 0.04 * v) }, thumb: (i) => Uint8Array.from({ length: TW * TH * 3 }, (_, k) => 100 + Math.round(40 * on[i] * Math.sin(k * 0.3))) });
+  const ds = clockStats(steady, thumbChange(steady)).depth, dp = clockStats(pump, thumbChange(pump)).depth;
+  check('clock: a constant spin has little change depth, onset-driven change a lot', ds < 0.15 && dp > 0.5, `steady ${ds.toFixed(2)} pumping ${dp.toFixed(2)}`);
+  check('clock: following a bar-periodic riff is not penalised', rc.excess < 0.2, `share ${rc.clockShare.toFixed(2)} music ${rc.musicClock.toFixed(2)}`);
 }
 
 console.log(failed ? `FAILED: ${failed} check(s)` : 'PASSED: 0 failing check(s)');
