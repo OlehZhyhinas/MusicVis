@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 57;
+export const SEED_VERSION = 58;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1360,6 +1360,23 @@ const ECOSYSTEM: Def[] = [
       emit: ['ecosystem', { count: 8192, wD: 0.15, wB: 1, wV: 0.4, wO: 0.3, glyph: 2, size: 2, trail: 0.8, predation: 0.4, bloom: 0.7, graze: 1, growth: 0.7, starve: 0.5, decay: 0.99, speed: 2, field: 0.7, hues: 0, body: 0 }],
     })],
     reactions: [rx('bass', 'em', 0, 'speed', 0.5, { atk: 0.05, rel: 0.6 }), rx('drop', 'em', 0, 'trail', 0.3, { atk: 0.02, rel: 2 }), rx('loud', 'ma', 0, 'gain', 0.2, { atk: 0.05, rel: 0.4 })],
+  },
+  {
+    // A pollinator garden around a slowly turning six-petalled flower: the vocal pollinators are the
+    // largest species, fluttering points that seed a soft meadow of bloom wherever they pass, with a few
+    // drifting plankton and shy grazers and almost no predators. A sung phrase makes the meadows swell
+    // out of their colonies across the screen; when the voice drops out the pollinators starve and the
+    // flowers wilt, leaving the flower alone in the dark until the next phrase.
+    origin: 'B05', name: 'Pollinator Garden', energy: [0.05, 0.6], scheme: 'analogous', hue: 0.85,
+    color: { adapt: 0.3, bloom: 1.2, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    bodies: [body({
+      shape: ['star', { n: 6, r: 0.07, inner: 0.55 }],
+      motion: ['spin', { rate: 0.0625 }],
+      material: ['glow', { gain: 0.7, width: 0.012 }],
+      emit: ['ecosystem', { count: 16384, wD: 0.05, wB: 0.2, wV: 1, wO: 0.5, glyph: 1, size: 3, trail: 0.2, predation: 0.2, bloom: 1, graze: 0.2, growth: 0.6, starve: 0.5, decay: 0.992, speed: 0.7, field: 1, hues: 0, body: 0.6 }],
+      color: ['melody', { amount: 0.4 }],
+    })],
+    reactions: [rx('vocals', 'em', 0, 'field', 0.3, { atk: 0.2, rel: 1.5 }), rx('melody', 'em', 0, 'speed', 0.3, { atk: 0.1, rel: 0.8 }), rx('loud', 'ma', 0, 'gain', 0.2, { atk: 0.05, rel: 0.4 })],
   },
 ];
 
