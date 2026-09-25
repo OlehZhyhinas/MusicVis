@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 76;
+export const SEED_VERSION = 77;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2144,6 +2144,27 @@ const NOTES: Def[] = [
       rx('noteon', 'sh', 0, 'size', 0.35, { atk: 0.005, rel: 0.25 }),
       rx('legato', 'sh', 0, 'ribbon', 0.3, { atk: 0.5, rel: 1 }),
       rx('bar', 'sh', 0, 'tilt', 0.15, { atk: 0.5, rel: 1 }),
+    ],
+  },
+  {
+    // A piano roll standing on end and mirrored: notes are born along the bottom edge, placed out
+    // from the middle by pitch, and rise up the frame as time passes, each a rounded bar exactly as
+    // long as the note was held, so a staccato riff climbs as a scatter of short beads and a sung
+    // phrase as a staircase of long stems. The rising trails smoke upward and soften on drum hits.
+    origin: 'N03', name: 'Rising Keys', energy: [0.2, 0.9], scheme: 'triad', hue: 0.08,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.4 }, carrier: 'warp', decay: 0.92, car: { blur: 0.05 },
+    chain: [op('translate', { vy: 0.05 })],
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 3, len: 1.1, height: 0.8, now: 0.42, tilt: -0.25, ribbon: 0.55, thick: 0.006, marks: 1, form: 2, size: 0.03, fade: 0.8, shimmer: 0.3, hues: 1, glow: 0.4 }],
+      place: ['mirror', { axis: 0, x: 0.42, y: 0 }],
+      material: ['glow', { gain: 1.05 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.01, rel: 0.15 }],
+    })],
+    reactions: [
+      rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'car', 0, 'blur', 0.3, { atk: 0.01, rel: 0.3 }),
+      rx('glide', 'sh', 0, 'glow', 0.4, { atk: 0.05, rel: 0.4 }),
     ],
   },
 ];

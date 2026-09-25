@@ -14,7 +14,7 @@ export function notesGeneTests(check: Check): void {
   check('notes.signals', ['noteon', 'held', 'legato', 'glide', 'vibrato', 'voice'].every((s) => (SIGNALS as readonly string[]).includes(s)), SIGNALS.slice(-6).join(','));
 
   shapeGeneChecks(check, 'notes', 'vec4 ntAt(', 'melody', null);
-  for (const id of ['N01', 'N02']) seedChecks(check, id, 'notes');
+  for (const id of ['N01', 'N02', 'N03']) seedChecks(check, id, 'notes');
 
   // History: samples every NOTE_SEC / NOTE_W s, newest first; gaps drop the held strength; marks
   // carry age, length, height and a negative strength once ended.
