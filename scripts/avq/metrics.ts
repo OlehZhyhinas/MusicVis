@@ -810,10 +810,23 @@ export interface ReportCard {
   counterfactual?: CfSummary;
   /** Present when the clip has an engine readout (.inst.json). */
   readout?: ReadoutStats;
+  /** Present when the clip has DINOv2 frame embeddings (.emb.json). */
+  embedding?: { rhyme: RhymeStats[]; structure: StructureStats };
   notes: string[];
 }
 
 export const HEADLINE_WEIGHTS = { sync: 0.22, coupling: 0.14, hookRhyme: 0.16, melody: 0.08, structure: 0.12, flow: 0.12, interest: 0.1, correspond: 0.06 };
+
+/** Weighted mean of the finite headline scores. */
+export function overallOf(h: Record<string, number>): number {
+  let ws = 0;
+  let acc = 0;
+  for (const [k, w] of Object.entries(HEADLINE_WEIGHTS)) {
+    const v = h[k];
+    if (Number.isFinite(v)) (acc += w * v), (ws += w);
+  }
+  return ws ? acc / ws : 0;
+}
 
 /** clipT0 = song time of the frame before row 0 (row i is at clipT0 + (i + 1) / fps). */
 export function reportCard(c: ClipLike, meta: { preset: string; song: string; clip: string; clipT0: number }): ReportCard {
@@ -849,13 +862,7 @@ export function reportCard(c: ClipLike, meta: { preset: string; song: string; cl
     correspond: correspond.score,
     overall: 0,
   };
-  let ws = 0;
-  let acc = 0;
-  for (const [k, w] of Object.entries(HEADLINE_WEIGHTS)) {
-    const v = headline[k as keyof typeof headline];
-    if (Number.isFinite(v)) (acc += w * v), (ws += w);
-  }
-  headline.overall = ws ? acc / ws : 0;
+  headline.overall = overallOf(headline);
   const notes: string[] = [];
   const f2 = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a');
   if (flow.strobe) notes.push(`STROBE: ${(flow.flashArea * 100).toFixed(0)}% of the frame flashes > 3/s`);
@@ -996,4 +1003,112 @@ export function readoutStats(c: ClipLike, inst: InstLike, cf?: CfSummary): Reado
     if (x) pose[k] = quantile(x, 0.95) - quantile(x, 0.05);
   }
   return { reactions, pose };
+}
+
+// ------------------------------------------------------------------ embedding space (DINOv2)
+
+/** Frame embeddings: idx[k] is the clip row of vecs[k] (unit vectors). */
+export interface EmbLike {
+  idx: number[];
+  vecs: number[][];
+}
+
+function centred(emb: EmbLike): Float32Array[] {
+  const d = emb.vecs[0]?.length ?? 0;
+  const mu = new Float64Array(d);
+  for (const v of emb.vecs) for (let i = 0; i < d; i++) mu[i] += v[i] / emb.vecs.length;
+  return emb.vecs.map((v) => Float32Array.from(v, (x, i) => x - mu[i]));
+}
+
+function cosF(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  let d = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) (d += a[i] * b[i]), (na += a[i] * a[i]), (nb += b[i] * b[i]);
+  return na > 1e-12 && nb > 1e-12 ? d / Math.sqrt(na * nb) : 0;
+}
+
+function nearestSample(emb: EmbLike, f: number): number {
+  let lo = 0, hi = emb.idx.length - 1;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (emb.idx[m] < f) lo = m + 1;
+    else hi = m;
+  }
+  if (lo > 0 && Math.abs(emb.idx[lo - 1] - f) < Math.abs(emb.idx[lo] - f)) lo--;
+  return lo;
+}
+
+/**
+ * Hook rhyme in DINOv2 space: the looks at matching phases of two hook occurrences
+ * (embeddings centred on the clip mean), against an occurrence and a beat-shifted window
+ * (same beat phase, different place in the motif). Same scale as hookRhyme.
+ */
+export function embRhyme(c: ClipLike, emb: EmbLike, hook: Hook, clipT0: number): RhymeStats {
+  const fps = c.fps;
+  const Z = centred(emb);
+  const beat = 60 / (c.bpm || 120);
+  const lenF = Math.round(hook.len * fps);
+  const beatsPer = Math.max(2, Math.round(hook.len / beat));
+  const every = emb.idx.length > 1 ? emb.idx[1] - emb.idx[0] : 5;
+  const P = Math.max(2, Math.floor(lenF / every));
+  const toF = (t: number) => Math.round((t - clipT0) * fps) - 1;
+  const lastF = emb.idx[emb.idx.length - 1] ?? 0;
+  const occ = hook.occurrences.map((o) => toF(o.start)).filter((f) => f >= 0 && f + lenF <= lastF);
+  const traj = (f0: number) => (f0 < 0 || f0 + lenF > lastF ? null : Array.from({ length: P }, (_, p) => Z[nearestSample(emb, f0 + Math.round((p * lenF) / P))]));
+  const sim = (A: Float32Array[], B: Float32Array[]) => mean(A.map((a, p) => cosF(a, B[p])));
+  const empty = { hook: hook.id, occurrences: occ.length, sHook: 0, sBase: 0, rhyme: 0, score: 0 };
+  if (occ.length < 2) return empty;
+  const T = occ.map(traj);
+  let sh = 0, nh = 0, sb = 0, nb = 0;
+  for (let a = 0; a < occ.length; a++) {
+    for (let b = 0; b < occ.length; b++) {
+      if (a === b || !T[a] || !T[b]) continue;
+      if (a < b) (sh += sim(T[a]!, T[b]!)), nh++;
+      for (let k = 1; k < beatsPer; k++) {
+        const t = traj(occ[b] + Math.round(k * beat * fps));
+        if (t) (sb += sim(T[a]!, t)), nb++;
+      }
+    }
+  }
+  if (!nh || !nb) return empty;
+  const sHook = sh / nh, sBase = sb / nb;
+  const rhyme = sBase < 1 ? (sHook - sBase) / (1 - sBase) : 0;
+  return { hook: hook.id, occurrences: occ.length, sHook, sBase, rhyme, score: clamp01(rhyme) };
+}
+
+/** Structure response in DINOv2 space: look change (1 - cos of the 2 s means) at boundaries over non-boundary times. */
+export function embStructure(c: ClipLike, emb: EmbLike, clipT0: number): StructureStats {
+  const fps = c.fps;
+  const toF = (t: number) => Math.round((t - clipT0) * fps) - 1;
+  const w = Math.round(2 * fps);
+  const meanVec = (a: number, b: number) => {
+    const d = emb.vecs[0]?.length ?? 0;
+    const out = new Float64Array(d);
+    let n = 0;
+    emb.idx.forEach((f, k) => {
+      if (f >= a && f < b) {
+        n++;
+        for (let i = 0; i < d; i++) out[i] += emb.vecs[k][i];
+      }
+    });
+    return n ? out : null;
+  };
+  const change = (f: number) => {
+    const A = meanVec(f - w, f);
+    const B = meanVec(f + 1, f + 1 + w);
+    return A && B ? 1 - cosF(A, B) : NaN;
+  };
+  const lastF = emb.idx[emb.idx.length - 1] ?? 0;
+  const allB = c.moments.map((m) => toF(m.t));
+  const base: number[] = [];
+  for (let f = w; f + w <= lastF; f += Math.round(fps / 2)) if (allB.every((b) => Math.abs(b - f) >= 3 * fps)) base.push(change(f));
+  const baseline = quantile(base, 0.5);
+  const boundaries = c.moments
+    .map((m) => ({ m, f: toF(m.t) }))
+    .filter((x) => x.f - w >= 0 && x.f + w <= lastF)
+    .map(({ m, f }) => {
+      const ch = change(f);
+      return { t: m.t, label: m.label, kind: m.kind, change: ch, ratio: baseline > 1e-6 ? ch / baseline : 1 };
+    });
+  const score = boundaries.length ? mean(boundaries.map((b) => 1 - Math.exp(-Math.max(0, b.ratio - 1)))) : NaN;
+  return { boundaries, baseline, score };
 }

@@ -9,6 +9,7 @@ import { Engine, Stage } from '../../src/v2/engine';
 import { SEEDS } from '../../src/v2/seeds';
 import { cloneGenome, schemaFor, type Genome } from '../../src/v2/genome';
 import { paramsFor } from '../../src/v2/engine';
+import { Embedder, EMB_DIM } from '../../src/v2/embedding';
 import { analyzeAudio } from '../../src/analysis/analyze';
 import { TimelineSampler } from '../../src/analysis/TimelineSampler';
 import type { AnalysisResult, MusicState } from '../../src/types';
@@ -173,6 +174,15 @@ export interface RenderOpts {
   jpegQuality?: number;
   particleCap?: number;
   flameCap?: number;
+  /** Embed every Nth recorded frame with DINOv2-small (0 = off). Written to <base>.emb.json. */
+  embedEvery?: number;
+}
+
+let embedder: Embedder | null = null;
+async function getEmbedder(): Promise<Embedder> {
+  if (!embedder) embedder = new Embedder();
+  if (!(await embedder.load())) throw new Error('embedder: ' + embedder.status.detail);
+  return embedder;
 }
 
 let eng: Engine | null = null;
@@ -249,6 +259,16 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
   const row = new Float32Array(F);
   const base = `${presetId}/${song.slug}__${win.label}`;
   const framesDir = `frames/${base}`;
+  const emb = o.embedEvery > 0 ? await getEmbedder() : null;
+  const embCanvas = emb ? document.createElement('canvas') : null;
+  if (embCanvas) {
+    embCanvas.width = o.w;
+    embCanvas.height = o.h;
+  }
+  const embCtx = embCanvas?.getContext('2d') ?? null;
+  const embImg = embCtx ? embCtx.createImageData(o.w, o.h) : null;
+  const embIdx: number[] = [];
+  const embVecs: number[][] = [];
   const canvas = o.frames ? new OffscreenCanvas(o.w, o.h) : null;
   const ctx2 = canvas?.getContext('2d') ?? null;
   const img = ctx2 ? ctx2.createImageData(o.w, o.h) : null;
@@ -280,6 +300,16 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     row.set(vis.update(px), MUSIC_FIELDS.length);
     rows.set(row, i * F);
     inst.record();
+    if (emb && embCanvas && embCtx && embImg && i % o.embedEvery === 0) {
+      const W4 = o.w * 4;
+      for (let y = 0; y < o.h; y++) embImg.data.set(px.subarray((o.h - 1 - y) * W4, (o.h - y) * W4), y * W4);
+      embCtx.putImageData(embImg, 0, 0);
+      const v = await emb.embed([embCanvas]);
+      if (v) {
+        embIdx.push(i);
+        embVecs.push(v);
+      }
+    }
     thumbs.set(vis.thumb, i * THUMB_BYTES);
     if (ctx2 && img && canvas) {
       const W4 = o.w * 4;
@@ -313,6 +343,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
   };
   await save(`clips/${base}.bin`, new Blob([rows, thumbs, specs] as BlobPart[]));
   await save(`clips/${base}.inst.json`, inst.json());
+  if (emb) await save(`clips/${base}.emb.json`, JSON.stringify({ model: 'Xenova/dinov2-small', dim: EMB_DIM, every: o.embedEvery, device: emb.status.device, idx: embIdx, vecs: embVecs }));
   await save(`clips/${base}.json`, JSON.stringify(header));
   return { base, frames: n, ms };
 }
@@ -332,6 +363,7 @@ async function render(opts: RenderOpts) {
   const o = {
     w: opts.w ?? 320, h: opts.h ?? 180, fps: opts.fps ?? 30, seed: opts.seed ?? 1, warm: opts.warm ?? 3,
     frames: opts.frames ?? false, jpegQuality: opts.jpegQuality ?? 0.85, particleCap: opts.particleCap ?? 262144, flameCap: opts.flameCap ?? 524288,
+    embedEvery: opts.embedEvery ?? 0,
   };
   const clips = opts.clips ?? 'auto';
   const wins: ClipWindow[] = clips === 'auto' ? autoWindows(song.data, song.hooks) : clips === 'song' ? [{ label: 'song', start: 0, end: song.data.duration }] : clips;

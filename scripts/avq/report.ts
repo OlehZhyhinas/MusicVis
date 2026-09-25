@@ -6,8 +6,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { OUT } from './cdp';
 import type { Clip } from './format';
-import { listClips, loadCf, loadClip, loadInst } from './load';
-import { cfSummary, readoutStats, reportCard, type ClipLike, type ReportCard } from './metrics';
+import { listClips, loadCf, loadClip, loadEmb, loadInst } from './load';
+import { overallOf, cfSummary, embRhyme, embStructure, readoutStats, reportCard, type ClipLike, type ReportCard } from './metrics';
 
 export function asClipLike(c: Clip): ClipLike {
   const h = c.header;
@@ -38,6 +38,18 @@ export function cardFor(base: string): ReportCard {
     if (s.chaos >= 0.3) card.notes.push(`chaotic: an inaudible 2% level change already moves the picture by ${f2(s.chaos)} of its motion, so single-change counterfactuals are masked`);
     const silent = Object.entries(s.stems).filter(([, v]) => v < 0.03).map(([k]) => k);
     if (silent.length && s.chaos < 0.3) card.notes.push(`no visual footprint from ${silent.join(', ')}`);
+  }
+  const emb = loadEmb(base);
+  if (emb && emb.idx.length > 4) {
+    const cl = asClipLike(c);
+    const rhyme = c.header.hooks.map((h) => embRhyme(cl, emb, h, clipT0(c))).filter((r) => r.occurrences >= 2);
+    card.embedding = { rhyme, structure: embStructure(cl, emb, clipT0(c)) };
+    const er = rhyme.length ? Math.max(...rhyme.map((r) => r.score)) : NaN;
+    const es = card.embedding.structure.score;
+    // Headline hook rhyme and structure: the mean of the pixel-feature and embedding-space scores.
+    if (Number.isFinite(er)) card.headline.hookRhyme = Number.isFinite(card.headline.hookRhyme) ? (card.headline.hookRhyme + er) / 2 : er;
+    if (Number.isFinite(es)) card.headline.structure = Number.isFinite(card.headline.structure) ? (card.headline.structure + es) / 2 : es;
+    card.headline.overall = overallOf(card.headline);
   }
   const inst = loadInst(base);
   if (inst) {

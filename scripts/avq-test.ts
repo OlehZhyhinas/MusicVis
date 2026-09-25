@@ -2,7 +2,7 @@
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/avq-test.ts
 
 import {
-  cfSummary, correspondences, flowStats, readoutStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
+  cfSummary, correspondences, embRhyme, embStructure, flowStats, readoutStats, hookRhyme, interestStats, melodyStats, onsetEvents, reportCard, rhymeInputs, structureStats,
   syncStats, thumbChange, visualResponse, couplingStats, featureSeries, type ClipLike,
 } from './avq/metrics';
 import type { Hook } from './avq/music';
@@ -303,6 +303,43 @@ function flashes(n: number, at: number[], amp = 0.3): Float32Array {
   check('readout: a value parked at its limit is pinned', v[1] === 'pinned', v[1]);
   check('readout: a silent source is idle', v[2] === 'idle source', v[2]);
   check('readout: a moving value nothing follows is invisible', v[3] === 'invisible', `${v[3]} r ${ro.reactions[3].visible.toFixed(2)}`);
+}
+
+// ---------------------------------------------------------------- embedding space
+
+{
+  const n = 900;
+  const every = 5;
+  const hookLen = 8 * BEAT;
+  const occ = Array.from({ length: 6 }, (_, k) => ({ start: 2 + k * hookLen, end: 2 + (k + 1) * hookLen, sim: 1 }));
+  const hook: Hook = { id: 0, bars: 2, len: hookLen, occurrences: occ, salience: 1, distinct: 0.5, score: 1 };
+  const r = rng(11);
+  const D = 16;
+  const basis = Array.from({ length: 24 }, () => Array.from({ length: D }, () => r() - 0.5));
+  const unit = (v: number[]) => { const m = Math.hypot(...v) || 1; return v.map((x) => x / m); };
+  const mk = (look: (f: number) => number[]) => {
+    const idx: number[] = [];
+    const vecs: number[][] = [];
+    for (let f = 0; f < n; f += every) { idx.push(f); vecs.push(unit(look(f))); }
+    return { idx, vecs };
+  };
+  const clipT0 = -1 / FPS;
+  const c = clip({ n, cols: {}, hooks: [hook], moments: [{ t: 15, kind: 'drop', label: 'build>drop' }] });
+  const noise = (sc: number) => Array.from({ length: D }, () => sc * (r() - 0.5));
+  // Looks cycling with the 2-bar motif (8 distinct looks per occurrence).
+  const withMotif = mk((f) => basis[Math.floor(((f - 60 + 1200) % 120) / 15)].map((x, i) => x + noise(0.2)[i]));
+  const e1 = embRhyme(c, withMotif, hook, clipT0);
+  check('emb rhyme: looks cycling with the motif rhyme', e1.rhyme > 0.5, `S_hook ${e1.sHook.toFixed(2)} S_base ${e1.sBase.toFixed(2)} rhyme ${e1.rhyme.toFixed(2)}`);
+  const perBeat = mk((f) => basis[Math.floor((f % 15) / 5)].map((x, i) => x + noise(0.2)[i]));
+  const e2 = embRhyme(c, perBeat, hook, clipT0);
+  check('emb rhyme: looks cycling every beat do not', Math.abs(e2.rhyme) < 0.2, `rhyme ${e2.rhyme.toFixed(2)}`);
+  // Structure: one look before 15 s, another after, noise within.
+  const jump = mk((f) => (f < 449 ? basis[0] : basis[5]).map((x, i) => x + noise(0.3)[i]));
+  const st = embStructure(c, jump, clipT0);
+  check('emb structure: a new look at the drop scores high', st.score > 0.8, `ratio ${st.boundaries[0]?.ratio.toFixed(1)}`);
+  const same = mk(() => basis[0].map((x, i) => x + noise(0.3)[i]));
+  const st2 = embStructure(c, same, clipT0);
+  check('emb structure: the same look scores low', st2.score < 0.4, `ratio ${st2.boundaries[0]?.ratio.toFixed(2)}`);
 }
 
 console.log(failed ? `FAILED: ${failed} check(s)` : 'PASSED: 0 failing check(s)');

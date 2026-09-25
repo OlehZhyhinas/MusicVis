@@ -10,6 +10,7 @@
 //   --clips auto|song|A-B[:label][,A-B...]   windows in seconds (default auto: drop +-10 s, densest 20 s of the top hook)
 //   --w 320 --h 180 --fps 30 --seed 1 --warm 3
 //   --frames                    also save every frame as JPEG (for review clips / filmstrips)
+//   --embed [N]                 DINOv2-small CLS embedding of every Nth frame (default 5 = 6 per s)
 //   --jobs N                    parallel tabs (default 1, max 3)
 //   --info                      only analyse the songs and print sections, moments, hooks, windows
 //   --cf                        counterfactual lockstep renders instead (half-bar shift, far offset,
@@ -104,6 +105,7 @@ async function main() {
     }
     const opts: Record<string, unknown> = { clips: parseClips(a.clips) };
     for (const k of ['w', 'h', 'fps', 'seed', 'warm']) if (a[k] !== undefined) opts[k] = Number(a[k]);
+    if (a.embed) opts.embedEvery = a.embed === true ? 5 : Number(a.embed);
     if (a.frames) opts.frames = true;
     const jobs: Job[] = [];
     const method = a.cf ? 'counterfactual' : 'render';

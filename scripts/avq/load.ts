@@ -19,7 +19,7 @@ export function listClips(filter: { preset?: string; song?: string; label?: stri
     if (filter.preset && p !== filter.preset) continue;
     const pd = join(dir, p);
     for (const f of readdirSync(pd).sort()) {
-      if (!f.endsWith('.json') || f.endsWith('.inst.json')) continue;
+      if (!f.endsWith('.json') || f.endsWith('.inst.json') || f.endsWith('.emb.json')) continue;
       const b = f.slice(0, -5);
       const [song, label] = b.split('__');
       if (filter.song && song !== filter.song) continue;
@@ -69,5 +69,11 @@ export interface CfResult {
 
 export function loadCf(base: string): CfResult | null {
   const p = join(OUT, 'cf', base + '.json');
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
+}
+
+/** DINOv2 frame embeddings recorded with a clip, or null. */
+export function loadEmb(base: string): { idx: number[]; vecs: number[][]; every: number } | null {
+  const p = join(OUT, 'clips', base + '.emb.json');
   return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
 }
