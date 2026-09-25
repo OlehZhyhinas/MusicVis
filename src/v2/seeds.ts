@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 81;
+export const SEED_VERSION = 82;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1990,22 +1990,26 @@ const TIMBRE: Def[] = [
     timbre: { src: 0, sheen: 0.9, glass: 0.8, grain: 0.7, scale: 22, velvet: 0.6, edge: 0.6, emboss: 0 },
   },
   {
-    // A ring of eight rounded hexagons around the centre, turning on the bar over a wheeling fan
-    // of their halos. They read the vocals: a pure sung note turns every pane to clear glass with a
+    // A ring of eight rounded hexagons around the centre over a wheeling fan of their halos. Each
+    // drum hit kicks the panes round by a new amount, clockwise or anticlockwise, the fan reverses
+    // every other bar, and the ring breathes out with the bass and rises with the melody. They read the vocals: a pure sung note turns every pane to clear glass with a
     // bright rim, a bright belted line polishes them to chrome, a breathy phrase fogs them into velvet
     // with a soft bloom, and consonants and hard onsets flash their outlines.
     origin: 'T02', name: 'Glass Choir', energy: [0.1, 0.7], scheme: 'split', hue: 0.58,
     color: { adapt: 0.4, bloom: 1.15, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.25, floor: 1 },
-    chain: [op('rotate', { lock: 0.0625 }), op('zoom', { rate: -0.004 })],
+    chain: [op('rotate', { lock: 0.0625, alt: 1 }), op('zoom', { rate: -0.004 })],
     bodies: [body({
       shape: ['polygon', { n: 6, r: 0.07, round: 0.5 }],
       place: ['ring', { n: 8, radius: 0.27 }],
-      motion: ['spin', { rate: 0.25 }],
+      motion: ['hits', { amt: 0.7 }],
       material: ['fill', { gain: 1.3, soft: 0.05, halo: 0.35, core: 0.5 }],
       emit: ['none'],
       feel: ['flow', { atk: 0.03, rel: 0.4 }],
     })],
-    reactions: [rx('vocals', 'ma', 0, 'gain', 0.35, { atk: 0.05, rel: 0.5 }), rx('noisy', 'sh', 0, 'round', 0.4, { atk: 0.2, rel: 0.8 })],
+    reactions: [
+      rx('vocals', 'ma', 0, 'gain', 0.35, { atk: 0.05, rel: 0.5 }), rx('bass', 'pl', 0, 'radius', 0.45, { atk: 0.03, rel: 0.35 }),
+      rx('melody', 'pl', 0, 'radius', 0.3, { atk: 0.15, rel: 0.4 }),
+    ],
     timbre: { src: 3, sheen: 0.7, glass: 1, grain: 0.3, scale: 30, velvet: 0.8, edge: 0.5, emboss: 0 },
   },
   {
