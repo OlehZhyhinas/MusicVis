@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 95;
+export const SEED_VERSION = 96;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -843,7 +843,7 @@ const MILKDROP: Def[] = [
     carrier: 'warp', car: { halfLife: 1.4, floor: 0.2 },
     chain: [
       op('zoom', { rate: 0.006, wander: 0.2 }),
-      op('mosaic', { size: 0.13, shape: 0, gap: 0.12, angle: 0.07, lock: 0.0625, pulse: 0.5 }, 1, 'view'),
+      op('mosaic', { size: 0.13, shape: 0, gap: 0.12, angle: 0.07, lock: 0.0625, pulse: 0.25 }, 1, 'view'),
     ],
     bodies: [body({
       shape: ['dot', { r: 0.1 }],
@@ -851,7 +851,7 @@ const MILKDROP: Def[] = [
       material: ['fill', { gain: 1.2, soft: 0.5 }],
       color: ['height', { amount: 1.5, detail: 1 }],
     })],
-    reactions: [rx('bass', 'op', 1, 'size', 0.2, { atk: 0.03, rel: 0.4 }), rx('beat', 'ma', 0, 'gain', 0.4, { rel: 0.25 })],
+    reactions: [rx('bass', 'op', 1, 'size', 0.12, { atk: 0.05, rel: 0.4 }), rx('beat', 'ma', 0, 'gain', 0.4, { rel: 0.25 })],
   },
   {
     // Goody + Flexi, Data Crusher: a field of points streams outward from the centre at speed and is
