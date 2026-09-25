@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 68;
+export const SEED_VERSION = 69;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -647,9 +647,9 @@ const MILKDROP: Def[] = [
     color: { sat: 1, adapt: 0.35, bloom: 1.2 }, carrier: 'warp', decay: 0.975,
     chain: [
       op('zoom', { rate: 0.03 }),
-      op('swirl', { amt: 0.03, k: 1 }),
-      op('swirl', { amt: 0.03, k: 1 }),
-      op('swirl', { amt: 0.03, k: 1 }),
+      op('swirl', { amt: 0.01, k: 1 }),
+      op('swirl', { amt: 0.01, k: 1 }),
+      op('swirl', { amt: 0.01, k: 1 }),
       op('mirror', { axis: 0 }, 1, 'view'),
     ],
     bodies: [body({
@@ -659,7 +659,7 @@ const MILKDROP: Def[] = [
     })],
     reactions: [
       rx('loud', 'pl', 0, 'x', 0.25, { atk: 0.05, rel: 0.3 }), rx('other', 'op', 0, 'rate', -0.3, { atk: 0.05, rel: 0.4 }),
-      rx('bass', 'op', 1, 'amt', -0.2, { atk: 0.05, rel: 0.4 }),
+      rx('bass', 'op', 1, 'amt', -0.07, { atk: 0.05, rel: 0.4 }),
     ],
   },
   {
