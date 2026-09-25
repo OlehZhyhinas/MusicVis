@@ -195,7 +195,7 @@ async function main(): Promise<void> {
     thumb: (id) => evo.thumb(id),
   });
   function nextPreset(): void {
-    choose(evolveOn ? 'evolve' : 'next', 1.2, true, true);
+    choose('next', 1.2, true, true);
   }
 
   function setEvolve(on: boolean): void {

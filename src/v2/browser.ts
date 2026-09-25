@@ -223,6 +223,7 @@ export class PresetBrowser {
     let ms = this.evo.pop.list().filter((m) => (this.showHidden || !m.hidden) && (!type || m.species === type || m.species2 === type) && (!energy || m.energy === energy));
     const sort = this.sortSel.value;
     if (sort === 'newest') ms = ms.sort((a, b) => b.created - a.created || b.id.localeCompare(a.id));
+    else if (sort === 'likes') ms = ms.sort((a, b) => b.likes - a.likes || a.dislikes - b.dislikes || b.created - a.created);
     else if (sort === 'gen') ms = ms.sort((a, b) => b.gen - a.gen || a.id.localeCompare(b.id));
     else if (sort === 'novel') ms = ms.sort((a, b) => (this.cb.novelty?.(b)?.rel ?? -1) - (this.cb.novelty?.(a)?.rel ?? -1) || b.created - a.created);
     else ms = ms.sort((a, b) => fitness(b) - fitness(a) || b.created - a.created);

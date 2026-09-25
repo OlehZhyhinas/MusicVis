@@ -102,6 +102,12 @@ export class Evolution {
       return target < lo ? lo - target : target > hi ? target - hi : 0;
     };
     const recent = new Set(this.history);
+    if (reason === 'next') {
+      // Manual "next preset": uniformly random, ignoring votes and energy, avoiding the last few shown.
+      const fresh = pool.filter((m) => !recent.has(m.id));
+      const from = fresh.length ? fresh : pool;
+      return from[Math.floor(this.rng() * from.length)];
+    }
     if (reason === 'evolve' && this.rng() < 0.3) {
       // Exploration: something nobody has seen yet, newest first.
       // With exploration on, the most novel-looking first.
