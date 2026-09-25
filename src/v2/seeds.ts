@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 89;
+export const SEED_VERSION = 90;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1329,23 +1329,26 @@ const AGENTS: Def[] = [
     ],
   },
   {
-    // A murmuration: sixteen thousand boids wheel around three slowly orbiting lights in streaking
-    // flocks that merge and split; each bird is coloured by its heading, so turning banks change colour.
-    // The bass drives the flock faster, drum hits scatter it, the vocals pull it into long ribbons, and
-    // on a drop the whole flock bursts outward before regrouping.
+    // A murmuration: sixteen thousand boids wheel around three slowly orbiting lights in loose,
+    // streaking flocks that merge and split; each bird is coloured by its heading, so turning banks
+    // change colour. The flock itself keeps a calm, steady clock: it surges on every beat, loosens on
+    // every downbeat and tightens into ribbons and back over each bar. On top of the trails the birds
+    // flash on every drum hit and on the beat and swell with the bass (the flock overlay), and on a
+    // drop the whole flock bursts outward before regrouping.
     origin: 'P03', name: 'Murmuration', energy: [0.25, 0.9], scheme: 'complementary', hue: 0.6,
     color: { adapt: 0.35, bloom: 1.1, vignette: 0.45 }, carrier: 'warp', car: { halfLife: 0.15, floor: 1 },
     chain: [op('zoom', { rate: 0.002 })],
     bodies: [body({
       shape: ['dot', { r: 0.004 }],
-      place: ['orbit', { count: 3, radius: 0.28, rate: 0.125, follow: 0.1 }],
+      place: ['orbit', { count: 3, radius: 0.36, rate: 0.125, follow: 0.1 }],
       material: ['glow', { gain: 0.5, width: 0.01 }],
-      emit: ['flock', { count: 16384, speed: 0.25, radius: 0.025, align: 0.8, cohere: 0.8, separate: 0.35, wander: 0.15, home: 0.35, size: 1.6, body: 0.3, onDrop: 1 }],
+      emit: ['flock', { count: 16384, speed: 0.3, radius: 0.035, align: 0.8, cohere: 0.45, separate: 0.5, wander: 0.15, home: 0.2, size: 1.6, body: 0.3, onDrop: 1, over: 0.15, osize: 2 }],
       feel: ['flow', { atk: 0.02, rel: 0.3 }],
     })],
     reactions: [
-      rx('bass', 'em', 0, 'speed', 0.4, { atk: 0.05, rel: 0.4 }), rx('hit', 'em', 0, 'separate', 0.7, { rel: 0.3 }),
-      rx('vocals', 'em', 0, 'align', 0.3, { atk: 0.1, rel: 0.8 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.3 }),
+      rx('beat', 'em', 0, 'speed', 0.5, { rel: 0.3 }), rx('barpulse', 'em', 0, 'separate', 0.7, { rel: 0.4 }),
+      rx('bar', 'em', 0, 'align', 0.3, { atk: 0.1, rel: 0.3 }), rx('hit', 'em', 0, 'over', 1, { atk: 0.005, rel: 0.15 }),
+      rx('bass', 'em', 0, 'osize', 0.5, { atk: 0.02, rel: 0.25 }), rx('beat', 'em', 0, 'over', 0.4, { atk: 0.005, rel: 0.2 }),
     ],
   },
 ];
