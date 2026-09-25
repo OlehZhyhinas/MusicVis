@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 98;
+export const SEED_VERSION = 99;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1940,21 +1940,25 @@ const DEJAVU: Def[] = [
     dejavu: { recall: 1, blend: 0.5, snap: 0.6, frame: 1, hue: 0.8, motion: 1, evolve: 0.5, keep: 0, res: 0.25, cap: 3, min: 0.7 },
   },
   {
-    // A glowing torus knot tumbles slowly in perspective, pushed by the waveform, laying a long trail
-    // of silk-like loops in warm gold on violet. Every appearance of a returning section is
+    // A glowing torus knot tumbles in perspective, pushed by the waveform and swelling with the bass,
+    // laying a trail of silk-like loops in warm gold on violet; it flares on the beat and punches
+    // outward on drum hits. Every appearance of a returning section is
     // remembered afresh and only the two latest memories are kept, so each return brings back the
     // sculpture the last one left, pushed in and turned a good deal further and shifted in hue: the
     // choruses grow into a chain of variations, each a memory of the one before.
     origin: 'D05', name: 'Haunted Knot', energy: [0.2, 0.8], scheme: 'complementary', hue: 0.12,
-    color: { sat: 1, exposure: 0.85, adapt: 0.3, bloom: 0.9, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 1.5, floor: 0.4 },
+    color: { sat: 1, exposure: 0.85, adapt: 0.3, bloom: 0.9, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.5, floor: 0.4 },
     chain: [op('zoom', { rate: 0.001 }), op('swirl', { amt: 0.003, k: 2 })],
     bodies: [body({
-      shape: ['superscope', { family: 0, p: 2, q: 3, size: 0.26, audio: 0.25, spec: 0, spinX: 0.03125, spinY: 0.0625, persp: 0.6, n: 1024 }],
-      material: ['line', { gain: 0.3, width: 1, halo: 0.1 }],
+      shape: ['superscope', { family: 0, p: 2, q: 3, size: 0.34, audio: 0.25, spec: 0, spinX: 0.0625, spinY: 0.125, persp: 0.6, n: 1024 }],
+      material: ['line', { gain: 0.4, width: 1, halo: 0.1 }],
       color: ['fixed', { hue: 0, detail: 1 }],
       feel: ['flow', { lock: 0, atk: 0.05, rel: 0.6 }],
     })],
-    reactions: [rx('bass', 'sh', 0, 'audio', 0.4, { atk: 0.03, rel: 0.4 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.5 })],
+    reactions: [
+      rx('bass', 'sh', 0, 'size', 0.25, { atk: 0.03, rel: 0.4 }), rx('beat', 'ma', 0, 'gain', 0.5, { rel: 0.25 }),
+      rx('hit', 'sh', 0, 'size', 0.3, { atk: 0.005, rel: 0.25 }),
+    ],
     dejavu: { recall: 0.8, blend: 2, snap: 0.8, frame: 0.6, hue: 0.5, motion: 0.7, evolve: 0.8, keep: 1, res: 0.5, cap: 2, min: 0.65 },
   },
 ];
