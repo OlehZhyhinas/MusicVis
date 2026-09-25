@@ -3,7 +3,7 @@
 
 import { SIGNALS, COST_BUDGET_MS, estimateCost, repair } from '../src/v2/genome';
 import { NOTE_MARKS, NOTE_SEC, NOTE_W, NoteHistory, packNotes } from '../src/v2/genes/notes';
-import { shapeGeneChecks } from './v2-physics';
+import { seedChecks, shapeGeneChecks } from './v2-physics';
 import type { NoteStats } from '../src/types';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -14,6 +14,7 @@ export function notesGeneTests(check: Check): void {
   check('notes.signals', ['noteon', 'held', 'legato', 'glide', 'vibrato', 'voice'].every((s) => (SIGNALS as readonly string[]).includes(s)), SIGNALS.slice(-6).join(','));
 
   shapeGeneChecks(check, 'notes', 'vec4 ntAt(', 'melody', null);
+  for (const id of ['N01']) seedChecks(check, id, 'notes');
 
   // History: samples every NOTE_SEC / NOTE_W s, newest first; gaps drop the held strength; marks
   // carry age, length, height and a negative strength once ended.

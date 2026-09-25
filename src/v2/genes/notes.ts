@@ -109,9 +109,10 @@ vec3 FLD(vec2 p) {
     float w = C.w * (0.35 + 0.65 * held) + aa;
     float old = smoothstep(span, span * 0.55, age);
     vec3 col = pal(A.y + s0.r * X.z);
-    float body = glow(d, w) + X.w * 0.35 * glow(d, w * 4.0);
-    float wt = C.z * held * (0.3 + 0.7 * s0.a) * old;
-    c += col * body * wt;
+    // The halo takes the held strength around this point, so a note's ends are rounded off.
+    float soft = (held + sp.g + sm.g) / 3.0 * smoothstep(0.06, 0.025, abs(sp.r - sm.r));
+    float art = C.z * (0.3 + 0.7 * s0.a) * old;
+    c += col * (glow(d, w) * held + X.w * 0.3 * glow(d, w * 2.2) * soft) * art;
     // Vibrato: small beads of light twinkling along the ribbon where the note wavers.
     float ph = age * k / max(C.w * 6.0, 0.01);
     float bead = glow(fract(ph) - 0.5, 0.12) * (0.5 + 0.5 * sin(floor(ph) * 2.7 + A.w * 9.0));
@@ -122,7 +123,7 @@ vec3 FLD(vec2 p) {
     vec4 s0 = ntAt(0.0);
     vec2 h = ntPos(0.0, (s0.r - 0.5) * ys, B, C);
     float w = C.w * 2.0 + aa;
-    c += pal(A.y + s0.r * X.z) * (glow(length(q - h), w) * 1.2 + glow(length(q - h), w * 4.0) * 0.3 * X.w) * Y.y * C.z;
+    c += pal(A.y + s0.r * X.z) * (glow(length(q - h), w) * 1.2 + glow(length(q - h), w * 2.5) * 0.3 * X.w) * Y.y * C.z;
   }
   // Marks: one per note start, lit while the note is held, fading once it ends.
   float mw = D.x * (1.0 - 0.65 * A.z);
@@ -171,6 +172,9 @@ vec3 FLD(vec2 p) {
 export class NoteHistory {
   readonly data = new Float32Array(NOTE_W * 2 * 4);
   private acc = 0;
+  private clock = 0;
+  private lastStart = -1e9;
+  private pendingBreak = false;
   private last = [0.5, 0, 0, 0.5];
 
   push(n: NoteStats | undefined, dt: number): void {
@@ -183,12 +187,25 @@ export class NoteHistory {
     const cur = n
       ? [clamp01(n.height), clamp01(n.held), clamp01(n.vibrato / 0.6), clamp01(n.legato)]
       : [this.last[0], 0, 0, 0.5];
+    // A new note breaks the ribbon for one sample (tied notes stepping in pitch do not join up).
+    this.clock += Math.max(0, dt);
+    const newest = n?.recent.length ? n.recent[n.recent.length - 1] : null;
+    if (newest) {
+      const start = this.clock - newest.age;
+      if (Math.abs(start - this.lastStart) > 0.02) {
+        if (this.lastStart > -1e8) this.pendingBreak = true;
+        this.lastStart = start;
+      }
+    }
+    const broke = this.pendingBreak && steps > 0;
+    if (steps > 0) this.pendingBreak = false;
     for (let s = 1; s <= steps; s++) {
       d.copyWithin(4, 0, (NOTE_W - 1) * 4);
-      // Samples between frames are interpolated, except across a jump in pitch (a new note).
+      // Samples between frames are interpolated, except across a jump in pitch or a new note.
       const f = s / steps;
-      const jump = Math.abs(cur[0] - this.last[0]) > 0.04;
+      const jump = broke || Math.abs(cur[0] - this.last[0]) > 0.04;
       for (let j = 0; j < 4; j++) d[j] = jump ? cur[j] : this.last[j] + (cur[j] - this.last[j]) * f;
+      if (broke && s === 1) d[1] = 0;
     }
     if (steps > 0) this.last = cur;
     const o = NOTE_W * 4;
@@ -209,6 +226,9 @@ export class NoteHistory {
   reset(): void {
     this.data.fill(0);
     this.acc = 0;
+    this.clock = 0;
+    this.lastStart = -1e9;
+    this.pendingBreak = false;
     this.last = [0.5, 0, 0, 0.5];
   }
 }

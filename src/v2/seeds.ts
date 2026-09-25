@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 74;
+export const SEED_VERSION = 75;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2102,4 +2102,29 @@ const LYRICS: Def[] = [
   },
 ];
 
-export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS].map(build);
+// N01.. showcase the notes shape (genes/notes.ts): the melody drawn as it is played, held and
+// gliding notes as ribbons bending with the pitch, detached notes as marks born at each note start.
+const NOTES: Def[] = [
+  {
+    // One melody line drawn across the frame as it is played, the present at the right. A sung or
+    // held note is a glowing ribbon that rises and falls with the pitch as it wanders, beading with
+    // light where the voice has vibrato; a staccato riff breaks into a row of bright dots, one per
+    // note, each lit while its note sounds and fading after, all drifting left into the past.
+    origin: 'N01', name: 'Legato Line', energy: [0.15, 0.85], scheme: 'triad', hue: 0.6,
+    color: { adapt: 0.35, bloom: 1.25, vignette: 0.45 }, carrier: 'warp', decay: 0.85,
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 4, len: 1.55, height: 0.62, now: 0.32, ribbon: 0.95, thick: 0.009, marks: 0.95, form: 0, size: 0.028, fade: 0.45, shimmer: 0.45, hues: 0.7, glow: 0.6 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 1.15 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.01, rel: 0.15 }],
+    })],
+    reactions: [
+      rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.2 }),
+      rx('legato', 'sh', 0, 'thick', 0.4, { atk: 0.4, rel: 0.8 }),
+      rx('hit', 'sh', 0, 'glow', 0.3, { atk: 0.005, rel: 0.25 }),
+    ],
+  },
+];
+
+export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES].map(build);
