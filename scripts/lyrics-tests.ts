@@ -4,7 +4,8 @@
 import { readTags, readId3v2, readId3v1, readFlac, readOgg, readMp4, sniff, unsync } from '../src/lyrics/tags';
 import { cleanTitle, metaFromFilename, mergeMeta } from '../src/lyrics/filename';
 import { parseLrc, spreadPlain, vocalRegions, lineAt } from '../src/lyrics/lrc';
-import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS } from '../src/lyrics/lrclib';
+import { lookupLyrics, memoryCache, cacheKey, MISSING_TTL_MS, fitsDuration } from '../src/lyrics/lrclib';
+import { LyricsLibrary } from '../src/lyrics/library';
 import { readLine, topTags, lookupWord, LYRIC_TAGS, TAG_COUNT, tagIndex } from '../src/lyrics/lexicon';
 import { LyricSampler } from '../src/lyrics/sampler';
 import { COST_BUDGET_MS, cloneGenome, estimateCost, repair, validate, type Genome } from '../src/v2/genome';
@@ -248,6 +249,89 @@ export async function lyricsTests(check: Check): Promise<void> {
     const r6 = await lookupLyrics({ title: 'Song', duration: 201 }, { fetch: mock, cache: memoryCache() });
     const r7 = await lookupLyrics({}, { fetch: mock, cache: memoryCache() });
     check('lyrics.lrclib.title-only', r5.status === 'missing' && r6.status === 'synced' && r7.status === 'missing', `${r5.status} ${r6.status} ${r7.status}`);
+  }
+
+  // ------------------------------------------- LRCLIB: the song's version (duration)
+  {
+    // A mocked LRCLIB with three versions of one song: the album (209 s, lyrics from 7 s), a music
+    // video (235 s, lyrics from 22 s) and a radio edit (180 s). /api/get honours the duration the
+    // way LRCLIB does (a record within 2 s, else 404); without one it returns the first record, which
+    // here has plain lyrics only.
+    const recs = [
+      { id: 1, trackName: 'Song', artistName: 'Band', duration: 209, plainLyrics: 'a', syncedLyrics: null },
+      { id: 2, trackName: 'Song', artistName: 'Band', duration: 209, plainLyrics: 'a', syncedLyrics: '[00:07.00]album' },
+      { id: 3, trackName: 'Song', artistName: 'Band', duration: 235, plainLyrics: 'a', syncedLyrics: '[00:22.00]video' },
+      { id: 4, trackName: 'Song', artistName: 'Band', duration: 180, plainLyrics: 'a', syncedLyrics: '[00:05.00]radio' },
+    ];
+    const calls: string[] = [];
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
+    let only: number[] | null = null;
+    const mock = (async (url: string | URL) => {
+      const u = new URL(String(url));
+      calls.push(u.pathname + u.search);
+      const list = recs.filter((r) => !only || only.includes(r.id));
+      if (u.pathname === '/api/get') {
+        const d = u.searchParams.get('duration');
+        const r = d ? list.find((x) => Math.abs(x.duration - Number(d)) <= 2) : list[0];
+        return r ? json(r) : new Response('{"statusCode":404}', { status: 404 });
+      }
+      return json(list);
+    }) as typeof fetch;
+    const video = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 234.8 }, { fetch: mock, cache: memoryCache() });
+    check('lyrics.lrclib.duration-get', video.synced === '[00:22.00]video' && video.duration === 235 && calls[0].includes('duration=235'), `${video.synced} ${video.duration} ${calls[0]}`);
+    // Search scoring: with /api/get missing the version, the closest duration wins among equal matches.
+    only = [2, 3, 4];
+    calls.length = 0;
+    const byScore = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 181 }, { fetch: mock, cache: memoryCache() });
+    only = [2, 4];
+    const near = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 200 }, { fetch: mock, cache: memoryCache() });
+    only = null;
+    check('lyrics.lrclib.duration-search', byScore.synced === '[00:05.00]radio' && near.synced === '[00:07.00]album', `181 s -> ${byScore.synced}, 200 s -> ${near.synced}`);
+    // Without a duration /api/get gives the plain-only record; the search finds a synced one.
+    const noDur = await lookupLyrics({ artist: 'Band', title: 'Song' }, { fetch: mock, cache: memoryCache() });
+    check('lyrics.lrclib.plain-then-synced', noDur.status === 'synced', `${noDur.status} ${noDur.synced}`);
+
+    // The cache: an album result is looked up again for the 235 s video, once.
+    const cache = memoryCache();
+    only = [2];
+    const first = await lookupLyrics({ artist: 'Band', title: 'Song' }, { fetch: mock, cache });
+    only = null;
+    calls.length = 0;
+    const again = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 234.8 }, { fetch: mock, cache });
+    const requery = calls.length;
+    calls.length = 0;
+    const third = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 234.8 }, { fetch: mock, cache });
+    check('lyrics.lrclib.duration-recheck', first.synced === '[00:07.00]album' && again.synced === '[00:22.00]video' && requery > 0 && third.synced === again.synced && calls.length === 0,
+      `${first.synced} -> ${again.synced} (${requery} requests), then ${calls.length} requests`);
+    // Nothing closer exists: the lookup for this duration is remembered and not repeated.
+    const c2 = memoryCache();
+    only = [2];
+    await lookupLyrics({ artist: 'Band', title: 'Song', duration: 234.8 }, { fetch: mock, cache: c2 });
+    calls.length = 0;
+    const kept = await lookupLyrics({ artist: 'Band', title: 'Song', duration: 235.3 }, { fetch: mock, cache: c2 });
+    only = null;
+    const entry = c2.map.get(cacheKey({ artist: 'Band', title: 'Song' }))!;
+    check('lyrics.lrclib.duration-best-available', kept.synced === '[00:07.00]album' && calls.length === 0 && entry.forDuration === 235 && fitsDuration(entry, 210) && !fitsDuration(entry, 300),
+      `${kept.synced}, ${calls.length} requests, for ${entry.forDuration}`);
+
+    // The library: a song added without tags is looked up by name, then again once decoded.
+    const lib = new LyricsLibrary({ fetch: mock, cache: memoryCache() });
+    only = [2, 3];
+    calls.length = 0;
+    const done = () => new Promise<void>((res) => (lib.onChange = () => res()));
+    let wait = done();
+    lib.add('t1', Object.assign(new Blob([new Uint8Array(64)]), { name: 'Band - Song (Official Video).mp3' }));
+    await wait;
+    const before = lib.get('t1')?.result?.synced;
+    wait = done();
+    lib.setDuration('t1', 234.8);
+    await wait;
+    const after = lib.get('t1')?.result?.synced;
+    const n = calls.length;
+    lib.setDuration('t1', 234.9);
+    only = null;
+    check('lyrics.library.decoded-duration', before === '[00:07.00]album' && after === '[00:22.00]video' && calls.some((c) => c.includes('duration=235')) && calls.length === n,
+      `${before} -> ${after}; ${calls.join(' ')}`);
   }
 
   // --------------------------------------------------------------- lexicon

@@ -1,13 +1,15 @@
 // Per-track lyrics for the playlist: reads each added file's tags, looks the song up on LRCLIB one
 // track at a time (automatically, in the background), and turns what it finds into a timed
 // LyricTrack once the song's analysis (duration, vocal presence) is known. Lookups that failed
-// because the network was down are retried when the browser comes back online.
+// because the network was down are retried when the browser comes back online. Once a song is
+// decoded its real duration is known (files rarely carry it in their tags); a result timed for a
+// different version of the song is then looked up again with it.
 
 import type { AnalysisResult } from '../types';
 import type { LyricResult, LyricStatus, LyricTrack, TrackMeta } from './types';
 import { readFileTags } from './tags';
 import { mergeMeta } from './filename';
-import { idbCache, lookupLyrics, type LyricsCache } from './lrclib';
+import { idbCache, lookupLyrics, RECHECK_AFTER, type LyricsCache } from './lrclib';
 import { parseLrc, spreadPlain, vocalRegions } from './lrc';
 
 export interface TrackLyrics {
@@ -18,6 +20,8 @@ export interface TrackLyrics {
 
 interface Item extends TrackLyrics {
   file: Blob & { name?: string };
+  /** The decoded audio's duration (seconds), once known. */
+  decoded?: number;
   built?: { result: AnalysisResult; track: LyricTrack | null };
 }
 
@@ -73,6 +77,24 @@ export class LyricsLibrary {
     void this.pump();
   }
 
+  /**
+   * The decoded audio's duration: used by the lookups from now on, and a found result whose record
+   * is more than RECHECK_AFTER seconds longer or shorter (another version of the song, timed
+   * differently) is looked up again, first in the queue.
+   */
+  setDuration(id: string, seconds: number): void {
+    const it = this.items.get(id);
+    if (!it || !(seconds > 0) || it.decoded === seconds) return;
+    it.decoded = seconds;
+    if (it.meta) it.meta = { ...it.meta, duration: seconds };
+    const r = it.result;
+    const found = r && (r.status === 'synced' || r.status === 'plain' || r.status === 'instrumental');
+    if (!found || this.queue.includes(id)) return;
+    if (r.duration !== undefined && Math.abs(r.duration - seconds) <= RECHECK_AFTER) return;
+    this.queue.unshift(id);
+    void this.pump();
+  }
+
   /** Moves a track to the front of the queue (the one about to play). */
   prioritize(id: string): void {
     if (!this.queue.includes(id)) return;
@@ -116,6 +138,7 @@ export class LyricsLibrary {
               // Unreadable: the file name has to do.
             }
             it.meta = mergeMeta(tags, it.file.name ?? '');
+            if (it.decoded) it.meta.duration = it.decoded;
           }
           const res = await lookupLyrics(it.meta, { cache: this.cache, fetch: this.fetchFn });
           if (!this.items.has(id)) continue;

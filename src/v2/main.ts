@@ -598,6 +598,8 @@ async function main(): Promise<void> {
       transport.show();
       const { buffer, result } = await playlist.ensureLoaded(audioCtx, track);
       if (token !== loadToken) return;
+      // The real duration picks the version of the song the synced lyrics are timed for.
+      lyrics.setDuration(track.id, buffer.duration);
       const { TimelineSampler } = await import('../analysis/TimelineSampler');
       if (token !== loadToken) return;
       player.load(buffer);
@@ -780,7 +782,12 @@ async function main(): Promise<void> {
   else relayout();
 
   // Debug / test handle.
-  (window as unknown as Record<string, unknown>).musicvisV2 = { eng, evo, screener, pheno, presetMap, similarity, play, choose, current, editor };
+  (window as unknown as Record<string, unknown>).musicvisV2 = {
+    eng, evo, screener, pheno, presetMap, similarity, play, choose, current, editor, lyrics, playlist,
+    get player() { return player; },
+    get lyricSampler() { return lyricSampler; },
+    get songResult() { return songResult; },
+  };
 
   const hud = new Hud(hudEl);
   const lyricOverlay = new LyricOverlay(appRoot, canvas);

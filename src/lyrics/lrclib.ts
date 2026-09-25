@@ -2,6 +2,11 @@
 // match first (/api/get), then a search (/api/search) scored by title, artist and duration. Results
 // are cached by artist + title (IndexedDB in the browser); a failed request (offline, server busy)
 // is not cached, so the next play tries again.
+//
+// The duration matters: the same song exists in several versions (album, radio edit, music video
+// with a longer intro) and synced lyrics are timed for one of them. The lookup sends the song's
+// duration (the decoded audio's, once known) and prefers records within DURATION_MATCH of it; a
+// cached result whose record is more than RECHECK_AFTER away from the file is looked up again.
 
 import type { LyricResult, TrackMeta } from './types';
 
@@ -10,10 +15,16 @@ export const LRCLIB_URL = 'https://lrclib.net';
 export const LRCLIB_CLIENT = 'MusicVis (https://github.com/OlehZhyhinas/MusicVis)';
 /** Not-found results are trusted this long, then asked again (lyrics get added over time). */
 export const MISSING_TTL_MS = 7 * 24 * 3600 * 1000;
+/** A record this close to the file's duration (seconds) is the same version of the song. */
+export const DURATION_MATCH = 2;
+/** A cached record further than this from the file's duration (seconds) is looked up again. */
+export const RECHECK_AFTER = 3;
 
 export interface CacheEntry {
   result: LyricResult;
   at: number;
+  /** The duration the lookup asked for (seconds; absent: asked without one). */
+  forDuration?: number;
 }
 export interface LyricsCache {
   get(key: string): Promise<CacheEntry | undefined>;
@@ -49,12 +60,26 @@ export function cacheKey(meta: TrackMeta): string {
 
 function toResult(r: LrclibRecord, meta: TrackMeta): LyricResult {
   const source = [r.artistName ?? meta.artist, r.trackName ?? meta.title].filter(Boolean).join(' - ');
-  if (r.instrumental) return { status: 'instrumental', source };
+  const dur = r.duration && r.duration > 0 ? { duration: Math.round(r.duration * 10) / 10 } : {};
+  if (r.instrumental) return { status: 'instrumental', source, ...dur };
   const synced = r.syncedLyrics?.trim();
   const plain = r.plainLyrics?.trim();
-  if (synced) return { status: 'synced', synced, ...(plain ? { plain } : {}), source };
-  if (plain) return { status: 'plain', plain, source };
+  if (synced) return { status: 'synced', synced, ...(plain ? { plain } : {}), source, ...dur };
+  if (plain) return { status: 'plain', plain, source, ...dur };
   return { status: 'missing' };
+}
+
+/**
+ * Whether a cached result still fits the file: its record's duration is within RECHECK_AFTER of
+ * the file's, or it was already looked up for (about) this duration and that was the best there
+ * was. Without a known file duration any result fits.
+ */
+export function fitsDuration(entry: CacheEntry, duration: number | undefined): boolean {
+  if (!duration || !(duration > 0)) return true;
+  const r = entry.result;
+  if (r.status === 'missing' || r.status === 'offline') return true;
+  if (entry.forDuration !== undefined && Math.abs(entry.forDuration - duration) <= RECHECK_AFTER) return true;
+  return r.duration !== undefined && Math.abs(r.duration - duration) <= RECHECK_AFTER;
 }
 
 /** How well a search record fits (negative: reject). */
@@ -75,10 +100,12 @@ export function score(r: LrclibRecord, meta: TrackMeta): number {
     else s -= 3;
   }
   if (meta.duration && r.duration) {
+    // The version matters for synced lyrics: a record of the same length is timed for this file.
     const d = Math.abs(meta.duration - r.duration);
-    if (d <= 2) s += 2;
-    else if (d <= 5) s += 0.5;
+    if (d <= DURATION_MATCH) s += 3;
+    else if (d <= 5) s += 1;
     else if (d > 20) s -= 3;
+    else if (d > 10) s -= 1;
   }
   if (r.syncedLyrics) s += 1;
   else if (!r.plainLyrics && !r.instrumental) s -= 5;
@@ -145,9 +172,10 @@ export async function lookupLyrics(meta: TrackMeta, opts: LookupOptions = {}): P
   const now = opts.now ?? Date.now();
   if (!meta.title) return { status: 'missing' };
   const key = cacheKey(meta);
+  const dur = meta.duration && meta.duration > 0 ? Math.round(meta.duration) : undefined;
   try {
     const hit = await opts.cache?.get(key);
-    if (hit && (hit.result.status !== 'missing' || now - hit.at < MISSING_TTL_MS)) return hit.result;
+    if (hit && (hit.result.status !== 'missing' || now - hit.at < MISSING_TTL_MS) && fitsDuration(hit, meta.duration)) return hit.result;
   } catch {
     // An unreadable cache is a miss.
   }
@@ -163,9 +191,8 @@ export async function lookupLyrics(meta: TrackMeta, opts: LookupOptions = {}): P
     }
   };
   const delays = opts.retryDelays ?? [1500, 4000];
-  const dur = meta.duration && meta.duration > 0 ? Math.round(meta.duration) : undefined;
 
-  // 1. Exact match (needs an artist).
+  // 1. Exact match (needs an artist; with a duration LRCLIB only returns a record within 2 s).
   let found: LyricResult | null = null;
   if (meta.artist) {
     found = await tryStep(async () => {
@@ -175,8 +202,11 @@ export async function lookupLyrics(meta: TrackMeta, opts: LookupOptions = {}): P
       return out.status === 'missing' ? null : out;
     });
   }
-  // 2. Search: by fields, then free text; the best-scoring record wins.
-  if (!found) {
+  // 2. Search: by fields, then free text; the best-scoring record wins. Also asked when the exact
+  // match has no timing, for another record of the song that has.
+  const exact = found;
+  if (!found || found.status === 'plain') {
+    found = null;
     const queries: Record<string, string | undefined>[] = meta.artist
       ? [{ track_name: meta.title, artist_name: meta.artist }, { q: `${meta.artist} ${meta.title}` }]
       : [{ q: meta.title }];
@@ -186,9 +216,11 @@ export async function lookupLyrics(meta: TrackMeta, opts: LookupOptions = {}): P
         if (!Array.isArray(list) || !list.length) return null;
         let best: LrclibRecord | null = null;
         let bestScore = -Infinity;
+        const gap = (r: LrclibRecord) => (meta.duration && r.duration ? Math.abs(meta.duration - r.duration) : 0);
         for (const r of list) {
           const s = score(r, meta);
-          if (s > bestScore) {
+          // Equal scores: the record closest in length.
+          if (s > bestScore || (s === bestScore && best && gap(r) < gap(best))) {
             bestScore = s;
             best = r;
           }
@@ -197,15 +229,17 @@ export async function lookupLyrics(meta: TrackMeta, opts: LookupOptions = {}): P
         const need = meta.artist ? 3 : 6;
         if (!best || bestScore < need) return null;
         const out = toResult(best, meta);
-        return out.status === 'missing' ? null : out;
+        if (out.status === 'missing' || (exact && out.status !== 'synced')) return null;
+        return out;
       });
       if (found) break;
     }
+    found ??= exact;
   }
   if (found) result = found;
   else if (failed) return { status: 'offline' };
   try {
-    await opts.cache?.set(key, { result, at: now });
+    await opts.cache?.set(key, { result, at: now, ...(dur ? { forDuration: dur } : {}) });
   } catch {
     // Not cached: looked up again next time.
   }

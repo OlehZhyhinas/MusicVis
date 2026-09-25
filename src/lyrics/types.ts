@@ -40,4 +40,6 @@ export interface LyricResult {
   plain?: string;
   /** How the song was matched (artist - title), for the HUD. */
   source?: string;
+  /** Duration of the matched record (seconds): the version of the song the timings are for. */
+  duration?: number;
 }
