@@ -38,7 +38,7 @@ import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 63;
+export const SEED_VERSION = 64;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1952,6 +1952,25 @@ const TIMBRE: Def[] = [
     })],
     reactions: [rx('loud', 'ma', 0, 'gain', 0.25, { atk: 0.05, rel: 0.4 }), rx('bright', 'pl', 0, 'radius', 0.3, { atk: 0.3, rel: 1 })],
     timbre: { src: 0, sheen: 0.9, glass: 0.8, grain: 0.7, scale: 22, velvet: 0.6, edge: 0.6, emboss: 0 },
+  },
+  {
+    // A ring of eight rounded hexagons around the centre, turning on the bar over a wheeling fan
+    // of their halos. They read the vocals: a pure sung note turns every pane to clear glass with a
+    // bright rim, a bright belted line polishes them to chrome, a breathy phrase fogs them into velvet
+    // with a soft bloom, and consonants and hard onsets flash their outlines.
+    origin: 'T02', name: 'Glass Choir', energy: [0.1, 0.7], scheme: 'split', hue: 0.58,
+    color: { adapt: 0.4, bloom: 1.15, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.25, floor: 1 },
+    chain: [op('rotate', { lock: 0.0625 }), op('zoom', { rate: -0.004 })],
+    bodies: [body({
+      shape: ['polygon', { n: 6, r: 0.07, round: 0.5 }],
+      place: ['ring', { n: 8, radius: 0.27 }],
+      motion: ['spin', { rate: 0.25 }],
+      material: ['fill', { gain: 1.3, soft: 0.05, halo: 0.35, core: 0.5 }],
+      emit: ['none'],
+      feel: ['flow', { atk: 0.03, rel: 0.4 }],
+    })],
+    reactions: [rx('vocals', 'ma', 0, 'gain', 0.35, { atk: 0.05, rel: 0.5 }), rx('noisy', 'sh', 0, 'round', 0.4, { atk: 0.2, rel: 0.8 })],
+    timbre: { src: 3, sheen: 0.7, glass: 1, grain: 0.3, scale: 30, velvet: 0.8, edge: 0.5, emboss: 0 },
   },
 ];
 
