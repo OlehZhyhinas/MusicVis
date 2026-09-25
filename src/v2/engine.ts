@@ -152,6 +152,8 @@ export interface Frame {
   surge: number;
   /** Lyrics: new-line pulse, and the words' valence / arousal (the music's own mood where no words are sung). */
   line: number; valence: number; arousal: number;
+  /** Hooks: inside a repeat (0/1), phase through it, the repeat-start and motif-note pulses, the note index (-1 outside), the hook id (-1 outside). */
+  hookOn: number; hookPhase: number; hookPulse: number; hookNotePulse: number; hookNote: number; hookId: number;
 }
 
 /** Music state -> per-frame values and the waveform / spectrum textures (one per Stage). */
@@ -162,6 +164,7 @@ export class Signals {
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
     aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
     tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, chord: -1, tonnetzX: 0.5, tonnetzY: 0.2887, line: 0, valence: 0.5, arousal: 0.5,
+    hookOn: 0, hookPhase: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1,
     groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
     timbre: undefined,
     notes: undefined,
@@ -248,6 +251,12 @@ export class Signals {
     F.groove.synco = num(gr?.synco, 0);
     F.timbre = state.timbre;
     F.notes = state.notes;
+    F.hookOn = num(state.hookOn, 0);
+    F.hookPhase = num(state.hookPhase, 0);
+    F.hookPulse = num(state.hookPulse, 0);
+    F.hookNotePulse = num(state.hookNotePulse, 0);
+    F.hookNote = num(state.hookNote, -1);
+    F.hookId = num(state.hookId, -1);
     F.sectionIndex = Math.max(0, num(state.sectionIndex, 0));
     this.sectionPulse *= Math.exp(-dt * 1.5);
     if (this.lastSection >= 0 && F.sectionIndex !== this.lastSection) this.sectionPulse = 1;
@@ -416,6 +425,9 @@ export class Signals {
       case 'glide': return Math.min(1, Math.abs(num(F.notes?.glide, 0)) / 12);
       case 'vibrato': return Math.min(1, num(F.notes?.vibrato, 0) / 0.6);
       case 'voice': return num(F.notes?.voice, 0);
+      case 'hook': return Math.max(F.hookPulse, 0.8 * F.hookNotePulse);
+      case 'hookphase': return F.hookPhase;
+      case 'hookon': return F.hookOn;
       case 'line': return F.line;
       case 'valence': return F.valence;
       case 'arousal': return F.arousal;

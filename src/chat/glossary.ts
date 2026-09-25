@@ -56,6 +56,9 @@ distortion,cymbals). rough=how rough/buzzy/beating. attack=how sharp the onsets 
 noteon=pulse at each melody note start. held=strength of the held melody note(0 between notes).
 legato=0 staccato(short detached notes)..1 legato(held,tied,gliding). glide=how fast the pitch
 slides. vibrato=vibrato depth. voice=how sung the melody sounds(0 steady synth lead..1 voice).
+hook=pulse at each repeat of the song's riff/sung hook and at each note of its motif(same rhythm
+every repeat, so the riff rhymes visually). hookphase=0..1 through the current hook repeat.
+hookon=1 while a hook repeat plays.
 line=pulse per sung line. valence=words' mood 0 sad..1 happy. arousal=words' intensity(music's
 mood without lyrics).
 `;

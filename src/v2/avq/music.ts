@@ -2,13 +2,8 @@
 // analysis (SongData): drops and section boundaries, repeated short motifs ("hooks"), and
 // clip windows around them.
 //
-// Hook finder: every downbeat starts a candidate unit of 1 or 2 bars. Each unit is cut into
-// eighth-note slots; a slot's descriptor is the analysis chroma weighted by how present the
-// melodic stems (other + vocals) are, plus their onset strength. Two units are similar when
-// both the raw slot chroma and the unit-centred chroma (the contour, with the unit's chord
-// removed) line up, and their melodic onset patterns agree. A hook is a prototype unit with
-// many non-overlapping near copies that stand out against the rest of the song
-// (distinctiveness) and carry melodic energy (salience).
+// The hook finder lives in the analysis (src/analysis/hooks.ts), so the renderer's hook signals
+// and the harness's hook rhyme are measured against the same hooks; it is re-exported here.
 
 export interface SectionLite {
   start: number;
@@ -35,25 +30,8 @@ export interface SongData {
   stemPresence: Record<'drums' | 'bass' | 'vocals' | 'other', Float32Array>;
 }
 
-export interface HookOccurrence {
-  start: number;
-  end: number;
-  /** Similarity to the prototype, 0..1 (1 for the prototype itself). */
-  sim: number;
-}
-
-export interface Hook {
-  id: number;
-  bars: number;
-  /** Seconds per occurrence (mean). */
-  len: number;
-  occurrences: HookOccurrence[];
-  /** Mean melodic presence over the occurrences, 0..1. */
-  salience: number;
-  /** Mean similarity within the group minus the mean similarity of the prototype to all units. */
-  distinct: number;
-  score: number;
-}
+export type HookOccurrence = SongHookOccurrence;
+export type Hook = SongHook;
 
 export interface Moment {
   t: number;
@@ -67,7 +45,8 @@ export interface ClipWindow {
   end: number;
 }
 
-import type { AnalysisResult } from '../../types';
+import type { AnalysisResult, SongHook, SongHookOccurrence } from '../../types';
+import { findHooks as findHooksImpl } from '../../analysis/hooks';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -152,163 +131,9 @@ export function mainDrop(s: SongData): number | null {
   return best.t;
 }
 
-interface Unit {
-  start: number;
-  end: number;
-  raw: Float32Array; // slots*12, L2-normalised overall
-  ctr: Float32Array; // centred per chroma bin across slots, L2-normalised
-  ons: Float32Array; // slots
-  mel: number; // mean melodic presence
-}
-
-function cos(a: Float32Array, b: Float32Array): number {
-  let d = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    d += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return na > 1e-12 && nb > 1e-12 ? d / Math.sqrt(na * nb) : 0;
-}
-
-function buildUnits(s: SongData, bars: number): Unit[] {
-  const db = s.downbeats;
-  const fr = s.frameRate;
-  const bpb = Math.max(2, s.beatsPerBar || 4);
-  const slots = bpb * 2 * bars;
-  const units: Unit[] = [];
-  for (let i = 0; i + bars < db.length; i++) {
-    const start = db[i];
-    const end = db[i + bars];
-    if (end - start <= 0.2) continue;
-    const raw = new Float32Array(slots * 12);
-    const ons = new Float32Array(slots);
-    let mel = 0;
-    for (let k = 0; k < slots; k++) {
-      const a = start + ((end - start) * k) / slots;
-      const b = start + ((end - start) * (k + 1)) / slots;
-      const f0 = clamp(Math.floor(a * fr), 0, s.numFrames - 1);
-      const f1 = clamp(Math.ceil(b * fr), f0 + 1, s.numFrames);
-      let m = 0;
-      for (let f = f0; f < f1; f++) {
-        const w = s.stemPresence.other[f] + s.stemPresence.vocals[f];
-        m += w;
-        ons[k] += s.stemOnsets.other[f] + s.stemOnsets.vocals[f];
-        for (let c = 0; c < 12; c++) {
-          const v = s.chroma[f * 12 + c];
-          raw[k * 12 + c] += w * v * v; // squared: emphasise the loudest notes
-        }
-      }
-      ons[k] /= f1 - f0;
-      mel += m / (f1 - f0);
-    }
-    const ctr = new Float32Array(slots * 12);
-    for (let c = 0; c < 12; c++) {
-      let mu = 0;
-      for (let k = 0; k < slots; k++) mu += raw[k * 12 + c];
-      mu /= slots;
-      for (let k = 0; k < slots; k++) ctr[k * 12 + c] = raw[k * 12 + c] - mu;
-    }
-    units.push({ start, end, raw, ctr, ons, mel: mel / slots / 2 });
-  }
-  return units;
-}
-
-function unitSim(a: Unit, b: Unit): number {
-  const r = cos(a.raw, b.raw);
-  const c = Math.max(0, cos(a.ctr, b.ctr));
-  const o = Math.max(0, cos(a.ons, b.ons));
-  return 0.35 * r + 0.45 * c + 0.2 * o;
-}
-
-function percentileOf(v: number[], p: number): number {
-  if (!v.length) return 0;
-  const s = [...v].sort((a, b) => a - b);
-  return s[clamp(Math.round(p * (s.length - 1)), 0, s.length - 1)];
-}
-
-function findHooksFor(s: SongData, bars: number, maxHooks: number): Hook[] {
-  const units = buildUnits(s, bars);
-  const U = units.length;
-  if (U < 6) return [];
-  const M = new Float32Array(U * U);
-  const off: number[] = [];
-  for (let i = 0; i < U; i++) {
-    for (let j = i + 1; j < U; j++) {
-      const v = unitSim(units[i], units[j]);
-      M[i * U + j] = M[j * U + i] = v;
-      if (j - i >= bars) off.push(v);
-    }
-  }
-  const tau = Math.max(0.66, percentileOf(off, 0.8));
-  const melMax = Math.max(1e-6, ...units.map((u) => u.mel));
-  const used = new Uint8Array(U);
-  const hooks: Hook[] = [];
-  for (let h = 0; h < maxHooks; h++) {
-    let best: Hook | null = null;
-    let bestProto = -1;
-    for (let i = 0; i < U; i++) {
-      if (used[i] || units[i].mel < 0.15 * melMax) continue;
-      const cand = [] as number[];
-      let meanAll = 0;
-      for (let j = 0; j < U; j++) {
-        if (j === i) continue;
-        meanAll += M[i * U + j];
-        if (!used[j] && M[i * U + j] >= tau) cand.push(j);
-      }
-      meanAll /= U - 1;
-      cand.sort((a, b) => M[i * U + b] - M[i * U + a]);
-      const occ = [i];
-      for (const j of cand) if (occ.every((k) => Math.abs(k - j) >= bars)) occ.push(j);
-      if (occ.length < 3) continue;
-      let within = 0;
-      let mel = 0;
-      for (const k of occ) {
-        mel += units[k].mel;
-        if (k !== i) within += M[i * U + k];
-      }
-      within /= occ.length - 1;
-      mel /= occ.length;
-      const distinct = within - meanAll;
-      if (distinct < 0.04) continue;
-      // Density: repeats that come back to back (a riff) are what a 20 s review window can show.
-      let dense = 0;
-      for (const k of occ) dense = Math.max(dense, occ.filter((j) => units[j].start >= units[k].start && units[j].end <= units[k].start + 20).length);
-      const score = Math.log2(occ.length) * distinct * (mel / melMax) * Math.sqrt(bars) * (0.4 + 0.6 * Math.min(1, dense / 4));
-      if (!best || score > best.score) {
-        occ.sort((a, b) => a - b);
-        best = {
-          id: h, bars, len: 0, salience: mel, distinct, score,
-          occurrences: occ.map((k) => ({ start: units[k].start, end: units[k].end, sim: k === i ? 1 : M[i * U + k] })),
-        };
-        bestProto = i;
-      }
-    }
-    if (!best) break;
-    best.len = best.occurrences.reduce((a, o) => a + o.end - o.start, 0) / best.occurrences.length;
-    hooks.push(best);
-    // Units overlapping the chosen occurrences are taken.
-    for (let j = 0; j < U; j++) {
-      for (const o of best.occurrences) if (units[j].start < o.end - 0.05 && units[j].end > o.start + 0.05) used[j] = 1;
-    }
-    used[bestProto] = 1;
-  }
-  return hooks;
-}
-
-/** Repeated short motifs, best first (1- and 2-bar candidates compete on score). */
+/** Repeated short motifs, best first (src/analysis/hooks.ts). */
 export function findHooks(s: SongData, maxHooks = 2): Hook[] {
-  const all = [...findHooksFor(s, 1, maxHooks), ...findHooksFor(s, 2, maxHooks)].sort((a, b) => b.score - a.score);
-  // Keep hooks whose occurrences mostly do not coincide with an already kept hook.
-  const kept: Hook[] = [];
-  for (const h of all) {
-    const overl = (o: HookOccurrence) => kept.some((k) => k.occurrences.some((p) => p.start < o.end && p.end > o.start));
-    const share = h.occurrences.filter(overl).length / h.occurrences.length;
-    if (share < 0.5) kept.push(h);
-    if (kept.length >= maxHooks) break;
-  }
-  kept.forEach((h, i) => (h.id = i));
-  return kept;
+  return findHooksImpl(s, maxHooks);
 }
 
 /** The `len`-second window holding the most occurrences of a hook (start snapped to the first occurrence inside). */

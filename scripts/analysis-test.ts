@@ -9,6 +9,7 @@ import { repetitionTests } from './repetition-tests';
 import { grooveTests } from './groove-tests';
 import { timbreTests } from './timbre-tests';
 import { notesTests } from './notes-tests';
+import { hooksTests, liveHooksTests } from './hooks-tests';
 
 const SR = 44100;
 const BPM = Number(process.env.BPM ?? 128);
@@ -638,6 +639,9 @@ timbreTests(check);
 // ---------------------------------------------------------------- notes / articulation
 console.log('\nNotes and articulation on synthetic signals:');
 notesTests(check);
+console.log('\nHooks (repeated motifs):');
+hooksTests(check);
+liveHooksTests(check);
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);
 process.exitCode = failures === 0 ? 0 : 1;

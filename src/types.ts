@@ -182,6 +182,32 @@ export interface AnalysisResult {
   timbre?: TimbreTrack;
   /** Melody notes and articulation (optional: older cached results lack it). */
   notes?: NoteTrack;
+  /** Repeated short motifs (src/analysis/hooks.ts), best first; absent in older results. */
+  hooks?: SongHook[];
+}
+
+/** One repeat of a hook. */
+export interface SongHookOccurrence {
+  start: number;
+  end: number;
+  /** Similarity to the prototype, 0..1 (1 for the prototype itself). */
+  sim: number;
+}
+
+/** A repeated short melodic motif (a riff, a sung hook) found by src/analysis/hooks.ts. */
+export interface SongHook {
+  id: number;
+  bars: number;
+  /** Seconds per occurrence (mean). */
+  len: number;
+  occurrences: SongHookOccurrence[];
+  /** Mean melodic presence over the occurrences, 0..1. */
+  salience: number;
+  /** Mean similarity within the group minus the mean similarity of the prototype to all units. */
+  distinct: number;
+  score: number;
+  /** The motif's note starts as fractions of an occurrence (starts with 0); absent from the harness's older copies. */
+  notes?: number[];
 }
 
 /** How a section relates to the rest of the song (src/analysis/repetition.ts). */
@@ -292,6 +318,20 @@ export interface MusicState {
   repeatIndex?: number;
   repeatSim?: number;
   repeatReturnSim?: number;
+
+  // --- Hooks (src/analysis/hooks.ts; songs from the offline hook finder, live input from a recent-bars repeat check or undefined) ---
+  /** 1 inside a repeat of a hook (a riff or sung motif that keeps coming back), else 0. */
+  hookOn?: number;
+  /** 0..1 through the current hook repeat (0 outside). */
+  hookPhase?: number;
+  /** 1 at the start of each hook repeat, decays over ~0.2 s. */
+  hookPulse?: number;
+  /** 1 at each note of the hook's motif, decays over ~0.12 s. */
+  hookNotePulse?: number;
+  /** Index of the motif note last started within the repeat (-1 outside). */
+  hookNote?: number;
+  /** Which hook (0 = the song's main one; -1 outside). */
+  hookId?: number;
 
   // --- Harmony map (src/analysis/harmony.ts; undefined when not analysed) ---
   /** Current chord: 0..11 major triad on that root, 12..23 minor, -1 no chord. */

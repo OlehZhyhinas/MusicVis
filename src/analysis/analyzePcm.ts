@@ -13,6 +13,7 @@ import { computeComplexity, type ComplexityFeatures } from './complexity';
 import { analyzeGroove } from './groove';
 import { TimbreRecorder } from './timbre';
 import { NoteRecorder } from './notes';
+import { findHooks } from './hooks';
 
 export type ProgressFn = (stage: string, progress: number) => void;
 
@@ -191,6 +192,7 @@ export function analyzePcm(
     notes: noteRec.build(),
   };
   result.repeats = detectRepeats(result);
+  result.hooks = findHooks(result);
   return result;
 }
 

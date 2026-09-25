@@ -11,6 +11,7 @@ import type { LiveAudioFrame, MusicState, Section, StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import type { RealtimeAnalyzer } from './RealtimeAnalyzer';
 import { LiveHarmony, initHarmonyState } from './harmonyState';
+import { LiveHooks } from './hooks';
 
 const BEAT_TAU = 0.15;
 const BAR_TAU = 0.3;
@@ -41,6 +42,7 @@ export class RealtimeSampler {
   private seenChanges = 0;
   private seenKey = -1;
   private readonly harmony = new LiveHarmony();
+  private readonly hooks = new LiveHooks();
 
   constructor(analyzer: RealtimeAnalyzer) {
     this.a = analyzer;
@@ -92,6 +94,7 @@ export class RealtimeSampler {
   /** Re-sync without firing events (e.g. after the input device changed). */
   reset(): void {
     this.synced = false;
+    this.hooks.reset();
     const s = this.state;
     s.beatPulse = 0;
     s.barPulse = 0;
@@ -205,6 +208,16 @@ export class RealtimeSampler {
     }
     this.seenChanges = st.changes;
     s.buildIntensity = st.buildIntensity;
+
+    // --- Hooks (realtime-lite: a bar that repeats the last few marks the next bar as a hook repeat) ---
+    const bpmNow = s.bpm > 0 && Number.isFinite(s.bpm) ? s.bpm : 120;
+    const hk = this.hooks.update(time, s.barIndex, s.barPhase, 240 / bpmNow, s.chroma, s.stemPresence.other + s.stemPresence.vocals, s.stemOnsets.other + s.stemOnsets.vocals);
+    s.hookOn = hk.on;
+    s.hookPhase = hk.phase;
+    s.hookPulse = hk.pulse;
+    s.hookNotePulse = hk.notePulse;
+    s.hookNote = hk.note;
+    s.hookId = hk.hook;
 
     // --- Harmony map (realtime-lite) ---
     this.harmony.sample(s, a.harmony, s.keyTonic, s.keyMode, dt, events);

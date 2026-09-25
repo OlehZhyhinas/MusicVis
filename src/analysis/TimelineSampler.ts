@@ -8,6 +8,7 @@ import { STEM_NAMES } from '../types';
 import { detectRepeats } from './repetition';
 import { analyzeHarmony } from './harmony';
 import { HarmonyCursor, initHarmonyState } from './harmonyState';
+import { hookTimeline, hooksOf, sampleHook, type HookSample, type HookSpan } from './hooks';
 
 const BEAT_TAU = 0.15;
 const BAR_TAU = 0.3;
@@ -97,6 +98,11 @@ export class TimelineSampler {
   private keyCur = 0;
   /** The harmony map (chords on the Tonnetz), computed once per song. */
   private readonly harmony: HarmonyCursor | null;
+  /** Hook repeats in time order (from the result, or found here for results analysed without them). */
+  private readonly hookSpans: HookSpan[];
+  private readonly hookStarts: Float64Array;
+  private hookCur = -1;
+  private readonly hookOut: HookSample = { on: 0, phase: 0, pulse: 0, notePulse: 0, note: -1, hook: -1, index: -1 };
 
   constructor(result: AnalysisResult) {
     this.r = result;
@@ -171,6 +177,15 @@ export class TimelineSampler {
       harmony = null;
     }
     this.harmony = harmony;
+    let spans: HookSpan[] = [];
+    try {
+      spans = hookTimeline(hooksOf(result));
+    } catch {
+      spans = [];
+    }
+    this.hookSpans = spans;
+    this.hookStarts = Float64Array.from(spans, (x) => x.start);
+    if (spans.length) Object.assign(this.state, { hookOn: 0, hookPhase: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1 });
   }
 
   /** Call after seeking: the next sample re-syncs cursors without firing events. */
@@ -361,6 +376,19 @@ export class TimelineSampler {
         break;
       }
       s.sinceDrop = time - d;
+    }
+
+    // --- Hooks ---
+    if (this.hookSpans.length) {
+      const hi = jumped ? lastLE(this.hookStarts, time) : moveCursor(this.hookStarts, this.hookCur, time);
+      this.hookCur = hi;
+      const h = sampleHook(hi >= 0 ? this.hookSpans[hi] : undefined, time, this.hookOut);
+      s.hookOn = h.on;
+      s.hookPhase = h.phase;
+      s.hookPulse = h.pulse;
+      s.hookNotePulse = h.notePulse;
+      s.hookNote = h.note;
+      s.hookId = h.hook;
     }
 
     // --- Harmony map ---
