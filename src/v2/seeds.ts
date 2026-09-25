@@ -37,7 +37,7 @@ import { HARMONY_SCHEMA } from './genes/harmony';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 
-export const SEED_VERSION = 51;
+export const SEED_VERSION = 52;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1717,6 +1717,25 @@ const DEJAVU: Def[] = [
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.35, { atk: 0.01, rel: 0.3 }), rx('vocals', 'op', 0, 'amt', 0.3, { atk: 0.1, rel: 0.6 })],
     dejavu: { recall: 0.9, blend: 1, snap: 0.85, frame: 0.7, hue: 0.7, motion: 0.5, evolve: 0.3, keep: 0, res: 0.5, cap: 3, min: 0.7 },
+  },
+  {
+    // A ring of six neon hexagons spins on its own free clock and streams outward into a fast, turning
+    // tunnel of afterimages in triad colours. Nothing lingers, so a return is a flashback: when a
+    // section comes back, its first tunnel flashes over the picture for half a bar, the camera snaps to
+    // the remembered framing and the ring's spin jumps back to the angle it had, so the shot rhymes
+    // with the first one before it streams away again.
+    origin: 'D04', name: 'Flashback Tunnel', energy: [0.35, 1], scheme: 'triad', hue: 0.9,
+    color: { adapt: 0.3, bloom: 1.2, vignette: 0.5, ca: 0.3 }, carrier: 'warp', car: { halfLife: 0.6 },
+    chain: [op('zoom', { rate: 0.02 }), op('rotate', { lock: 0.0625 })],
+    bodies: [body({
+      shape: ['polygon', { n: 6, r: 0.06 }],
+      place: ['ring', { n: 6, radius: 0.22 }],
+      motion: ['spin', { rate: 0.25 }],
+      material: ['line', { gain: 1, width: 2, halo: 0.25 }],
+      feel: ['flow', { lock: 0, atk: 0.02, rel: 0.25 }],
+    })],
+    reactions: [rx('beat', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.25 }), rx('bass', 'op', 0, 'rate', 0.3, { atk: 0.03, rel: 0.3 })],
+    dejavu: { recall: 1, blend: 0.5, snap: 0.6, frame: 1, hue: 0.8, motion: 1, evolve: 0.5, keep: 0, res: 0.25, cap: 3, min: 0.7 },
   },
 ];
 export const SEEDS: Seed[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU].map(build);
