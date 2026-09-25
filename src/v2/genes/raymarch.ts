@@ -13,12 +13,16 @@
 
 import type { MaterialKind, Params, Schema } from '../genome';
 import type { Frame } from '../engine';
+import { FRACTAL_FIRST, FRACTAL_GLSL, FRACTAL_KINDS, fractalCamera, fractalFrame, fractalFullMs, packFractal } from './raymarchFractal';
 
 const P = (min: number, max: number, def: number) => ({ min, max, def });
 const C = (choices: number[], def: number) => ({ min: Math.min(...choices), max: Math.max(...choices), def, choices });
 
-/** Scene kinds: 0 smooth-union primitives, 1 an endless lattice of shapes between two plates, 2 a tunnel. */
-export const SCENE_KINDS = ['primitives', 'lattice', 'tunnel'] as const;
+/**
+ * Scene kinds: 0 smooth-union primitives, 1 an endless lattice of shapes between two plates, 2 a tunnel,
+ * 3-5 fractals (Mandelbox, Mandelbulb, Menger sponge; genes/raymarchFractal.ts).
+ */
+export const SCENE_KINDS = ['primitives', 'lattice', 'tunnel', ...FRACTAL_KINDS] as const;
 /** Camera kinds: 0 orbit, 1 flythrough, 2 dolly zoom. */
 export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
 
@@ -29,10 +33,12 @@ export const SCENE_CAMS = ['orbit', 'fly', 'dolly'] as const;
  * camera speed; roam: how far the camera travels (orbit swing, flight path, dolly depth); kick: camera jolt on drum hits; vary: how far each song section reshuffles the scene;
  * rim / ao / fog / glow: lighting terms. Lattice: gap = height of the corridor between the plates,
  * spec = how far each cell's shape rises with its spectrum band. Tunnel: gap = how much it bends,
- * spec = how far its ribs close in with their spectrum bands.
+ * spec = how far its ribs close in with their spectrum bands. Fractals: iter = iterations (detail and
+ * cost), fscale / fold = the Mandelbox fold scale and limit (fold also offsets the Menger holes),
+ * power = the Mandelbulb power, spec = spectrum colouring; the fly camera dives into the fractal.
  */
 export const SCENE_SCHEMA: Schema = {
-  scene: C([0, 1, 2], 0),
+  scene: C([0, 1, 2, 3, 4, 5], 0),
   cam: C([0, 1, 2], 0),
   res: C([0.35, 0.5, 0.7], 0.5),
   size: P(0.4, 1.6, 1),
@@ -48,9 +54,13 @@ export const SCENE_SCHEMA: Schema = {
   roam: P(0, 1, 0.5),
   gap: P(0, 1, 0.5),
   spec: P(0, 1, 0.6),
+  iter: { min: 3, max: 10, def: 6, int: true },
+  fscale: P(-3, 3, -1.8),
+  fold: P(0.5, 1.5, 1),
+  power: P(3, 10, 8),
 };
 /** Structural switches reactions may not touch. */
-export const SCENE_NO_REACT = ['scene', 'cam', 'res'];
+export const SCENE_NO_REACT = ['scene', 'cam', 'res', 'iter'];
 
 /**
  * Full-resolution (2560x1440) march cost per scene kind in the cost model's units (ms on the
@@ -62,7 +72,7 @@ const SCENE_FULL_MS = [8.0, 8.0, 7.0];
 
 /** Estimated GPU ms of a scene body: the reduced-resolution march plus the upsampling field lookup. */
 export function sceneCost(p: Params): number {
-  const full = SCENE_FULL_MS[p.scene] ?? SCENE_FULL_MS[0];
+  const full = p.scene >= FRACTAL_FIRST ? fractalFullMs(FRACTAL_KINDS[p.scene - FRACTAL_FIRST] ?? 'mandelbox', p.iter ?? 6) : SCENE_FULL_MS[p.scene] ?? SCENE_FULL_MS[0];
   return 0.25 + full * p.res * p.res;
 }
 
@@ -152,7 +162,9 @@ vec2 rmTunnel(vec3 p) {
   float sh = rib < wall ? 0.55 + 0.3 * fract(id * 0.37) : 0.1 + 0.15 * fract(a / TAU + id * 0.05);
   return vec2(d, sh);
 }
+${FRACTAL_GLSL}
 vec2 rmMap(vec3 p) {
+  if (uScn[4].x > 2.5) return rmFractal(p);
   if (uScn[4].x > 1.5) return rmTunnel(p);
   if (uScn[4].x > 0.5) return rmLattice(p);
   return rmPrims(p);
@@ -267,7 +279,9 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
   const kick = set('kick', Math.max(get('kick') * Math.exp(-sdt * 7), F.onset[0] * F.gate[0] * P('kick')));
   const side = set('side', F.onset[0] > 0.6 && get('kick') < 0.05 ? -get('side', 1) : get('side', 1));
   out.fill(0);
-  if (c.raw.scene === 2) tunnelCamera(out, c, T, kick, seed);
+  const frac = c.raw.scene >= FRACTAL_FIRST ? fractalFrame(FRACTAL_KINDS[c.raw.scene - FRACTAL_FIRST], P, c.raw, size, bass, seed, T) : null;
+  if (frac) fractalCamera(out, { F, sdt, P, cam: c.raw.cam, mem, key: c.key }, frac, T, kick);
+  else if (c.raw.scene === 2) tunnelCamera(out, c, T, kick, seed);
   else camera(out, c, T, kick, side);
   out[8] = T; out[9] = size; out[10] = P('blend'); out[11] = seed;
   out[12] = P('rim'); out[13] = P('ao'); out[14] = P('fog'); out[15] = P('glow');
@@ -277,6 +291,8 @@ export function packScene(out: Float32Array, c: SceneCtx): void {
     const L = latticeFrame(P);
     out[20] = L.cell; out[21] = L.floor; out[22] = L.ceil;
     out[24] = L.cell * 0.22 * (size / P('size')); out[25] = seed; out[26] = P('spec') * 0.6; out[27] = T;
+  } else if (frac) {
+    packFractal(out, frac, seed, T, P('spec'));
   } else if (c.raw.scene === 2) {
     const U = tunnelFrame(P, seed);
     out[20] = U.R; out[21] = U.ribs; out[22] = U.bend; out[23] = seed;

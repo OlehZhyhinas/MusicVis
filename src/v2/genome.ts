@@ -1056,6 +1056,10 @@ function fitBudget(g: Genome): void {
     const res = LAND_SCHEMA.res.choices!;
     while (b.shape.kind === 'landscape' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.res > res[0]) b.shape.p.res = res[res.indexOf(b.shape.p.res) - 1];
   }
+  // A fractal scene then sheds iterations.
+  for (const b of g.bodies) {
+    while (b.shape.kind === 'scene' && estimateCost(g) > COST_BUDGET_MS * 0.95 && b.shape.p.iter > SCENE_SCHEMA.iter.min) b.shape.p.iter--;
+  }
   // Last resort: two heavy layers that can't shed enough lose the costlier extra layer.
   while (g.bodies.length > 1 && estimateCost(g) >= COST_BUDGET_MS) {
     let worst = 1;
