@@ -39,7 +39,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 79;
+export const SEED_VERSION = 80;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -1937,25 +1937,29 @@ const EVOLVED: Def[] = [
   {
     // Bred from Mycelial Star and a 3D scene: melting shapes under a slow dolly zoom, drawn as neon rims
     // that feed a slime-mould network, masked through a five-point star. The veins meander like lazy
-    // rivers, merging and splitting. Tuned so they answer the music: drum hits flash the veins, the bass
-    // makes them wriggle and flow faster, the vocals feed them from the rims, and drops burst them out.
+    // rivers, merging and splitting. Tuned so they answer the music: the veins pulse brighter on every
+    // beat and flash on drum hits, wiggle with each new melody note (a view-stage noise warp, so the
+    // wiggle never feeds back into the network), flow faster with the bass, and drops burst them out.
     origin: 'U01', name: 'Lazy Rivers', energy: [0.28, 0.95], scheme: 'triad', hue: 0.1,
     color: { adapt: 0.36, bloom: 1.1, vignette: 0.45, contrast: 0.05, ca: 0.0015, reflectY: -0.16 },
     carrier: 'warp', car: { halfLife: 0.3, floor: 1, vort: 28, fnoise: 0.35, fscale: 2, famt: 0.0012, grain: 0.006 },
     bodies: [{
       ...body({
         shape: ['scene', { scene: 0, cam: 2, res: 0.7, size: 1.1, blend: 0.85, speed: 0.3, pulse: 0.7, kick: 0.5, vary: 0.8, rim: 0.7, ao: 0.8, fog: 0.3, glow: 0.15, roam: 0.8, gap: 0.5, spec: 0.6 }],
-        material: ['line', { gain: 1, width: 2, halo: 0.2 }],
+        material: ['line', { gain: 0.8, width: 2, halo: 0.2 }],
         emit: ['slime', { count: 393216, sa: 0.5, sd: 0.01, steer: 0.35, step: 0.0012, deposit: 0.3, decay: 0.93, diffuse: 0.5, body: 0.7, feed: 1, birth: 0.15, onDrop: 2 }],
         feel: ['flow', { atk: 0.005, rel: 0.005, div: 4 }],
         color: ['age', { rate: 0.0625, detail: 0.6 }],
       }),
       fuse: { shape: { kind: 'star', p: { n: 5, r: 0.3, inner: 0.45 } }, p: { mode: 2, k: 0.165, t: 0.36, drive: 1, depth: 0.53, rate: 4, inside: 1 } },
     }],
+    chain: [op('noise', { amp: 0, scale: 2.5, speed: 0.4 }, 1, 'view')],
     reactions: [
-      rx('hit', 'em', 0, 'deposit', 0.8, { rel: 0.25 }), rx('bass', 'em', 0, 'steer', 0.35, { atk: 0.02, rel: 0.3 }),
-      rx('bass', 'em', 0, 'step', 0.5, { atk: 0.01, rel: 0.3 }), rx('vocals', 'em', 0, 'feed', 0.4, { atk: 0.1, rel: 0.8 }),
-      rx('drums', 'sh', 0, 'kick', 0.3, { atk: 0.01, rel: 0.2 }), rx('loud', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.3 }),
+      rx('beat', 'ma', 0, 'gain', 0.45, { atk: 0.005, rel: 0.2 }),
+      rx('hit', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.15 }),
+      rx('noteon', 'op', 0, 'amp', 0.8, { atk: 0.01, rel: 0.35 }),
+      rx('bass', 'em', 0, 'step', 0.5, { atk: 0.01, rel: 0.3 }),
+      rx('held', 'op', 0, 'amp', 0.35, { atk: 0.08, rel: 0.4 }),
     ],
   },
 ];
