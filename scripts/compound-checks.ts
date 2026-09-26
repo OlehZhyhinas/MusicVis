@@ -76,23 +76,48 @@ export function compoundChecks(check: Check): void {
 
   // ---------------------------------------------------------------- max parts, clamping
   {
-    const six = [0, 1, 2, 3, 0, 1].map((prim, i) => ({ ...part('ellipse', 'union', { x: i * 0.2 - 0.5, sx: 0.2, sy: 0.3, rot: 0.1 * i, m: 0.4 }), prim, op: i % 4 }));
-    const g = withBody(compoundBody(six));
+    const full = Array.from({ length: MAX_PARTS }, (_x, i) => {
+      const prim = i % 4;
+      return { ...part('ellipse', 'union', { x: i * 0.2 - 0.5, sx: 0.2, sy: 0.3, rot: 0.1 * i, m: 0.4 }), prim, op: i % 4 };
+    });
+    const g = withBody(compoundBody(full));
     const src = both(g);
     const n = g.bodies[0].shape.parts!.length;
     const opens = (src.match(/\{/g) ?? []).length, closes = (src.match(/\}/g) ?? []).length;
-    const extra = withBody(compoundBody([...six, ...six], 0.2));
+    const extra = withBody(compoundBody([...full, ...full], 0.2));
     const wild = withBody(compoundBody([{ prim: 9, op: 2, x: 7, sx: -1, rot: 3, hue: 4, bright: -1, junk: 1 } as unknown as CompoundPart]));
     const wp = wild.bodies[0].shape.parts![0];
-    const stray = withBody({ shape: { kind: 'dot', parts: six }, place: { kind: 'point' }, material: { kind: 'fill' } });
-    const fused = repairBody({ ...(compoundBody(six) as object), shape: { kind: 'dot' }, fuse: { shape: { kind: 'compound', parts: six }, p: { mode: 0 } } });
-    const ok = n === MAX_PARTS && !validate(g).length && src.includes(`uniform vec4 uBx0[${1 + 2 * MAX_PARTS + MAX_PARTS / 2}];`)
+    const stray = withBody({ shape: { kind: 'dot', parts: full }, place: { kind: 'point' }, material: { kind: 'fill' } });
+    const fused = repairBody({ ...(compoundBody(full) as object), shape: { kind: 'dot' }, fuse: { shape: { kind: 'compound', parts: full }, p: { mode: 0 } } });
+    const ok = n === MAX_PARTS && !validate(g).length && src.includes(`uniform vec4 uBx0[${1 + 2 * MAX_PARTS + Math.ceil(MAX_PARTS / 2)}];`)
       && ['cpEll(pp', 'cpCap(pp', 'cpBox(pp', 'cpTri(pp'].every((f) => src.includes(f)) && (src.match(/\bdi = cp/g) ?? []).length === MAX_PARTS * 2
-      && !/\bBX\(|\bSA\b|\bSHP\b[^_]/.test(src) && opens === closes && bodyBxCount(g.bodies[0]) === 1 + 2 * MAX_PARTS + 3
+      && !/\bBX\(|\bSA\b|\bSHP\b[^_]/.test(src) && opens === closes && bodyBxCount(g.bodies[0]) === 1 + 2 * MAX_PARTS + Math.ceil(MAX_PARTS / 2)
       && extra.bodies[0].shape.parts!.length === MAX_PARTS && !validate(extra).length
       && wp.prim === 3 && wp.op === 0 && wp.x === PART_SCHEMA.x.max && wp.sx === PART_SCHEMA.sx.min && wp.rot === 0.5 && wp.hue === 1 && wp.bright === 0 && !('junk' in wp) && !validate(wild).length
       && !stray.bodies[0].shape.parts && !fused.fuse;
-    check('compound.max', ok, `6 parts of every primitive and op build (both passes, all slots substituted, braces balanced), 12 clamp to 6, wild values clamp, the first part is the base (op 0), stray parts and a compound fuse are dropped`);
+    check('compound.max', ok, `${MAX_PARTS} parts of every primitive and op build (both passes, all slots substituted, braces balanced), ${2 * MAX_PARTS} clamp to ${MAX_PARTS}, wild values clamp, the first part is the base (op 0), stray parts and a compound fuse are dropped`);
+  }
+
+  // ---------------------------------------------------------------- ten-part compound compiles and renders
+  {
+    // A literal 10-part figure (not tied to MAX_PARTS), so this keeps failing if the cap ever regresses.
+    const ten: CompoundPart[] = Array.from({ length: 10 }, (_x, i) => part(
+      (['ellipse', 'capsule', 'box', 'triangle'] as const)[i % 4],
+      i === 0 ? 'union' : (['union', 'smooth', 'subtract', 'intersect'] as const)[i % 4],
+      { x: Math.sin(i * 1.3) * 0.6, y: Math.cos(i * 1.7) * 0.6, sx: 0.15 + 0.05 * i, sy: 0.1 + 0.03 * i, rot: 0.05 * i, m: 0.2 },
+    ));
+    const g = withBody(compoundBody(ten, 0.25));
+    const src = both(g);
+    const opens = (src.match(/\{/g) ?? []).length, closes = (src.match(/\}/g) ?? []).length;
+    let allFinite = true;
+    for (let i = 0; i < 100; i++) {
+      const x = Math.sin(i * 0.9) * 0.5, y = Math.cos(i * 1.1) * 0.5;
+      const ref = compoundField(0.25, ten, x, y);
+      if (!Number.isFinite(ref.d) || !Number.isFinite(ref.hue) || !Number.isFinite(ref.bright)) allFinite = false;
+    }
+    const ok = g.bodies[0].shape.parts!.length === 10 && !validate(g).length && opens === closes
+      && bodyBxCount(g.bodies[0]) === 1 + 2 * 10 + Math.ceil(10 / 2) && allFinite;
+    check('compound.tenParts', ok, `a hand-built 10-part compound (every primitive and combine op) compiles to valid, balanced GLSL and its reference field is finite everywhere sampled`);
   }
 
   // ---------------------------------------------------------------- subtract (crescent) and cost

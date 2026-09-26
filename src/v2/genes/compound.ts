@@ -31,7 +31,7 @@ export const PRIMS = ['ellipse', 'capsule', 'box', 'triangle'] as const;
 export type PrimName = (typeof PRIMS)[number];
 export const COMBINE_OPS = ['union', 'smooth', 'subtract', 'intersect'] as const;
 export type CombineName = (typeof COMBINE_OPS)[number];
-export const MAX_PARTS = 6;
+export const MAX_PARTS = 10;
 
 export const COMPOUND_SCHEMA: Schema = { size: P(0.02, 0.6, 0.2) };
 export const PART_SCHEMA: Schema = {
