@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 120;
+export const SEED_VERSION = 121;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'

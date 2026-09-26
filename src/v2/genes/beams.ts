@@ -25,6 +25,10 @@ export const MAX_BEAMS = 12;
  * 4 step (each head jumps to a new aim every `period` beats and holds).
  * period: bars per sweep cycle. gobo: 0 open, 1 breakup (sub-beams), 2 ring (hollow cone), 3 textured.
  * hues: palette step from one head to the next. accent: how much the beat chase brightens one head.
+ * trig: what moves the rig. 0 the clock (the sweep patterns, the step pattern every `period` beats,
+ * the chase one head per beat); 1 drum hits (the step pattern jumps to new aims on each hit and holds,
+ * and the riff lights one head per riff note, the same head for the same note every repeat); 2 the
+ * riff (the step pattern jumps on each riff note, and each drum hit lights the next head).
  */
 export const BEAMS_SCHEMA: Schema = {
   count: I(1, MAX_BEAMS, 6),
@@ -40,6 +44,7 @@ export const BEAMS_SCHEMA: Schema = {
   length: P(0.3, 2.5, 1.2),
   flare: P(0, 1, 0.5),
   accent: P(0, 1, 0.5),
+  trig: C([0, 1, 2], 0),
 };
 
 /**
@@ -54,7 +59,7 @@ export function beamsCost(p: Record<string, number>): number {
 /**
  * vec3 FLD(vec2 p): EA = (gain, hue, level, haze time), EB = (count, spread, fan, sweep),
  * EC = (pattern, sweep phase in cycles, width, haze), ED = (gobo, hues, length, rest aim),
- * BD(2) = (step index, step fraction, flare, accent), BD(3) = (chase clock in beats, -, -, -).
+ * BD(2) = (step index, step fraction, flare, accent), BD(3) = (chase clock in beats, previous step index, -, -).
  */
 export const BEAMS_GLSL = /* glsl */ `
 vec3 FLD(vec2 p) {
@@ -80,7 +85,7 @@ vec3 FLD(vec2 p) {
     else if (pat == 3) off = sin(ph) * (mod(fi, 2.0) < 0.5 ? 1.0 : -1.0);
     else {
       float a0 = hash11(S.x * 7.13 + fi * 1.37) * 2.0 - 1.0;
-      float a1 = hash11((S.x - 1.0) * 7.13 + fi * 1.37) * 2.0 - 1.0;
+      float a1 = hash11(T.y * 7.13 + fi * 1.37) * 2.0 - 1.0;
       off = mix(a1, a0, smoothstep(0.0, 0.4, S.y));
     }
     float ang = D.w + u * B.z * PI * 0.5 + off * B.w * PI * 0.4;
@@ -115,6 +120,12 @@ export interface BeamsFrame {
   melodic: number;
   drop: number;
   speed: number;
+  /** Drum-hit trigger: above 0 only on the frame of a hit. */
+  hit: number;
+  /** Riff note pulse and the note's index in the riff (-1 outside one). */
+  hookNotePulse: number;
+  hookNote: number;
+  bpm: number;
 }
 
 /**
@@ -133,11 +144,38 @@ export function packBeams(
   const t = (mem[key('t')] = (mm('t') + sdt * f.speed) % 1024);
   const aim = ease('aim', y < -0.1 ? Math.PI / 2 : -Math.PI / 2, 3);
   const period = p.period;
-  const stepPos = (f.bars * 4) / period;
+  let stepPos = (f.bars * 4) / period;
+  let chase = f.bars * 4;
+  let prevStep = Math.floor(stepPos) % 4096 - 1;
+  const trig = p.trig ?? 0;
+  if (trig > 0) {
+    // Event-driven rig: drum hits and riff notes (rising edges), and the beats since each.
+    const bps = Math.max(0.5, f.bpm / 60);
+    const hitOn = f.hit > 0;
+    const noteOn = f.hookNote >= 0 && f.hookNotePulse > 0.5 && (mm('np') <= 0.5 || f.hookNote !== mm('nn', -1));
+    mem[key('np')] = f.hookNotePulse;
+    mem[key('nn')] = f.hookNote;
+    // Each event picks its aim set from the beat grid position it lands on (half-beat index), not a
+    // running count, so one missed or extra hit changes one step and not every step after it.
+    const slot = Math.floor(f.bars * 8);
+    const [on, pre] = trig === 1 ? [hitOn, 'h'] : [noteOn, 'n'];
+    if (on && slot !== mm(pre + 's', -1)) { mem[key('ps')] = mm('cs'); mem[key('cs')] = slot; mem[key(pre + 's')] = slot; mem[key('st')] = 0; }
+    if (hitOn) { mem[key('ht')] = 0; mem[key('hh')] = Math.floor(f.bars * 4); }
+    if (noteOn) { mem[key('nt')] = 0; mem[key('ni')] = f.hookNote; }
+    const bt = sdt * bps;
+    const ht = (mem[key('ht')] = Math.min(4, mm('ht', 4) + bt));
+    const nt = (mem[key('nt')] = Math.min(4, mm('nt', 4) + bt));
+    const st = (mem[key('st')] = Math.min(4, mm('st', 4) + bt));
+    // Aim steps ease in over the first ~0.2 beat (the shader's smoothstep completes at 0.4). Chase: a
+    // head index plus the beats since its event (the riff: the note's place in the riff; hits: the beat).
+    stepPos = mm('cs') + Math.min(0.999, st * 2);
+    prevStep = mm('ps');
+    chase = trig === 1 ? mm('ni') + Math.min(0.999, nt) : mm('hh') + Math.min(0.999, ht);
+  }
   E[o + 2] = level; E[o + 3] = t;
   E[o + 4] = p.count; E[o + 5] = P('spread'); E[o + 6] = P('fan'); E[o + 7] = P('sweep');
   E[o + 8] = p.pattern; E[o + 9] = (f.bars / period) % 1; E[o + 10] = P('width'); E[o + 11] = P('haze');
   E[o + 12] = p.gobo; E[o + 13] = P('hues'); E[o + 14] = P('length'); E[o + 15] = aim;
   E[o2] = Math.floor(stepPos) % 4096; E[o2 + 1] = stepPos % 1; E[o2 + 2] = P('flare'); E[o2 + 3] = P('accent');
-  E[o2 + 4] = (f.bars * 4) % 4096;
+  E[o2 + 4] = chase % 4096; E[o2 + 5] = prevStep % 4096;
 }

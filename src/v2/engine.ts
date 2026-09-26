@@ -2027,7 +2027,7 @@ export class Stage {
         break;
       }
       case 'beams': {
-        const bf = { bars: this.clk.bars, loud: F.loud, melodic: this.sig.melodic(), drop: F.drop, speed: F.speed };
+        const bf = { bars: this.clk.bars, loud: F.loud, melodic: this.sig.melodic(), drop: F.drop, speed: F.speed, hit: F.hit, hookNotePulse: F.hookNotePulse, hookNote: F.hookNote, bpm: F.bpm };
         packBeams(E, o, o - 56, P, sh.p, bf, m, key, copies[0]?.y ?? 0, (k, raw) => this.resp(k, raw), sdt);
         break;
       }
