@@ -6,6 +6,7 @@ import { SEEDS } from '../src/v2/seeds';
 import { IDENTITY_POSE, type ChoreoCue, type ChoreoPose } from '../src/v2/genes/choreo';
 import { ACCENT_SCHEMA, accentPlan, applyAccents, crossAccent, hasHitResponse, repairAccent, setAccentOverride, validateAccent, type AccentInput } from '../src/v2/genes/accent';
 import { genomeGene } from '../src/v2/geneRegistry';
+import { KICK_OFF_SEED_VERSION, Population } from '../src/v2/population';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
@@ -98,6 +99,15 @@ export function accentTests(check: Check): void {
   const k0 = applyAccents(kp, input({ hit: 1.3 }), pose());
   const k1 = applyAccents(kp, input({ hit: 0 }), pose());
   check('accent.kick-subtle', k0.zoom > 1.01 && k0.zoom < 1.025 && k0.exposure > 1.05 && k0.exposure <= 1.08 && same(k1, IDENTITY_POSE as ChoreoPose), fmt(k0));
+
+  // Kick-off migration: children bred before the kick went off by default lose it on load, once.
+  const pop = Population.seeded(0);
+  const kid = pop.addChild({ ...cloneGenome(noHits), accent: repairAccent({ p: { kick: 0.5, hook: 0.3 } }) }, [pop.list()[0]], 0);
+  const oldFile = JSON.parse(JSON.stringify({ ...pop.toJSON(), seedVersion: KICK_OFF_SEED_VERSION - 1 }));
+  const newFile = JSON.parse(JSON.stringify(pop.toJSON()));
+  const migrated = Population.fromJSON(oldFile).get(kid.id)?.genome.accent?.p;
+  const kept = Population.fromJSON(newFile).get(kid.id)?.genome.accent?.p;
+  check('accent.kick-migrate', migrated?.kick === 0 && migrated?.hook === 0.3 && kept?.kick === 0.5, `old file ${JSON.stringify(migrated)}; current file ${JSON.stringify(kept)}`);
 
   // Breeding: parents without the gene give children without it; a child keeps valid accents otherwise.
   const rng = mulberry32(5);

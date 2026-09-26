@@ -60,6 +60,9 @@ export interface Member {
  */
 export const POPULATION_VERSION = 6;
 
+/** First seed version whose accent kick defaults to 0 (population.ts fromJSON migrates older bred children). */
+export const KICK_OFF_SEED_VERSION = 127;
+
 export interface PopulationData {
   format: 'musicvis-v2-population';
   version: 1 | 2 | 3 | 4 | 5 | 6;
@@ -399,6 +402,14 @@ export class Population {
     p.counter = Math.max(Math.floor(n(d.counter)), maxN);
     p.votesSinceBreed = Math.floor(n(d.votesSinceBreed));
     p.seedVersion = Math.max(1, Math.floor(n(d.seedVersion, 1)));
+
+    // Kick-off migration: the accent gene's drum-hit kick (a whole-frame zoom punch on every hit)
+    // defaulted to 0.5 before seed version KICK_OFF_SEED_VERSION, so children bred before then carry
+    // it. A population saved before that turns it off in every bred child once; seeds get their
+    // current genome from upgradeSeeds, and a kick set by hand afterwards is kept.
+    if (p.seedVersion < KICK_OFF_SEED_VERSION) {
+      for (const m of p.members.values()) if (m.gen > 0 && m.genome.accent && m.genome.accent.p.kick > 0) m.genome.accent.p.kick = 0;
+    }
 
     // Version-3 migration: rename every bred child of a version 1-2 file with the
     // descriptive, inherited scheme (those files kept random adjective-noun
