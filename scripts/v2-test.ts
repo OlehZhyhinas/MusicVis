@@ -1900,6 +1900,47 @@ await lyricsTests(check);
   check('mosaic.name', tiledHits >= 3 && classify(m18).label.includes('mirror'), `${tiledHits}/24 originals named tiled with a mosaic; M18 ${nameFor(m18)} (${classify(m18).label}), M19 ${nameFor(m19)} (${classify(m19).label})`);
 }
 
+// -------------------------------------------------- chain-op centres reach further (cx/cy to +-0.9)
+
+{
+  const CENTRE_OPS = ['zoom', 'rotate', 'swirl', 'twist', 'quad'] as const;
+  // Repair (and so validate) accepts a hand-authored centre out toward the frame edge.
+  const wide: string[] = [];
+  for (const op of CENTRE_OPS) {
+    const defsP = Object.fromEntries(Object.keys(OP_SCHEMAS[op]).map((k) => [k, OP_SCHEMAS[op][k].def]));
+    const g = repair({ v: 3, chain: [{ op, stage: 'warp', w: 1, p: { ...defsP, cx: 0.9, cy: -0.9 } }], bodies: [{ shape: { kind: 'curve' }, material: { kind: 'line' } }] });
+    const p = g.chain[0].p;
+    if (p.cx !== 0.9 || p.cy !== -0.9 || validate(g).length) wide.push(`${op}:${p.cx},${p.cy}`);
+  }
+  // The schema's clamp bound (min/max) is +-0.9 for every op with a centre.
+  const boundBad = CENTRE_OPS.filter((op) => OP_SCHEMAS[op].cx.min !== -0.9 || OP_SCHEMAS[op].cx.max !== 0.9 || OP_SCHEMAS[op].cy.min !== -0.9 || OP_SCHEMAS[op].cy.max !== 0.9);
+  check('op.centre-range-wide', !wide.length && !boundBad.length,
+    wide.concat(boundBad.map((o) => `${o}:bound`)).join(' | ') || `${CENTRE_OPS.join(', ')}: a hand-made cx=0.9, cy=-0.9 op survives repair unclamped`);
+
+  // Random genomes and mutation still draw/jitter centres from the old, tamer +-0.4.
+  const rng = mulberry32(919191);
+  let overGen = 0, sampledGen = 0;
+  for (let i = 0; i < 4000; i++) {
+    const o = randomOp(rng);
+    if (!(CENTRE_OPS as readonly string[]).includes(o.op)) continue;
+    sampledGen++;
+    if (Math.abs(o.p.cx) > 0.4 + 1e-9 || Math.abs(o.p.cy) > 0.4 + 1e-9) overGen++;
+  }
+  let overJit = 0, sampledJit = 0;
+  for (const op of CENTRE_OPS) {
+    let g = repair({ v: 3, chain: [{ op, stage: 'warp', w: 1, p: { cx: 0, cy: 0 } }], bodies: [{ shape: { kind: 'curve' }, material: { kind: 'line' } }] });
+    for (let i = 0; i < 400; i++) {
+      g = mutate(g, rng, 1);
+      const c = g.chain.find((x) => x.op === op);
+      if (!c) continue;
+      sampledJit++;
+      if (Math.abs(c.p.cx) > 0.4 + 1e-9 || Math.abs(c.p.cy) > 0.4 + 1e-9) overJit++;
+    }
+  }
+  check('op.centre-range-random-tame', sampledGen > 50 && overGen === 0 && sampledJit > 50 && overJit === 0,
+    `${overGen}/${sampledGen} random centres beyond +-0.4, ${overJit}/${sampledJit} after repeated mutation from centre 0 (both expected 0)`);
+}
+
 void (repairBody as unknown);
 void (PLACE_KINDS as unknown as Locus);
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${failures} failing check(s)`);

@@ -45,9 +45,12 @@ function gauss(rng: Rng): number {
 
 function randomValue(s: ParamSpec, rng: Rng): number {
   if (s.choices) return pick(rng, s.choices);
+  // genMin/genMax (e.g. a chain op's centre): random genomes draw from the narrower, tamer range;
+  // min/max stay the wider range repair accepts from a hand-authored seed or an explicit edit.
+  const lo = s.genMin ?? s.min, hi = s.genMax ?? s.max;
   let v: number;
-  if (s.log && s.min > 0) v = s.min * Math.pow(s.max / s.min, rng());
-  else v = s.min + (s.max - s.min) * rng();
+  if (s.log && lo > 0) v = lo * Math.pow(hi / lo, rng());
+  else v = lo + (hi - lo) * rng();
   return s.int ? Math.round(v) : v;
 }
 
@@ -57,11 +60,15 @@ function jitterValue(v: number, s: ParamSpec, rng: Rng, amt: number): number {
     const j = Math.min(s.choices.length - 1, Math.max(0, i + (rng() < 0.5 ? -1 : 1)));
     return s.choices[j];
   }
-  if (s.int) return Math.round(Math.min(s.max, Math.max(s.min, v + (rng() < 0.5 ? -1 : 1) * Math.max(1, Math.round((s.max - s.min) * 0.15 * amt)))));
+  // genMin/genMax (e.g. a chain op's centre): mutation both steps and clamps within the narrower,
+  // tamer range, same as random generation. min/max are only the range repair accepts unclamped
+  // from a hand-authored value (a seed or an explicit edit), which mutation does not special-case.
+  const gLo = s.genMin ?? s.min, gHi = s.genMax ?? s.max;
+  if (s.int) return Math.round(Math.min(gHi, Math.max(gLo, v + (rng() < 0.5 ? -1 : 1) * Math.max(1, Math.round((gHi - gLo) * 0.15 * amt)))));
   let out: number;
-  if (s.log && s.min > 0) out = Math.exp(Math.log(Math.max(v, s.min)) + gauss(rng) * 0.35 * amt * Math.log(s.max / s.min) * 0.3);
-  else out = v + gauss(rng) * (s.max - s.min) * 0.12 * amt;
-  return Math.min(s.max, Math.max(s.min, out));
+  if (s.log && gLo > 0) out = Math.exp(Math.log(Math.max(v, gLo)) + gauss(rng) * 0.35 * amt * Math.log(gHi / gLo) * 0.3);
+  else out = v + gauss(rng) * (gHi - gLo) * 0.12 * amt;
+  return Math.min(gHi, Math.max(gLo, out));
 }
 
 /** Params that mutate only rarely (a placement's static turn changes the look wholesale). */

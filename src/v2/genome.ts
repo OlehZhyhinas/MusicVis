@@ -65,6 +65,12 @@ export interface ParamSpec {
   int?: boolean;
   log?: boolean;
   choices?: number[];
+  /**
+   * Narrower range random generation and mutation draw from (min/max stay the accepted, validated
+   * range: a hand-authored seed or an explicit edit may use the full range, and repair accepts it).
+   */
+  genMin?: number;
+  genMax?: number;
 }
 export type Schema = Record<string, ParamSpec>;
 export type Params = Record<string, number>;
@@ -86,22 +92,27 @@ export const OP_KINDS: OpKind[] = [...MOTION_OPS, ...FOLD_OPS, ...VAR_OPS];
 export type Stage = 'warp' | 'view';
 
 const VAR_SCHEMA: Schema = { s: P(0.4, 3, 1.2) };
+// A chain op's centre (cx/cy): accepted (and repaired) up to +-0.9, so a hand-made seed or an explicit
+// edit can put a vortex or a zoom/rotate/twist pivot out toward the frame edge (e.g. a top-right moon).
+// Random genomes and mutation still draw and jitter within the old, tamer +-0.4: an off-screen centre
+// is rarely a good look to land on by chance.
+const CENTRE = P(-0.9, 0.9, 0, { genMin: -0.4, genMax: 0.4 });
 
 export const OP_SCHEMAS: Record<string, Schema> = {
   // rate > 0: content streams outward (flying in); < 0: inward.
-  zoom: { rate: P(-0.02, 0.06, 0.008), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), radial: P(0, 1, 0), wander: P(0, 0.35, 0) },
+  zoom: { rate: P(-0.02, 0.06, 0.008), cx: CENTRE, cy: CENTRE, radial: P(0, 1, 0), wander: P(0, 0.35, 0) },
   // lock: turns per bar (bar-locked spin); rate: free rotation, rad per frame.
-  rotate: { lock: C(LOCKS, 0.0625), rate: P(-0.01, 0.01, 0), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), alt: C([0, 1], 0), wander: P(0, 0.35, 0) },
+  rotate: { lock: C(LOCKS, 0.0625), rate: P(-0.01, 0.01, 0), cx: CENTRE, cy: CENTRE, alt: C([0, 1], 0), wander: P(0, 0.35, 0) },
   // content velocity, p units per second; lanes > 1: columns per unit moving at 1x or 2x.
   translate: { vx: P(-0.5, 0.5, 0), vy: P(-0.5, 0.5, 0), lanes: P(0, 50, 0) },
-  swirl: { amt: P(-0.03, 0.03, 0.01), k: P(1, 12, 6), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), wander: P(0, 0.35, 0) },
-  twist: { amt: P(-0.012, 0.012, 0.003), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0) },
+  swirl: { amt: P(-0.03, 0.03, 0.01), k: P(1, 12, 6), cx: CENTRE, cy: CENTRE, wander: P(0, 0.35, 0) },
+  twist: { amt: P(-0.012, 0.012, 0.003), cx: CENTRE, cy: CENTRE },
   ripple: { amp: P(0, 0.004, 0.0008), freq: P(2, 40, 8), speed: P(0.2, 4, 0.7), radial: C([0, 1], 0) },
   noise: { amp: P(0, 0.003, 0.0012), scale: P(0.8, 5, 2), speed: P(0.05, 1, 0.3) },
   push: { amt: P(-0.01, 0.01, 0.001), axis: C([0, 1, 2], 0) },
   // Quadratic flow: each frame samples from p + amt * turn(z^2) around the (wandering) centre, so the
   // feedback settles into a Julia-set coastline (the classic z-squared per-pixel warp).
-  quad: { amt: P(0, 2.5, 1), turn: C([0, 0.25, 0.5, 0.75], 0.75), cx: P(-0.4, 0.4, 0), cy: P(-0.4, 0.4, 0), wander: P(0, 0.35, 0) },
+  quad: { amt: P(0, 2.5, 1), turn: C([0, 0.25, 0.5, 0.75], 0.75), cx: CENTRE, cy: CENTRE, wander: P(0, 0.35, 0) },
   mirror: { axis: C([0, 1, 2], 0) },
   tile: { n: P(1.2, 4, 2) },
   polar: { scale: P(0.4, 1.6, 1), lock: C(LOCKS, 0) },
