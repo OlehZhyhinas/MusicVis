@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 125;
+export const SEED_VERSION = 126;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -101,7 +101,7 @@ interface Def {
   origin: string;
   name: string;
   energy: [number, number];
-  scheme: Scheme;
+  scheme: Scheme | 'free';
   hue: number;
   color?: Record<string, number>;
   carrier: CarrierKind;
@@ -2606,7 +2606,62 @@ const TORONTO_X36: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36];
+// ------------------------------------------------------------ art direction, after Van Gogh's The Starry Night
+// X33..X35: the painting's sky of short impasto dashes swirling in vortices, haloed stars, the dark cypress
+// and the village, in literal blues and yellows (palette key 0: the same colours in every song key).
+const ART5: Def[] = [
+  {
+    // The whole painting's mood: a sky of short thick brush dashes in deep and pale blues, carried round
+    // a great double swirl and embossed like impasto, six yellow-white stars wound in spiral halos that
+    // smear into the paint, and a dark flame-shaped cypress rising on the left. Drum hits kick the great
+    // swirl and set down fresh dashes, the bass turns the second vortex, each melody note lightens the
+    // sky, riff notes flare the stars, the beat envelope quickens the whole flow; sections shift the blues.
+    origin: 'X33', name: 'Starry Night', energy: [0.15, 0.85], scheme: 'free', hue: 0.56, pal: { key: 0, s1: 0.58, s2: 0.06 },
+    color: { sat: 0.9, exposure: 0.92, adapt: 0.35, bloom: 1.1, vignette: 0.4, relief: 1, bump: 2.4, light: 0.375, gloss: 0.35 },
+    carrier: 'flow', car: { halfLife: 0.5, famt: 0.0016, fscale: 2.2, blur: 0.01 },
+    chain: [
+      op('swirl', { amt: 0.007, k: 4, cx: -0.08, cy: 0.06 }),
+      op('swirl', { amt: -0.006, k: 5, cx: 0.24, cy: -0.02 }),
+    ],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.004 }],
+        place: ['grid', { lattice: 1, scale: 26, jitter: 0.6, density: 0.9, lit: 1, twinkle: 0.4 }],
+        material: ['glow', { gain: 0.34, width: 0.007, base: 0.5 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['height', { hue: 0.93, amount: 0.3, detail: 1 }],
+      }),
+      body({
+        shape: ['curve', { form: 2, amp: 0.04, radius: 0.055, turns: 5 }],
+        place: ['stations', { count: 6, inst: 0.05, xs: 1, wander: 0.01 }],
+        material: ['line', { gain: 0.8, width: 3, halo: 1 }],
+        emit: ['trail', { tip: 0 }],
+        feel: ['flow', { atk: 0.01, rel: 0.25 }],
+        color: ['fixed', { hue: 0.333, detail: 0 }],
+      }),
+      body({
+        shape: ['star', { n: 4, r: 0.45, inner: 0.2 }],
+        place: ['point', { x: -0.6, y: -0.53 }],
+        deform: ['noise', { amp: 0.03, scale: 4, speed: 0.3 }],
+        material: ['fill', { gain: 0.04, soft: 0.1 }],
+        emit: ['cover', { amt: 1, tip: 0 }],
+        feel: ['flow', { atk: 0.05, rel: 0.4 }],
+      }),
+    ],
+    accent: { hue: 0.25 },
+    reactions: [
+      rx('hit', 'op', 0, 'amt', 0.75, { atk: 0.005, rel: 0.3 }),
+      rx('bass', 'op', 1, 'amt', -0.6, { atk: 0.03, rel: 0.5 }),
+      rx('noteon', 'ma', 0, 'gain', 0.4, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'pl', 0, 'density', 0.6, { atk: 0.005, rel: 0.3 }),
+      rx('hook', 'ma', 1, 'gain', 0.8, { atk: 0.005, rel: 0.4 }),
+      rx('surge', 'car', 0, 'famt', 0.5, { atk: 0.05, rel: 0.6 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
