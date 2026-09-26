@@ -46,7 +46,6 @@ import '../lyrics/lyrics.css';
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
 
-const EVOLVE_SECS = 30;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function main(): Promise<void> {
@@ -112,7 +111,6 @@ async function main(): Promise<void> {
   // ------------------------------------------------------------ presets
 
   let currentId: string | null = null;
-  let evolveTimer = 0;
   let songCx = 0.5;
 
   function current(): Member | null {
@@ -133,7 +131,6 @@ async function main(): Promise<void> {
     evo.startView(m.id, skipped);
     currentId = m.id;
     eng.show(m.genome, secs);
-    evolveTimer = 0;
     browser.markCurrent(m.id);
     presetMap.markCurrent();
     editor.load(m);
@@ -208,10 +205,9 @@ async function main(): Promise<void> {
 
   function setEvolve(on: boolean): void {
     evolveOn = on;
-    evolveTimer = 0;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `A new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Presets change on new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? 'A new candidate with each new song. Vote with L / D.' : 'Presets change on new songs and N.');
   }
 
   const browser = new PresetBrowser(evo, {
@@ -295,7 +291,6 @@ async function main(): Promise<void> {
       evo.startView(m.id, false);
       currentId = m.id;
       eng.edit(m.genome);
-      evolveTimer = 0;
       browser.markCurrent(m.id);
       editor.load(m);
       updateBar();
@@ -501,7 +496,7 @@ async function main(): Promise<void> {
       onNewSong: (cx) => {
         songCx = cx;
         eng.setSongComplexity(songCx);
-        if (!evolveOn) choose('new', 1.5);
+        choose(evolveOn ? 'evolve' : 'new', 1.5);
       },
     },
     transport,
@@ -666,7 +661,7 @@ async function main(): Promise<void> {
       songCx = result.songComplexity ?? 0.5;
       eng.setSongComplexity(songCx);
       eng.setSongWorld(result);
-      if (!evolveOn) choose('new', 1.5);
+      choose(evolveOn ? 'evolve' : 'new', 1.5);
       applyVolume();
       transport.setSections(result.sections, result.duration);
       transport.setTrackLoading(null);
@@ -877,19 +872,16 @@ async function main(): Promise<void> {
     }
 
     // Switching policy.
-    // Unsaved gene edits pause automatic switching (evolve rotation, new songs).
+    // Unsaved gene edits pause automatic switching (new songs).
     if (duels.isOpen) {
       // The duel page renders its two presets itself; the main view and switching pause.
       duels.frame(state, dt);
       requestAnimationFrame(frame);
       return;
     }
-    if (evolveOn) {
-      if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
-      if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    }
-    // Outside evolve mode the preset changes only on a new song (a new file, or a track change the live
-    // analyzer detects) or when the user asks (N); never on drops or a timer.
+    // The preset changes only on a new song (a new file, or a track change the live analyzer detects) or
+    // when the user asks (N, or a dislike in evolve mode); never on drops or a timer. In evolve mode a new
+    // song brings the next candidate.
 
     // The shown preset's lyrics gene: the caption on screen, and the copy it smears into the feedback.
     const cap = lyricOverlay.update(state, eng.current()?.lyrics?.p, dt);
