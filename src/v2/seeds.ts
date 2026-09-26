@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 109;
+export const SEED_VERSION = 110;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2262,7 +2262,55 @@ const NOTES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES];
+// X21.. ART3: glass paperweights (clear spheres as lenses with bubbles and vivid suspended designs) and
+// pressed flowers on pale paper (the paper is a light field the ink cuts into with subtractive bodies).
+const ART3: Def[] = [
+  {
+    // A glass paperweight: pale green cane stripes curl out from the centre like an anemone on a deep
+    // blue glass sphere with a bright glint, over its reflection on the shelf. Drum hits turn the
+    // stripes a notch, held notes curl them further, the bass breathes the sphere, and each note start
+    // lets small bubbles rise through the glass.
+    origin: 'X21', name: 'Paperweight Anemone', energy: [0.1, 0.85], scheme: 'triad', hue: 0.6,
+    color: { adapt: 0.12, bloom: 0.9, vignette: 0.5, reflect: 1, reflectY: -0.31 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.25 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['chrome', { gain: 0.5, chrome: 0.5 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.03, rel: 0.4 }],
+        color: ['fixed', { hue: 0 }],
+      }),
+      {
+        ...body({
+          shape: ['segment', { len: 0.5, w: 0.0065 }],
+          place: ['point', { x: 0, y: 0 }],
+          material: ['fill', { gain: 1.2, soft: 0 }],
+          emit: ['none'],
+          feel: ['flow', { atk: 0.02, rel: 0.3 }],
+          color: ['fixed', { hue: 0.667 }],
+        }),
+        deform: { kind: 'none', p: {}, ops: [op('rotate', { lock: 0.0625, rate: 0 }), op('twist', { amt: 0.005 }), op('kaleido', { n: 12, lock: 0 })] },
+      },
+      body({
+        shape: ['notes', { mode: 0, span: 1.8, len: 0.44, height: 0.3, now: -0.5, tilt: 0.25, ribbon: 0, marks: 1, form: 3, size: 0.016, fade: 1, rise: 0, shimmer: 0, hues: 0.2, glow: 0.2 }],
+        material: ['glow', { gain: 1.3 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['fixed', { hue: 0.5 }],
+      }),
+    ],
+    reactions: [
+      rx('hit', 'dr', 4, 'amt', 0.7, { atk: 0.005, rel: 0.25 }),
+      rx('held', 'dr', 4, 'amt', 0.35, { atk: 0.15, rel: 0.6 }),
+      rx('bass', 'sh', 0, 'r', 0.5, { atk: 0.03, rel: 0.4 }),
+      rx('other', 'ma', 0, 'chrome', 0.5, { atk: 0.1, rel: 0.6 }),
+      rx('hook', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.3 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART3];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
