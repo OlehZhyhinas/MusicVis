@@ -877,6 +877,21 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
     if (validate(m).length) mbad.push(validate(m).join(';'));
   }
   check('allele.mutations', !mbad.length && mseen.has('express-allele') && mseen.has('drop-allele'), mbad[0] ?? 'express-allele / drop-allele keep carriers valid');
+  {
+    // Over budget, repair drops a curve's fused shape and its paint-over becomes a plain trail; a silent
+    // trail allele would then match the expressed emission, so it goes too (fitBudget runs after the
+    // allele clean-up in repair).
+    const heavy = repair({
+      v: 5, chain: [{ op: 'noise', p: {} }, { op: 'noise', p: {} }], carrier: { kind: 'warp', p: {} }, palette: { kind: 'triad', p: {} }, tone: { p: {} }, reactions: [], energy: [0.3, 0.9],
+      bodies: [
+        { shape: { kind: 'curve', p: { form: 1 } }, fuse: { shape: { kind: 'star', p: {} }, p: { mode: 0 } }, place: { kind: 'point' }, material: { kind: 'line' }, emit: { kind: 'cover' }, alt: { emit: { kind: 'trail', p: {} }, motion: { kind: 'spin', p: {} } } },
+        { shape: { kind: 'plasma', p: {} }, place: { kind: 'point' }, deform: { kind: 'noise', p: {} }, material: { kind: 'glow' }, emit: { kind: 'trail' } },
+      ],
+    });
+    const b0 = heavy.bodies[0];
+    check('allele.fuse-dropped', !b0.fuse && b0.emit.kind === 'trail' && !b0.alt?.emit && b0.alt?.motion?.kind === 'spin' && !validate(heavy).length,
+      validate(heavy).join(';') || `fuse ${!!b0.fuse}, emit ${b0.emit.kind}, silent ${Object.keys(b0.alt ?? {}).join(',')}`);
+  }
   const rt = pop.find((g) => g.bodies[0].alt)!;
   check('allele.roundtrip', JSON.stringify(repair(JSON.parse(JSON.stringify(rt)))) === JSON.stringify(rt) && structuralKey(rt) === structuralKey({ ...rt, bodies: rt.bodies.map((b) => ({ ...b, alt: undefined })) } as Genome), 'alleles survive JSON + repair and never change the shaders');
   const same = repair({ ...cloneGenome(seedByOrigin('E02')), bodies: [{ ...cloneGenome(seedByOrigin('E02')).bodies[0], alt: { place: { kind: 'walker', p: {} }, motion: { kind: 'spin', p: { rate: 9 } }, shape: { kind: 'flame', p: {} } } }] });

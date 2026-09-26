@@ -1137,10 +1137,20 @@ function fewerCreatures(g: Genome, floor: number): void {
   }
 }
 
-/** Removes a body's fused shape; a curve that painted over the trail through it goes back to a plain trail. */
+/**
+ * Removes a body's fused shape; a curve that painted over the trail through it goes back to a plain
+ * trail. A silent trail allele then matches the expressed gene, so it is dropped (alleles stay silent:
+ * this also runs from fitBudget, after repair() has cleaned the alleles).
+ */
 function dropFuse(b: BodyGene): void {
   delete b.fuse;
-  if (SHAPE_CLASS[b.shape.kind] !== 'sdf' && b.emit.kind === 'cover') b.emit = { kind: 'trail', p: repairParams({ tip: b.emit.p.tip }, EMIT_SCHEMAS.trail) };
+  if (SHAPE_CLASS[b.shape.kind] !== 'sdf' && b.emit.kind === 'cover') {
+    b.emit = { kind: 'trail', p: repairParams({ tip: b.emit.p.tip }, EMIT_SCHEMAS.trail) };
+    if (b.alt?.emit?.kind === 'trail') {
+      delete b.alt.emit;
+      if (!Object.keys(b.alt).length) delete b.alt;
+    }
+  }
 }
 
 function round4(x: number): number {
