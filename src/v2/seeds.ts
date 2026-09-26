@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 145;
+export const SEED_VERSION = 146;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2558,6 +2558,42 @@ const ART2: Def[] = [
       rx('hit', 'ma', 0, 'gain', 0.4, { atk: 0.005, rel: 0.25 }),
       rx('bass', 'sh', 0, 'size', 0.15, { atk: 0.03, rel: 0.35 }),
       rx('noteon', 'sh', 0, 'persp', 0.4, { atk: 0.005, rel: 0.3 }),
+    ],
+  },
+  {
+    // Eclipse corona: the sun's corona as a living thing. A dark disc sits at the centre and from its
+    // rim a crown of slime-mould filaments streams out across the whole frame, branching and looping
+    // like the sun's magnetic field lines, gold and rose on black. The bass lengthens the streamers,
+    // each drum hit flares the rim and lays bright new filament, the riff sends fresh prominences out
+    // of the rim, the voice widens how far the filaments spread, and a drop is totality: every
+    // filament bursts out from the disc at once and the corona regrows.
+    origin: 'X18', name: 'Eclipse Corona', energy: [0.15, 0.9], scheme: 'analogous', hue: 0.08, pal: { key: 0 },
+    color: { sat: 0.85, adapt: 0.1, exposure: 0.75, bloom: 0.8, vignette: 0.5, contrast: 0.06 }, carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    chain: [op('zoom', { rate: 0.003 })],
+    accent: { hue: 0 },
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.2 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['line', { gain: 1.2, width: 2.5, halo: 0.5 }],
+        emit: ['slime', { count: 393216, sa: 0.25, sd: 0.03, steer: 0.12, step: 0.0015, deposit: 0.22, decay: 0.9, diffuse: 0.12, body: 0.8, feed: 1, birth: 0.35, onDrop: 2 }],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['fixed', { hue: 0 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.195 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['fill', { gain: 0.02, soft: 0.05 }],
+        emit: ['cover', { amt: 1, tip: 0 }],
+        color: ['fixed', { hue: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'em', 0, 'step', 0.4, { atk: 0.05, rel: 0.4 }),
+      rx('hit', 'em', 0, 'deposit', 0.6, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('hook', 'em', 0, 'birth', 0.7, { atk: 0.005, rel: 0.3 }),
+      rx('vocals', 'em', 0, 'sa', 0.3, { atk: 0.2, rel: 0.8 }),
     ],
   },
 ];
