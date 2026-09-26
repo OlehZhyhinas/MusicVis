@@ -211,7 +211,7 @@ async function main(): Promise<void> {
     evolveTimer = 0;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `A new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Presets change on drops, new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `A new candidate every ${EVOLVE_SECS} s. Vote with L / D.` : 'Presets change on new songs and N.');
   }
 
   const browser = new PresetBrowser(evo, {
@@ -877,7 +877,7 @@ async function main(): Promise<void> {
     }
 
     // Switching policy.
-    // Unsaved gene edits pause automatic switching (drops, evolve rotation, new songs).
+    // Unsaved gene edits pause automatic switching (evolve rotation, new songs).
     if (duels.isOpen) {
       // The duel page renders its two presets itself; the main view and switching pause.
       duels.frame(state, dt);
@@ -887,11 +887,9 @@ async function main(): Promise<void> {
     if (evolveOn) {
       if (!editor.dirty && (state.playing || !songLoaded || liveMode.active)) evolveTimer += dt;
       if (evolveTimer > EVOLVE_SECS) choose('evolve', 2.5);
-    } else if (!editor.dirty && state.sectionChanged && state.section?.label === 'drop' && !eng.current()?.choreo && !eng.current()?.drift && !eng.current()?.dejavu) {
-      // Presets that compose their own release on the drop stay on (choreography, drift), and so does a
-      // deja vu preset: switching would forget the scenes it is remembering for the returns.
-      choose('drop', 0.35);
     }
+    // Outside evolve mode the preset changes only on a new song (a new file, or a track change the live
+    // analyzer detects) or when the user asks (N); never on drops or a timer.
 
     // The shown preset's lyrics gene: the caption on screen, and the copy it smears into the feedback.
     const cap = lyricOverlay.update(state, eng.current()?.lyrics?.p, dt);
