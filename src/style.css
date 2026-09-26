@@ -1755,6 +1755,11 @@ img.th:not([src]) {
   font-size: 12px;
   align-items: flex-start;
 }
+.lp-tab {
+  gap: 8px;
+  font-size: 12px;
+  align-items: flex-start;
+}
 .lp-db {
   font-size: 11px;
   min-width: 48px;

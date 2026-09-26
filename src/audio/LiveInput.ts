@@ -1,12 +1,13 @@
-// Live audio input (microphone, audio interface, or a virtual loopback device
-// such as BlackHole) captured into the app's AudioContext and analysed in real
-// time. The captured signal is never connected to the speakers.
+// Live audio input (microphone, audio interface, a virtual loopback device
+// such as BlackHole, or another browser tab shared with getDisplayMedia)
+// captured into the app's AudioContext and analysed in real time. The captured
+// signal is never connected to the speakers.
 
 import { LiveAnalyser } from './LiveAnalyser';
 import { RealtimeAnalyzer } from '../analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../analysis/RealtimeSampler';
 
-export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test';
+export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test' | 'tab';
 
 export interface LiveDevice {
   deviceId: string;
@@ -16,6 +17,9 @@ export interface LiveDevice {
 
 /** Device id used for the dev-only test source (an audio file played through the live path). */
 export const TEST_DEVICE_PREFIX = 'test:';
+
+/** Device id of a shared browser tab (not an input device: the stream comes from getDisplayMedia). */
+export const TAB_DEVICE_ID = 'tab';
 
 const VIRTUAL_RE = /blackhole|loopback|soundflower|vb-?cable|vb-?audio|voicemeeter|aggregate|multi-?output|background music|ishowu|virtual/i;
 const BUILTIN_RE = /built-?in|internal|macbook|imac|mac mini|mac studio|default microphone/i;
@@ -85,6 +89,112 @@ export function describeInputError(err: unknown): string {
   }
 }
 
+// ------------------------------------------------------------------ tab capture
+
+/** Why sharing a tab's audio failed; `message` is ready to show. */
+export class TabCaptureError extends Error {
+  constructor(
+    readonly code: 'cancelled' | 'no-audio' | 'unsupported' | 'blocked' | 'failed',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'TabCaptureError';
+  }
+}
+
+/** Chrome, Edge, Opera, Brave, Arc...: the browsers that can share a tab's audio. */
+function isChromium(): boolean {
+  const brands = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] } }).userAgentData?.brands;
+  if (brands?.length) return brands.some((b) => /chromium/i.test(b.brand));
+  return /\b(Chrome|Chromium|CriOS|Edg)\//.test(navigator.userAgent) && !/Firefox|FxiOS/.test(navigator.userAgent);
+}
+
+/** The browser has screen / tab sharing at all (it may still not share audio). */
+export function tabCaptureSupported(): boolean {
+  return liveInputSupported() && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+}
+
+/** Null when this browser can share a tab's audio, else why not (for the UI). */
+export function tabCaptureUnsupportedReason(): string | null {
+  if (!tabCaptureSupported()) {
+    return window.isSecureContext ? 'This browser cannot share a tab. Use Chrome or Edge on a computer.' : 'Sharing a tab needs a secure (https) page.';
+  }
+  if (!isChromium()) return 'This browser can share a tab but not its sound. Use Chrome or Edge, or a loopback device above.';
+  return null;
+}
+
+/**
+ * Asks the user to pick a tab and share its audio. Call straight from a click
+ * (the browser needs the user gesture). The video track Chrome insists on is
+ * stopped at once; only the audio track is kept. The tab keeps playing its
+ * own sound as usual. Throws TabCaptureError.
+ */
+export async function captureTab(): Promise<MediaStream> {
+  const why = tabCaptureUnsupportedReason();
+  if (why) throw new TabCaptureError('unsupported', why);
+  const audio: MediaTrackConstraints & Record<string, unknown> = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
+  // Newer options Chrome understands (older browsers ignore unknown keys).
+  const opts: DisplayMediaStreamOptions & Record<string, unknown> = {
+    video: { displaySurface: 'browser' } as MediaTrackConstraints,
+    audio,
+    preferCurrentTab: false,
+    selfBrowserSurface: 'exclude',
+    systemAudio: 'exclude',
+  };
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(opts);
+  } catch (err) {
+    throw tabError(err);
+  }
+  const video = stream.getVideoTracks()[0];
+  const surface = (video?.getSettings() as MediaTrackSettings & { displaySurface?: string } | undefined)?.displaySurface;
+  for (const t of stream.getVideoTracks()) {
+    t.stop();
+    stream.removeTrack(t);
+  }
+  const track = stream.getAudioTracks()[0];
+  if (!track || track.readyState === 'ended') {
+    for (const t of stream.getTracks()) t.stop();
+    throw new TabCaptureError(
+      'no-audio',
+      surface && surface !== 'browser'
+        ? 'Only a browser tab can share its sound. Pick a tab (not a window or screen) and tick "Also share tab audio".'
+        : 'No sound was shared. Try again and tick "Also share tab audio" in the sharing dialog.',
+    );
+  }
+  return stream;
+}
+
+function tabError(err: unknown): TabCaptureError {
+  const name = err instanceof DOMException || err instanceof Error ? err.name : '';
+  const msg = err instanceof Error ? err.message : '';
+  switch (name) {
+    case 'NotAllowedError':
+      // Chrome reports a dismissed picker as a plain "Permission denied".
+      if (/system/i.test(msg)) return new TabCaptureError('blocked', 'Screen sharing is blocked in the system settings. Allow it for this browser and try again.');
+      return new TabCaptureError('cancelled', 'Tab sharing was cancelled.');
+    case 'SecurityError':
+      return new TabCaptureError('blocked', 'Tab sharing is blocked on this page.');
+    case 'InvalidStateError':
+      return new TabCaptureError('failed', 'The browser did not allow sharing just now. Click the button again.');
+    case 'TypeError':
+    case 'NotSupportedError':
+      return new TabCaptureError('unsupported', 'This browser cannot share a tab\'s sound. Use Chrome or Edge.');
+    default:
+      return new TabCaptureError('failed', msg ? `Could not share the tab: ${msg}` : 'Could not share the tab.');
+  }
+}
+
+export interface LiveInputOptions {
+  /** An already opened stream (a shared tab); used instead of getUserMedia. */
+  stream?: MediaStream;
+}
+
 export interface LiveInputEvents {
   /** The input stopped on its own (device unplugged, permission revoked, test file ended). */
   onEnded?(reason: string): void;
@@ -119,13 +229,25 @@ export class LiveInput {
   }
 
   /** Open a capture device (or, for a `test:` id, an audio file) and start analysing. */
-  static async open(ctx: AudioContext, device: LiveDevice, events: LiveInputEvents = {}): Promise<LiveInput> {
+  static async open(ctx: AudioContext, device: LiveDevice, events: LiveInputEvents = {}, opts: LiveInputOptions = {}): Promise<LiveInput> {
     const li = new LiveInput(ctx, device, events);
-    if (!workletLoaded.has(ctx)) {
-      await ctx.audioWorklet.addModule(new URL('./captureWorklet.js?no-inline', import.meta.url));
-      workletLoaded.add(ctx);
+    if (opts.stream) li.stream = opts.stream; // released by stop() even if opening fails below
+    try {
+      if (!workletLoaded.has(ctx)) {
+        await ctx.audioWorklet.addModule(new URL('./captureWorklet.js?no-inline', import.meta.url));
+        workletLoaded.add(ctx);
+      }
+    } catch (err) {
+      li.stop();
+      throw err;
     }
-    if (device.deviceId.startsWith(TEST_DEVICE_PREFIX)) {
+    if (opts.stream) {
+      const stream = opts.stream;
+      for (const t of stream.getAudioTracks()) {
+        t.addEventListener('ended', () => li.endedExternally('The tab is no longer shared.'));
+      }
+      li.source = ctx.createMediaStreamSource(stream);
+    } else if (device.deviceId.startsWith(TEST_DEVICE_PREFIX)) {
       const el = new Audio();
       el.src = device.deviceId.slice(TEST_DEVICE_PREFIX.length);
       el.crossOrigin = 'anonymous';

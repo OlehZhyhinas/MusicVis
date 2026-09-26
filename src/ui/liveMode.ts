@@ -1,15 +1,19 @@
 // Live input mode: the "Live input" buttons, the device
-// picker, starting / stopping capture, the transport readout, and the policy
+// picker and the "Listen to a tab" button, starting / stopping capture, the transport readout, and the policy
 // for telling the visualizer that a new song started.
 
 import type { MusicState } from '../types';
 import {
   LiveInput,
+  TAB_DEVICE_ID,
   TEST_DEVICE_PREFIX,
+  TabCaptureError,
+  captureTab,
   describeInputError,
   listInputDevices,
   liveInputSupported,
   requestInputPermission,
+  tabCaptureUnsupportedReason,
   type LiveDevice,
 } from '../audio/LiveInput';
 import type { Transport } from './transport';
@@ -37,6 +41,7 @@ const KIND_COLOR: Record<string, string> = {
   virtual: '#B79CFF',
   external: 'var(--warn)',
   test: 'var(--s-build)',
+  tab: 'var(--acc)',
 };
 
 const KIND_TAG: Record<string, string> = {
@@ -45,7 +50,11 @@ const KIND_TAG: Record<string, string> = {
   virtual: 'virtual',
   external: 'external',
   test: 'test',
+  tab: 'tab',
 };
+
+const TAB_DEVICE: LiveDevice = { deviceId: TAB_DEVICE_ID, label: 'Browser tab', kind: 'tab' };
+const TAB_HELP = 'Pick the tab and tick "Also share tab audio".';
 
 export class LiveMode {
   private readonly host: LiveModeHost;
@@ -70,6 +79,10 @@ export class LiveMode {
   private seenNewSongs = 0;
   private pendingNewSong = false;
   private readonly testUrl: string | null;
+  private readonly tabBtn: HTMLButtonElement;
+  private readonly tabHelp: HTMLElement;
+  /** A one-off status line shown while idle (e.g. "Tab sharing was cancelled."). */
+  private note = '';
 
   constructor(host: LiveModeHost, transport: Transport, buttons: HTMLElement[], private popovers: Popovers) {
     this.host = host;
@@ -93,11 +106,12 @@ export class LiveMode {
       <div class="grab"></div>
       <div class="row"><span class="lp-mic">${icon('mic', 18)}</span><b class="grow lp-title">Live input</b><button class="ib sm lp-close" aria-label="Close" title="Close (Esc)">${icon('x', 16)}</button></div>
       <div class="lp-list" role="listbox" aria-label="Input devices"></div>
+      <div class="sub lp-tab"><button class="btn sm lp-tab-btn">${icon('music', 14)}<span>Listen to a tab (YouTube, Spotify…)</span></button><span class="muted lp-tab-help">${TAB_HELP}</span></div>
       <div class="sub lp-grant" hidden><span class="muted">Device names are hidden until the browser grants microphone access.</span><button class="btn sm lp-grant-btn">${icon('eye', 14)}<span>Show device names</span></button></div>
       <div class="row lp-level" hidden><span class="muted">${icon('volume', 14)}</span><div class="meter level h6"><i class="lp-meter-fill" style="--v:0%"></i></div><span class="mono dim lp-db">–</span></div>
       <div class="status lp-status" role="status" aria-live="polite"></div>
       <div class="row"><button class="btn primary lp-start">${icon('play', 16)}<span>Start</span></button><button class="btn danger lp-stop" hidden>${icon('stop', 14)}<span>Stop</span></button><span class="grow"></span><button class="btn ghost lp-cancel">Cancel</button></div>
-      <details class="lp-help"><summary>${icon('info', 14)}Play audio from other apps (BlackHole, Loopback)</summary><p>Visualizes a microphone or audio interface in real time. To visualize audio already playing on this Mac (Spotify, YouTube, a DJ app), install a virtual device such as BlackHole, create a Multi-Output Device in Audio MIDI Setup that sends to your speakers and to BlackHole (so you still hear it), pick it as the system output, then choose BlackHole here.</p></details>
+      <details class="lp-help"><summary>${icon('info', 14)}Play audio from other apps (BlackHole, Loopback)</summary><p>Visualizes a microphone or audio interface in real time. To visualize audio already playing on this Mac (Spotify, YouTube, a DJ app), install a virtual device such as BlackHole, create a Multi-Output Device in Audio MIDI Setup that sends to your speakers and to BlackHole (so you still hear it), pick it as the system output, then choose BlackHole here. For sound playing in another Chrome or Edge tab, "Listen to a tab" needs none of this.</p></details>
     `;
     (document.getElementById('app') ?? document.body).appendChild(panel);
     this.panel = panel;
@@ -111,11 +125,14 @@ export class LiveMode {
     this.levelRow = panel.querySelector('.lp-level')!;
     this.levelDb = panel.querySelector('.lp-db')!;
     this.statusEl = panel.querySelector('.lp-status')!;
+    this.tabBtn = panel.querySelector('.lp-tab-btn')!;
+    this.tabHelp = panel.querySelector('.lp-tab-help')!;
 
     panel.querySelector('.lp-close')!.addEventListener('click', () => this.setOpen(false));
     this.cancelBtn.addEventListener('click', () => this.setOpen(false));
     this.grantBtn.addEventListener('click', () => void this.grant());
     this.startBtn.addEventListener('click', () => void this.start(this.selected));
+    this.tabBtn.addEventListener('click', () => void this.start(TAB_DEVICE_ID));
     this.stopBtn.addEventListener('click', () => this.stop());
     this.listEl.addEventListener('click', (ev) => {
       const item = (ev.target as HTMLElement).closest<HTMLElement>('.dev');
@@ -253,13 +270,17 @@ export class LiveMode {
     this.stopBtn.hidden = !live;
     this.cancelBtn.hidden = live;
     this.levelRow.hidden = !live;
+    const tabWhy = liveInputSupported() ? tabCaptureUnsupportedReason() : null;
+    const onTab = this.input?.device.deviceId === TAB_DEVICE_ID;
+    this.tabBtn.disabled = this.starting || !!tabWhy || onTab;
+    this.tabHelp.textContent = tabWhy ?? (onTab ? 'Listening to the shared tab. Stop sharing in the browser bar or press Stop.' : TAB_HELP);
     this.panel.classList.toggle('lp-live', live);
     if (!this.starting && liveInputSupported()) {
       if (live) {
         const rate = this.host.ensureContext().sampleRate;
         this.statusEl.innerHTML = `<span class="dot" style="color:var(--live)"></span><span></span>`;
         this.statusEl.lastElementChild!.textContent = `Listening to ${this.input!.device.label} · ${Math.round(rate / 100) / 10} kHz`;
-      } else this.statusEl.textContent = 'Pick an input, then Start. Nothing is recorded or uploaded.';
+      } else this.statusEl.textContent = this.note || 'Pick an input, then Start. Nothing is recorded or uploaded.';
     }
     this.renderButtons();
   }
@@ -279,25 +300,33 @@ export class LiveMode {
       showToast('Live input unavailable', 'error', 0, window.isSecureContext ? 'This browser does not support live audio input.' : 'Live input needs a secure (https) page.');
       return;
     }
+    const tab = deviceId === TAB_DEVICE_ID;
     this.starting = true;
-    this.statusEl.textContent = 'Starting…';
+    this.note = '';
+    this.statusEl.textContent = tab ? 'Pick a tab in the browser dialog…' : 'Starting…';
     this.renderState();
     const ctx = this.host.ensureContext();
-    const device = this.devices.find((d) => d.deviceId === deviceId) ?? { deviceId, label: deviceId === 'default' ? 'System default input' : 'Audio input', kind: 'default' as const };
+    const device = tab
+      ? TAB_DEVICE
+      : (this.devices.find((d) => d.deviceId === deviceId) ?? { deviceId, label: deviceId === 'default' ? 'System default input' : 'Audio input', kind: 'default' as const });
     try {
+      // The sharing dialog first: it needs the click's user activation.
+      const stream = tab ? await captureTab() : undefined;
       await ctx.resume().catch(() => {});
       const next = await LiveInput.open(ctx, device, {
         onEnded: (reason) => {
           if (this.input !== next) return;
           this.input = null;
           this.finishStop();
-          showToast('Live input stopped', 'error', 0, reason);
+          // Stopping the share from the browser bar is a normal way to end a tab.
+          if (tab) showToast('Stopped listening to the tab', 'info', 5000, reason);
+          else showToast('Live input stopped', 'error', 0, reason);
         },
-      });
+      }, { stream });
       const prev = this.input;
       this.input = next;
       prev?.stop();
-      if (!device.deviceId.startsWith(TEST_DEVICE_PREFIX)) saveSetting(DEVICE_KEY, device.deviceId);
+      if (!tab && !device.deviceId.startsWith(TEST_DEVICE_PREFIX)) saveSetting(DEVICE_KEY, device.deviceId);
       this.seenNewSongs = 0;
       this.pendingNewSong = false;
       this.transport.setLive(true, device.label);
@@ -307,8 +336,14 @@ export class LiveMode {
       if (!prev) void this.refresh();
       showToast(`Live input: ${device.label}`, 'live');
     } catch (err) {
-      console.error(err);
-      showToast('Live input failed', 'error', 0, describeInputError(err));
+      if (err instanceof TabCaptureError) {
+        // Cancelling the dialog is not an error; the rest are explained where the button is.
+        this.note = err.message;
+        if (err.code !== 'cancelled') showToast('Could not listen to the tab', 'error', 0, err.message);
+      } else {
+        console.error(err);
+        showToast('Live input failed', 'error', 0, describeInputError(err));
+      }
     } finally {
       this.starting = false;
       this.statusEl.textContent = '';
