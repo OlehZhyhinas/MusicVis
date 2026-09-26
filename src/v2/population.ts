@@ -160,13 +160,15 @@ export class Population {
    * missing from it) are added; a G0 seed whose genome differs from the
    * current encoding gets the current genome while keeping its id, votes,
    * views, watch time and hidden flag. Seeds that already match are left
-   * exactly as they are. Bred children (G1+) are never touched, so their
+   * exactly as they are. A G0 seed whose origin no longer has a seed at all
+   * (withdrawn) is dropped. Bred children (G1+) are never touched, so their
    * parent links stay valid. A population from a newer seed version is left
-   * alone. Returns the ids of the seeds that were added or changed.
+   * alone. Returns the ids of the seeds that were added, changed or dropped.
    */
   upgradeSeeds(now = Date.now()): string[] {
     if (this.seedVersion > SEED_VERSION) return [];
     const changed: string[] = [];
+    const liveIds = new Set(SEEDS.map((s) => `G0-${s.origin}`));
     for (const s of SEEDS) {
       const fresh = seedMember(s, now);
       const cur = this.members.get(fresh.id);
@@ -179,6 +181,12 @@ export class Population {
           species: fresh.species, species2: fresh.species2, type: fresh.type, energy: fresh.energy, descriptor: undefined, fp: undefined, fpv: undefined,
         });
         changed.push(cur.id);
+      }
+    }
+    for (const m of this.members.values()) {
+      if (m.gen === 0 && !liveIds.has(m.id)) {
+        this.members.delete(m.id);
+        changed.push(m.id);
       }
     }
     this.seedVersion = SEED_VERSION;
