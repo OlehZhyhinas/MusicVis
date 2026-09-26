@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 122;
+export const SEED_VERSION = 123;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2485,32 +2485,31 @@ const ART4: Def[] = [
 // X36: Toronto at night from the islands, across the harbour.
 const WL36 = -0.15; // the waterline (tone reflect) the city stands on
 function tower36(): BodyGene {
-  // The CN Tower's shaft and antenna: a thin capsule. The segment shape lies horizontal, so an orbit
-  // of four copies (rate 0) stands one copy upright at (x, y + radius), centred on the pod; the other
-  // three sit below the scene's horizontal axis, where a draw-space mirror across that axis (only
-  // y >= 0 is ever sampled) hides them and folds the shaft down to the waterline, so the pod sits
-  // about two thirds up.
+  // The CN Tower: a thin capsule (shaft and antenna) stood upright by the placement angle, with the pod
+  // fused in at its centre. A draw-space mirror across the scene's horizontal axis (only y >= 0 is ever
+  // sampled) folds the shaft's lower end down to the waterline, so the pod sits about two thirds up.
   const b = body({
     shape: ['segment', { len: 0.46, w: 0.0026 }],
-    place: ['orbit', { count: 4, radius: 0.45, x: -0.25, y: -0.23, follow: 0, rate: 0, fuse: 0 }],
+    place: ['point', { x: -0.25, y: 0.22, angle: 0.25 }],
     material: ['fill', { gain: 2.6, soft: 0, halo: 0.02, clip: WL36 }],
     emit: ['none'],
     feel: ['flow', { atk: 0.01, rel: 0.2 }],
     color: ['melody', { hue: 0, amount: 0.25, detail: 0.3 }],
   });
+  b.fuse = { shape: { kind: 'dot', p: { r: 0.021 } }, p: { mode: 0, k: 0.02, t: 0.5, drive: 0, depth: 0, rate: 8, inside: 1 } };
   b.deform.ops = [op('mirror', { axis: 1 })];
   return b;
 }
-function pod36(): BodyGene {
-  // The pod, two thirds up the shaft. It also throws the fireworks: a body with a fused shape (a speck
-  // hidden inside the pod) bears its sparks on a small ring round the scene centre, so they burst over
-  // the harbour right of the tower.
+function dome36(): BodyGene {
+  // The Rogers Centre: a low dome at the tower's foot (its lower half is under the waterline). It
+  // throws the fireworks: a body with a fused shape bears its sparks on a small ring round the scene
+  // centre, so they burst over the harbour left of the tower (the fused speck sits under the water).
   const b = body({
-    shape: ['dot', { r: 0.021 }],
-    place: ['point', { x: -0.25, y: 0.22 }],
-    material: ['fill', { gain: 1.5, soft: 0.1, halo: 0.4 }],
-    emit: ['sparks', { count: 2560, size: 3, speed: 0.4, curl: 0.04, zoomFlow: 0, lift: -0.08, drag: 4.5, life: 0.65, spread: 0.05, surge: 1, top: 0, body: 1 }],
-    color: ['fixed', { hue: 0.4, amount: 1 }],
+    shape: ['dot', { r: 0.06 }],
+    place: ['point', { x: -0.36, y: WL36 - 0.015 }],
+    material: ['fill', { gain: 0.55, soft: 0, outline: 1, core: 0, clip: WL36 }],
+    emit: ['sparks', { count: 2560, size: 3, speed: 0.4, curl: 0.04, zoomFlow: 0, lift: -0.08, drag: 4.5, life: 0.65, spread: 0.05, surge: 1, top: 0, body: 0.25 }],
+    color: ['fixed', { hue: 0, amount: 1 }],
   });
   b.fuse = { shape: { kind: 'polygon', p: { n: 4, r: 0.005, round: 0 } }, p: { mode: 0, k: 0.02, t: 0.5, drive: 0, depth: 0, rate: 8, inside: 1 } };
   return b;
@@ -2518,8 +2517,8 @@ function pod36(): BodyGene {
 const TORONTO_X36: Def[] = [
   {
     // Night Toronto seen from the islands: downtown as a strip of lit windows standing on the lake, the
-    // CN Tower tall and thin left of the core with its pod two thirds up, the whole city mirrored and
-    // rippling in the water. The towers rise and fall with their
+    // CN Tower tall and thin left of the core with its pod two thirds up, the Rogers Centre dome at its
+    // foot, the whole city mirrored and rippling in the water. The towers rise and fall with their
     // spectrum bands and the windows glow with the bass; the tower's halo pulses on the beat, it
     // flashes on melody notes, its colour leans with the melody and steps with each section; drum
     // hits burst fireworks over the harbour (and kick the view), which blaze on drops and glint in
@@ -2529,7 +2528,7 @@ const TORONTO_X36: Def[] = [
     carrier: 'warp', car: { halfLife: 0.35, floor: 0.6 },
     bodies: [
       tower36(),
-      pod36(),
+      dome36(),
       body({
         // Downtown east of the tower: mirrored spectrum bars (the bass towers in the middle of the core,
         // the treble ones low at its edges; the mirrored half is under the water) stippled with windows.
@@ -2544,9 +2543,8 @@ const TORONTO_X36: Def[] = [
     // sparks already burst on every drum hit.
     reactions: [
       rx('beat', 'ma', 0, 'halo', 0.5, { rel: 0.25 }),
-      rx('beat', 'ma', 1, 'halo', 0.5, { rel: 0.25 }),
       rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.2 }),
-      rx('drop', 'ma', 1, 'gain', 0.4, { atk: 0.02, rel: 3 }),
+      rx('drop', 'ma', 1, 'gain', 0.6, { atk: 0.02, rel: 3 }),
       rx('drop', 'em', 1, 'speed', 0.3, { atk: 0.02, rel: 3 }),
       rx('bass', 'ma', 2, 'gain', 0.7, { atk: 0.03, rel: 0.3 }),
     ],
