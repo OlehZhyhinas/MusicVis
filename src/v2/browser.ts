@@ -239,15 +239,18 @@ export class PresetBrowser {
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
     const cur = this.cb.currentId();
     const focused = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('.prs')?.dataset.id;
+    const keepScroll = this.scroller.scrollTop;
     if (ms.length) {
       const frag = document.createDocumentFragment();
       for (const m of ms) frag.appendChild(this.row(m, m.id === cur));
       this.list.replaceChildren(frag);
+      // Re-rendering (thumbnails, votes, views arriving) must never move the list under the user.
+      this.scroller.scrollTop = keepScroll;
     } else {
       this.list.innerHTML = '<p class="dim v2b-none">No presets match these filters.</p>';
     }
     for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.observe(img);
-    if (focused) this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(focused)}"]`)?.focus();
+    if (focused) this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
     this.updateSelection();
     if (this.highlight) {
       this.list.querySelector(`.prs[data-id="${CSS.escape(this.highlight)}"]`)?.classList.add('flash');
