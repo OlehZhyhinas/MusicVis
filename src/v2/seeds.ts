@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 118;
+export const SEED_VERSION = 119;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2445,6 +2445,40 @@ const ART4: Def[] = [
       rx('hook', 'col', 0, 'light', 0.5, { atk: 0.01, rel: 0.5 }),
     ],
     accent: { section: 0.25, hue: 1 },
+  },
+  {
+    // Clay vortex: one tight, hand-rolled spiral of glossy clay bands. The coil is laid as a thick
+    // wobbling spiral and its trail is wound round and slowly pushed outward, so every band sits
+    // beside the ones before it; each is coloured by the melody note it was laid on, so the vortex
+    // keeps the tune as rings of colour, and the whole coil is lit as embossed clay. Drum hits
+    // brighten the fresh band, the bass stirs the winding and twists the coil, each note start
+    // re-coils the spiral, the riff pulls it in tight the same way every repeat, and drops unwind
+    // it outward across the frame.
+    origin: 'X31', name: 'Clay Vortex', energy: [0.15, 0.9], scheme: 'triad', hue: 0.1,
+    color: { sat: 1, exposure: 1, contrast: 0.05, adapt: 0.1, bloom: 0.45, vignette: 0.45, relief: 1, bump: 2.5, gloss: 0.6, light: 0.375 },
+    carrier: 'warp', car: { halfLife: 2, floor: 0.7, sharpen: 0.05, grain: 0.003 },
+    chain: [op('swirl', { amt: 0.004, k: 2, cx: 0.05 }), op('zoom', { rate: 0.0018, cx: 0.05 }), op('noise', { amp: 0.0006, scale: 3, speed: 0.2 })],
+    bodies: [{
+      ...body({
+        shape: ['curve', { form: 2, radius: 0.45, turns: 3.5, amp: 0.04 }],
+        place: ['point', { x: 0.05, y: 0 }],
+        motion: ['hits', { amt: 0.35 }],
+        material: ['glow', { gain: 0.2, width: 0.045 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['melody', { amount: 1, detail: 1 }],
+      }),
+      deform: { kind: 'none', p: {}, ops: [op('twist', { amt: 0.002 }), op('noise', { amp: 0.0015, scale: 2.5, speed: 0.25 })] },
+    }],
+    reactions: [
+      rx('bass', 'op', 0, 'amt', 0.4, { atk: 0.05, rel: 0.5 }),
+      rx('bass', 'dr', 0, 'amt', 0.5, { atk: 0.03, rel: 0.4 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('noteon', 'sh', 0, 'turns', 0.6, { atk: 0.01, rel: 0.4 }),
+      rx('drop', 'op', 1, 'rate', 0.25, { atk: 0.3, rel: 2 }),
+      rx('hook', 'sh', 0, 'radius', -0.4, { atk: 0.02, rel: 0.4 }),
+    ],
+    accent: { hook: 1 },
   },
 ];
 
