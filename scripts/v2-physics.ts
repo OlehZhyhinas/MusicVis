@@ -73,12 +73,14 @@ export function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, n
   }
   check(`${kind}.crossover-every-seed`, !xbad.length && carried > n * 0.15, xbad.slice(0, 4).join(' | ') || `${n} children and mutants valid and under budget, ${carried} express ${kind}`);
 
-  // Mutation of a genome of this kind keeps it valid; parameters move.
+  // Mutation of a genome of this kind keeps it valid; parameters move. Its own random stream, so the
+  // count does not depend on how many seeds the crossover loop above walked through.
+  const mrng = mulberry32(9090 + kind.length);
   let g = host;
   const mbad: string[] = [];
   let moved = 0;
   for (let i = 0; i < 300; i++) {
-    const m = mutate(g, rng, 1);
+    const m = mutate(g, mrng, 1);
     const errs = validate(m);
     if (errs.length) mbad.push(errs.join(';'));
     const a = g.bodies.find((b) => b.shape.kind === kind);

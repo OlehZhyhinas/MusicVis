@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 110;
+export const SEED_VERSION = 111;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2310,7 +2310,37 @@ const ART3: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART3];
+// ------------------------------------------------------------ art direction, second set
+// X11..X20: hand-directed presets built only from existing genes, each one clear focal idea with
+// the music locked to it through specific events (hits, riff notes, chords, held notes).
+const ART2: Def[] = [
+  {
+    // A smoke machine on the stage floor: four moving heads stand at the foot of the frame and throw
+    // their shafts up through real simulated smoke. Each kick puffs the machine, so the smoke curls
+    // visibly inside the shafts for the next beats; the bass thickens the haze, the riff chases one
+    // head per note, the build stirs the smoke harder, and each section changes the gel colours.
+    origin: 'X11', name: 'Smoke Machine', energy: [0.3, 1], scheme: 'split', hue: 0.58,
+    color: { sat: 0.85, adapt: 0.35, bloom: 1.3, vignette: 0.3 }, carrier: 'fluid', car: { halfLife: 1.3, floor: 0.35, amount: 1.2, vort: 22, fnoise: 0.3, blur: 0.02 },
+    bodies: [body({
+      shape: ['beams', { count: 4, spread: 1.25, fan: 0.5, sweep: 0.35, pattern: 3, period: 4, width: 0.07, haze: 0.7, gobo: 0, hues: 0.07, length: 2.2, flare: 0.5, accent: 0.7 }],
+      place: ['point', { x: 0, y: -0.45 }],
+      material: ['glow', { gain: 1.6 }],
+      emit: ['dye', { force: 1.5 }],
+      feel: ['flow', { atk: 0.02, rel: 0.4 }],
+      color: ['melody', { amount: 0.45, detail: 0.3 }],
+    })],
+    reactions: [
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('bass', 'sh', 0, 'width', 0.9, { atk: 0.02, rel: 0.3 }),
+      rx('hook', 'sh', 0, 'fan', 0.5, { atk: 0.01, rel: 0.35 }),
+      rx('vocals', 'sh', 0, 'haze', 0.5, { atk: 0.05, rel: 0.5 }),
+      rx('loud', 'sh', 0, 'sweep', 0.5, { atk: 0.2, rel: 1 }),
+      rx('section', 'sh', 0, 'hues', 0.5, { atk: 0.05, rel: 2 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART2, ...ART3];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
