@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 116;
+export const SEED_VERSION = 117;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2323,26 +2323,27 @@ const ART3: Def[] = [
 const ART2: Def[] = [
   {
     // A smoke machine on the stage floor: four moving heads stand at the foot of the frame and throw
-    // their shafts up through real simulated smoke. Each kick puffs the machine, so the smoke curls
-    // visibly inside the shafts for the next beats; the bass thickens the haze, the riff chases one
-    // head per note, the build stirs the smoke harder, and each section changes the gel colours.
-    origin: 'X11', name: 'Smoke Machine', energy: [0.3, 1], scheme: 'split', hue: 0.58,
-    color: { sat: 0.85, adapt: 0.35, bloom: 1.3, vignette: 0.3 }, carrier: 'fluid', car: { halfLife: 1.3, floor: 0.35, amount: 1.2, vort: 22, fnoise: 0.3, blur: 0.02 },
+    // crossing shafts up through real simulated smoke. The rig moves only when the music tells it to:
+    // on each drum hit every head snaps to a new aim and the smoke machine puffs a curl of smoke into
+    // the shafts, and between hits the heads settle back and the smoke rolls on its own. Each riff note
+    // opens the fan, the bass fattens the shafts, quiet passages dim the rig to a glow in the haze,
+    // each chord change steps the gels across the rig, and the gel colour follows the melody.
+    origin: 'X11', name: 'Smoke Machine', energy: [0.3, 1], scheme: 'analogous', hue: 0.58,
+    color: { sat: 0.8, adapt: 0.3, bloom: 1.3, vignette: 0.3 }, carrier: 'fluid', car: { halfLife: 0.8, floor: 0.55, amount: 1.2, vort: 24, fnoise: 0.2, blur: 0.02 },
     bodies: [body({
-      shape: ['beams', { count: 4, spread: 1.25, fan: 0.5, sweep: 0.35, pattern: 3, period: 4, width: 0.07, haze: 0.7, gobo: 0, hues: 0.07, length: 2.2, flare: 0.5, accent: 0.7 }],
+      shape: ['beams', { count: 4, spread: 1.6, fan: 0.55, sweep: 0, pattern: 4, period: 1, width: 0.045, haze: 0.9, gobo: 3, hues: 0.1, length: 2.2, flare: 0.5, accent: 0.3 }],
       place: ['point', { x: 0, y: -0.45 }],
-      material: ['glow', { gain: 1.6 }],
+      material: ['glow', { gain: 1.1 }],
       emit: ['dye', { force: 1.5 }],
       feel: ['flow', { atk: 0.02, rel: 0.4 }],
       color: ['melody', { amount: 0.45, detail: 0.3 }],
     })],
     reactions: [
-      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'sh', 0, 'sweep', 1, { atk: 0.005, rel: 0.7 }),
       rx('bass', 'sh', 0, 'width', 0.9, { atk: 0.02, rel: 0.3 }),
-      rx('hook', 'sh', 0, 'fan', 0.5, { atk: 0.01, rel: 0.35 }),
-      rx('vocals', 'sh', 0, 'haze', 0.5, { atk: 0.05, rel: 0.5 }),
-      rx('loud', 'sh', 0, 'sweep', 0.5, { atk: 0.2, rel: 1 }),
-      rx('section', 'sh', 0, 'hues', 0.5, { atk: 0.05, rel: 2 }),
+      rx('hook', 'sh', 0, 'fan', 0.7, { atk: 0.005, rel: 0.4 }),
+      rx('loud', 'ma', 0, 'gain', 0.9, { atk: 0.1, rel: 0.8 }),
+      rx('chordchange', 'sh', 0, 'hues', 0.9, { atk: 0.01, rel: 1.2 }),
     ],
   },
   {
