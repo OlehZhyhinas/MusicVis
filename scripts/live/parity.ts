@@ -114,12 +114,11 @@ export interface Recording {
 
 /** Record every channel for offline and live over [0, duration) at FPS. */
 /**
- * opts.lag: LiveInput's visual lag (default the app's 0.1 s, with the look-ahead note tracker).
- * opts.align (default true): compare the live state drawn at wall time t + lag with the offline
- * state at t, i.e. score the analysis itself; the fixed lag is a presentation delay reported
- * separately (it adds to every latency for tab capture, where the sound cannot be delayed).
+ * opts.lag: LiveInput's visual lag for the look-ahead note tracker (default the app's 0.1 s); the
+ * notes are drawn that much behind the sound, everything else at the sound's time. The live state
+ * drawn at wall time t is compared with the offline state at t, as a viewer sees them.
  */
-export function record(E: EngineBundle, pcm: Pcm, result: AnalysisResult, channels: Channel[], opts: { t0?: number; t1?: number; lag?: number; align?: boolean } = {}): Recording {
+export function record(E: EngineBundle, pcm: Pcm, result: AnalysisResult, channels: Channel[], opts: { t0?: number; t1?: number; lag?: number } = {}): Recording {
   const dur = pcm.left.length / pcm.sr;
   const t0 = opts.t0 ?? 0;
   const t1 = Math.min(dur, opts.t1 ?? dur);
@@ -140,15 +139,13 @@ export function record(E: EngineBundle, pcm: Pcm, result: AnalysisResult, channe
   }
   const i0 = Math.round(t0 * pcm.sr);
   const lpAt = new LivePath(i0 > 0 ? { sr: pcm.sr, left: pcm.left.subarray(i0), right: pcm.right.subarray(i0) } : pcm, opts.lag);
-  const shift = opts.align === false ? 0 : lpAt.lag;
   for (let k = 0; k < n; k++) {
     const t = t0 + (k + 1) * dt;
     const so = tl.sample(t, dt, true, liveA.read(t, dt));
     sigOff.update(so, dt, 16 / 9);
     const offSig = (x: string) => sigOff.signal(x as never);
     for (let c = 0; c < channels.length; c++) off[c][k] = channels[c].read(so, offSig);
-    // The app's waveform analyser trails the sound by the lag too (LiveInput's DelayNode).
-    const sl = lpAt.sample(t - t0 + shift, dt, liveB.read(Math.max(0, t - (lpAt.lag - shift)), dt));
+    const sl = lpAt.sample(t - t0, dt, liveB.read(t, dt));
     sigLive.update(sl, dt, 16 / 9);
     const liveSig = (x: string) => sigLive.signal(x as never);
     for (let c = 0; c < channels.length; c++) live[c][k] = channels[c].read(sl, liveSig);

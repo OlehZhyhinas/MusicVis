@@ -1,5 +1,7 @@
-// Live notes with a small visual lag: the picture is drawn a fixed V seconds
+// Live notes with a small visual lag: the notes are drawn a fixed V seconds
 // behind the sound, and the note tracker uses those V seconds as look-ahead.
+// Everything predictable or measured without look-ahead (the beat and bar
+// clock, hits, stems, levels) stays at the sound's time.
 //
 // LookaheadNotes runs the offline note pipeline (notes.ts) in a sliding window
 // on the undelayed input:
@@ -17,9 +19,10 @@
 //     still sounding counts as held once it has lasted, and the legato around
 //     now is a phrase-level running estimate over the last few seconds.
 //
-// LiveLookahead is the delay line in front of the RealtimeAnalyzer: the notes
-// see every block at once, the analyzer V seconds later, so every visual (beat
-// clock, stems, notes) is drawn on the same delayed clock.
+// LiveLookahead feeds every block to the look-ahead notes and to the
+// RealtimeAnalyzer at once; only the notes are sampled V seconds back, so a
+// shared tab (whose sound cannot be delayed) gets its beats, hits and stems on
+// time and its notes V late.
 
 import type { NoteStats, NoteTrack } from '../types';
 import { RealFFT } from './fft';
@@ -312,16 +315,13 @@ function upper(notes: NoteTrack['notes'], t: number): number {
 }
 
 /**
- * The delay line in front of the analyzer: the look-ahead notes get every
- * block at once, the RealtimeAnalyzer `lag` seconds later, so its clock (the
- * one the visuals are drawn on) runs `lag` behind the input.
+ * The look-ahead notes beside the analyzer: both get every block at once; the
+ * notes are sampled `lag` seconds behind the analyzer's clock (the one the
+ * visuals are drawn on), which is their look-ahead.
  */
 export class LiveLookahead {
   readonly analyzer: RealtimeAnalyzer;
   readonly notes: LookaheadNotes;
-  private readonly queue: { l: Float32Array; r: Float32Array }[] = [];
-  private queued = 0;
-  private lagSamples: number;
   /** Analyzer stream time when this started (the notes' clock starts there). */
   private readonly origin: number;
 
@@ -329,7 +329,6 @@ export class LiveLookahead {
     this.analyzer = analyzer;
     this.origin = analyzer.streamTime;
     this.notes = new LookaheadNotes(analyzer.inputRate, lag);
-    this.lagSamples = Math.round(lag * analyzer.inputRate);
     analyzer.notesLiveOn = false;
   }
 
@@ -339,25 +338,12 @@ export class LiveLookahead {
 
   process(left: Float32Array, right: Float32Array): void {
     this.notes.process(left, right);
-    const len = Math.min(left.length, right.length);
-    const l = left.slice(0, len);
-    const r = right === left ? l : right.slice(0, len);
-    this.queue.push({ l, r });
-    this.queued += len;
-    while (this.queue.length && this.queued - this.queue[0].l.length >= this.lagSamples) {
-      const b = this.queue.shift()!;
-      this.queued -= b.l.length;
-      this.analyzer.process(b.l, b.r);
-    }
+    this.analyzer.process(left, right);
   }
 
-  /** Feeds everything queued to the analyzer (switching the lag off). */
-  flush(): void {
-    for (const b of this.queue) this.analyzer.process(b.l, b.r);
-    this.queue.length = 0;
-    this.queued = 0;
-  }
+  /** Nothing is held back any more (kept for callers switching the lag off). */
+  flush(): void {}
 
-  /** NoteStats source for RealtimeSampler.noteSource. */
-  readonly sampleNotes = (time: number, out: NoteStats): void => this.notes.sample(time - this.origin, out);
+  /** NoteStats source for RealtimeSampler.noteSource: the notes `lag` behind the analyzer's clock. */
+  readonly sampleNotes = (time: number, out: NoteStats): void => this.notes.sample(time - this.notes.lag - this.origin, out);
 }

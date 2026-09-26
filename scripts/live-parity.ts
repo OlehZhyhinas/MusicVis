@@ -3,7 +3,10 @@
 // LiveInput feeds it, compares every preset signal and genome input, and prints a ranked gap
 // table weighted by how many seeds use each one. Audio is decoded with ffmpeg and never played.
 //
-//   node --import ./scripts/analysis-test.hooks.mjs scripts/live-parity.ts [--songs test|slug,slug] [--mixes] [--no-songs] [--seconds N]
+//   node --import ./scripts/analysis-test.hooks.mjs scripts/live-parity.ts [--songs test|slug,slug] [--mixes] [--newsong] [--no-songs] [--seconds N]
+//
+// --out NAME: write .testdata/live/parity-NAME/ and parity-table-NAME.md instead.
+// --newsong: new-song detection on whole songs back to back (no gap, 2 s, 6 s, a 15 s ad) and on the mixes.
 //
 // Writes .testdata/live/parity/<input>.json (scores per input) and .testdata/live/parity-table.md.
 
@@ -11,7 +14,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEngine } from './live/bundle';
 import { decode, offlineCached, OUT, slugOf, testSongs } from './live/common';
-import { buildMixes, mixTruthReport } from './live/mix';
+import { buildMixes, mixTruthReport, type Mix } from './live/mix';
+import { newSongReport } from './live/newsong';
 import { record, scoreAll, signalChannels, stateChannels, type Score } from './live/parity';
 import { CORE_INPUTS, SIGNAL_SOURCE, usage } from './live/usage';
 
@@ -88,8 +92,9 @@ async function main() {
       });
     }
   }
+  const mixes: Mix[] = a.mixes || a.newsong ? buildMixes() : [];
   if (a.mixes) {
-    for (const mix of buildMixes()) {
+    for (const mix of mixes) {
       inputs.push({
         name: mix.name, kind: 'mix',
         run: () => {
@@ -100,14 +105,15 @@ async function main() {
       });
     }
   }
-  mkdirSync(join(OUT, 'parity'), { recursive: true });
+  const pdir = join(OUT, typeof a.out === 'string' ? `parity-${a.out}` : 'parity');
+  mkdirSync(pdir, { recursive: true });
   const results: { name: string; kind: string; scores: Score[]; extra?: unknown }[] = [];
   for (const inp of inputs) {
     const t0 = Date.now();
     console.error(`${inp.name} ...`);
     const r = inp.run();
     results.push({ name: inp.name, kind: inp.kind, ...r });
-    writeFileSync(join(OUT, 'parity', inp.name + '.json'), JSON.stringify({ name: inp.name, kind: inp.kind, ...r }, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v), 1));
+    writeFileSync(join(pdir, inp.name + '.json'), JSON.stringify({ name: inp.name, kind: inp.kind, ...r }, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v), 1));
     console.error(`  done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
 
@@ -152,11 +158,15 @@ async function main() {
       out(String(r.extra));
     }
   }
+  if (a.newsong) {
+    out('\n## New-song detection (live)\n');
+    out(newSongReport(mixes));
+  }
   out('\n## Seed usage (reactions)\n');
   out([...U.signalSeeds].sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(', '));
   out('\n## Seed usage (genes)\n');
   out([...U.inputSeeds].sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(', '));
-  writeFileSync(join(OUT, 'parity-table.md'), lines.join('\n') + '\n');
+  writeFileSync(join(OUT, typeof a.out === 'string' ? `parity-table-${a.out}.md` : 'parity-table.md'), lines.join('\n') + '\n');
 }
 
 await main();

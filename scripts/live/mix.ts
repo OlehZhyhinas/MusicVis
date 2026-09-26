@@ -474,9 +474,10 @@ export function mixTruthReport(mix: Mix, rec: Recording, _offMix: AnalysisResult
     const errs: number[] = [];
     for (let k = Math.floor(tr.start * fps); k < Math.min(n, (tr.end + 16) * fps); k++) errs.push(Math.abs(bpmLive[k] - mix.bpmAt((k + 1) / fps)));
     errs.sort((p, q) => p - q);
-    // Re-lock: first time after the change starts that live BPM stays within 1.5 % of the truth for 4 s.
+    // Re-lock: first time after the change starts that live BPM stays within 1.5 % of the truth for 4 s
+    // (searched from 1 s in, so a tracker that was already right before the change is not counted as locked).
     let relock = NaN;
-    for (let k = Math.floor(tr.start * fps); k < n - 4 * fps; k += fps / 4) {
+    for (let k = Math.floor((tr.start + 1) * fps); k < n - 4 * fps; k += fps / 4) {
       let ok = true;
       for (let j = k; j < k + 4 * fps; j += 6) if (Math.abs(bpmLive[j] / mix.bpmAt((j + 1) / fps) - 1) > 0.015) {
         ok = false;
@@ -585,6 +586,6 @@ export function mixTruthReport(mix: Mix, rec: Recording, _offMix: AnalysisResult
   lines.push(`**False triggers inside blends** (${blends.length} crossfades, ${blends.reduce((s, x) => s + x.end - x.start, 0).toFixed(0)} s): false drops ${falseDrops.length}${falseDrops.length ? ' at ' + falseDrops.map((x) => x.toFixed(0)).join(', ') + ' s' : ''}; section changes not at a takeover ${blendSecs.length}; key-change pulses ${keyPL.filter(inBlend).length}.`);
   const takes = mix.transitions.filter((x) => Number.isFinite(x.takeover));
   const detected = takes.filter((x) => secL.some((t) => Math.abs(t - x.takeover) < 8));
-  lines.push(`**Track changes**: the live path has no track-change detector (RealtimeAnalyzer only resets its song memory after ${'silence'}); a section change within 8 s of the takeover happened for ${detected.length} of ${takes.length} takeovers. Live section changes over the whole mix: ${secL.length} (${(secL.length / (n / fps / 60)).toFixed(1)} per minute).`);
+  lines.push(`**Track changes**: the live path only announces a new song after 5 s of silence (rtStructure newSongs), which a mix never has (see the new-song table); a section change within 8 s of the takeover happened for ${detected.length} of ${takes.length} takeovers. Live section changes over the whole mix: ${secL.length} (${(secL.length / (n / fps / 60)).toFixed(1)} per minute).`);
   return lines.join('\n');
 }

@@ -90,8 +90,8 @@ export const BLOCK = 512;
  * The live path over a PCM buffer, advanced by wall-clock time. Blocks arrive as the capture
  * worklet posts them (each once its last sample has been captured); sample(t) renders a frame
  * at wall time t with the stream time extrapolated up to 50 ms past the last block, like
- * LiveInput.streamTimeNow. With a visual lag the analyzer hears each block `lag` later, so the
- * state drawn at wall time t describes the sound at t - lag (the look-ahead notes see up to t).
+ * LiveInput.streamTimeNow. With a visual lag the notes are drawn `lag` behind (their look-ahead);
+ * everything else describes the sound at t.
  */
 export class LivePath {
   readonly analyzer: RealtimeAnalyzer;

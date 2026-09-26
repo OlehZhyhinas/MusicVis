@@ -567,9 +567,9 @@ if (ONLY) process.exit(failures === 0 ? 0 : 1);
 // ---------------------------------------------------------------- look-ahead notes (visual lag)
 {
   // A staccato phrase (short notes, 0.25 s apart) then a legato one (tied notes, 0.5 s each), as a
-  // bright harmonic tone. LiveLookahead with a 0.1 s visual lag: the analyzer's clock runs 0.1 s
-  // behind the input, note starts show on that clock within 30 ms of the truth, and the legato
-  // tells the phrases apart.
+  // bright harmonic tone. LiveLookahead with a 0.1 s visual lag: the analyzer's clock stays with
+  // the input (beats and stems on time), the notes are drawn 0.1 s behind it with their starts
+  // within 30 ms of the truth on that clock, and the legato tells the phrases apart.
   const sr = 44100, lag = 0.1;
   const notes: { t: number; d: number; m: number }[] = [];
   const melody = [72, 76, 79, 76, 74, 77, 81, 77];
@@ -600,16 +600,17 @@ if (ONLY) process.exit(failures === 0 ? 0 : 1);
     const b = x.subarray(i, Math.min(N, i + 512));
     la.process(b, b);
     const behind = la.notes.streamTime - a.streamTime;
-    if (la.notes.streamTime > lag + 0.05 && (behind < lag - 1e-6 || behind > lag + 512 / sr + 1e-6)) clockOk = false;
+    if (la.notes.streamTime > lag + 0.05 && (behind < -1e-6 || behind > 512 / sr + 1e-6)) clockOk = false;
     while (tick + 1 / 60 <= a.streamTime) {
       tick += 1 / 60;
       const ns = sampler.sample(tick, 1 / 60, true, frame).notes!;
       if (![ns.on, ns.held, ns.legato, ns.pitch, ns.height].every(Number.isFinite)) finite = false;
       leg.push({ t: tick, v: ns.legato });
+      // The notes drawn at `tick` show the sound at tick - lag.
       const m = ns.recent[ns.recent.length - 1];
-      if (m && tick - m.age > lastStart + 0.03) {
-        lastStart = tick - m.age;
-        seen.push(tick);
+      if (m && tick - lag - m.age > lastStart + 0.03) {
+        lastStart = tick - lag - m.age;
+        seen.push(tick - lag);
       }
     }
   }
@@ -625,7 +626,7 @@ if (ONLY) process.exit(failures === 0 ? 0 : 1);
   };
   const legS = legMean(2.5, 6), legL = legMean(8.5, 12);
   console.log('');
-  check('look-ahead clock', clockOk && finite, `analyzer ${lag * 1000} ms behind the input: ${clockOk}; values finite: ${finite}`);
+  check('look-ahead clock', clockOk && finite, `analyzer with the input, notes ${lag * 1000} ms behind: ${clockOk}; values finite: ${finite}`);
   check('look-ahead note starts', hit >= notes.length * 0.9 && seen.length <= notes.length * 1.1, `${hit}/${notes.length} shown within 30 ms (${late} later), ${seen.length} shown in all`);
   check('look-ahead legato', legS < 0.35 && legL > 0.65, `staccato phrase ${legS.toFixed(2)}, legato phrase ${legL.toFixed(2)}`);
 }

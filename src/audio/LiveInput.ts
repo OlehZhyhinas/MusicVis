@@ -195,8 +195,9 @@ export interface LiveInputOptions {
   /** An already opened stream (a shared tab); used instead of getUserMedia. */
   stream?: MediaStream;
   /**
-   * Seconds the visuals trail the sound (0: none). The note tracker uses them
-   * as look-ahead (LiveLookahead); every other visual is delayed to match.
+   * Seconds the notes trail the sound (0: none). The note tracker uses them
+   * as look-ahead (LiveLookahead); the beat clock, hits, stems and levels
+   * stay at the sound's time.
    */
   visualLag?: number;
 }
@@ -222,7 +223,7 @@ export class LiveInput {
   private node: AudioWorkletNode | null = null;
   private sink: GainNode | null = null;
   private monitor: GainNode | null = null;
-  /** Delays the waveform / spectrum analyser by the visual lag. */
+  /** In front of the waveform / spectrum analyser (no delay: the analyser stays at the sound's time). */
   private lagNode: DelayNode | null = null;
   private lookahead: LiveLookahead | null = null;
   private lastMsgAt = 0;
@@ -320,15 +321,14 @@ export class LiveInput {
     this.liveAnalyser = new LiveAnalyser(ctx, this.lagNode);
   }
 
-  /** Seconds the visuals trail the sound. */
+  /** Seconds the notes trail the sound. */
   get visualLag(): number {
     return this.lookahead?.lag ?? 0;
   }
 
   /**
-   * Turns the visual lag (and with it the look-ahead note tracker) on or off
-   * while running. Turning it on holds the visuals for `lag` seconds while
-   * the delay fills; turning it off catches them up at once.
+   * Turns the notes' lag (and with it the look-ahead note tracker) on or off
+   * while running; everything else is unaffected.
    */
   setVisualLag(lag: number): void {
     lag = Math.max(0, Math.min(0.5, lag));
@@ -343,7 +343,6 @@ export class LiveInput {
       this.lookahead = new LiveLookahead(this.analyzer, lag);
       this.sampler.noteSource = this.lookahead.sampleNotes;
     }
-    if (this.lagNode) this.lagNode.delayTime.value = lag;
   }
 
   private endedExternally(reason: string): void {
