@@ -196,8 +196,18 @@ export function choreoTests(check: Check): void {
     check('choreo.pose-build', Math.abs(mid.zoom - 1.1) < 1e-6 && Math.abs(peak.zoom - 1.2) < 1e-4 && peak.sat < 0.2 && Math.abs(peak.exposure - 0.5) < 1e-4
       && Math.abs(peak.roll - 0.01 * 2 * Math.PI) < 1e-4 && mid.sat > peak.sat,
       `mid zoom ${mid.zoom.toFixed(3)} sat ${mid.sat.toFixed(2)}; peak zoom ${peak.zoom.toFixed(3)} sat ${peak.sat.toFixed(2)} exp ${peak.exposure.toFixed(2)}`);
-    check('choreo.pose-release', Math.abs(hit.zoom - 1.15) < 1e-6 && hit.sat > 1.3 && hit.exposure > 1.3 && hit.roll === 0 && JSON.stringify(after) === JSON.stringify(IDENTITY_POSE),
-      `drop zoom ${hit.zoom.toFixed(3)} sat ${hit.sat.toFixed(2)} exp ${hit.exposure.toFixed(2)}, settled after relax`);
+    const swelled = choreoPose(g, cue(100, 0.5));
+    check('choreo.pose-release', Math.abs(hit.zoom - peak.zoom) < 1e-3 && hit.sat > 1.3 && hit.exposure > 1.3 && swelled.roll === 0 && swelled.zoom > 1.05 && JSON.stringify(after) === JSON.stringify(IDENTITY_POSE),
+      `drop zoom ${hit.zoom.toFixed(3)} (the build's ${peak.zoom.toFixed(3)}) sat ${hit.sat.toFixed(2)} exp ${hit.exposure.toFixed(2)}, a quarter bar on zoom ${swelled.zoom.toFixed(3)} roll ${swelled.roll}, settled after relax`);
+    // Across the drop the camera glides (no frame-to-frame jump), at 30 fps.
+    let jump = 0;
+    let prev = choreoPose(g, cue(2 / 30)).zoom;
+    for (let k = -1; k <= 60; k++) {
+      const z = choreoPose(g, k < 0 ? cue(1 / 30) : cue(100, k / 30)).zoom;
+      jump = Math.max(jump, Math.abs(z - prev));
+      prev = z;
+    }
+    check('choreo.drop-glides', jump < 0.02, `largest per-frame zoom step across the drop ${jump.toFixed(4)}`);
     const bl = blendPoses([peak, far], [1, 1]);
     check('choreo.blend', Math.abs(bl.zoom - (peak.zoom + 1) / 2) < 1e-9 && JSON.stringify(blendPoses([], [])) === JSON.stringify(IDENTITY_POSE), `half-way zoom ${bl.zoom.toFixed(3)}`);
 

@@ -52,7 +52,7 @@ registerGenomeGene({
   title: 'Choreography',
   schemas: CHOREO_SCHEMA,
   optional: true,
-  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop it snaps back with a slam of zoom, colour and light (punch) that settles over relax bars; scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene); arc = a push-in that swells across each phrase of phrase bars and eases back as the next begins',
+  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop colour and light slam in (punch) and settle over relax bars while the camera eases out of the build and swells into the punch zoom over a quarter bar (never a one-frame jump); scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene); arc = a push-in that swells across each phrase of phrase bars and eases back as the next begins',
 });
 
 export interface ChoreoGene {
@@ -232,6 +232,16 @@ export function releaseEnv(c: ChoreoGene, cue: ChoreoCue): number {
   return x * x;
 }
 
+/** Bars the camera takes to move from the build's tension into the drop's punch. */
+export const DROP_SWELL_BARS = 0.25;
+
+/** 0..1 smooth progress of the camera's move into the drop (1 = arrived, and away from any drop). */
+export function dropSwell(cue: ChoreoCue): number {
+  if (!(cue.sinceDrop >= 0) || !Number.isFinite(cue.sinceDrop)) return 1;
+  const x = clamp(cue.sinceDrop / (DROP_SWELL_BARS * cue.barSeconds), 0, 1);
+  return x * x * (3 - 2 * x);
+}
+
 /** The pose of a choreography at a timeline position (identity without a gene). */
 export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: ChoreoPose = { ...IDENTITY_POSE }): ChoreoPose {
   Object.assign(out, IDENTITY_POSE);
@@ -239,10 +249,14 @@ export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: Chore
   const p = c.p;
   // Tension: the camera creeps in and rolls, colour drains and the light dims toward the drop.
   const ramp = buildRamp(c, cue);
-  // Release: on the drop the tension snaps back, and the punch slams in and settles over `relax` bars.
+  // Release: on the drop the light and colour slam in and settle over `relax` bars; the camera's
+  // tension eases out and the punch's zoom swells in over the first DROP_SWELL_BARS instead of
+  // snapping (a one-frame zoom jump reads as the whole picture jerking).
   const env = releaseEnv(c, cue);
-  out.zoom = 1 + p.push * ramp + PUNCH_ZOOM * p.punch * env;
-  out.roll = p.roll * TAU * ramp;
+  const swell = dropSwell(cue);
+  const cam = ramp + 1 - swell;
+  out.zoom = 1 + p.push * cam + PUNCH_ZOOM * p.punch * env * swell;
+  out.roll = p.roll * TAU * cam;
   out.sat = (1 - 0.85 * p.drain * ramp) * (1 + PUNCH_SAT * p.punch * env);
   out.exposure = (1 - p.dim * ramp) * (1 + PUNCH_EXPOSURE * p.punch * env);
 
