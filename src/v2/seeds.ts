@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 141;
+export const SEED_VERSION = 142;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2886,18 +2886,20 @@ const ART5: Def[] = [
 const LILY_PETALS: [number, number, number, number][] = [
   [0.01, 1.0, 0.36, 0], [0.175, 0.9, 0.31, 0.3], [0.33, 1.06, 0.37, 0.62], [0.505, 0.93, 0.32, 0.15], [0.655, 1.02, 0.35, 0.47], [0.835, 0.88, 0.3, 0.8],
 ];
-function lilyParts(open = 0.92, k = 0.1): CompoundPart[] {
+/** Petal hues sitting exactly on the three palette slots (no in-between mixes, which go pastel). */
+const LILY_SLOTS = [0, 1 / 3, 2 / 3, 0, 1 / 3, 2 / 3];
+function lilyParts(open = 0.92, k = 0.1, hues?: number[]): CompoundPart[] {
   return LILY_PETALS.map(([a, len, w, hue], i) => part('capsule', i ? 'smooth' : 'union', {
     x: -Math.sin(a * 2 * Math.PI) * len * open, y: Math.cos(a * 2 * Math.PI) * len * open,
-    sx: w * 1.35, sy: len, m: 1, rot: a > 0.5 ? a - 1 : a, k, hue,
+    sx: w * 1.35, sy: len, m: 1, rot: a > 0.5 ? a - 1 : a, k, hue: hues ? hues[i] : hue,
   }));
 }
 /** Three stamens with glowing anthers: thin filaments and a bright bead at each tip. */
-function stamenParts(): CompoundPart[] {
+function stamenParts(tip = 2): CompoundPart[] {
   const st: [number, number][] = [[0.07, 1.0], [0.4, 0.85], [0.74, 1.1]];
   return [
     ...st.map(([a, len]) => part('capsule', 'union', { x: -Math.sin(a * 2 * Math.PI) * len, y: Math.cos(a * 2 * Math.PI) * len, sx: 0.05, sy: len, m: 0.5, rot: a > 0.5 ? a - 1 : a, bright: 0.7 })),
-    ...st.map(([a, len]) => part('ellipse', 'union', { x: -Math.sin(a * 2 * Math.PI) * len * 2, y: Math.cos(a * 2 * Math.PI) * len * 2, sx: 0.12, sy: 0.08, rot: a > 0.5 ? a - 1 : a, bright: 2, hue: 0 })),
+    ...st.map(([a, len]) => part('ellipse', 'union', { x: -Math.sin(a * 2 * Math.PI) * len * tip, y: Math.cos(a * 2 * Math.PI) * len * tip, sx: 0.12, sy: 0.08, rot: a > 0.5 ? a - 1 : a, bright: 2, hue: 0 })),
   ];
 }
 const LILIES: Def[] = [
@@ -2950,6 +2952,58 @@ const LILIES: Def[] = [
       rx('vocals', 'de', 0, 'amt', -0.13, { atk: 0.4, rel: 1.2 }),
       rx('legato', 'op', 0, 'rate', 0.15, { atk: 0.3, rel: 1 }),
       rx('noteon', 'ma', 0, 'gain', 0.2, { atk: 0.005, rel: 0.3 }),
+    ],
+  },
+  {
+    // A close-up inside one lily: the bloom sits low left and its petals run off the frame, each on one
+    // of the three palette colours with a double neon edge, three stamens arching over the throat. A
+    // small copy of the bloom is drawn into a slow outward zoom centred on the throat, so bands of
+    // colour flow from the base out along every petal to the tips. Legato passages brighten and speed
+    // that flow, drum hits flash the petals and swell them, the bass breathes the bloom, each melody
+    // note start flicks the stamens, the melody's pitch tints the petals and sections turn the palette.
+    origin: 'X41', name: 'Lily Close-up', energy: [0.1, 0.9], scheme: 'free', hue: 0.88, pal: { key: 0, s1: 0.62, s2: 0.24 },
+    color: { sat: 1, exposure: 0.8, adapt: 0.2, bloom: 1.1, vignette: 0.3 }, carrier: 'warp', car: { halfLife: 0.4, floor: 2.2, blur: 0 },
+    chain: [op('zoom', { rate: 0.01, cx: -0.3, cy: -0.22 })],
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.15 }],
+        parts: lilyParts(0.92, 0.1, LILY_SLOTS),
+        place: ['point', { x: -0.3, y: -0.22, angle: -0.04 }],
+        deform: ['twist', { amt: 1.26 }],
+        material: ['line', { gain: 0.3, width: 4, halo: 0.25 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.4 }],
+        color: ['age', { hue: 0.3, rate: 0.5, detail: 0.5 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.42 }],
+        parts: lilyParts(0.92, 0.1, LILY_SLOTS),
+        place: ['point', { x: -0.3, y: -0.22, angle: -0.04 }],
+        deform: ['twist', { amt: 0.45 }],
+        material: ['fill', { gain: 0.8, soft: 0.04, core: 0, rings: 2, rgap: 0.01, rfade: 0.6 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.02, rel: 0.4 }],
+        color: ['melody', { hue: 0, amount: 0.35, detail: 1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.22 }],
+        parts: stamenParts(2.1),
+        place: ['point', { x: -0.3, y: -0.22, angle: 0.08 }],
+        deform: ['twist', { amt: 0.5 }],
+        material: ['line', { gain: 1.4, width: 2.2, halo: 0.3 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.25 }],
+        color: ['fixed', { hue: 0.55, detail: 1 }],
+      }),
+    ],
+    accent: { kick: 0, hook: 0, hue: 1, section: 0.15, drop: 0.3 },
+    reactions: [
+      rx('drums', 'ma', 1, 'gain', 0.9, { atk: 0.01, rel: 0.15 }),
+      rx('bass', 'sh', 1, 'size', 0.08, { atk: 0.15, rel: 0.8 }),
+      rx('legato', 'ma', 0, 'gain', 0.4, { atk: 0.1, rel: 0.6 }),
+      rx('legato', 'op', 0, 'rate', 0.5, { atk: 0.3, rel: 1 }),
+      rx('noteon', 'sh', 2, 'size', 0.15, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'sh', 1, 'size', 0.12, { atk: 0.01, rel: 0.25 }),
     ],
   },
 ];
