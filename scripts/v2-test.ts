@@ -27,7 +27,7 @@ import {
   type ParamControl, type Target,
 } from '../src/v2/geneEdit';
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
-import { buildSources, WAVE_VS } from '../src/v2/glsl';
+import { BODY_VEC4, buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { CELLS_SCHEMA } from '../src/v2/genes/cells';
 import { TUNNEL_SCHEMA } from '../src/v2/genes/tunnel';
@@ -1634,6 +1634,29 @@ timbreGeneTests(check);
 // -------------------------------------------------- notes gene (articulation)
 
 notesGeneTests(check);
+
+// Two bodies of one field shape (e.g. bred from two note-driven seeds) share its helpers: each
+// helper is defined once per program, and each body keeps its own FLD reading its own slots.
+{
+  const bad: string[] = [];
+  const byKind = (kind: string) => SEEDS.find((x) => x.genome.bodies[0].shape.kind === kind)!.origin;
+  for (const [kind, a, b] of [['notes', 'N01', 'N02'], ['notes', 'N03', 'N03'], ['cymatics', byKind('cymatics'), byKind('cymatics')], ['tonnetz', byKind('tonnetz'), byKind('tonnetz')]]) {
+    const g = cloneGenome(seedByOrigin(a));
+    g.bodies = [cloneBody(b0(a)), cloneBody(b0(b))];
+    const r = repair(g);
+    if (validate(r).length) bad.push(`${kind}:${validate(r).join(';')}`);
+    if (r.bodies.filter((x) => x.shape.kind === kind).length !== 2) { bad.push(`${kind}:repair dropped a body`); continue; }
+    const src = buildSources(r);
+    for (const [pass, text] of Object.entries(src)) {
+      if (!text) continue;
+      const defs = [...text.matchAll(/^(?:vec[234]|float|int|bool|void|mat[234])\s+(\w+)\s*\(([^)]*)\)\s*\{/gm)].map((m) => `${m[1]}(${m[2].replace(/\s+/g, ' ')})`);
+      const dup = defs.filter((d, i) => defs.indexOf(d) !== i);
+      if (dup.length) bad.push(`${kind}/${pass}:twice ${[...new Set(dup)].join(',')}`);
+    }
+    if (!src.feedback.includes('FLD_0(') || !src.feedback.includes('FLD_1(') || !src.feedback.includes(`uBd[${BODY_VEC4 + 16}]`)) bad.push(`${kind}:second FLD missing its slots`);
+  }
+  check('glsl.two-field-bodies', !bad.length, bad.slice(0, 5).join(' | ') || 'two notes / cymatics / tonnetz bodies build with each helper once and their own FLD');
+}
 driftTests(check);
 dejavuTests(check);
 slimeTests(check);
