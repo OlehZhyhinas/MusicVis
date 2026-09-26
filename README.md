@@ -31,7 +31,10 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   the playing preset. Opt-in: the model (Qwen3.5 4B, about 2.4 GB) downloads
   from Hugging Face only when you start the chat, and stays in the browser.
 - Live input: a microphone, audio interface or virtual device (for example
-  BlackHole) instead of files.
+  BlackHole) instead of files, or another browser tab (YouTube, Spotify) in
+  Chrome and Edge. With "Sharper notes" on, the picture trails the sound by
+  100 ms and the melody tracker uses that as look-ahead, which brings live
+  notes close to an analysed file.
 - A real playlist: add many songs at once, shuffle, repeat, skip around, and
   switch tracks while the next one analyzes in the background.
 
@@ -86,6 +89,10 @@ node --import ./scripts/analysis-test.hooks.mjs scripts/realtime-test.ts
 node --import ./scripts/analysis-test.hooks.mjs scripts/v2-test.ts
 node --import ./scripts/analysis-test.hooks.mjs scripts/chat-test.ts
 ```
+
+`scripts/live-vs-offline.ts` runs real songs (decoded with ffmpeg, never
+played) through the live path and scores its notes, legato, beats and
+sections against the offline analysis of the same audio.
 
 The gene chat's runtime lives in `public/llm/`: a patched WebLLM 0.2.84 bundle
 (tuned decoding on Apple GPUs with WGSL subgroups, plus a prefill that yields

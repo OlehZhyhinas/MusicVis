@@ -8,7 +8,7 @@
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/live-vs-offline.ts [options]
 //   --dir <folder>      songs (default ~/Downloads/YoutubeToMp3)
 //   --songs a,b         only files whose name contains one of these (case-insensitive)
-//   --lags 0.05,0.1     visual lags for LiveLookahead, seconds (default 0,0.05,0.1,0.15)
+//   --lags 0.05,0.1     visual lags for LiveLookahead, seconds (default 0.05,0.1,0.15)
 //   --secs N            only the first N seconds of each song
 //
 // Metrics (on the display clock, which runs V behind the sound):
@@ -42,7 +42,7 @@ function arg(name: string, def: string): string {
 
 const dir = arg('dir', join(homedir(), 'Downloads', 'YoutubeToMp3'));
 const only = arg('songs', '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const lags = arg('lags', '0,0.05,0.1,0.15').split(',').map(Number).filter((x) => Number.isFinite(x) && x >= 0);
+const lags = arg('lags', '0.05,0.1,0.15').split(',').map(Number).filter((x) => Number.isFinite(x) && x >= 0);
 const secs = Number(arg('secs', '0'));
 
 function decode(file: string): { left: Float32Array; right: Float32Array } {
