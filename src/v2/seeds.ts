@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 147;
+export const SEED_VERSION = 148;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3189,6 +3189,25 @@ function poppy25(v: number, stem: number): CompoundPart[] {
     part('ellipse', 'union', { sx: 0.46, sy: 0.42, hue: 1 / 6, bright: 2 }),
   ];
 }
+/** One stem of a spray (ring copy frame: +y points away from the gathered base) with a small flower at its tip. */
+function spray26(v: number, petals: number): CompoundPart[] {
+  const j = (k: number) => (((Math.sin(v * 12.9898 + k * 78.233) * 43758.5453) % 1) + 1) % 1 - 0.5;
+  const out: CompoundPart[] = [part('capsule', 'union', { x: 0, y: 0.2, sx: 0.045, sy: 1.9, m: 0.4, hue: 0, bright: 0.75 })];
+  for (let k = 0; k < petals; k++) {
+    const a = (k / petals + 0.1 * j(k)) * Math.PI * 2;
+    out.push(part('ellipse', k === 0 ? 'union' : 'smooth', {
+      x: Math.cos(a) * 0.33, y: 2 + Math.sin(a) * 0.33, sx: 0.3 + 0.05 * j(k + 3), sy: 0.21 + 0.04 * j(k + 5), rot: k / petals + 0.02 * j(k + 13), k: 0.03,
+      hue: 0.02 * j(k + 7), bright: 1 + 0.4 * j(k + 11),
+    }));
+  }
+  if (out.length < 6) out.push(part('ellipse', 'union', { y: 2, sx: 0.14, sy: 0.13, hue: 0.33, bright: 1.6 }));
+  return out;
+}
+/** A body with draw-space ops bending it (after its own deformation). */
+function bent(b: BodyGene, ops: OpGene[]): BodyGene {
+  b.deform.ops = ops;
+  return b;
+}
 const FLOWERS: Def[] = [
   {
     // Pressed poppies on warm paper: three big orange-red flower heads, each five rounded, overlapping,
@@ -3226,6 +3245,52 @@ const FLOWERS: Def[] = [
       rx('hit', 'de', 2, 'amt', 0.05, { atk: 0.005, rel: 0.3 }),
       rx('noteon', 'pl', 1, 'angle', 0.04, { atk: 0.04, rel: 0.4 }),
       rx('held', 'pl', 2, 'angle', -0.06, { atk: 0.15, rel: 0.6 }),
+    ],
+  },
+  {
+    // A pressed bouquet on paper: two interleaved sprays of stems fan up from one gathered base at the
+    // foot of the frame, each ending in a small pastel flower (violet, pink, butter yellow), inked into
+    // the sheet. Each flower belongs to an instrument and deepens when it plays (the drum flowers flush on
+    // hits, the vocal ones while the voice sings); note starts open the flowers wider, the bass lengthens
+    // the spray, and every section type turns the bouquet to a new colour family.
+    origin: 'X26', name: 'Pressed Bouquet', energy: [0.15, 0.85], scheme: 'free', hue: 0.64, pal: { key: 0, s1: 0.78, s2: 0.48 },
+    color: { sat: 0.75, exposure: 0.9, adapt: 0.1, bloom: 0.4, vignette: 0.3, contrast: 0 },
+    carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.6 }],
+        parts: [part('box', 'union', { sx: 1.7, sy: 1, m: 0.2, hue: 0.765 })],
+        material: ['fill', { gain: 2.4, soft: 0 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+      bent(body({
+        shape: ['compound', { size: 0.2 }],
+        parts: spray26(3, 5),
+        place: ['ring', { n: 9, radius: 0.3, x: 0, y: -0.4, angle: 0 }],
+        deform: ['twist', { amt: 0.12 }],
+        material: ['fill', { gain: 1.4, soft: 0.02, core: 0.5, blend: 2 }],
+        emit: ['none'],
+        color: ['instrument', { hue: 0, amount: 0.75, detail: 1 }],
+      }), [op('noise', { amp: 0.0016, scale: 1.6, speed: 0.05 })]),
+      bent(body({
+        shape: ['compound', { size: 0.15 }],
+        parts: spray26(7, 4),
+        place: ['ring', { n: 11, radius: 0.22, x: 0, y: -0.4, angle: 0.045 }],
+        deform: ['twist', { amt: -0.15 }],
+        material: ['fill', { gain: 1.4, soft: 0.02, core: 0.5, blend: 2 }],
+        emit: ['none'],
+        color: ['instrument', { hue: 0.2, amount: 0.6, detail: 1 }],
+      }), [op('noise', { amp: 0.0016, scale: 1.9, speed: 0.05 })]),
+    ],
+    accent: { kick: 0, hook: 0, drop: 0, hue: 0, section: 0.3 },
+    reactions: [
+      rx('hit', 'sh', 1, 'size', 0.14, { atk: 0.005, rel: 0.25 }),
+      rx('hit', 'ma', 1, 'gain', 0.5, { atk: 0.005, rel: 0.3 }),
+      rx('noteon', 'ma', 2, 'gain', 0.5, { atk: 0.01, rel: 0.35 }),
+      rx('bass', 'pl', 1, 'radius', 0.2, { atk: 0.03, rel: 0.35 }),
+      rx('bass', 'pl', 2, 'radius', 0.2, { atk: 0.03, rel: 0.35 }),
+
     ],
   },
 ];
