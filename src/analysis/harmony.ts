@@ -597,13 +597,20 @@ export function voteKeys(times: ArrayLike<number>, path: ArrayLike<number>, dur:
 const RT_TAU = 0.35; // chroma window, seconds
 const RT_EVAL = 0.125; // seconds between evaluations
 const RT_MARGIN = 0.06; // score a new chord must win by
-const RT_EVALS = 3; // consecutive wins before switching (~0.4 s)
+const RT_EVALS = 3; // consecutive wins before switching (~0.4 s) when the tempo is unknown
 const RT_MIN_SCORE = 0.45;
+// Score bonus for chords diatonic to the key (the offline Viterbi's diatonic prior, 0.6 / sharp 10).
+const RT_DIATONIC = 0.06;
+// With a tempo, a new chord must win for a whole beat (chords rarely last less), and no-chord for
+// three: without these the live map changed chords ~50% more often than the offline one.
+const RT_BEATS = 1;
+const RT_NONE_X = 3;
 
 /**
  * Realtime-lite chord tracking for live input: a short exponential chroma window matched against
- * the triad templates every 1/8 s, switching only when another chord wins clearly for a few
- * evaluations. Tension and resolutions follow the same rules as the offline map, causally.
+ * the triad templates every 1/8 s (chords of the key slightly favoured), switching only when
+ * another chord wins clearly for a whole beat (or a few evaluations when the tempo is unknown).
+ * Tension and resolutions follow the same rules as the offline map, causally.
  */
 export class HarmonyTracker {
   private readonly acc = new Float64Array(12);
@@ -611,10 +618,11 @@ export class HarmonyTracker {
   private fill = 0;
   private sinceEval = 0;
   private pending: ChordIndex = NO_CHORD;
-  private pendingCount = 0;
+  private pendingFor = 0;
   private peak = 0;
   private prev: ChordIndex = NO_CHORD;
   private key: KeyRef = { tonic: 0, mode: 'major' };
+  private keyValid = false;
 
   chord: ChordIndex = NO_CHORD;
   tension = 0;
@@ -631,7 +639,7 @@ export class HarmonyTracker {
     this.fill = 0;
     this.sinceEval = 0;
     this.pending = NO_CHORD;
-    this.pendingCount = 0;
+    this.pendingFor = 0;
     this.peak = 0;
     this.prev = NO_CHORD;
     this.chord = NO_CHORD;
@@ -641,6 +649,7 @@ export class HarmonyTracker {
   /** Tells the tracker the current key (from the key tracker); counts a modulation when it changes. */
   setKey(tonic: number, mode: 'major' | 'minor', valid = true): void {
     if (!valid) return;
+    this.keyValid = true;
     if (tonic !== this.key.tonic || mode !== this.key.mode) {
       if (this.changes > 0 || this.chord >= 0) this.modulations++;
       this.key = { tonic, mode };
@@ -648,8 +657,11 @@ export class HarmonyTracker {
     }
   }
 
-  /** One chroma frame (normalized to max 1), its loudness weight 0..1 and duration. Returns true on a chord change. */
-  push(chroma: ArrayLike<number>, weight: number, dt: number): boolean {
+  /**
+   * One chroma frame (normalized to max 1), its loudness weight 0..1 and duration, and the beat
+   * period in seconds (0 when unknown). Returns true on a chord change.
+   */
+  push(chroma: ArrayLike<number>, weight: number, dt: number, beatPeriod = 0): boolean {
     const k = Math.exp(-dt / RT_TAU);
     for (let i = 0; i < 12; i++) this.acc[i] = this.acc[i] * k + weight * chroma[i] * dt;
     this.fill = this.fill * k + weight * dt;
@@ -658,22 +670,24 @@ export class HarmonyTracker {
     this.sinceEval = 0;
     const quiet = this.fill < RT_TAU * 0.15;
     const tot = quiet ? 0 : chordScores(this.acc, this.sc);
+    const bonus = (c: ChordIndex) => (this.keyValid && isDiatonic(c, this.key) ? RT_DIATONIC : 0);
     let best = 0;
-    for (let c = 1; c < NUM_CHORDS; c++) if (this.sc[c] > this.sc[best]) best = c;
+    for (let c = 1; c < NUM_CHORDS; c++) if (this.sc[c] + bonus(c) > this.sc[best] + bonus(best)) best = c;
     const cand = tot > 0 && this.sc[best] >= RT_MIN_SCORE ? best : NO_CHORD;
-    const curScore = this.chord >= 0 ? this.sc[this.chord] : RT_MIN_SCORE;
+    const curScore = this.chord >= 0 ? this.sc[this.chord] + bonus(this.chord) : RT_MIN_SCORE;
     let changed = false;
-    if (cand !== this.chord && (cand < 0 || this.sc[cand] - curScore > RT_MARGIN)) {
-      if (cand === this.pending) this.pendingCount++;
+    if (cand !== this.chord && (cand < 0 || this.sc[cand] + bonus(cand) - curScore > RT_MARGIN)) {
+      if (cand === this.pending) this.pendingFor += RT_EVAL;
       else {
         this.pending = cand;
-        this.pendingCount = 1;
+        this.pendingFor = RT_EVAL;
       }
-      if (this.pendingCount >= RT_EVALS) {
+      const need = Math.max(RT_EVALS * RT_EVAL, beatPeriod > 0 ? RT_BEATS * beatPeriod : 0) * (cand < 0 ? RT_NONE_X : 1);
+      if (this.pendingFor >= need - 1e-6) {
         changed = this.switchTo(cand);
-        this.pendingCount = 0;
+        this.pendingFor = 0;
       }
-    } else this.pendingCount = 0;
+    } else this.pendingFor = 0;
     const rough = tot > 0 ? roughness(this.acc, this.chord) : 0;
     const target = quiet ? 0 : chordTension(this.chord, this.key, rough);
     this.tension += (target - this.tension) * 0.35;

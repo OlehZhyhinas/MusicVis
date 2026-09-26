@@ -168,7 +168,7 @@ export interface HarmonyInputs {
   minor: boolean;
   /** Signed fifths travelled by modulations. */
   keyWalk: number;
-  /** Tempo, for the dwell a new chord must hold before the shape follows (half a beat). */
+  /** Tempo, for the dwell a new chord must hold before the shape follows (a quarter beat). */
   bpm: number;
 }
 
@@ -286,8 +286,8 @@ class Glide {
 }
 
 /**
- * Per-slot state. The picture takes each chord's fixed shape. Once a new chord has held for half a
- * beat (so a flickering live reading never flicks the shape), the warp amount, warp phase and
+ * Per-slot state. The picture takes each chord's fixed shape. Once a new chord has held for a
+ * quarter beat (so a flickering reading never flicks the shape), the warp amount, warp phase and
  * palette walk glide to it over glideTime(settle) and then hold still for the whole chord. Mirror
  * and polar folds glide the same way (their seed is the warp phase). Tile and kaleido hash their
  * seed, which cannot glide, so those folds ease out to the exact fold (0.6 of the glide time),
@@ -367,8 +367,9 @@ export class HarmonyMotor {
     const tonic = mod12(Math.round(Number.isFinite(inp.keyTonic) ? inp.keyTonic : 0));
     const minor = !!inp.minor;
     const key = tonic + (minor ? 12 : 0);
-    // A new chord (or the same chord heard in a new key) must hold for half a beat before the
-    // shape follows; unknown chords (-1) keep whatever shape is showing.
+    // A new chord (or the same chord heard in a new key) must hold for a quarter beat before the
+    // shape follows (the live chord tracker already holds a beat; this only guards the last
+    // frames); unknown chords (-1) keep whatever shape is showing.
     if (c >= 0 && c < 24) {
       const k = c + 24 * key;
       if (c === this.chord && key === this.key) this.cand = -1;
@@ -377,7 +378,7 @@ export class HarmonyMotor {
         this.candFor = 0;
       } else this.candFor += dt;
       const bpm = Number.isFinite(inp.bpm) && inp.bpm > 30 ? inp.bpm : 120;
-      const dwell = clamp(30 / bpm, 0.12, 0.35);
+      const dwell = clamp(15 / bpm, 0.08, 0.2);
       if (this.cand >= 0 && (this.shape < 0 || this.candFor + 1e-9 >= dwell)) {
         this.accept(p, c, tonic, minor);
         this.cand = -1;

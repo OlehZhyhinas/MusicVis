@@ -600,7 +600,7 @@ export class RealtimeAnalyzer {
     if (this.chromaFresh) this.key.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr, this.frameTime);
     if (this.chromaFresh) {
       this.harmony.setKey(this.key.tonic, this.key.mode, this.key.key >= 0);
-      this.harmony.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr);
+      this.harmony.push(this.chroma, this.chromaWeight, CHROMA_EVERY / fr, this.beat.confidence > 0.2 ? this.beat.period : 0);
     }
 
     // ---------------- structure (~10 Hz) ----------------

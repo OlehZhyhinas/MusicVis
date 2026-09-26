@@ -143,7 +143,7 @@ export function harmonyGeneTests(check: Check): void {
     for (let i = 1; i < all.length; i++) step = Math.max(step, Math.abs(all[i].warp - all[i - 1].warp), Math.abs(all[i].brk - all[i - 1].brk), Math.abs(all[i].bend - all[i - 1].bend));
     check('harmony.motor-glides', step < 0.12 && step > 0, `largest frame step ${step.toFixed(3)}`);
     const reached = g1.findIndex((o) => Math.abs(o.warp - g1.at(-1)!.warp) < 1e-9);
-    check('harmony.motor-glide-time', reached > 0.25 / dt && reached * dt < 0.25 + glideTime(0.3) + 0.05, `${(reached * dt).toFixed(3)} s`);
+    check('harmony.motor-glide-time', reached > 0.1 / dt && reached * dt < 0.13 + glideTime(0.3) + 0.05, `${(reached * dt).toFixed(3)} s`);
     // A cadence home: a smooth glide back to the clean picture, with a lift of light and no zoom.
     const lift = Math.max(...back.map((o) => o.exposure));
     check('harmony.motor-cadence-glides-home', back.at(-1)!.brk === 0 && back.at(-1)!.warp === 0 && lift > 1.15 && back.every((o) => o.zoom === 1), `lift ${lift.toFixed(2)}`);

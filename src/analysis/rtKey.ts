@@ -9,7 +9,10 @@ const WINDOW_TAU_S = 8; // exponential window, ~8-16 s of effective memory
 const MIN_FILL_S = 5; // weighted seconds of chroma before the first estimate
 const EVAL_S = 0.5;
 const SWITCH_MARGIN = 0.04;
-const SWITCH_EVALS = 5; // ~2.5 s of consistent evidence
+// ~8 s of consistent evidence. Songs rarely change key, and every flip re-reads all the chords
+// against a new home (the harmony gene's shapes, key hues), so a shorter hold (it was 2.5 s)
+// flipped between neighbouring and relative keys several times a minute on live input.
+const SWITCH_EVALS = 16;
 
 export class KeyTracker {
   private readonly acc = new Float64Array(12);
