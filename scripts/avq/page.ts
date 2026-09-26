@@ -13,7 +13,10 @@ import { paramsFor } from '../../src/v2/engine';
 import { Embedder, EMB_DIM } from '../../src/v2/embedding';
 import { analyzeAudio } from '../../src/analysis/analyze';
 import { TimelineSampler } from '../../src/analysis/TimelineSampler';
-import type { AnalysisResult, MusicState, NoteStats } from '../../src/types';
+import { RealtimeAnalyzer } from '../../src/analysis/RealtimeAnalyzer';
+import { RealtimeSampler } from '../../src/analysis/RealtimeSampler';
+import { DEFAULT_VISUAL_LAG, LiveLookahead } from '../../src/analysis/LiveLookahead';
+import type { AnalysisResult, LiveAudioFrame, MusicState, NoteStats } from '../../src/types';
 import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix, stemRegion, type StemId } from './audio';
 import { VIS_FIELDS, VisualFeatures } from './features';
 import { FIELDS, MUSIC_FIELDS, THUMB_BYTES, THUMB_H, THUMB_W, parseClip, type CfResult, type ClipHeader } from './format';
@@ -82,6 +85,8 @@ interface Song {
   slug: string;
   sr: number;
   pcm: Float32Array;
+  left: Float32Array;
+  right: Float32Array;
   result: AnalysisResult;
   data: SongData;
   hooks: Hook[];
@@ -131,7 +136,7 @@ async function loadSong(path: string): Promise<Song> {
   const right = audio.numberOfChannels > 1 ? audio.getChannelData(1) : left;
   const data = songData(result);
   const s: Song = {
-    path, slug: slugOf(path), sr: audio.sampleRate, pcm: monoMix(left, right), result, data,
+    path, slug: slugOf(path), sr: audio.sampleRate, pcm: monoMix(left, right), left, right, result, data,
     hooks: findHooks(data), moments: songMoments(data), analysisMs,
   };
   songs.set(path, s);
@@ -144,6 +149,94 @@ async function loadSong(path: string): Promise<Song> {
     chroma: b64(data.chroma), loudness: b64(data.loudness), complexity: b64(result.complexity),
     stems: enc(data.stems), stemOnsets: enc(data.stemOnsets), stemPresence: enc(data.stemPresence),
   }));
+  return s;
+}
+
+// ------------------------------------------------------------------ live mode
+
+/**
+ * The live analysis path over a song, as the app runs it for live input (src/audio/LiveInput.ts):
+ * the capture worklet's 512-sample blocks into RealtimeAnalyzer.process, RealtimeSampler.sample
+ * at the render clock with the stream time extrapolated up to 50 ms past the last block, and the
+ * visual lag with its look-ahead note tracker (LiveInput.setVisualLag, the app's default 0.1 s).
+ * Listening starts at the song start. The state drawn at song time t then describes the sound at
+ * t - lag, as a shared tab shows it (its sound cannot be delayed); `align` shifts it back by the
+ * lag, as a player that delays its own sound to match would show it. Run once per song and fps on the frame grid k / fps, keeping a copy of
+ * every MusicState (without the analyser's waveform / spectrum, which each render lane fills from
+ * its own OfflineLive like the offline path), so counterfactual lanes share one live analysis.
+ */
+const LIVE_BLOCK = 512;
+const liveTracks = new Map<string, MusicState[]>();
+
+function snapshot(s: MusicState): MusicState {
+  const c: MusicState = { ...s, stems: { ...s.stems }, stemOnsets: { ...s.stemOnsets }, stemPresence: { ...s.stemPresence }, chroma: s.chroma.slice(), section: { ...s.section } };
+  if (s.groove) c.groove = { ...s.groove };
+  if (s.timbre) c.timbre = { mix: { ...s.timbre.mix }, drums: { ...s.timbre.drums }, bass: { ...s.timbre.bass }, vocals: { ...s.timbre.vocals }, other: { ...s.timbre.other } };
+  if (s.notes) c.notes = { ...s.notes, recent: s.notes.recent.map((m) => ({ ...m })) };
+  return c;
+}
+
+export interface LiveOpts {
+  /** Visual lag, seconds (default DEFAULT_VISUAL_LAG = the app's "Sharper notes" default; 0 = the greedy zero-lag tracker). */
+  lag?: number;
+  /** Shift the live states back by the lag (a player delaying its sound), instead of drawing them lag late (a shared tab). */
+  align?: boolean;
+}
+
+async function liveTrack(song: Song, fps: number, lo: LiveOpts = {}): Promise<MusicState[]> {
+  const lag = Math.max(0, Math.min(0.5, lo.lag ?? DEFAULT_VISUAL_LAG));
+  const key = `${song.path}@${fps}@${lag}@${lo.align ? 'align' : 'tab'}`;
+  const have = liveTracks.get(key);
+  if (have) return have;
+  const a = new RealtimeAnalyzer(song.sr);
+  const sampler = new RealtimeSampler(a);
+  const la = lag > 0 ? new LiveLookahead(a, lag) : null;
+  if (la) sampler.noteSource = la.sampleNotes;
+  const dummy: LiveAudioFrame = { bass: 0, mid: 0, treb: 0, bassAtt: 0, midAtt: 0, trebAtt: 0, waveform: new Float32Array(1024), spectrum: new Float32Array(512) };
+  const n = Math.floor(song.data.duration * fps);
+  const out: MusicState[] = new Array(n + 1);
+  const dt = 1 / fps;
+  let pos = 0, lastEnd = 0;
+  const L = song.left, R = song.right;
+  out[0] = snapshot(sampler.sample(0, dt, true, dummy));
+  for (let k = 1; k <= n; k++) {
+    const t = k * dt;
+    const end = Math.min(L.length, Math.floor(t * song.sr));
+    while (pos + LIVE_BLOCK <= end) {
+      const l = L.subarray(pos, pos + LIVE_BLOCK), r = R.subarray(pos, pos + LIVE_BLOCK);
+      if (la) la.process(l, r);
+      else a.process(l, r);
+      pos += LIVE_BLOCK;
+      lastEnd = pos / song.sr;
+    }
+    const st = a.streamTime + Math.min(0.05, Math.max(0, t - lastEnd));
+    out[k] = snapshot(sampler.sample(st, dt, true, dummy));
+    if (k % 300 === 0) {
+      status(`live ${song.slug} ${k}/${n}`);
+      await tick();
+    }
+  }
+  if (lo.align && lag > 0) {
+    const k = Math.round(lag * fps);
+    for (let i = 0; i <= n; i++) out[i] = out[Math.min(n, i + k)];
+  }
+  liveTracks.set(key, out);
+  return out;
+}
+
+/** The live MusicState at song time t (nearest frame on the k / fps grid), with the analyser frame filled in. */
+function liveStateAt(track: MusicState[], t: number, fps: number, frame: LiveAudioFrame): MusicState {
+  const k = Math.max(0, Math.min(track.length - 1, Math.round(t * fps)));
+  const s = snapshot(track[k]);
+  s.time = t;
+  s.bass = frame.bass;
+  s.mid = frame.mid;
+  s.treb = frame.treb;
+  s.bassAtt = frame.bassAtt;
+  s.midAtt = frame.midAtt;
+  s.trebAtt = frame.trebAtt;
+  s.waveform = frame.waveform;
+  s.spectrum = frame.spectrum;
   return s;
 }
 
@@ -185,6 +278,15 @@ export interface RenderOpts {
   accent?: boolean | string[];
   /** Appended to the preset folder and id as '<id>@<tag>', so variant renders sit beside the plain ones. */
   tag?: string;
+  /**
+   * Drive the visuals from the live analysis path (RealtimeAnalyzer + RealtimeSampler fed like
+   * LiveInput, listening from the song start) instead of the offline analysis. The recorded music
+   * fields and the clip context stay the offline analysis, so the metrics still score the picture
+   * against the music itself. Implies tag 'live' unless a tag is given.
+   */
+  live?: boolean;
+  /** Live mode options: visual lag and alignment (default: the app's 0.1 s lag, drawn late as a shared tab shows it). */
+  liveOpts?: LiveOpts;
 }
 
 let embedder: Embedder | null = null;
@@ -239,7 +341,7 @@ function writeMusic(row: Float32Array, s: MusicState, mel: { midi: number; salie
   row.set(v, 0);
 }
 
-async function renderWindow(song: Song, g: Genome, presetId: string, presetName: string, win: ClipWindow, o: Required<Omit<RenderOpts, 'genome' | 'preset' | 'clips' | 'name' | 'song' | 'accent' | 'tag'>>): Promise<{ base: string; frames: number; ms: number }> {
+async function renderWindow(song: Song, g: Genome, presetId: string, presetName: string, win: ClipWindow, o: Required<Omit<RenderOpts, 'genome' | 'preset' | 'clips' | 'name' | 'song' | 'accent' | 'tag' | 'live' | 'liveOpts'>>, liveMode: LiveOpts | null = null): Promise<{ base: string; frames: number; ms: number }> {
   const e = engine();
   status('compile');
   const progs = await programs(e, g);
@@ -253,10 +355,15 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
   const inst = new Instrument(st, slot, g);
   const sampler = new TimelineSampler(song.result);
   const live = new OfflineLive(song.pcm, song.sr);
+  const liveFrame = new OfflineLive(song.pcm, song.sr);
+  const lt = liveMode ? await liveTrack(song, o.fps, liveMode) : null;
+  // The app's waveform / spectrum analyser trails the sound by the lag too, unless aligned.
+  const frameLag = liveMode && !liveMode.align ? Math.max(0, Math.min(0.5, liveMode.lag ?? DEFAULT_VISUAL_LAG)) : 0;
   const melody = new MelodyProbe(song.pcm, song.sr);
   const vis = new VisualFeatures(o.w, o.h);
   const dt = 1 / o.fps;
-  const t0 = Math.max(0, win.start - o.warm);
+  // Live mode renders on the live track's frame grid (k / fps), so the window start is snapped to it.
+  const t0 = liveMode ? Math.round(Math.max(0, win.start - o.warm) * o.fps) / o.fps : Math.max(0, win.start - o.warm);
   const kStart = Math.round((win.start - t0) * o.fps); // frames before the window
   const kEnd = Math.round((win.end - t0) * o.fps);
   const n = kEnd - kStart;
@@ -293,8 +400,10 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
   const tStart = performance.now();
   for (let k = 1; k <= kEnd; k++) {
     const t = t0 + k * dt;
-    const state = sampler.sample(t, dt, true, live.read(t, dt));
-    st.render(state, dt, 'out');
+    const frame = live.read(t, dt);
+    // Offline state: the music record (and the visuals, unless live mode).
+    const state = sampler.sample(t, dt, true, frame);
+    st.render(lt ? liveStateAt(lt, t, o.fps, frameLag ? liveFrame.read(Math.max(0, t - frameLag), dt) : frame) : state, dt, 'out');
     if (k <= kStart) {
       if (k % 30 === 0) {
         status(`warm ${win.label} ${k}/${kStart}`);
@@ -342,6 +451,8 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     song: { slug: song.slug, path: song.path, duration: song.data.duration, bpm: song.data.bpm, beatsPerBar: song.data.beatsPerBar },
     clip: { label: win.label, start: t0 + kStart * dt, end: t0 + kEnd * dt, warm: o.warm },
     render: { w: o.w, h: o.h, fps: o.fps, seed: o.seed, ms: Math.round(ms), hq: e.hq },
+    source: liveMode ? 'live' : 'offline',
+    live: liveMode ? { lag: liveMode.lag ?? DEFAULT_VISUAL_LAG, align: !!liveMode.align } : undefined,
     fields: [...FIELDS],
     frames: n,
     thumb: { w: THUMB_W, h: THUMB_H, offset: rows.byteLength },
@@ -370,7 +481,8 @@ async function render(opts: RenderOpts) {
     name = seed.name;
   }
   if (opts.accent !== undefined) setAccentOverride(opts.accent);
-  if (opts.tag) id = `${id}@${opts.tag}`;
+  const tag = opts.tag ?? (opts.live ? 'live' : undefined);
+  if (tag) id = `${id}@${tag}`;
   const o = {
     w: opts.w ?? 320, h: opts.h ?? 180, fps: opts.fps ?? 30, seed: opts.seed ?? 1, warm: opts.warm ?? 3,
     frames: opts.frames ?? false, jpegQuality: opts.jpegQuality ?? 0.85, particleCap: opts.particleCap ?? 262144, flameCap: opts.flameCap ?? 524288,
@@ -379,7 +491,7 @@ async function render(opts: RenderOpts) {
   const clips = opts.clips ?? 'auto';
   const wins: ClipWindow[] = clips === 'auto' ? autoWindows(song.data, song.hooks) : clips === 'song' ? [{ label: 'song', start: 0, end: song.data.duration }] : clips;
   const out = [];
-  for (const w of wins) out.push(await renderWindow(song, g, id, name, w, o));
+  for (const w of wins) out.push(await renderWindow(song, g, id, name, w, o, opts.live ? (opts.liveOpts ?? {}) : null));
   return { preset: id, name, song: song.slug, analysisMs: Math.round(song.analysisMs), hooks: song.hooks.map((h) => ({ bars: h.bars, n: h.occurrences.length, len: +h.len.toFixed(2), score: +h.score.toFixed(3) })), clips: out };
 }
 
@@ -522,7 +634,7 @@ class MusicSource {
   private gains: Float32Array | null = null;
   private flatWave = new Float32Array(1024);
   private held: { chord?: number; tx?: number; ty?: number; recent?: NoteStats['recent'] } | null = null;
-  constructor(private song: Song, private v: Variant | null) {
+  constructor(private song: Song, private v: Variant | null, private lt: MusicState[] | null = null, private fps = 30, private frameLag = 0) {
     this.sampler = new TimelineSampler(song.result);
     this.live = new OfflineLive(song.pcm, song.sr);
     if (v?.kind === 'mute') {
@@ -543,7 +655,8 @@ class MusicSource {
       const hz = this.song.sr / 2048;
       for (let k = 0; k < 1024; k++) this.gains[k] = Math.max(0, 1 - pres * stemRegion(v.stem, k * hz));
     }
-    const s = this.sampler.sample(Math.max(0, tm), dt, true, this.live.read(Math.max(0, tm), dt));
+    const frame = this.live.read(Math.max(0, tm - this.frameLag), dt);
+    const s = this.lt ? liveStateAt(this.lt, Math.max(0, tm), this.fps, frame) : this.sampler.sample(Math.max(0, tm), dt, true, frame);
     s.time = t;
     if (v?.kind === 'metronome') {
       const m = songMeans(this.song);
@@ -638,6 +751,10 @@ export interface CfOpts {
   warm?: number;
   particleCap?: number;
   flameCap?: number;
+  /** As RenderOpts.live (every lane runs on the live analysis), RenderOpts.liveOpts and RenderOpts.tag. */
+  live?: boolean;
+  liveOpts?: LiveOpts;
+  tag?: string;
 }
 
 async function counterfactual(opts: CfOpts) {
@@ -652,6 +769,10 @@ async function counterfactual(opts: CfOpts) {
     id = seed.origin;
     name = seed.name;
   }
+  const tag = opts.tag ?? (opts.live ? 'live' : undefined);
+  if (tag) id = `${id}@${tag}`;
+  const lt = opts.live ? await liveTrack(song, opts.fps ?? 30, opts.liveOpts ?? {}) : null;
+  const frameLag = opts.live && !opts.liveOpts?.align ? Math.max(0, Math.min(0.5, opts.liveOpts?.lag ?? DEFAULT_VISUAL_LAG)) : 0;
   const bpb = Math.max(2, song.data.beatsPerBar || 4);
   const variants: Variant[] = opts.variants ?? [
     { kind: 'shift', beats: bpb / 2 },
@@ -681,10 +802,10 @@ async function counterfactual(opts: CfOpts) {
       const slot = st.makeSlot(gv, progs);
       st.slots = [slot];
       st.resetHistory();
-      lanes.push({ v, st, slot, src: new MusicSource(song, v), rand: mulberry32(seed), px: new Uint8Array(w * h * 4), small: new Float32Array(80 * 45 * 3), prev: null as Float32Array | null, step: 0 });
+      lanes.push({ v, st, slot, src: new MusicSource(song, v, lt, fps, frameLag), rand: mulberry32(seed), px: new Uint8Array(w * h * 4), small: new Float32Array(80 * 45 * 3), prev: null as Float32Array | null, step: 0 });
     }
     const dt = 1 / fps;
-    const t0 = Math.max(0, win.start - warm);
+    const t0 = lt ? Math.round(Math.max(0, win.start - warm) * fps) / fps : Math.max(0, win.start - warm);
     const kStart = Math.round((win.start - t0) * fps);
     const kEnd = Math.round((win.end - t0) * fps);
     const n = kEnd - kStart;

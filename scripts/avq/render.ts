@@ -17,6 +17,13 @@
 //   --info                      only analyse the songs and print sections, moments, hooks, windows
 //   --cf                        counterfactual lockstep renders instead (half-bar shift, far offset,
 //                               each stem muted, each reaction ablated) -> .testdata/avq/cf/
+//   --live                      drive the visuals from the live analysis path (as live input would),
+//                               writing <preset>@live/...; report.ts --preset X@live scores them and
+//                               scripts/avq/liveCompare.ts compares them with the offline renders
+//   --live-lag S                visual lag with the look-ahead note tracker (default 0.1 = the app's
+//                               default; 0 = the greedy tracker)
+//   --live-align                draw live states at the sound's time (a player that delays its own
+//                               sound) instead of lag late (a shared tab, the default)
 //   --keep                      leave vite/chrome running afterwards
 
 import { readdirSync } from 'node:fs';
@@ -111,6 +118,8 @@ async function main() {
     if (a.frames) opts.frames = true;
     if (a.accent !== undefined) opts.accent = a.accent === 'off' ? false : a.accent === 'on' || a.accent === true ? true : String(a.accent).split(',');
     if (a.tag) opts.tag = String(a.tag);
+    if (a.live) opts.live = true;
+    if (a.live && (a['live-lag'] !== undefined || a['live-align'])) opts.liveOpts = { lag: a['live-lag'] !== undefined ? Number(a['live-lag']) : undefined, align: !!a['live-align'] };
     const jobs: Job[] = [];
     const method = a.cf ? 'counterfactual' : 'render';
     if (a.cf) delete opts.frames;

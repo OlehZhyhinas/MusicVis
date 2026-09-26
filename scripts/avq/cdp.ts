@@ -3,8 +3,8 @@
 // headless Chrome on AVQ_CDP_PORT (5232); parallel jobs run in separate tabs of that Chrome.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, openSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, openSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 export const ROOT = resolve(import.meta.dirname, '../..');
 export const OUT = join(ROOT, '.testdata/avq');
@@ -12,6 +12,15 @@ export const VITE_PORT = Number(process.env.AVQ_VITE_PORT ?? 5231);
 export const CDP_PORT = Number(process.env.AVQ_CDP_PORT ?? 5232);
 const CHROME = process.env.AVQ_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const PAGE_URL = `http://127.0.0.1:${VITE_PORT}/scripts/avq/page.html`;
+
+/** The vite binary: this checkout's node_modules, or the nearest parent's (a git worktree inside the main checkout). */
+function viteBin(): string {
+  for (let d = ROOT; ; d = dirname(d)) {
+    const p = join(d, 'node_modules/.bin/vite');
+    if (existsSync(p)) return p;
+    if (dirname(d) === d) return join(ROOT, 'node_modules/.bin/vite');
+  }
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -35,7 +44,7 @@ export async function ensureServers(log = (s: string) => console.error(s)): Prom
   if (!(await up(PAGE_URL))) {
     log(`starting vite on ${VITE_PORT}`);
     const out = openSync(join(OUT, 'logs/vite.log'), 'a');
-    started.push(spawn(join(ROOT, 'node_modules/.bin/vite'), ['--config', 'scripts/avq/vite.avq.config.ts', '--port', String(VITE_PORT), '--host', '127.0.0.1'], { cwd: ROOT, stdio: ['ignore', out, out], detached: false }));
+    started.push(spawn(viteBin(), ['--config', 'scripts/avq/vite.avq.config.ts', '--port', String(VITE_PORT), '--host', '127.0.0.1'], { cwd: ROOT, stdio: ['ignore', out, out], detached: false }));
     for (let i = 0; i < 60 && !(await up(PAGE_URL)); i++) await sleep(500);
     if (!(await up(PAGE_URL))) throw new Error('vite did not come up');
   }
