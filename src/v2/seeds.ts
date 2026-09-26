@@ -2620,51 +2620,56 @@ const ART4: Def[] = [
 
 // X36: Toronto at night from the islands, across the harbour.
 const WL36 = -0.15; // the waterline (tone reflect) the city stands on
-function tower36(): BodyGene {
-  // The CN Tower: a thin capsule (shaft and antenna) stood upright by the placement angle, with the pod
-  // fused in at its centre. A draw-space mirror across the scene's horizontal axis (only y >= 0 is ever
-  // sampled) folds the shaft's lower end down to the waterline, so the pod sits about two thirds up.
-  const b = body({
-    shape: ['segment', { len: 0.46, w: 0.0026 }],
-    place: ['point', { x: -0.25, y: 0.22, angle: 0.25 }],
-    material: ['fill', { gain: 2.6, soft: 0, halo: 0.02, clip: WL36 }],
+const TX36 = -0.25; // the CN Tower's x
+function landmarks36(): BodyGene {
+  // The CN Tower and the Rogers Centre as one compound standing on the waterline: a
+  // slender shaft tapering into the antenna, the wide main pod about two thirds up, the small SkyPod
+  // near the top, and left of the tower's foot the low dome with its lit rim band where it meets the base
+  // (units of 0.3 scene).
+  // A dark groove cut round the dome's base holds its lit rim band; a ring halo hugs the whole outline.
+  return body({
+    shape: ['compound', { size: 0.3 }],
+    parts: [
+      part('capsule', 'union', { y: 0.9, sx: 0.06, sy: 1.1, m: 0.97 }),
+      part('ellipse', 'smooth', { y: 1.26, sx: 0.2, sy: 0.06, k: 0.04, bright: 1.3 }),
+      part('ellipse', 'smooth', { y: 1.56, sx: 0.06, sy: 0.035, k: 0.02, bright: 1.2 }),
+      part('ellipse', 'union', { x: -0.5, y: 0, sx: 0.36, sy: 0.18, bright: 0.6 }),
+      part('box', 'subtract', { x: -0.5, y: 0.045, sx: 0.4, sy: 0.022, k: 0.004 }),
+      part('box', 'union', { x: -0.5, y: 0.045, sx: 0.35, sy: 0.012, m: 1, hue: 0.33, bright: 2 }),
+    ],
+    place: ['point', { x: TX36, y: WL36 }],
+    material: ['fill', { gain: 1.5, soft: 0.02, halo: 0.1, outline: 0, rings: 1, rgap: 0.006, rfade: 0.4 }],
     emit: ['none'],
-    feel: ['flow', { atk: 0.01, rel: 0.2 }],
-    color: ['melody', { hue: 0, amount: 0.25, detail: 0.3 }],
+    color: ['fixed', { hue: 0, detail: 1 }],
   });
-  b.fuse = { shape: { kind: 'dot', p: { r: 0.021 } }, p: { mode: 0, k: 0.02, t: 0.5, drive: 0, depth: 0, rate: 8, inside: 1 } };
-  b.deform.ops = [op('mirror', { axis: 1 })];
-  return b;
-}
-function dome36(): BodyGene {
-  // The Rogers Centre: a low dome at the tower's foot (its lower half is under the waterline). It
-  // throws the fireworks: a body with a fused shape bears its sparks on a small ring round the scene
-  // centre, so they burst over the harbour left of the tower (the fused speck sits under the water).
-  const b = body({
-    shape: ['dot', { r: 0.06 }],
-    place: ['point', { x: -0.36, y: WL36 - 0.015 }],
-    material: ['fill', { gain: 0.55, soft: 0, outline: 1, core: 0, clip: WL36 }],
-    emit: ['sparks', { count: 2560, size: 3, speed: 0.4, curl: 0.04, zoomFlow: 0, lift: -0.08, drag: 4.5, life: 0.65, spread: 0.05, surge: 1, top: 0, body: 0.25 }],
-    color: ['fixed', { hue: 0, amount: 1 }],
-  });
-  b.fuse = { shape: { kind: 'polygon', p: { n: 4, r: 0.005, round: 0 } }, p: { mode: 0, k: 0.02, t: 0.5, drive: 0, depth: 0, rate: 8, inside: 1 } };
-  return b;
 }
 const TORONTO_X36: Def[] = [
   {
-    // Night Toronto seen from the islands: downtown as a strip of lit windows standing on the lake, the
-    // CN Tower tall and thin left of the core with its pod two thirds up, the Rogers Centre dome at its
-    // foot, the whole city mirrored and rippling in the water. The towers rise and fall with their
-    // spectrum bands and the windows glow with the bass; the tower's halo pulses on the beat, it
-    // flashes on melody notes, its colour leans with the melody and steps with each section; drum
-    // hits burst fireworks over the harbour (and kick the view), which blaze on drops and glint in
-    // the lake; the riff nudges the view the same way on every repeat.
+    // Night Toronto seen from the islands: the CN Tower tall and slender left of the downtown core, its
+    // wide main pod two thirds up and the SkyPod near the top, the Rogers Centre dome with its lit rim
+    // at its foot, downtown a strip of lit windows, the whole city mirrored and rippling in the lake.
+    // The melody runs up the tower like the N presets' notes: each note start sends a coloured mark up
+    // the shaft (coloured and nudged sideways by its pitch), held notes draw a glowing ribbon. Drum
+    // hits flash the landmarks' lights, the beat swells their glow, the skyline's towers rise and fall
+    // with their spectrum bands and the windows glow with the bass. Nothing moves the frame itself.
     origin: 'X36', name: 'Harbour Night', energy: [0.2, 0.9], scheme: 'complementary', hue: 0.6,
     color: { sat: 0.75, adapt: 0.3, bloom: 1.2, vignette: 0.4, reflect: 1, reflectY: WL36 },
     carrier: 'warp', car: { halfLife: 0.35, floor: 0.6 },
     bodies: [
-      tower36(),
-      dome36(),
+      landmarks36(),
+      (() => {
+        // The melody lane stood up along the shaft (turned a quarter clockwise, so the present sits at the
+        // foot and the past climbs), pitch across it in a narrow band round the shaft: each note start
+        // is a mark coloured by its pitch that climbs the tower, a held note a ribbon.
+        const b = body({
+          shape: ['notes', { mode: 0, span: 1.6, len: 0.62, height: 0.15, now: 0.46, tilt: 0, ribbon: 0.8, thick: 0.006, marks: 1, form: 0, size: 0.012, fade: 1.2, shimmer: 0.4, hues: 0.9, glow: 0.6 }],
+          place: ['point', { x: TX36, y: WL36 + 0.31, angle: -0.25 }],
+          material: ['glow', { gain: 1.4 }],
+          emit: ['none'],
+          feel: ['flow', { atk: 0.01, rel: 0.15 }],
+        });
+        return b;
+      })(),
       body({
         // Downtown east of the tower: mirrored spectrum bars (the bass towers in the middle of the core,
         // the treble ones low at its edges; the mirrored half is under the water) stippled with windows.
@@ -2675,16 +2680,15 @@ const TORONTO_X36: Def[] = [
         color: ['melody', { hue: 0.33, amount: 0.3, detail: 0.3 }],
       }),
     ],
-    // No hit or hook reaction: the built-in hit kick and riff-note camera nudge carry those, and the
-    // sparks already burst on every drum hit.
     reactions: [
-      rx('beat', 'ma', 0, 'halo', 0.5, { rel: 0.25 }),
-      rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.005, rel: 0.2 }),
-      rx('drop', 'ma', 1, 'gain', 0.6, { atk: 0.02, rel: 3 }),
-      rx('drop', 'em', 1, 'speed', 0.3, { atk: 0.02, rel: 3 }),
-      rx('bass', 'ma', 2, 'gain', 0.7, { atk: 0.03, rel: 0.3 }),
+      rx('hit', 'ma', 0, 'gain', 0.2, { atk: 0.005, rel: 0.25 }),
+      rx('beat', 'ma', 0, 'halo', 0.3, { rel: 0.3 }),
+      rx('noteon', 'ma', 1, 'gain', 0.3, { atk: 0.005, rel: 0.2 }),
+      rx('legato', 'sh', 1, 'thick', 0.4, { atk: 0.4, rel: 0.8 }),
+      rx('bass', 'ma', 2, 'gain', 0.6, { atk: 0.03, rel: 0.3 }),
     ],
-    accent: { hue: 0.9 },
+    // Only the section light and hue steps: no hit kick, riff camera nudge or drop punch moves the frame.
+    accent: { hue: 0.9, kick: 0, hook: 0, drop: 0, frame: 0 },
   },
 ];
 

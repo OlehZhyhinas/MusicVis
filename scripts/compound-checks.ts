@@ -60,6 +60,8 @@ export function compoundChecks(check: Check): void {
   {
     const bad: string[] = [];
     for (const e of SEEDS) {
+      // Seeds written with the new genes (a compound shape or ring halos) are not "existing" genomes.
+      if (e.genome.bodies.some((b) => b.shape.kind === 'compound' || (b.material.p.rings ?? 0) > 0)) continue;
       const raw = cloneGenome(e.genome) as unknown as { bodies: { material: { p: Record<string, number> } }[] };
       for (const b of raw.bodies) { delete b.material.p.rings; delete b.material.p.rgap; delete b.material.p.rfade; }
       const r = repair(raw);
@@ -69,7 +71,7 @@ export function compoundChecks(check: Check): void {
       if (/uBx|cpEll|RINGS/.test(s0)) bad.push(`${e.origin}:extra code`);
       if (structuralKey(r) !== structuralKey(e.genome) || /@r|compound/.test(structuralKey(r))) bad.push(`${e.origin}:key`);
     }
-    check('compound.seeds', !bad.length, bad.slice(0, 4).join(' | ') || `${SEEDS.length} seeds: no compound or ring code, identical shaders without the new material params`);
+    check('compound.seeds', !bad.length, bad.slice(0, 4).join(' | ') || `${SEEDS.length} seeds (those using compounds or rings skipped): no compound or ring code, identical shaders without the new material params`);
   }
 
   // ---------------------------------------------------------------- max parts, clamping
