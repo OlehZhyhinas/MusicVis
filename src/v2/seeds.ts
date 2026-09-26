@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 146;
+export const SEED_VERSION = 147;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -807,10 +807,10 @@ const MILKDROP: Def[] = [
   },
   {
     // martin, tunnel race: waveform bands scroll up the carried picture, which is wrapped onto the wall
-    // of a tunnel coming toward you as rings, surging and deepening on every beat and turning with the
-    // bar, with an orb racing round the wall; the far end is lost in haze. The bass speeds the flight
-    // and drum hits flash the bands and the orb. Kept slow and dim enough that the passing rings never
-    // strobe (under 3 flashes a second).
+    // of a tunnel coming toward you as rings, turning with the bar, with an orb racing round the wall
+    // that swells on every beat; the far end is lost in haze. The bass eases the flight faster and drum
+    // hits flash the bands and the orb; the tunnel itself never lurches on the beat. Kept slow and dim
+    // enough that the passing rings never strobe (under 3 flashes a second).
     origin: 'M16', name: 'Tunnel Race (after martin)', energy: [0.35, 0.95], scheme: 'analogous', hue: 0.85,
     color: { sat: 0.8, exposure: 0.95, adapt: 0.25, bloom: 1.1, vignette: 0.55 },
     carrier: 'warp', car: { halfLife: 0.6, blur: 0.05 },
@@ -833,15 +833,15 @@ const MILKDROP: Def[] = [
       }),
     ],
     reactions: [
-      rx('bass', 'op', 1, 'speed', 0.3, { atk: 0.03, rel: 0.4 }), rx('hit', 'ma', 1, 'gain', 0.6, { rel: 0.2 }),
-      rx('hit', 'ma', 0, 'gain', 0.7, { rel: 0.2 }), rx('beat', 'op', 1, 'depth', 0.3, { rel: 0.25 }),
+      rx('bass', 'op', 1, 'speed', 0.3, { atk: 0.25, rel: 0.8 }), rx('hit', 'ma', 1, 'gain', 0.6, { rel: 0.2 }),
+      rx('hit', 'ma', 0, 'gain', 0.7, { rel: 0.2 }), rx('beat', 'sh', 1, 'r', 0.3, { rel: 0.25 }),
     ],
   },
   {
     // Flexi + Martin, tunnel of supraschismatika: a dark chrome pipe flown through, glints streaking
-    // along its polished wall toward you; the bass drives the flight and the twist, the pipe deepens on
-    // every beat and the glints flash on drum hits. Flown slower than the original so the passing
-    // rings never strobe.
+    // along its polished wall toward you; the bass eases the flight and the twist up, the glints swell on
+    // every beat and flash on drum hits while the pipe itself never lurches. Flown slower than the
+    // original so the passing rings never strobe.
     origin: 'M17', name: 'Tunnel of Supraschismatika (after Flexi & Martin)', energy: [0.3, 0.9], scheme: 'mono', hue: 0.6,
     color: { sat: 0.25, exposure: 0.9, adapt: 0.3, bloom: 1.2, vignette: 0.35, relief: 0.7, bump: 1.6, light: 0.25, gloss: 1, metal: 0.6 },
     carrier: 'warp', decay: 0.9,
@@ -855,7 +855,7 @@ const MILKDROP: Def[] = [
       material: ['glow', { gain: 1.6, width: 0.012, base: 0.4 }],
       emit: ['trail'],
     })],
-    reactions: [rx('bass', 'op', 1, 'speed', 0.2, { atk: 0.03, rel: 0.4 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.05, rel: 0.6 }), rx('beat', 'op', 1, 'depth', 0.25, { rel: 0.25 }), rx('hit', 'ma', 0, 'gain', 0.5, { rel: 0.2 })],
+    reactions: [rx('bass', 'op', 1, 'speed', 0.2, { atk: 0.25, rel: 0.8 }), rx('bass', 'op', 1, 'twist', -0.25, { atk: 0.25, rel: 0.8 }), rx('beat', 'sh', 0, 'r', 0.25, { rel: 0.25 }), rx('hit', 'ma', 0, 'gain', 0.5, { rel: 0.2 })],
   },
   {
     // Waltra, Square Orgy: a turning grid of glossy tiles, each lit by the colour behind it, as bright
@@ -1820,9 +1820,9 @@ const GROOVE: Def[] = [
   },
   {
     // A hexagonal lattice of six-point stars in one colour, each a pitch class that lights with the
-    // chroma, the whole lattice turning on the bar. On a machine-tight track it ticks like a watch
-    // movement: the lattice holds still, then snaps a notch forward on every beat, as every star kicks
-    // in size and flares; the bass swells the stars. Loose, swung playing melts the ticks into a
+    // chroma, the whole lattice turning on the bar. On a machine-tight track its turn catches a little
+    // on every beat like a watch movement (a soft tick, never a snap of the whole lattice) as every star
+    // kicks in size and flares; the bass swells the stars. Loose, swung playing melts the ticks into a
     // lilting, rolling turn.
     origin: 'Q03', name: 'Clockwork Lattice', energy: [0.35, 0.95], scheme: 'triad', hue: 0.55,
     color: { adapt: 0.4, bloom: 1, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.12, floor: 1 },
@@ -1835,7 +1835,7 @@ const GROOVE: Def[] = [
       color: ['fixed', { hue: 0, detail: 0.5 }],
     })],
     reactions: [rx('beat', 'ma', 0, 'gain', 0.5, { rel: 0.2 }), rx('bass', 'sh', 0, 'r', 0.12, { atk: 0.03, rel: 0.3 })],
-    groove: { swing: 0.8, sub: 16, sway: 0, off: 0.2, lean: 0.3, crisp: 1, tick: 1, jitter: 0, accent: 0.3 },
+    groove: { swing: 0.8, sub: 16, sway: 0, off: 0.2, lean: 0.3, crisp: 0.25, tick: 1, jitter: 0, accent: 0.3 },
   },
   {
     // A jam session in ink: one small triangle per instrument stirs a fluid, each moving with its
@@ -2371,6 +2371,9 @@ const ART3: Def[] = [
     // melody and chords sound it, so the slab sparkles in the song's harmony; each chord change reshapes
     // the flowers (their petals open and narrow) and slides the canes out of register by that chord's
     // own fixed amount (home keeps them exact), the bass swells the rings, and each drum hit turns the slab a notch.
+    // the flowers (their petals open and narrow), harmonic tension slides the canes out of register and
+    // a resolution clicks them back, the bass swells the rings, and each drum hit eases the slab a little
+    // further round (a glide, never a jolt of the whole slab).
     origin: 'X29', name: 'Millefiori', energy: [0.1, 0.85], scheme: 'triad', hue: 0.0,
     color: { adapt: 0.2, bloom: 1.1, vignette: 0.7, ca: 0 }, carrier: 'none',
     chain: [op('kaleido', { n: 8, lock: 0 }, 1, 'view')],
@@ -2400,8 +2403,8 @@ const ART3: Def[] = [
     ],
     harmony: { brk: 0.2, warp: 0.1, style: 1, snap: 0.5, settle: 0.6, walk: 0.1, kick: 0.2, modHue: 0.1, modTurn: 0.006, calm: 0.3 },
     reactions: [
-      rx('hit', 'dr', 0, 'rate', 0.4, { atk: 0.02, rel: 0.3 }),
-      rx('hit', 'dr', 3, 'rate', 0.4, { atk: 0.02, rel: 0.3 }),
+      rx('hit', 'dr', 0, 'rate', 0.4, { atk: 0.25, rel: 1 }),
+      rx('hit', 'dr', 3, 'rate', 0.4, { atk: 0.25, rel: 1 }),
       rx('chordchange', 'sh', 1, 'inner', 1, { atk: 0.05, rel: 0.8 }),
       rx('bass', 'sh', 1, 'r', 0.2, { atk: 0.03, rel: 0.4 }),
       rx('noteon', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.3 }),
