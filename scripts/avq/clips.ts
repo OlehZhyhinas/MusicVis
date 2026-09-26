@@ -1,6 +1,6 @@
 // Review clips (CLI): MP4s of rendered frames at the render frame rate with the song audio
 // muxed in, one per clip window -> .testdata/avq/mp4/<preset>/<song>__<label>.mp4
-//   node --import ./scripts/analysis-test.hooks.mjs scripts/avq/clips.ts --preset E14 --song "<mp3>" [--clips auto|A-B:label]
+//   node --import ./scripts/analysis-test.hooks.mjs scripts/avq/clips.ts --preset E14 --song "<mp3>" [--clips auto|A-B:label] [--w 1280 --h 720]
 //   node --import ./scripts/analysis-test.hooks.mjs scripts/avq/clips.ts --existing [--preset E14] [--song slug]
 // Without --existing it renders the windows with --frames first. Needs ffmpeg on PATH
 // (Homebrew: brew install ffmpeg). Row i shows song time start + (i + 1) / fps, so the audio
@@ -56,7 +56,10 @@ async function main() {
     const presets = String(a.preset ?? 'E14').split(',');
     const servers = await ensureServers();
     const jobs: Job[] = [];
-    for (const s of songs) for (const p of presets) jobs.push({ preset: p, song: s, opts: { clips: parseClips(a.clips), frames: true } });
+    const opts: Record<string, unknown> = { clips: parseClips(a.clips), frames: true };
+    // Render size and clock pass through as in render.ts (--w 1280 --h 720 for a full-size review clip).
+    for (const k of ['w', 'h', 'fps', 'seed', 'warm']) if (a[k] !== undefined) opts[k] = Number(a[k]);
+    for (const s of songs) for (const p of presets) jobs.push({ preset: p, song: s, opts });
     bases = [];
     try {
       await runJobs(jobs, Number(a.jobs ?? 1), (j, r, err) => {
