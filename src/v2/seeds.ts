@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 136;
+export const SEED_VERSION = 137;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2889,7 +2889,63 @@ const LILIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES];
+// X37: the CN Tower's LED light show as the visualizer.
+const TORONTO_X37: Def[] = [
+  {
+    // A close, heroic view of the CN Tower alone against the night sky, built from LED dots (a compound
+    // silhouette: tapered shaft rising from below the frame, the wide main pod two thirds up, SkyPod and
+    // antenna reaching the top), an aurora glowing behind it. The tower's lights are the visualizer: each
+    // drum hit flares the tower and lifts the bright LED band off the base, racing up the shaft to the
+    // pod; the bass swells the LED dots; a held melody note brightens the band; each note start steps
+    // the tower's colour; drops widen the band and settle; sections switch the colours (built-in
+    // accents). All brightness changes stay on the tower; no whole-frame beat motion.
+    origin: 'X37', name: 'Tower Light Show', energy: [0.2, 0.95], scheme: 'split', hue: 0.55,
+    color: { adapt: 0.3, bloom: 1.0, vignette: 0.5, exposure: 0.85, sat: 1.2 },
+    carrier: 'warp', car: { halfLife: 0.3, floor: 0 },
+    bodies: [
+      body({
+        shape: ['aurora', { fall: 3, rays: 22, wav: 1 }],
+        place: ['point', { x: 0, y: -0.45 }],
+        material: ['fill', { gain: 0.8 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.25 }],
+        parts: [
+          part('capsule', 'union', { y: -0.5, sx: 0.2, sy: 1.8, m: 0.75, bright: 0.3 }),
+          part('ellipse', 'smooth', { y: 0.55, sx: 0.44, sy: 0.12, k: 0.05, bright: 1.6, hue: 0.33 }),
+          part('box', 'union', { y: 0.41, sx: 0.26, sy: 0.06, m: 0.6, bright: 0.5 }),
+          part('box', 'union', { y: 0.56, sx: 0.46, sy: 0.025, m: 1, bright: 2, hue: 0.5 }),
+          part('ellipse', 'smooth', { y: 1.3, sx: 0.1, sy: 0.07, k: 0.03, bright: 1.4, hue: 0.33 }),
+          part('box', 'union', { y: 1.68, sx: 0.016, sy: 0.4, bright: 0.8 }),
+        ],
+        place: ['point', { x: 0, y: -0.02 }],
+        material: ['dots', { gain: 1.2, spacing: 0.0055, size: 0.7 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0.5, detail: 1 }],
+      }),
+      body({
+        shape: ['segment', { len: 0.7, w: 0.012 }],
+        place: ['point', { x: 0, y: -0.5, angle: 0.25 }],
+        material: ['dots', { gain: 1.8, spacing: 0.0055, size: 0.75 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0.66 }],
+      }),
+    ],
+    reactions: [
+      rx('hit', 'pl', 2, 'y', 1, { atk: 0.03, rel: 0.5 }),
+      rx('bass', 'ma', 1, 'size', 0.4, { atk: 0.05, rel: 0.4 }),
+      rx('held', 'ma', 2, 'gain', 0.5, { atk: 0.1, rel: 0.5 }),
+      rx('hit', 'ma', 1, 'gain', 0.9, { atk: 0.005, rel: 0.3 }),
+      rx('noteon', 'cm', 1, 'hue', 0.25, { atk: 0.005, rel: 0.35 }),
+      rx('drop', 'sh', 2, 'w', 0.4, { atk: 0.02, rel: 2.5 }),
+    ],
+    accent: { drop: 0.15, hook: 0.3 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
