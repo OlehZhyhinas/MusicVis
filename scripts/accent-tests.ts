@@ -89,11 +89,12 @@ export function accentTests(check: Check): void {
   noHits.bodies.forEach((b) => { if (b.motion.kind === 'hits') b.motion = { kind: 'none', p: {} }; });
   const withHits = cloneGenome(noHits);
   withHits.reactions = [{ src: 'hit', g: 'col', i: 0, k: 'exposure', gain: 0.3, atk: 0.005, rel: 0.2, thr: 0, q: 0, div: 1 }];
-  check('accent.kick-auto', !hasHitResponse(noHits) && accentPlan(noHits).kick > 0 && accentPlan(withHits).kick === 0, `${accentPlan(noHits).kick} / ${accentPlan(withHits).kick}`);
+  check('accent.kick-auto', !hasHitResponse(noHits) && accentPlan(noHits).kick === 0 && accentPlan(withHits).kick === 0, `${accentPlan(noHits).kick} / ${accentPlan(withHits).kick}`);
   const tuned = { ...cloneGenome(noHits), accent: repairAccent({ p: { kick: 0.8 } }) };
   const tunedHits = { ...cloneGenome(withHits), accent: repairAccent({ p: { hook: 0.25 } }) };
   check('accent.kick-gene', accentPlan(tuned).kick === 0.8 && accentPlan(tunedHits).kick === 0 && accentPlan(tunedHits).hook === 0.25, 'a gene tunes the kick; a preset that answers hits gets none even when its gene carries the default');
-  const kp = { ...accentPlan(noHits), hook: 0, section: 0, hue: 0, frame: 0, drop: 0 };
+  const tunedSubtle = { ...cloneGenome(noHits), accent: repairAccent({ p: { kick: 0.5 } }) };
+  const kp = { ...accentPlan(tunedSubtle), hook: 0, section: 0, hue: 0, frame: 0, drop: 0 };
   const k0 = applyAccents(kp, input({ hit: 1.3 }), pose());
   const k1 = applyAccents(kp, input({ hit: 0 }), pose());
   check('accent.kick-subtle', k0.zoom > 1.01 && k0.zoom < 1.025 && k0.exposure > 1.05 && k0.exposure <= 1.08 && same(k1, IDENTITY_POSE as ChoreoPose), fmt(k0));

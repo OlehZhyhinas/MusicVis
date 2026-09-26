@@ -38,7 +38,7 @@ export const ACCENT_SCHEMA: Schema = {
   hue: P(0, 1, 0.5),
   frame: P(0, 1, 0),
   drop: P(0, 1, 0.5),
-  kick: P(0, 1, 0.5),
+  kick: P(0, 1, 0),
   shot: P(0, 1, 0.5),
 };
 
@@ -47,7 +47,7 @@ registerGenomeGene({
   title: 'Accents',
   schemas: ACCENT_SCHEMA,
   optional: true,
-  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; kick = small zoom and brightness punch on drum hits (applied by default only to presets with no hit/drums reaction); shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
+  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; kick = small zoom and brightness punch on drum hits, off by default (0 by default and by every random or bred genome; a preset\'s own gene can still set it above 0 to opt in); shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
 });
 
 export interface AccentGene {
@@ -96,29 +96,41 @@ function gauss(rng: Rng): number {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
 }
 
-/** A new random accent gene (most parts near their defaults, a few pushed or turned off). */
+/**
+ * A new random accent gene (most parts near their defaults, a few pushed or turned off). kick
+ * never comes out above 0: only a preset's own hand-set gene opts into the whole-frame drum punch.
+ */
 export function randomAccent(rng: Rng): AccentGene {
   const p: Params = {};
   for (const k of Object.keys(ACCENT_SCHEMA)) {
     const s = ACCENT_SCHEMA[k];
+    if (k === 'kick') {
+      p[k] = 0;
+      continue;
+    }
     const r = rng();
     p[k] = r < 0.15 && k !== 'shot' ? 0 : r < 0.6 ? clamp(s.min + (s.max - s.min) * rng(), s.min, s.max) : s.def;
   }
   return { p };
 }
 
-/** Nudges some settings of an accent gene in place. */
+/**
+ * Nudges some settings of an accent gene in place. kick is only ever nudged when it is already
+ * above 0 (a preset that opted in explicitly); mutation never raises it off 0 on its own.
+ */
 export function jitterAccent(c: AccentGene, rng: Rng, amt = 1): void {
   const keys = Object.keys(ACCENT_SCHEMA);
   let touched = false;
   for (const k of keys) {
     if (rng() >= 0.35) continue;
+    if (k === 'kick' && c.p.kick <= 0) continue;
     touched = true;
     const s = ACCENT_SCHEMA[k];
     c.p[k] = clamp(c.p[k] + gauss(rng) * (s.max - s.min) * 0.15 * amt, s.min, s.max);
   }
   if (!touched) {
-    const k = keys[Math.floor(rng() * keys.length)];
+    const candidates = keys.filter((k) => k !== 'kick' || c.p.kick > 0);
+    const k = candidates[Math.floor(rng() * candidates.length)];
     const s = ACCENT_SCHEMA[k];
     c.p[k] = clamp(s.min + (s.max - s.min) * rng(), s.min, s.max);
   }
