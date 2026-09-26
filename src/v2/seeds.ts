@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 131;
+export const SEED_VERSION = 132;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2657,19 +2657,18 @@ const TORONTO_X36: Def[] = [
     carrier: 'warp', car: { halfLife: 0.35, floor: 0.6 },
     bodies: [
       landmarks36(),
-      (() => {
-        // The melody lane stood up along the shaft (turned a quarter clockwise, so the present sits at the
-        // foot and the past climbs), pitch across it in a narrow band round the shaft: each note start
-        // is a mark coloured by its pitch that climbs the tower, a held note a ribbon.
-        const b = body({
-          shape: ['notes', { mode: 0, span: 1.6, len: 0.62, height: 0.15, now: 0.46, tilt: 0, ribbon: 0.8, thick: 0.006, marks: 1, form: 0, size: 0.012, fade: 1.2, shimmer: 0.4, hues: 0.9, glow: 0.6 }],
-          place: ['point', { x: TX36, y: WL36 + 0.31, angle: -0.25 }],
-          material: ['glow', { gain: 1.4 }],
-          emit: ['none'],
-          feel: ['flow', { atk: 0.01, rel: 0.15 }],
-        });
-        return b;
-      })(),
+      body({
+        // The melody lane laid exactly on the shaft's axis (same x, turned upright, its foot at the
+        // waterline where the tower starts; the present at the foot, the past climbing to the antenna
+        // tip), with no pitch range across it, so every light rides inside the tower's body and pitch
+        // shows only as colour: each note start is a light that climbs the tower, a held note a
+        // continuous glowing band up the shaft.
+        shape: ['notes', { mode: 0, span: 2, len: 0.6, height: 0, now: 0.5, tilt: 0, ribbon: 0.9, thick: 0.005, marks: 1, form: 0, size: 0.009, fade: 1.2, shimmer: 0.4, hues: 0.9, glow: 0.25 }],
+        place: ['point', { x: TX36, y: WL36 + 0.3, angle: -0.25 }],
+        material: ['glow', { gain: 1.5 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.15 }],
+      }),
       body({
         // Downtown east of the tower: mirrored spectrum bars (the bass towers in the middle of the core,
         // the treble ones low at its edges; the mirrored half is under the water) stippled with windows.

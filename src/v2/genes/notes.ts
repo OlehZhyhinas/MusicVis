@@ -32,7 +32,7 @@ export const NOTE_MARKS = 12;
 /**
  * mode: 0 a lane (time along x), 1 a ring (time round the clock, pitch as radius); span: seconds of
  * melody in view; len: lane length / ring size (screen heights); height: the pitch range across
- * (screen heights); now: where the present sits along the lane (-0.5 left .. 0.5 right); tilt:
+ * (screen heights; 0 keeps every note on the lane's axis, pitch then shows only as colour); now: where the present sits along the lane (-0.5 left .. 0.5 right); tilt:
  * rotation (turns); ribbon: brightness of held notes; thick: ribbon half width; marks: brightness of
  * the note-start marks; form: 0 dot, 1 spark, 2 bar as long as the note, 3 ripple ring; size: mark
  * size; fade: seconds a mark takes to fade once its note ends; rise: marks drift across the lane
@@ -43,7 +43,7 @@ export const NOTES_SCHEMA: Schema = {
   mode: C([0, 1], 0),
   span: P(1, 8, 4),
   len: P(0.4, 1.8, 1.2),
-  height: P(0.15, 0.9, 0.55),
+  height: P(0, 0.9, 0.55),
   now: P(-0.5, 0.5, 0.3),
   tilt: P(-0.25, 0.25, 0),
   ribbon: P(0, 1, 0.8),
