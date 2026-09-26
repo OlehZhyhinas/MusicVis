@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 132;
+export const SEED_VERSION = 133;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2363,6 +2363,49 @@ const ART3: Def[] = [
       rx('hit', 'pl', 1, 'radius', 0.4, { atk: 0.02, rel: 0.4 }),
       rx('noteon', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.3 }),
       rx('other', 'op', 2, 'amp', 0.5, { atk: 0.1, rel: 0.6 }),
+    ],
+  },
+  {
+    // Millefiori: a slab of glass-cane slices, a honeycomb of little flowers in jewel colours, each
+    // cane a glowing ring round a star-shaped flower. Each cane lights with its pitch class as the
+    // melody and chords sound it, so the slab sparkles in the song's harmony; each chord change reshapes
+    // the flowers (their petals open and narrow), harmonic tension slides the canes out of register and
+    // a resolution clicks them back, the bass swells the rings, and each drum hit turns the slab a notch.
+    origin: 'X29', name: 'Millefiori', energy: [0.1, 0.85], scheme: 'triad', hue: 0.0,
+    color: { adapt: 0.2, bloom: 1.1, vignette: 0.7, ca: 0 }, carrier: 'none',
+    chain: [op('kaleido', { n: 8, lock: 0 }, 1, 'view')],
+    bodies: [
+      {
+        ...body({
+          shape: ['dot', { r: 0.05 }],
+          place: ['grid', { lattice: 1, scale: 7, jitter: 0, density: 1, lit: 1, links: 0, twinkle: 0.2 }],
+          material: ['line', { gain: 1, width: 1.8, halo: 0.08 }],
+          emit: ['none'],
+          feel: ['flow', { atk: 0.02, rel: 0.4 }],
+          color: ['pitch', { hue: 0, detail: 0.5 }],
+        }),
+        deform: { kind: 'none', p: {}, ops: [op('rotate', { lock: 0, rate: 0 })] },
+      },
+      {
+        ...body({
+          shape: ['star', { n: 8, r: 0.042, inner: 0.35 }],
+          place: ['grid', { lattice: 1, scale: 7, jitter: 0, density: 1, lit: 1, links: 0, twinkle: 0.2 }],
+          material: ['fill', { gain: 1.6, soft: 0.2, core: 0.4 }],
+          emit: ['none'],
+          feel: ['flow', { atk: 0.02, rel: 0.4 }],
+          color: ['pitch', { hue: 0.25, detail: 0.5 }],
+        }),
+        deform: { kind: 'none', p: {}, ops: [op('rotate', { lock: 0, rate: 0 })] },
+      },
+    ],
+    harmony: { brk: 0.2, warp: 0.1, style: 1, snap: 0.5, settle: 0.6, walk: 0.1, kick: 0.2, modHue: 0.1, modTurn: 0.006, calm: 0.3 },
+    reactions: [
+      rx('hit', 'dr', 0, 'rate', 0.4, { atk: 0.02, rel: 0.3 }),
+      rx('hit', 'dr', 3, 'rate', 0.4, { atk: 0.02, rel: 0.3 }),
+      rx('chordchange', 'sh', 1, 'inner', 1, { atk: 0.05, rel: 0.8 }),
+      rx('bass', 'sh', 1, 'r', 0.2, { atk: 0.03, rel: 0.4 }),
+      rx('noteon', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.3 }),
+      rx('vocals', 'ma', 1, 'gain', 0.4, { atk: 0.05, rel: 0.4 }),
     ],
   },
 ];
