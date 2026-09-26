@@ -37,8 +37,9 @@ export function encodeClip(base: string, ffmpeg = ffmpegPath()): string {
     '-framerate', String(fps), '-i', join(OUT, h.framesDir, '%06d.jpg'),
     '-ss', a0.toFixed(3), '-t', dur.toFixed(3), '-i', h.song.path,
     '-map', '0:v', '-map', '1:a',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '22', '-maxrate', '2500k', '-bufsize', '5000k', '-pix_fmt', 'yuv420p',
-    '-vf', 'scale=640:-2:flags=lanczos',
+    // Small renders are upscaled to 640 wide for viewing; full-size renders (--w 1280) keep their size.
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '22', '-maxrate', h.render.w > 640 ? '8000k' : '2500k', '-bufsize', h.render.w > 640 ? '16000k' : '5000k', '-pix_fmt', 'yuv420p',
+    '-vf', `scale=${Math.max(640, h.render.w)}:-2:flags=lanczos`,
     '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart',
     out,
   ]);
