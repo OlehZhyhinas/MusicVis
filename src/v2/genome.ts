@@ -244,28 +244,34 @@ export const FOLD_PLACES: PlaceKind[] = ['grid', 'ring', 'mirror'];
 export const isFoldPlace = (k: PlaceKind) => FOLD_PLACES.includes(k);
 export const MAX_COPIES = 6;
 
+/**
+ * Every placement: angle = a static turn of the drawn shape about its own centre (turns, 0 = as
+ * drawn), so a horizontal segment can stand upright (angle 0.25); added on top of any turn the
+ * placement or motion gives it. For folds (grid, ring, mirror) it turns the whole fold.
+ */
+const PLACE_COMMON: Schema = { angle: P(-0.5, 0.5, 0) };
 export const PLACE_SCHEMAS: Record<PlaceKind, Schema> = {
-  point: { x: P(-0.6, 0.6, 0), y: P(-0.45, 0.45, 0) },
+  point: { x: P(-0.6, 0.6, 0), y: P(-0.45, 0.45, 0), ...PLACE_COMMON },
   // Copies circling a centre (bar-locked, rate turns per bar); follow: the centre wanders. fuse: copies melt together.
-  orbit: { count: I(1, 6, 2), radius: P(0.05, 0.45, 0.3), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0), follow: P(0, 0.35, 0), rate: C(TURNS, 0.5), fuse: P(0, 0.2, 0) },
+  orbit: { count: I(1, 6, 2), radius: P(0.05, 0.45, 0.3), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0), follow: P(0, 0.35, 0), rate: C(TURNS, 0.5), fuse: P(0, 0.2, 0), ...PLACE_COMMON },
   // 1-2 heads roaming the screen, moving step units per beat: head 0 turns every `every` beats, head 1 every
   // 2 x `every`; square: 90 degree turns; wrap: wrap around the edges instead of bouncing; curve: steering.
-  walker: { heads: I(1, 2, 2), step: P(0.03, 0.2, 0.11), every: C([1, 2, 4, 8], 2), square: C([0, 1], 0), wrap: C([0, 1], 0), curve: P(0, 2, 0.8), turn: P(0, 1.5, 1) },
+  walker: { heads: I(1, 2, 2), step: P(0.03, 0.2, 0.11), every: C([1, 2, 4, 8], 2), square: C([0, 1], 0), wrap: C([0, 1], 0), curve: P(0, 2, 0.8), turn: P(0, 1.5, 1), ...PLACE_COMMON },
   // One copy per instrument (drums, bass, vocals, other): inst 1 moves them with their instruments (drums jump
   // every bar, or on every hit with jump 1; bass swings out; vocals follow the melody). xs: sideways roam.
-  stations: { count: I(1, 6, 4), inst: P(0, 1, 1), xs: P(0.02, 1, 1), jump: C([0, 1], 0), wander: P(0, 0.2, 0.1), swap: C([0, 1], 0), fuse: P(0, 0.2, 0) },
+  stations: { count: I(1, 6, 4), inst: P(0, 1, 1), xs: P(0.02, 1, 1), jump: C([0, 1], 0), wander: P(0, 0.2, 0.1), swap: C([0, 1], 0), fuse: P(0, 0.2, 0), ...PLACE_COMMON },
   // Copies in a row (smoke sources along the bottom).
-  row: { count: I(1, 6, 4), y: P(-0.5, 0.3, -0.5), wander: P(0, 0.2, 0.05) },
+  row: { count: I(1, 6, 4), y: P(-0.5, 0.3, -0.5), wander: P(0, 0.2, 0.05), ...PLACE_COMMON },
   // Copies floating on slow Lissajous paths within `spread`; sizes follow their instruments.
-  float: { count: I(1, 6, 6), spread: P(0.3, 0.7, 0.55), speed: P(0.05, 0.3, 0.12), fuse: P(0, 0.3, 0) },
+  float: { count: I(1, 6, 6), spread: P(0.3, 0.7, 0.55), speed: P(0.05, 0.3, 0.12), fuse: P(0, 0.3, 0), ...PLACE_COMMON },
   // Copies travelling along a path: 0 circle, 1 polygon corners, 2 figure eight.
-  outline: { count: I(1, 6, 5), path: C([0, 1, 2], 0), radius: P(0.08, 0.45, 0.25), rate: C(TURNS, 0.125), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0) },
+  outline: { count: I(1, 6, 5), path: C([0, 1, 2], 0), radius: P(0.08, 0.45, 0.25), rate: C(TURNS, 0.125), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0), ...PLACE_COMMON },
   // Lattice fold: 0 square, 1 hex, 2 triangle; scale: cells per unit; density: fraction of cells used;
   // lit < 1: cells light on a beat-random schedule; links: lines to lit neighbours; lock: grid turns per bar.
-  grid: { lattice: C([0, 1, 2], 0), scale: P(2, 14, 6.5), jitter: P(0, 0.6, 0.6), density: P(0.1, 1, 0.5), lit: P(0.1, 1, 1), links: P(0, 1, 0), twinkle: P(0, 1, 0.3), lock: C(TURNS, 0) },
-  ring: { n: I(2, 12, 6), radius: P(0, 0.45, 0.25), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0) },
+  grid: { lattice: C([0, 1, 2], 0), scale: P(2, 14, 6.5), jitter: P(0, 0.6, 0.6), density: P(0.1, 1, 0.5), lit: P(0.1, 1, 1), links: P(0, 1, 0), twinkle: P(0, 1, 0.3), lock: C(TURNS, 0), ...PLACE_COMMON },
+  ring: { n: I(2, 12, 6), radius: P(0, 0.45, 0.25), x: P(-0.4, 0.4, 0), y: P(-0.4, 0.4, 0), ...PLACE_COMMON },
   // Mirror fold across the vertical (0), horizontal (1) or both (2) axes; the copy sits at (x, y).
-  mirror: { axis: C([0, 1, 2], 0), x: P(0, 0.6, 0.2), y: P(-0.45, 0.45, 0) },
+  mirror: { axis: C([0, 1, 2], 0), x: P(0, 0.6, 0.2), y: P(-0.45, 0.45, 0), ...PLACE_COMMON },
 };
 
 // ---------------------------------------------------------------- motion

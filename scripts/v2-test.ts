@@ -1572,6 +1572,36 @@ landscapeChecks(check);
   check('blend.breeds', on > 20 && on < 110 && !cbad.length && !!a07 && a07.genome.bodies[0].material.p.blend === 3, cbad.slice(0, 4).join(' | ') || `${on}/400 random bodies blend non-additively; crossovers valid; A07 draws in xor`);
 }
 
+// -------------------------------------------------- placement angle (static turn of a body)
+
+{
+  // Old genomes have no angle: repair gives every placement angle 0, which draws exactly as before
+  // (same shaders; the engine adds the turn to each copy only when it is non-zero).
+  const abad: string[] = [];
+  for (const e of SEEDS) {
+    const raw = cloneGenome(e.genome) as unknown as { bodies: { place: { p: Record<string, number> } }[] };
+    for (const b of raw.bodies) delete b.place.p.angle;
+    const r = repair(raw);
+    if (!r.bodies.every((b) => b.place.p.angle === 0)) abad.push(`${e.origin}:angle`);
+    if (buildSources(r).feedback !== buildSources(e.genome).feedback) abad.push(`${e.origin}:glsl`);
+  }
+  const allKinds = PLACE_KINDS.every((k) => locusSchema('place', k).angle?.def === 0 && reactable(locusSchema('place', k)).includes('angle'));
+  const up = cloneGenome(seedByOrigin('E14'));
+  up.bodies[0].place.p.angle = 0.25;
+  const upR = repair(up);
+  const wild = cloneGenome(up);
+  wild.bodies[0].place.p.angle = 3;
+  check('angle.default', !abad.length && allKinds && upR.bodies[0].place.p.angle === 0.25 && repair(wild).bodies[0].place.p.angle === 0.5 && !validate(upR).length && structuralKey(upR) === structuralKey(seedByOrigin('E14')),
+    abad.slice(0, 4).join(' | ') || 'every placement has angle 0 by default (seeds draw as before), reactable, clamped to half a turn, a parameter not a structure');
+  const rng = mulberry32(2468);
+  let turned = 0;
+  for (let i = 0; i < 1000; i++) if (randomBody(rng).place.p.angle !== 0) turned++;
+  let moved = 0;
+  const base = seedByOrigin('E14');
+  for (let i = 0; i < 1000; i++) if (mutate(base, rng, 1).bodies[0]?.place.p.angle !== 0) moved++;
+  check('angle.rare', turned > 40 && turned < 170 && moved < 60, `${turned}/1000 random bodies turned, ${moved}/1000 mutations turn E14`);
+}
+
 // -------------------------------------------------- 16. example crossovers
 
 {

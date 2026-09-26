@@ -1261,6 +1261,9 @@ export class Stage {
     // Copies: placement, then motion.
     const copies = this.placeCopies(s, b, bi, sdt);
     this.applyMotion(s, b, bi, copies, sdt);
+    // Static turn of the placement (angle, turns): 0 leaves every copy exactly as placed.
+    const turn = s.P('pl', bi, b.place.p, 'angle', PLACE_SCHEMAS[b.place.kind]) ?? 0;
+    if (turn) for (const c of copies) c.a += turn * TAU;
     if (s.genome.timbre) {
       // Timbre as material: the surface amounts for this body (smoothed per slot).
       const tg = s.genome.timbre;

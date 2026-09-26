@@ -94,7 +94,7 @@ export const ENTRIES: Record<string, string> = {
   'shape.landscape': 'landscape(the song as terrain the camera travels, 1/preset; knows the song ahead): altitude=energy, each drop a climb to a mountain pass with a sun over it, breakdowns=valleys, repeated sections reuse terrain; path 0 road,1 river,2 flight,3 rail; ground 0 hills,1 crystal,2 dunes,3 city blocks,4 ribbons; mark(landmark at each section start) 0 obelisks,1 gates,2 rings,3 beacons; look=seconds of song visible ahead; height=camera height; relief=energy->altitude; rough=terrain detail; wind=path meander; fog=horizon haze; glow=path lights+landmarks+drop sun; tint=key/mode tints the ground; kick=drum camera bump; rim=ridge light; res=render res(cost).',
 
   // -------------------------------------------------------------- place
-  'place.point': 'fixed spot.',
+  'place.point': 'fixed spot. Every placement: angle=static turn of the shape (turns; 0.25 stands a segment upright; turns a fold whole).',
   'place.orbit': 'copies circle a centre; follow=centre wander; rate=turns/bar; fuse=copies melt together.',
   'place.walker': '1-2 roaming heads; step=move/beat; every=beats/turn; square=90-deg turns.',
   'place.stations': '1 copy/instrument; inst=how much they move; xs=sideways roam; jump=snap on hit; swap=slots swap.',

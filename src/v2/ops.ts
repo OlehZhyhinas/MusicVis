@@ -63,12 +63,15 @@ function jitterValue(v: number, s: ParamSpec, rng: Rng, amt: number): number {
   return Math.min(s.max, Math.max(s.min, out));
 }
 
+/** Params that mutate only rarely (a placement's static turn changes the look wholesale). */
+const RARE_KEYS = new Set(['angle']);
+
 function jitterParams(p: Params, schema: Schema, rng: Rng, amt: number, frac = 0.4): boolean {
   const keys = Object.keys(schema);
   if (!keys.length) return false;
   let touched = false;
   for (const k of keys) {
-    if (rng() < frac) {
+    if (rng() < (RARE_KEYS.has(k) ? frac * 0.15 : frac)) {
       p[k] = jitterValue(p[k] ?? schema[k].def, schema[k], rng, amt);
       touched = true;
     }
@@ -199,6 +202,8 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   if (locus === 'material') p.gain = 0.6 + 0.8 * rng();
   // Most bodies add their light; a few blend another way (AVS effect-list modes).
   if (locus === 'material') p.blend = rng() < 0.15 ? 1 + Math.floor(rng() * 5) : 0;
+  // Shapes are nearly always placed as drawn; a few stand turned (upright, diagonal).
+  if (locus === 'place') p.angle = rng() < 0.1 ? pick(rng, [0.25, -0.25, 0.125, -0.125]) : 0;
   if (locus === 'emit' && k === 'sparks') p.count = Math.min(p.count, 32768);
   if (locus === 'emit' && k === 'slime') p.count = Math.min(p.count, 262144);
   if (locus === 'emit' && k === 'flock') p.count = Math.min(p.count, 65536);
