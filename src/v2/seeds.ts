@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 123;
+export const SEED_VERSION = 124;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -122,6 +122,8 @@ interface Def {
   timbre?: Record<string, number>;
   /** Visual deja vu: returning sections recall their first appearance (src/v2/genes/dejavu.ts); omitted = none. */
   dejavu?: Record<string, number>;
+  /** Palette parameters beyond the hue (e.g. key 0: absolute colours, the same in every song key); omitted = defaults. */
+  pal?: Record<string, number>;
   /** Built-in accents (hook gesture, section response): only set to tune them down; omitted = the defaults (src/v2/genes/accent.ts). */
   accent?: Record<string, number>;
   /** What the sung words are about steers the picture, and the line is shown (src/v2/genes/lyrics.ts); omitted = none. */
@@ -137,7 +139,7 @@ function build(d: Def): Seed {
       kind: d.carrier,
       p: { ...defaultParams(CARRIER_SCHEMA), halfLife: d.decay ? hl(d.decay) : 0.5, floor: 1, ...d.car },
     },
-    palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue } },
+    palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue, ...d.pal } },
     tone: { p: { ...defaultParams(TONE_SCHEMA), sat: 1, adapt: 0.6, bloom: 1, vignette: 0.45, ...d.color } },
     reactions: d.reactions ?? [],
     energy: d.energy,
@@ -2411,6 +2413,32 @@ const ART: Def[] = [
       rx('held', 'sh', 0, 'thick', 0.5, { atk: 0.05, rel: 0.4 }),
       rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.2 }),
       rx('noteon', 'sh', 0, 'size', 0.5, { atk: 0.005, rel: 0.3 }),
+    ],
+  },
+  {
+    // Rack Focus: hoops of light stream toward the viewer down a tunnel, folded four ways into one
+    // great symmetric iris that fills the frame, its lens-shaped pupil dead centre, in a cool blue to
+    // violet that stays the same in every key. Drum hits flash the hoops and punch them outward, the
+    // bass breathes their depth, every melody note ripples them with the sound itself, held notes
+    // thicken them like a lens pulling focus, and each chord change shifts their colour a step.
+    origin: 'X08', name: 'Rack Focus', energy: [0.15, 0.95], scheme: 'analogous', hue: 0.55, pal: { key: 0, spread: 1.2 },
+    color: { sat: 0.7, adapt: 0.3, bloom: 1.2, vignette: 0.4, ca: 0.0015 },
+    chain: [op('mirror', { axis: 2 }, 1, 'view')], carrier: 'warp', car: { halfLife: 0.15, floor: 1, blur: 0.05, sharpen: 0.1 },
+    bodies: [body({
+      shape: ['superscope', { family: 5, p: 6, q: 1, size: 0.42, audio: 0.3, spec: 0, spinX: 0, spinY: 0, persp: 0.8, n: 2048 }],
+      place: ['point', { x: 0, y: 0, angle: 0.5 }],
+      material: ['line', { gain: 0.7, width: 1.3, halo: 0.35 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.02, rel: 0.4 }],
+      color: ['height', { amount: 0.6, detail: 0.5 }],
+    })],
+    reactions: [
+      rx('hit', 'ma', 0, 'gain', 1, { atk: 0.005, rel: 0.2 }),
+      rx('hit', 'sh', 0, 'size', 0.35, { atk: 0.005, rel: 0.25 }),
+      rx('bass', 'sh', 0, 'persp', 0.3, { atk: 0.03, rel: 0.3 }),
+      rx('held', 'ma', 0, 'width', 0.6, { atk: 0.05, rel: 0.4 }),
+      rx('noteon', 'sh', 0, 'audio', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('chordchange', 'pal', 0, 'hue', 0.15, { atk: 0.02, rel: 1.5 }),
     ],
   },
 ];
