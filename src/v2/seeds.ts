@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 112;
+export const SEED_VERSION = 113;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2377,7 +2377,40 @@ const ART: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3];
+const ALL_DEFS: Def[] = [] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3];
+// X30.. art direction from a photo of marbled clay / kinetic sand: thick layered ribbons of neon
+// colour side by side, embossed with a sandy relief, flowing along one form into a spiral vortex.
+const ART4: Def[] = [
+  {
+    // Marbled clay: four dye sources, one per instrument, pour neon strands into a slow, thick fluid
+    // that folds them over each other; the picture is lit as an embossed surface with a fine sandy
+    // grain and its brightness mapped into palette bands, so the colours lie as distinct strands side
+    // by side instead of blending. Drum hits shove a fresh strand in and flash the clay, the bass stirs
+    // the whole mass and puts a sheen on it, the melody steers where the vocal strand enters and
+    // tints the palette with its pitch, the hook re-stripes the bands the same way on every repeat,
+    // and each section type turns the palette to another family.
+    origin: 'X30', name: 'Marbled Clay', energy: [0.2, 0.9], scheme: 'triad', hue: 0.55,
+    color: { sat: 1, exposure: 0.9, adapt: 0.1, bloom: 0.5, vignette: 0.4, relief: 1, bump: 2.2, gloss: 0.15, light: 0.375, huemap: 0.9, bands: 4, poster: 0.6, solar: 0.2 },
+    carrier: 'fluid', car: { halfLife: 8, floor: 0.45, amount: 0.8, vort: 5, fnoise: 0, blur: 0.06, sharpen: 0.04, grain: 0.003 },
+    bodies: [body({
+      shape: ['dot', { r: 0.02 }],
+      place: ['stations', { count: 4, inst: 1, xs: 0.9, jump: 0, wander: 0.05 }],
+      material: ['glow', { gain: 0.36, width: 0.025 }],
+      emit: ['dye', { force: 1.1 }],
+      feel: ['flow', { atk: 0.01, rel: 0.25 }],
+    })],
+    reactions: [
+      rx('hit', 'em', 0, 'force', 0.4, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'col', 0, 'exposure', 0.6, { atk: 0.005, rel: 0.2 }),
+      rx('bass', 'car', 0, 'amount', 0.35, { atk: 0.05, rel: 0.5 }),
+      rx('bass', 'col', 0, 'gloss', 0.5, { atk: 0.03, rel: 0.4 }),
+      rx('melody', 'pal', 0, 'hue', 1, { atk: 0.08, rel: 0.4 }),
+      rx('hook', 'col', 0, 'bands', 0.3, { atk: 0.01, rel: 0.5 }),
+    ],
+    accent: { section: 0.25, hue: 1 },
+  },
+];
+
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
