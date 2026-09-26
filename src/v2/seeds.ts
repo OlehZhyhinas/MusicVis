@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 138;
+export const SEED_VERSION = 139;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3010,7 +3010,62 @@ const TORONTO_X37: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37];
+// X38: a Toronto skyline preset built from existing genes.
+const TORONTO_X38: Def[] = [
+  {
+    // Driving into Toronto at night along the Gardiner: a lit road runs dead straight across a dark
+    // plain toward downtown, whose skyline stands along the horizon (a mirrored strip of towers that
+    // rise and fall with the spectrum, tallest at the core), and the CN Tower looms in the middle of
+    // it, nearly half the frame tall: tapered shaft, the main pod with its lit rim two thirds up, the
+    // SkyPod and the antenna with a beacon. Through each build the tower grows as the car closes in;
+    // the drop floods the horizon with light, the arrival downtown. The bass lights the lane lines,
+    // drum hits flash the road's edges, every melody note lights the tower, the riff flares the
+    // skyline's windows, the melody moves the city lights' colour. Colours are fixed night blue and
+    // sodium amber, the same in every key.
+    origin: 'X38', name: 'Gardiner Night Drive', energy: [0.3, 1], scheme: 'free', hue: 0.62, pal: { s1: 0.5, s2: 0.06, key: 0 },
+    color: { adapt: 0.2, bloom: 1.1, vignette: 0.35, exposure: 0.9, contrast: 0.06, sat: 0.85 }, carrier: 'none',
+    accent: { hue: 0 },
+    bodies: [
+      body({
+        shape: ['landscape', { path: 0, ground: 0, mark: 3, res: 0.35, look: 24, height: 0.45, relief: 0, rough: 0.1, wind: 0, fog: 0.1, glow: 0.4, tint: 0, kick: 0, rim: 0.06 }],
+        material: ['glow', { gain: 0.3 }],
+        color: ['fixed', { hue: 0, detail: 0.1 }],
+      }),
+      body({
+        shape: ['bars', { mode: 0, bins: 40, len: 0.26, fill: 0.9 }],
+        place: ['point', { x: 0, y: 0.07 }],
+        material: ['dots', { gain: 0.6, spacing: 0.014, size: 0.4 }],
+        emit: ['none'],
+        color: ['melody', { hue: 0.33, amount: 0.08, detail: 0.1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.078 }],
+        parts: [
+          part('capsule', 'union', { y: -0.95, sx: 0.32, sy: 4.05, m: 0.65, bright: 0.9 }),
+          part('ellipse', 'smooth', { y: 1.2, sx: 0.8, sy: 0.28, k: 0.1, bright: 1 }),
+          part('box', 'union', { y: 0.88, sx: 0.5, sy: 0.12, m: 0.6, bright: 0.8 }),
+          part('box', 'union', { y: 1.2, sx: 0.84, sy: 0.045, m: 1, bright: 2, hue: 0.33 }),
+          part('ellipse', 'smooth', { y: 3.1, sx: 0.26, sy: 0.2, k: 0.06, bright: 1.3 }),
+          part('box', 'union', { y: 4.2, sx: 0.06, sy: 0.8, bright: 1.6, hue: 0.33 }),
+        ],
+        place: ['point', { x: 0, y: 0.23 }],
+        material: ['fill', { gain: 1.7, soft: 0.05, halo: 0.35, clip: 0.065 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+    ],
+    reactions: [
+      rx('build', 'sh', 2, 'size', 0.05, { atk: 0.3, rel: 1.5 }),
+      rx('drop', 'sh', 0, 'fog', 0.5, { atk: 0.02, rel: 1.5 }),
+      rx('hook', 'ma', 2, 'halo', 1, { atk: 0.01, rel: 0.3 }),
+      rx('bass', 'sh', 0, 'glow', 1, { atk: 0.02, rel: 0.25 }),
+      rx('hit', 'ma', 1, 'gain', 1, { atk: 0.005, rel: 0.18 }),
+      rx('noteon', 'ma', 2, 'gain', 0.6, { atk: 0.01, rel: 0.2 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
