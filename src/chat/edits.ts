@@ -9,6 +9,7 @@ import {
   COST_BUDGET_MS, DRAW_OPS, LOCI, LOCUS_KINDS, MAX_BODIES, OP_KINDS, PALETTE_KINDS, CARRIER_KINDS, SHAPE_KINDS,
   SIGNALS, MAX_CHAIN, OP_SCHEMAS, PALETTE_SCHEMAS, cloneGenome, estimateCost, locusSchema, validate,
   type GeneGroup, type Genome, type Locus, type OpKind, type ParamSpec, type ShapeKind, type Signal,
+  paletteHue,
 } from '../v2/genome';
 import * as E from '../v2/geneEdit';
 import { genomeGene, genomeGeneSchema, genomeGenes } from '../v2/geneRegistry';
@@ -271,8 +272,8 @@ export function applyEdits(gIn: Genome, edits: Edit[], ctx: ApplyContext): Appli
           const name = e.value.trim().toLowerCase();
           if (HUE_KEYS.has(pp.key) && name in COLOUR_HUES) {
             const abs = COLOUR_HUES[name];
-            if (pp.target.t === 'palette') v = wrap01(abs - ctx.keyHue);
-            else if (pp.target.t === 'locus' && pp.target.locus === 'color') v = wrap01(abs - (ctx.keyHue + g.palette.p.hue));
+            if (pp.target.t === 'palette') v = wrap01(abs - ctx.keyHue * (g.palette.p.key ?? 1));
+            else if (pp.target.t === 'locus' && pp.target.locus === 'color') v = wrap01(abs - paletteHue(g.palette.p, ctx.keyHue));
             else v = abs;
           } else {
             const c = choiceValue(g, pp.target, pp.key, name);

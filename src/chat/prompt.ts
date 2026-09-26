@@ -6,6 +6,7 @@
 import {
   CARRIER_KINDS, LOCUS_KINDS, MOTION_OPS, FOLD_OPS, PALETTE_KINDS, SIGNALS, LOCI, MAX_BODIES, MAX_CHAIN, MAX_DRAW, MAX_REACTIONS, COST_BUDGET_MS, estimateCost,
   type Gene, type Genome, type ParamSpec,
+  paletteHue,
 } from '../v2/genome';
 import * as E from '../v2/geneEdit';
 import { colourName, paramPaths } from './edits';
@@ -238,7 +239,7 @@ export function genomeText(g: Genome, keyHue: number): string {
       if (locus === 'shape') b.shape.xforms?.forEach((_x, j) => lines.push(`  b${bi}.xform${j} ${paramsText(g, { t: 'xform', b: bi, j }, 'xform')}`));
       if (locus === 'deform') b.deform.ops?.forEach((o, j) => lines.push(`  b${bi}.drawOp${j}=${o.op} ${paramsText(g, { t: 'drawOp', b: bi, j }, o.op)}`));
       if (locus === 'color') {
-        const abs = (keyHue + g.palette.p.hue + (gene.p.hue ?? 0)) % 1;
+        const abs = (paletteHue(g.palette.p, keyHue) + (gene.p.hue ?? 0)) % 1;
         lines[lines.length - 1] += ` (hue is an offset from the palette; this body shows ${colourName(abs)})`;
       }
     }
@@ -247,7 +248,7 @@ export function genomeText(g: Genome, keyHue: number): string {
   lines.push(g.chain.length ? 'Space chain:' : 'Space chain: empty');
   g.chain.forEach((o, j) => lines.push(`  op${j}=${o.op} stage=${o.stage} ${paramsText(g, { t: 'op', j }, o.op)}`));
   lines.push(`carrier=${g.carrier.kind} ${paramsText(g, { t: 'carrier' }, 'carrier')}`);
-  const first = (keyHue + g.palette.p.hue) % 1;
+  const first = paletteHue(g.palette.p, keyHue) % 1;
   lines.push(`palette=${g.palette.kind} ${paramsText(g, { t: 'palette' }, 'palette')} (key hue now ${colourName(keyHue)}; first palette colour on screen: ${colourName(first)})`);
   lines.push(`tone ${paramsText(g, { t: 'tone' }, 'tone')}`);
   for (const spec of genomeGenes()) {

@@ -33,6 +33,7 @@ import {
   PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
   type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type PaletteGene, type Params, type Scheme, type Schema,
   type ShapeGene, type Signal,
+  paletteHue,
 } from './genome';
 import { BODY_VEC4, COPY_SLOTS, WAVE_FS, WAVE_VS, buildSources } from './glsl';
 import { Physarum } from './genes/physarumGpu';
@@ -902,7 +903,7 @@ export class Stage {
       choreoPose(s.genome.choreo, cue, q);
       this.harmonize(s, state, sdt, q);
       // Deja vu: a returning section pulls the framing, colours and phases back to its first appearance.
-      this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: F.keyHue + s.genome.palette.p.hue, mem: s.mem });
+      this.dejavu.update(s, s.genome.dejavu, state, sdt, { pose: q, hue: paletteHue(s.genome.palette.p, F.keyHue), mem: s.mem });
       this.lyricize(s, state, sdt, q);
       // Accents: the hook gesture, section look and drum kick every preset gets unless its genome turns them off.
       applyAccents(accentPlan(s.genome, this.accPlan), acc, q);
@@ -1066,7 +1067,7 @@ export class Stage {
     // Palette
     const tp = g.tone.p;
     const sat = s.P('col', 0, tp, 'sat', TONE_SCHEMA) * (0.78 + 0.3 * F.stem[2]) * (1 - 0.5 * F.build);
-    paletteColors(g.palette, F.keyHue + s.P('pal', 0, g.palette.p, 'hue', PALETTE_SCHEMAS[g.palette.kind]) + (this.poses.get(s)?.hue ?? 0), sat, s.cols);
+    paletteColors(g.palette, paletteHue(g.palette.p, F.keyHue, s.P('pal', 0, g.palette.p, 'hue', PALETTE_SCHEMAS[g.palette.kind])) + (this.poses.get(s)?.hue ?? 0), sat, s.cols);
 
     // Carrier decay
     const car = g.carrier;
@@ -2686,7 +2687,7 @@ export class Stage {
     if (!n) this.lyricNudges.set(s, (n = { ...NEUTRAL_NUDGE }));
     const F = this.sig.F;
     const words = { tags: state.lyricTags, valence: num(state.lyricValence, 0.5), arousal: num(state.lyricArousal, 0.5), presence: num(state.lyricPresence, 0), pulse: 0 };
-    lyricTarget(g, words, F.keyHue + s.genome.palette.p.hue + q.hue, F.time, this.lyricTgt);
+    lyricTarget(g, words, paletteHue(s.genome.palette.p, F.keyHue) + q.hue, F.time, this.lyricTgt);
     easeNudge(n, this.lyricTgt, sdt, g.p.lag);
     q.zoom *= n.zoom * lineKick(g, num(state.lyricPulse, 0));
     q.ty -= n.lift; // + lift moves the picture up (the camera looks lower)

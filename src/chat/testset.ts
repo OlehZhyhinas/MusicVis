@@ -2,7 +2,7 @@
 // edited genome should have (not an exact edit: any sensible way to get there passes). Run in the
 // browser with the model loaded: await __geneChatTest() (see testRunner.ts).
 
-import type { Genome } from '../v2/genome';
+import { paletteHue, type Genome } from '../v2/genome';
 import * as E from '../v2/geneEdit';
 import { COLOUR_HUES, parseKindPath, parsePath, paramPaths } from './edits';
 import type { LookMetrics } from './prompt';
@@ -87,7 +87,7 @@ export const hueNear = (colour: string, keyHue: number): Check => (_b, a) => {
   const near = (h: number) => Math.min(Math.abs(h - target), 1 - Math.abs(h - target)) < 0.09;
   const wrap = (h: number) => ((h % 1) + 1) % 1;
   // What is drawn: the palette's first slot, and each fixed-colour body's own hue (an offset from it).
-  const hues = (g: Genome) => [wrap(keyHue + g.palette.p.hue), ...g.bodies.filter((x) => x.color.kind === 'fixed').map((x) => wrap(keyHue + g.palette.p.hue + (x.color.p.hue ?? 0)))];
+  const hues = (g: Genome) => [wrap(paletteHue(g.palette.p, keyHue)), ...g.bodies.filter((x) => x.color.kind === 'fixed').map((x) => wrap(paletteHue(g.palette.p, keyHue) + (x.color.p.hue ?? 0)))];
   const h = hues(a);
   // It must move there (a preset already that colour proves nothing) and every drawn hue must agree.
   if (h.every(near) && JSON.stringify(h) !== JSON.stringify(hues(_b))) return null;

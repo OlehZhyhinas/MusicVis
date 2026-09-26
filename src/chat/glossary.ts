@@ -21,7 +21,7 @@ inward. Fluid carrier only: amount/vort/fnoise/fscale/famt=advection+vorticity/t
 water(0=off)=beat drops spread ripples refracting the picture; wsize=drop radius.
 
 PALETTE(3 hue slots around the song key, always present): hue=1st slot's offset from key;
-spread=how far the slots spread.
+spread=how far the slots spread; key=1 follows the song key..0 hue absolute.
 
 COLOUR MAPPING(per body, common params): amount=how much the driver swings the hue; detail=how
 much the shape's own shading(depth,bins,curve position) varies it.

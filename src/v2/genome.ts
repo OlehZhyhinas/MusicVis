@@ -397,12 +397,18 @@ export type Scheme = (typeof SCHEMES)[number];
 /** Palette kinds: the classic schemes (slot offsets scaled by spread) or three free slots. */
 export const PALETTE_KINDS = [...SCHEMES, 'free'] as const;
 export type PaletteKind = (typeof PALETTE_KINDS)[number];
-const PAL_SCHEME: Schema = { hue: P(0, 1, 0.5), spread: P(0.5, 1.5, 1) };
+// key: how far the palette follows the song's key (1: the slots sit around the key hue, as always; 0: hue is
+// an absolute colour wheel position, the same in every key).
+const PAL_SCHEME: Schema = { hue: P(0, 1, 0.5), spread: P(0.5, 1.5, 1), key: P(0, 1, 1) };
 export const PALETTE_SCHEMAS: Record<PaletteKind, Schema> = {
   analogous: PAL_SCHEME, complementary: PAL_SCHEME, triad: PAL_SCHEME, split: PAL_SCHEME, mono: PAL_SCHEME,
   // hue: the first slot's offset from the key; s1 / s2: the other slots' offsets from the first.
-  free: { hue: P(0, 1, 0.5), s1: P(0, 1, 0.33), s2: P(0, 1, 0.66) },
+  free: { hue: P(0, 1, 0.5), s1: P(0, 1, 0.33), s2: P(0, 1, 0.66), key: P(0, 1, 1) },
 };
+/** The palette's first hue on the wheel: its offset plus `key` x the song's key hue (key 1 = key-relative, 0 = absolute). */
+export function paletteHue(p: Params, keyHue: number, hue = p.hue): number {
+  return keyHue * (p.key ?? 1) + hue;
+}
 export interface PaletteGene {
   kind: PaletteKind;
   p: Params;

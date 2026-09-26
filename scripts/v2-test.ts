@@ -6,7 +6,7 @@
 import {
   COST_BUDGET_MS, DEFORM_KINDS, EMIT_KINDS, LOCI, LOCUS_KINDS, MATERIAL_KINDS, MOTION_KINDS, PLACE_KINDS, SHAPE_CLASS,
   SHAPE_KINDS, SHAPE_SCHEMAS, UNIQUE_SHAPES,
-  bodyCost, classify, cloneBody, cloneGenome, estimateCost, locusSchema, repair, repairBody, sdfCapable, structuralKey, validate,
+  bodyCost, classify, cloneBody, cloneGenome, estimateCost, locusSchema, paletteHue, repair, repairBody, sdfCapable, structuralKey, validate,
   type BodyGene, type Gene, type Genome, type Locus,
 } from '../src/v2/genome';
 import {
@@ -712,6 +712,24 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 }
 
 // ------------------------------------------------------ 13. colour in parts
+
+{
+  // Palette key: a genome saved before the param existed repairs to key 1, and key 1 gives exactly the old
+  // key-relative hue (keyHue + offset, bit for bit), so every existing preset renders as before; key 0 is absolute.
+  const old = cloneGenome(seedByOrigin('E13'));
+  delete (old.palette.p as Record<string, number>).key;
+  const g = repair(old);
+  check('palette.key-defaults-to-1', g.palette.p.key === 1 && !validate(g).length && SEEDS.filter((s) => s.origin < 'X').every((s) => s.genome.palette.p.key === 1), JSON.stringify(g.palette.p));
+  let same = true;
+  const rng = mulberry32(7);
+  for (let i = 0; i < 2000; i++) {
+    const kh = Math.floor(rng() * 12) / 12 + (rng() < 0.3 ? rng() : 0);
+    const p = { ...g.palette.p, hue: rng() };
+    if (paletteHue(p, kh) !== kh + p.hue) same = false;
+  }
+  check('palette.key-1-identical', same, 'paletteHue(key 1) === keyHue + hue');
+  check('palette.key-0-absolute', paletteHue({ ...g.palette.p, key: 0, hue: 0.62 }, 0.25) === 0.62 && paletteHue({ ...g.palette.p, key: 0, hue: 0.62 }, 0.75) === 0.62, 'key 0 ignores the key hue');
+}
 
 {
   // Format 3 / 4 colour converts: palette = scheme + hue, tone = the rest, mapping from the placement.
