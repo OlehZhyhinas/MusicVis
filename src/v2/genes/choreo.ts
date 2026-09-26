@@ -52,7 +52,7 @@ registerGenomeGene({
   title: 'Choreography',
   schemas: CHOREO_SCHEMA,
   optional: true,
-  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop colour and light slam in (punch) and settle over relax bars while the camera eases out of the build and swells into the punch zoom over a quarter bar (never a one-frame jump); scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) and a hue shift per section type (scene); arc = a push-in that swells across each phrase of phrase bars and eases back as the next begins',
+  glossary: 'composes the picture over the song from its known future: over the last lead bars before each drop the camera pushes in (push) and leans (roll, turns), colour drains (drain) and light dims (dim), rising late when curve is high; on the drop colour and light slam in (punch) and settle over relax bars while the camera eases out of the build and swells into the punch zoom over a quarter bar (never a one-frame jump); scenes: every section type gets its own framing (frame = how far it pushes, pans and leans, shot = which set of framings), reached by a hard cut or a glide of glide bars, with a slow dolly push across each section (dolly) that glides back with the framing at the next and a hue shift per section type (scene); arc = a push-in that swells across each phrase of phrase bars and eases back as the next begins',
 });
 
 export interface ChoreoGene {
@@ -272,8 +272,10 @@ export function choreoPose(c: ChoreoGene | undefined, cue: ChoreoCue, out: Chore
     f.hue = q.hue + (f.hue - q.hue) * g;
   }
   // Dolly: a slow push across the section (over its length, or 16 bars when it is open-ended).
+  // It glides back from the previous section's full push with the framing (a cut when glide is 0).
   const span = Number.isFinite(cue.sectionLen) ? cue.sectionLen : 16 * cue.barSeconds;
-  const dolly = 1 + p.dolly * clamp(cue.sinceSection / Math.max(span, 1e-3), 0, 1);
+  let dolly = 1 + p.dolly * clamp(cue.sinceSection / Math.max(span, 1e-3), 0, 1);
+  if (g < 1 && cue.prevLabel) dolly = 1 + p.dolly + (dolly - 1 - p.dolly) * g;
   out.zoom *= f.zoom * dolly * (1 + p.arc * phraseArc(c, cue));
   out.roll += f.roll;
   out.tx = f.tx;

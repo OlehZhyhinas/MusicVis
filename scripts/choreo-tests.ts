@@ -242,6 +242,8 @@ export function choreoTests(check: Check): void {
       `pan ${g0.tx.toFixed(3)} -> ${g1.tx.toFixed(3)} -> ${g2.tx.toFixed(3)} over 2 bars; glide 0 is a cut`);
     const d0 = at('drop', 'build', 4), d1 = at('drop', 'build', 16), d2 = at('drop', 'build', 32);
     check('choreo.dolly', d1.zoom > d0.zoom && Math.abs(d2.zoom / d0.zoom - 1.1 / (1 + 0.1 * 4 / 32)) < 1e-9, `zoom ${d0.zoom.toFixed(3)} -> ${d1.zoom.toFixed(3)} -> ${d2.zoom.toFixed(3)} across the section`);
+    const verseEnd = at('verse', 'chorus', 32, 32);
+    check('choreo.dolly-glides', Math.abs(g0.zoom - verseEnd.zoom) < 1e-9 && g3.zoom < verseEnd.zoom * 1.2, `the push glides back with the framing: verse end ${verseEnd.zoom.toFixed(3)}, chorus start ${g0.zoom.toFixed(3)}`);
     // Phrase arc: swells across each phrase and is back to rest on the next phrase's downbeat.
     const ar = repairChoreo({ p: { arc: 0.1, phrase: 8, push: 0, punch: 0, drain: 0, dim: 0 } });
     const pa = (bars: number) => phraseArc(ar, { ...cue(Infinity), bars });
