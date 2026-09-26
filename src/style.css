@@ -1760,6 +1760,11 @@ img.th:not([src]) {
   font-size: 12px;
   align-items: flex-start;
 }
+.lp-lag {
+  gap: 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
 .lp-db {
   font-size: 11px;
   min-width: 48px;

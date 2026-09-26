@@ -7,7 +7,7 @@
 // clock is extrapolated to that time; events (onBeat, onBar, sectionChanged)
 // fire once per crossing and never twice, even when the PLL nudges the clock.
 
-import type { LiveAudioFrame, MusicState, Section, StemName } from '../types';
+import type { LiveAudioFrame, MusicState, NoteStats, Section, StemName } from '../types';
 import { STEM_NAMES } from '../types';
 import type { RealtimeAnalyzer } from './RealtimeAnalyzer';
 import { LiveHarmony, initHarmonyState } from './harmonyState';
@@ -43,6 +43,8 @@ export class RealtimeSampler {
   private seenKey = -1;
   private readonly harmony = new LiveHarmony();
   private readonly hooks = new LiveHooks();
+  /** Where the articulation comes from instead of the analyzer's greedy tracker (LiveLookahead). */
+  noteSource: ((time: number, out: NoteStats) => void) | null = null;
 
   constructor(analyzer: RealtimeAnalyzer) {
     this.a = analyzer;
@@ -237,9 +239,12 @@ export class RealtimeSampler {
     // --- Articulation (running note tracker) ---
     const nl = a.notesLive.out;
     const ns = (s.notes ??= { ...nl, recent: [] });
-    Object.assign(ns, nl, { recent: ns.recent });
-    ns.recent.length = nl.recent.length;
-    for (let i = 0; i < nl.recent.length; i++) ns.recent[i] = Object.assign(ns.recent[i] ?? {}, nl.recent[i]);
+    if (this.noteSource) this.noteSource(time, ns);
+    else {
+      Object.assign(ns, nl, { recent: ns.recent });
+      ns.recent.length = nl.recent.length;
+      for (let i = 0; i < nl.recent.length; i++) ns.recent[i] = Object.assign(ns.recent[i] ?? {}, nl.recent[i]);
+    }
 
     this.synced = true;
     return s;

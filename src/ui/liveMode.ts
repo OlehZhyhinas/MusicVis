@@ -21,8 +21,10 @@ import { showToast } from './toast';
 import { loadSetting, saveSetting } from './storage';
 import { icon } from './icons';
 import type { Popovers } from './popover';
+import { DEFAULT_VISUAL_LAG } from '../analysis/LiveLookahead';
 
 const DEVICE_KEY = 'liveDevice';
+const LAG_KEY = 'liveSharpNotes';
 /** Seconds of music after a long silence before the new song's complexity is trusted. */
 const NEW_SONG_MUSIC_S = 6;
 
@@ -81,6 +83,8 @@ export class LiveMode {
   private readonly testUrl: string | null;
   private readonly tabBtn: HTMLButtonElement;
   private readonly tabHelp: HTMLElement;
+  private readonly lagBtn: HTMLButtonElement;
+  private sharpNotes: boolean;
   /** A one-off status line shown while idle (e.g. "Tab sharing was cancelled."). */
   private note = '';
 
@@ -109,6 +113,7 @@ export class LiveMode {
       <div class="sub lp-tab"><button class="btn sm lp-tab-btn">${icon('music', 14)}<span>Listen to a tab (YouTube, Spotify…)</span></button><span class="muted lp-tab-help">${TAB_HELP}</span></div>
       <div class="sub lp-grant" hidden><span class="muted">Device names are hidden until the browser grants microphone access.</span><button class="btn sm lp-grant-btn">${icon('eye', 14)}<span>Show device names</span></button></div>
       <div class="row lp-level" hidden><span class="muted">${icon('volume', 14)}</span><div class="meter level h6"><i class="lp-meter-fill" style="--v:0%"></i></div><span class="mono dim lp-db">–</span></div>
+      <label class="row lp-lag"><button class="tog lp-lag-btn" aria-pressed="false" aria-label="Sharper notes"></button><span class="grow">Sharper notes <span class="muted">· picture trails the sound by ${Math.round(DEFAULT_VISUAL_LAG * 1000)} ms</span></span></label>
       <div class="status lp-status" role="status" aria-live="polite"></div>
       <div class="row"><button class="btn primary lp-start">${icon('play', 16)}<span>Start</span></button><button class="btn danger lp-stop" hidden>${icon('stop', 14)}<span>Stop</span></button><span class="grow"></span><button class="btn ghost lp-cancel">Cancel</button></div>
       <details class="lp-help"><summary>${icon('info', 14)}Play audio from other apps (BlackHole, Loopback)</summary><p>Visualizes a microphone or audio interface in real time. To visualize audio already playing on this Mac (Spotify, YouTube, a DJ app), install a virtual device such as BlackHole, create a Multi-Output Device in Audio MIDI Setup that sends to your speakers and to BlackHole (so you still hear it), pick it as the system output, then choose BlackHole here. For sound playing in another Chrome or Edge tab, "Listen to a tab" needs none of this.</p></details>
@@ -127,6 +132,17 @@ export class LiveMode {
     this.statusEl = panel.querySelector('.lp-status')!;
     this.tabBtn = panel.querySelector('.lp-tab-btn')!;
     this.tabHelp = panel.querySelector('.lp-tab-help')!;
+    this.lagBtn = panel.querySelector('.lp-lag-btn')!;
+    this.sharpNotes = loadSetting<boolean>(LAG_KEY, true);
+    this.lagBtn.setAttribute('aria-pressed', String(this.sharpNotes));
+    this.lagBtn.title = 'Tracks the melody notes with a little look-ahead: note starts land on time and match the analysed-file quality more closely';
+    this.lagBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      this.sharpNotes = !this.sharpNotes;
+      saveSetting(LAG_KEY, this.sharpNotes);
+      this.lagBtn.setAttribute('aria-pressed', String(this.sharpNotes));
+      this.input?.setVisualLag(this.visualLag);
+    });
 
     panel.querySelector('.lp-close')!.addEventListener('click', () => this.setOpen(false));
     this.cancelBtn.addEventListener('click', () => this.setOpen(false));
@@ -170,6 +186,11 @@ export class LiveMode {
 
   get active(): boolean {
     return !!this.input;
+  }
+
+  /** Seconds the visuals trail the sound: the look-ahead the note tracker gets. */
+  private get visualLag(): number {
+    return this.sharpNotes ? DEFAULT_VISUAL_LAG : 0;
   }
 
   /** The running input (diagnostics / tests). */
@@ -322,7 +343,7 @@ export class LiveMode {
           if (tab) showToast('Stopped listening to the tab', 'info', 5000, reason);
           else showToast('Live input stopped', 'error', 0, reason);
         },
-      }, { stream });
+      }, { stream, visualLag: this.visualLag });
       const prev = this.input;
       this.input = next;
       prev?.stop();

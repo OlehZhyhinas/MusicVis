@@ -203,6 +203,8 @@ export class RealtimeAnalyzer {
   readonly timbreLive: TimbreFrames;
   /** Running melody notes and articulation (notes.ts), from the main spectrum. */
   readonly notesLive: NoteTracker;
+  /** Run the greedy note tracker (off when LiveLookahead tracks the notes instead). */
+  notesLiveOn = true;
   readonly key: KeyTracker;
   /** Realtime-lite chord tracking (harmony map). */
   readonly harmony = new HarmonyTracker();
@@ -527,7 +529,7 @@ export class RealtimeAnalyzer {
     this.fft.power(this.buf, this.pow);
     bandPower(this.pow, this.bands, this.midB, 0);
     this.timbreLive.push(this.pow);
-    this.notesLive.push(this.pow);
+    if (this.notesLiveOn) this.notesLive.push(this.pow);
     if (this.stereo) {
       this.windowed(this.ringS, n, this.win, this.buf);
       this.fft.power(this.buf, this.pow);

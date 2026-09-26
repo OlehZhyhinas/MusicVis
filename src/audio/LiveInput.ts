@@ -6,6 +6,7 @@
 import { LiveAnalyser } from './LiveAnalyser';
 import { RealtimeAnalyzer } from '../analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../analysis/RealtimeSampler';
+import { LiveLookahead } from '../analysis/LiveLookahead';
 
 export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test' | 'tab';
 
@@ -193,6 +194,11 @@ function tabError(err: unknown): TabCaptureError {
 export interface LiveInputOptions {
   /** An already opened stream (a shared tab); used instead of getUserMedia. */
   stream?: MediaStream;
+  /**
+   * Seconds the visuals trail the sound (0: none). The note tracker uses them
+   * as look-ahead (LiveLookahead); every other visual is delayed to match.
+   */
+  visualLag?: number;
 }
 
 export interface LiveInputEvents {
@@ -216,6 +222,9 @@ export class LiveInput {
   private node: AudioWorkletNode | null = null;
   private sink: GainNode | null = null;
   private monitor: GainNode | null = null;
+  /** Delays the waveform / spectrum analyser by the visual lag. */
+  private lagNode: DelayNode | null = null;
+  private lookahead: LiveLookahead | null = null;
   private lastMsgAt = 0;
   private stopped = false;
   private readonly events: LiveInputEvents;
@@ -276,6 +285,7 @@ export class LiveInput {
       li.source = ctx.createMediaStreamSource(stream);
     }
     li.wire();
+    li.setVisualLag(opts.visualLag ?? 0);
     return li;
   }
 
@@ -294,7 +304,8 @@ export class LiveInput {
     node.port.onmessage = (e: MessageEvent<{ l: Float32Array; r: Float32Array | null }>) => {
       if (this.stopped) return;
       const { l, r } = e.data;
-      this.analyzer.process(l, r ?? l);
+      if (this.lookahead) this.lookahead.process(l, r ?? l);
+      else this.analyzer.process(l, r ?? l);
       this.lastMsgAt = performance.now();
     };
     src.connect(node);
@@ -303,7 +314,36 @@ export class LiveInput {
     this.sink.gain.value = 0;
     node.connect(this.sink).connect(ctx.destination);
     this.node = node;
-    this.liveAnalyser = new LiveAnalyser(ctx, src);
+    this.lagNode = ctx.createDelay(1);
+    this.lagNode.delayTime.value = 0;
+    src.connect(this.lagNode);
+    this.liveAnalyser = new LiveAnalyser(ctx, this.lagNode);
+  }
+
+  /** Seconds the visuals trail the sound. */
+  get visualLag(): number {
+    return this.lookahead?.lag ?? 0;
+  }
+
+  /**
+   * Turns the visual lag (and with it the look-ahead note tracker) on or off
+   * while running. Turning it on holds the visuals for `lag` seconds while
+   * the delay fills; turning it off catches them up at once.
+   */
+  setVisualLag(lag: number): void {
+    lag = Math.max(0, Math.min(0.5, lag));
+    if (lag === this.visualLag) return;
+    if (this.lookahead) {
+      this.lookahead.flush();
+      this.lookahead = null;
+      this.sampler.noteSource = null;
+      this.analyzer.notesLiveOn = true;
+    }
+    if (lag > 0) {
+      this.lookahead = new LiveLookahead(this.analyzer, lag);
+      this.sampler.noteSource = this.lookahead.sampleNotes;
+    }
+    if (this.lagNode) this.lagNode.delayTime.value = lag;
   }
 
   private endedExternally(reason: string): void {
@@ -339,7 +379,7 @@ export class LiveInput {
     } catch {
       // ignore
     }
-    for (const n of [this.source, this.node, this.sink, this.monitor]) {
+    for (const n of [this.source, this.node, this.sink, this.monitor, this.lagNode]) {
       try {
         n?.disconnect();
       } catch {

@@ -4,6 +4,7 @@
 
 import { RealtimeAnalyzer } from '../src/analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../src/analysis/RealtimeSampler';
+import { LiveLookahead } from '../src/analysis/LiveLookahead';
 import type { LiveAudioFrame, MusicState } from '../src/types';
 
 let SR = 44100;
@@ -561,6 +562,72 @@ if (ONLY) process.exit(failures === 0 ? 0 : 1);
   const nz = Float32Array.from({ length: 6 * 48000 }, (_, i) => (i % 9973 === 0 ? NaN : i % 7919 === 0 ? Infinity : (r1() * 2 - 1) * 1.5));
   const m = run(nz, nz, 48000, 333);
   check('noise / NaN input', m.nonFinite.length === 0, m.nonFinite.join(', ') || 'ok');
+}
+
+// ---------------------------------------------------------------- look-ahead notes (visual lag)
+{
+  // A staccato phrase (short notes, 0.25 s apart) then a legato one (tied notes, 0.5 s each), as a
+  // bright harmonic tone. LiveLookahead with a 0.1 s visual lag: the analyzer's clock runs 0.1 s
+  // behind the input, note starts show on that clock within 30 ms of the truth, and the legato
+  // tells the phrases apart.
+  const sr = 44100, lag = 0.1;
+  const notes: { t: number; d: number; m: number }[] = [];
+  const melody = [72, 76, 79, 76, 74, 77, 81, 77];
+  for (let i = 0; i < 20; i++) notes.push({ t: 1 + i * 0.25, d: 0.07, m: melody[i % 8] });
+  for (let i = 0; i < 10; i++) notes.push({ t: 7 + i * 0.5, d: 0.5, m: melody[(i + 3) % 8] });
+  const N = Math.ceil(13 * sr);
+  const x = new Float32Array(N);
+  for (const n of notes) {
+    const f = midiHz(n.m), i0 = Math.round(n.t * sr), len = Math.round(n.d * sr);
+    let ph = 0;
+    for (let i = 0; i < len; i++) {
+      const env = Math.min(1, i / (0.005 * sr)) * Math.min(1, (len - i) / (0.005 * sr));
+      ph += (2 * Math.PI * f) / sr;
+      let v = 0;
+      for (let h = 1; h <= 6; h++) v += Math.sin(h * ph) / h;
+      x[i0 + i] += 0.2 * env * v;
+    }
+  }
+  const a = new RealtimeAnalyzer(sr);
+  const sampler = new RealtimeSampler(a);
+  const la = new LiveLookahead(a, lag);
+  sampler.noteSource = la.sampleNotes;
+  const frame: LiveAudioFrame = { bass: 0, mid: 0, treb: 0, bassAtt: 0, midAtt: 0, trebAtt: 0, waveform: new Float32Array(1024), spectrum: new Float32Array(512) };
+  const seen: number[] = [];
+  const leg: { t: number; v: number }[] = [];
+  let tick = 0, lastStart = -1, clockOk = true, finite = true;
+  for (let i = 0; i < N; i += 512) {
+    const b = x.subarray(i, Math.min(N, i + 512));
+    la.process(b, b);
+    const behind = la.notes.streamTime - a.streamTime;
+    if (la.notes.streamTime > lag + 0.05 && (behind < lag - 1e-6 || behind > lag + 512 / sr + 1e-6)) clockOk = false;
+    while (tick + 1 / 60 <= a.streamTime) {
+      tick += 1 / 60;
+      const ns = sampler.sample(tick, 1 / 60, true, frame).notes!;
+      if (![ns.on, ns.held, ns.legato, ns.pitch, ns.height].every(Number.isFinite)) finite = false;
+      leg.push({ t: tick, v: ns.legato });
+      const m = ns.recent[ns.recent.length - 1];
+      if (m && tick - m.age > lastStart + 0.03) {
+        lastStart = tick - m.age;
+        seen.push(tick);
+      }
+    }
+  }
+  let hit = 0, late = 0;
+  for (const n of notes) {
+    const d = seen.map((s) => s - n.t).filter((d) => d > -0.03 && d < 0.1).sort((p, q) => Math.abs(p) - Math.abs(q))[0];
+    if (d !== undefined && Math.abs(d) <= 0.03) hit++;
+    else if (d !== undefined) late++;
+  }
+  const legMean = (t0: number, t1: number) => {
+    const v = leg.filter((e) => e.t >= t0 && e.t < t1);
+    return v.reduce((s, e) => s + e.v, 0) / Math.max(1, v.length);
+  };
+  const legS = legMean(2.5, 6), legL = legMean(8.5, 12);
+  console.log('');
+  check('look-ahead clock', clockOk && finite, `analyzer ${lag * 1000} ms behind the input: ${clockOk}; values finite: ${finite}`);
+  check('look-ahead note starts', hit >= notes.length * 0.9 && seen.length <= notes.length * 1.1, `${hit}/${notes.length} shown within 30 ms (${late} later), ${seen.length} shown in all`);
+  check('look-ahead legato', legS < 0.35 && legL > 0.65, `staccato phrase ${legS.toFixed(2)}, legato phrase ${legL.toFixed(2)}`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`);

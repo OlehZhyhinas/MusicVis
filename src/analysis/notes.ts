@@ -34,7 +34,7 @@ export const NOTE_RECENT = 12;
 /** Candidates kept per frame. */
 export const NOTE_K = 4;
 /** Offline, the pitch estimator runs on every PITCH_EVERY-th STFT frame. */
-const PITCH_EVERY = 3;
+export const PITCH_EVERY = 3;
 
 const F0_LO = 130;
 const F0_HI = 1050;
@@ -239,7 +239,6 @@ const BETA = 0.35; // cost of a voicing flip
 /** The live pick pays the jump cost every frame it stays away, so it is a light hysteresis. */
 const LIVE_LAMBDA = 0.15;
 
-/** Offline: the Viterbi line over the candidates. pitch NaN where unvoiced; energy dB of the pick. */
 /** Per-frame candidates of a whole song (NOTE_K slots per frame). */
 export interface NoteCands {
   p: Float32Array;
@@ -250,13 +249,33 @@ export interface NoteCands {
   level: Float32Array;
 }
 
-export function viterbiLine(c: NoteCands, T: number): { pitch: Float32Array; energy: Float32Array; novel: Float32Array } {
+/** The melody line: pitch (NaN where unvoiced), and the level (energy) and novelty level of the pick, per frame. */
+export interface NoteLine {
+  pitch: Float32Array;
+  energy: Float32Array;
+  novel: Float32Array;
+}
+
+/** Options for a fixed-lag (live) run of viterbiLine over a window. */
+export interface ViterbiOpts {
+  /** Top of the region level to gate against (default: the window's own 97th percentile). */
+  top?: number;
+  /** The line's pitch just before frame 0 (NaN: unvoiced); the path continues from it. */
+  init?: number;
+}
+
+/**
+ * The Viterbi line over the candidates. Offline over the whole song; live over the frames since the
+ * last committed one (continuing from its pitch), with the song's level top so far.
+ */
+export function viterbiLine(c: NoteCands, T: number, opts?: ViterbiOpts): NoteLine {
   const { p: cp, o: co, e: ce, v: cv, n: cn, level } = c;
   const S = NOTE_K + 1;
   const back = new Uint8Array(T * S);
   let prev = new Float64Array(S);
   let cur = new Float64Array(S);
-  const top = levelTop(level);
+  const top = opts?.top ?? levelTop(level);
+  const init = opts?.init;
   for (let t = 0; t < T; t++) {
     const g = clamp01((level[t] - (top - 45)) / 12);
     const o = t * NOTE_K;
@@ -270,6 +289,11 @@ export function viterbiLine(c: NoteCands, T: number): { pitch: Float32Array; ene
       let bestV = -Infinity, bestI = NOTE_K;
       if (t === 0) {
         bestV = 0;
+        if (init !== undefined) {
+          const iv = !Number.isNaN(init);
+          if (voiced && iv) bestV = -LAMBDA * jumpCost(Math.abs(cp[o + s] - init));
+          else if (voiced !== iv) bestV = -BETA;
+        }
       } else {
         const po = o - NOTE_K;
         for (let q = 0; q < S; q++) {
@@ -486,7 +510,12 @@ function smoothRange(x: Float32Array, a: number, b: number, w: number, out: Floa
 export function buildNoteTrack(
   c: NoteCands, T: number, fr: number,
 ): NoteTrack {
-  const { pitch, energy, novel } = viterbiLine(c, T);
+  return noteTrackFromLine(c, T, fr, viterbiLine(c, T));
+}
+
+/** The note track from a melody line already picked over the candidates (the line's arrays are modified). */
+export function noteTrackFromLine(c: NoteCands, T: number, fr: number, line: NoteLine): NoteTrack {
+  const { pitch, energy, novel } = line;
   const raw = rejectRevealed(rejectBackground(segmentNotes(pitch, energy, fr), novel, fr), c, pitch, energy, fr);
   const track: NoteTrack = {
     notes: [], on: new Float32Array(T), held: new Float32Array(T), legato: new Float32Array(T), glide: new Float32Array(T),
@@ -713,47 +742,53 @@ export class NoteRecorder {
     }
   }
 
-  /**
-   * The frames between analysed ones: each candidate of the frame before that continues (within half
-   * a semitone) into the frame after is interpolated; the others are held from the nearer frame.
-   */
+  /** The frames between analysed ones (see fillFrame). */
   private fill(): void {
-    const c = this.c, T = this.T, K = NOTE_K;
+    const T = this.T;
     for (let a = 0; a < T; a += PITCH_EVERY) {
       const b = a + PITCH_EVERY;
-      for (let f = a + 1; f < Math.min(b, T); f++) {
-        const hasB = b < T;
-        const w = hasB ? (f - a) / PITCH_EVERY : 0;
-        const src = !hasB || w < 0.5 ? a : b;
-        c.level[f] = hasB ? c.level[a] + (c.level[b] - c.level[a]) * w : c.level[a];
-        c.n[f] = c.n[src];
-        for (let i = 0; i < c.n[src]; i++) {
-          const js = src * K + i, jf = f * K + i;
-          c.p[jf] = c.p[js];
-          c.o[jf] = c.o[js];
-          c.e[jf] = c.e[js];
-          c.v[jf] = c.v[js];
-          if (!hasB) continue;
-          // Pair this candidate with its continuation on the other side.
-          const other = src === a ? b : a;
-          for (let q = 0; q < c.n[other]; q++) {
-            const jo = other * K + q;
-            if (Math.abs(c.p[jo] - c.p[js]) >= 0.5) continue;
-            const ja = src === a ? js : jo, jb = src === a ? jo : js;
-            c.p[jf] = c.p[ja] + (c.p[jb] - c.p[ja]) * w;
-            c.o[jf] = c.o[ja] + (c.o[jb] - c.o[ja]) * w;
-            c.e[jf] = c.e[ja] + (c.e[jb] - c.e[ja]) * w;
-            c.v[jf] = c.v[ja] + (c.v[jb] - c.v[ja]) * w;
-            break;
-          }
-        }
-      }
+      for (let f = a + 1; f < Math.min(b, T); f++) fillFrame(this.c, a, b < T ? b : -1, f);
     }
   }
 
   build(): NoteTrack {
     this.fill();
     return buildNoteTrack(this.c, this.T, this.frameRate);
+  }
+}
+
+/**
+ * Fills frame f between analysed frames a and b (b = -1: none yet): each candidate of the frame
+ * before that continues (within half a semitone) into the frame after is interpolated; the others
+ * are held from the nearer frame. `slot` maps a frame to its index in `c` (a ring, live).
+ */
+export function fillFrame(c: NoteCands, a: number, b: number, f: number, slot: (frame: number) => number = (x) => x): void {
+  const K = NOTE_K;
+  const hasB = b >= 0;
+  const w = hasB ? (f - a) / (b - a) : 0;
+  const src = !hasB || w < 0.5 ? a : b;
+  const sa = slot(a), sb = hasB ? slot(b) : -1, sf = slot(f), ss = slot(src);
+  c.level[sf] = hasB ? c.level[sa] + (c.level[sb] - c.level[sa]) * w : c.level[sa];
+  c.n[sf] = c.n[ss];
+  for (let i = 0; i < c.n[ss]; i++) {
+    const js = ss * K + i, jf = sf * K + i;
+    c.p[jf] = c.p[js];
+    c.o[jf] = c.o[js];
+    c.e[jf] = c.e[js];
+    c.v[jf] = c.v[js];
+    if (!hasB) continue;
+    // Pair this candidate with its continuation on the other side.
+    const so = src === a ? sb : sa;
+    for (let q = 0; q < c.n[so]; q++) {
+      const jo = so * K + q;
+      if (Math.abs(c.p[jo] - c.p[js]) >= 0.5) continue;
+      const ja = src === a ? js : jo, jb = src === a ? jo : js;
+      c.p[jf] = c.p[ja] + (c.p[jb] - c.p[ja]) * w;
+      c.o[jf] = c.o[ja] + (c.o[jb] - c.o[ja]) * w;
+      c.e[jf] = c.e[ja] + (c.e[jb] - c.e[ja]) * w;
+      c.v[jf] = c.v[ja] + (c.v[jb] - c.v[ja]) * w;
+      break;
+    }
   }
 }
 
