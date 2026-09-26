@@ -47,6 +47,28 @@ export class BoxAvg {
 }
 
 /** Ring buffer of the last `len` values with random access by age (0 = newest). */
+/** One-pole follower with separate rise / fall time constants (in frames): fast attack without a box delay. */
+export class AttackRelease {
+  private readonly kUp: number;
+  private readonly kDown: number;
+  private started = false;
+  value = 0;
+  constructor(upFrames: number, downFrames: number) {
+    this.kUp = upFrames <= 0 ? 1 : 1 - Math.exp(-1 / upFrames);
+    this.kDown = downFrames <= 0 ? 1 : 1 - Math.exp(-1 / downFrames);
+  }
+  push(v: number): number {
+    if (!Number.isFinite(v)) v = 0;
+    if (!this.started) {
+      this.started = true;
+      this.value = v;
+      return v;
+    }
+    this.value += (v - this.value) * (v > this.value ? this.kUp : this.kDown);
+    return this.value;
+  }
+}
+
 export class History {
   readonly data: Float32Array;
   private head = 0; // index of the next write

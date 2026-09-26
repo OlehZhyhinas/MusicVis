@@ -32,7 +32,7 @@ import {
   DRUM_FLAT_HI,
   expand,
 } from './complexity';
-import { BoxAvg, History, StreamDecimator, medianInPlace } from './rtUtil';
+import { AttackRelease, BoxAvg, History, StreamDecimator, medianInPlace } from './rtUtil';
 import { BeatTracker } from './rtBeat';
 import { KeyTracker } from './rtKey';
 import { HarmonyTracker } from './harmony';
@@ -123,13 +123,16 @@ class OnsetPicker {
   }
 }
 
-/** Running 0..1 normalization of a dB envelope against its own recent peak (stems.ts envelopeFromPower, causal). */
+/**
+ * Running 0..1 normalization of a dB envelope against its own recent peak (stems.ts envelopeFromPower,
+ * causal). The dB level rises at once and falls over ~40 ms (a box average here delayed every rise).
+ */
 class DbEnvelope {
   private peak = -Infinity;
-  private readonly sm: BoxAvg;
+  private readonly sm: AttackRelease;
   private readonly decay: number; // dB per frame
   constructor(fr: number) {
-    this.sm = new BoxAvg(oddWidth(0.03 * fr, 1));
+    this.sm = new AttackRelease(0, 0.04 * fr);
     this.decay = 1.5 / fr; // peak memory falls 1.5 dB/s
   }
   push(p: number, top: number, floorRel: number, ceilRel: number): number {
@@ -247,6 +250,12 @@ export class RealtimeAnalyzer {
   // stems
   private readonly B: number;
   private readonly wT: number;
+  /**
+   * Shorter causal median for the bass bins (< 250 Hz), used for the bass envelope only: the 0.2 s
+   * median held every bass entry back ~100 ms. Presence, complexity and structure keep the long one.
+   */
+  private readonly wTBass: number;
+  private readonly HBass: Float32Array;
   private readonly xHist: Float32Array; // wT * B magnitudes
   private xHistPos = 0;
   private xHistCount = 0;
@@ -353,6 +362,8 @@ export class RealtimeAnalyzer {
     this.onSq = new BoxAvg(oddWidth(4 * fr));
 
     this.wT = oddWidth(0.2 * fr, 5);
+    this.wTBass = Math.min(this.wT, oddWidth(0.06 * fr, 3));
+    this.HBass = new Float32Array(this.bands.count);
     this.xHist = new Float32Array(this.wT * B);
     this.medScratch = new Float64Array(Math.max(this.wT, 17) + 2);
     this.X = new Float32Array(B);
@@ -709,9 +720,16 @@ export class RealtimeAnalyzer {
     this.xHistCount = Math.min(this.wT, this.xHistCount + 1);
     const cnt = this.xHistCount;
     const ms = this.medScratch;
+    const cntB = Math.min(cnt, this.wTBass);
+    const HB = this.HBass;
     for (let b = 0; b < B; b++) {
       for (let i = 0; i < cnt; i++) ms[i] = this.xHist[i * B + b];
       H[b] = medianInPlace(ms, cnt);
+      if (freq[b] < 250) {
+        // The most recent cntB frames (the ring's newest entry is just before xHistPos).
+        for (let i = 0; i < cntB; i++) ms[i] = this.xHist[((this.xHistPos - 1 - i + 2 * this.wT) % this.wT) * B + b];
+        HB[b] = medianInPlace(ms, cntB);
+      }
     }
     // Vertical (frequency) median, width 17, mirrored edges -> percussive-enhanced.
     {
@@ -798,7 +816,8 @@ export class RealtimeAnalyzer {
         if (dPerc > 0) fS += dPerc;
       }
       if (f < 250) {
-        ba += harm;
+        const hb = this.HBass[b];
+        ba += hb * hb + p2 > 0 ? ((hb * hb) / (hb * hb + p2)) * x2 : 0.5 * x2;
         wBa += harm * this.wHalf[b];
         const hDb = Math.max(floorDb, toDb(harm));
         const d = hDb - this.prevHarm[b];

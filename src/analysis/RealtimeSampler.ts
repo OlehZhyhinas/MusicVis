@@ -19,7 +19,9 @@ const DROP_TAU = 1.5;
 const KEY_PULSE_TAU = 0.6;
 const KEY_HUE_TAU = 0.5;
 const COMPLEXITY_TAU = 1.0;
-const ENV_TAU = 0.03;
+/** Envelope smoothing: rises almost at once, falls over ~40 ms (a symmetric 30 ms ease delayed every rise). */
+const ENV_TAU_UP = 0.006;
+const ENV_TAU_DOWN = 0.04;
 /** Render slightly ahead of the analysis so pulses land on the audible beat (window latency). */
 const LOOKAHEAD_S = 0.02;
 
@@ -167,14 +169,16 @@ export class RealtimeSampler {
     s.barPhase = Math.min(0.999999, wrap01((pos - bt.downbeatSlot) / 4));
 
     // --- Envelopes (light smoothing of the ~86 Hz analysis frames) ---
-    const kEnv = 1 - Math.exp(-dt / ENV_TAU);
+    const kUp = 1 - Math.exp(-dt / ENV_TAU_UP);
+    const kDown = 1 - Math.exp(-dt / ENV_TAU_DOWN);
+    const ease = (cur: number, to: number) => cur + (to - cur) * (to > cur ? kUp : kDown);
     for (let k = 0; k < STEM_NAMES.length; k++) {
       const n = STEM_NAMES[k];
-      s.stems[n] += (a.stems[n] - s.stems[n]) * kEnv;
+      s.stems[n] = ease(s.stems[n], a.stems[n]);
       s.stemOnsets[n] = Math.max(a.stemOnsets[n], s.stemOnsets[n] * Math.exp(-dt / 0.08));
-      s.stemPresence[n] += (a.stemPresence[n] - s.stemPresence[n]) * kEnv;
+      s.stemPresence[n] = ease(s.stemPresence[n], a.stemPresence[n]);
     }
-    s.loudness += (a.loudness - s.loudness) * kEnv;
+    s.loudness = ease(s.loudness, a.loudness);
     s.complexity = events ? s.complexity + (a.complexity - s.complexity) * (1 - Math.exp(-dt / COMPLEXITY_TAU)) : a.complexity;
     s.songComplexity = a.songComplexity;
     s.chroma.set(a.chroma);
