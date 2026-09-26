@@ -137,7 +137,7 @@ export function grooveGeneTests(check: Check): void {
     const rng = mulberry32(8080);
     let gained = 0, lost = 0;
     const bad: string[] = [];
-    for (let i = 0; i < 2000; i++) {
+    for (let i = 0; i < 6000; i++) {
       const base = SEEDS[i % SEEDS.length].genome;
       const src = i % 2 && !base.groove ? base : withGroove(base);
       const g = mutate(src, rng, 0.3 + 2 * rng());
@@ -146,7 +146,7 @@ export function grooveGeneTests(check: Check): void {
       if (!src.groove && g.groove) gained++;
       if (src.groove && !g.groove) lost++;
     }
-    check('groove.mutate', !bad.length && gained > 5 && gained < 200 && lost > 0, bad.slice(0, 3).join(' | ') || `gained ${gained}/1000, lost ${lost}/1000`);
+    check('groove.mutate', !bad.length && gained > 15 && gained < 600 && lost > 0, bad.slice(0, 3).join(' | ') || `gained ${gained}/1000, lost ${lost}/1000`);
   }
 
   // Naming.

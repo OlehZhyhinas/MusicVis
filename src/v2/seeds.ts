@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 113;
+export const SEED_VERSION = 114;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2336,6 +2336,41 @@ const ART2: Def[] = [
       rx('vocals', 'sh', 0, 'haze', 0.5, { atk: 0.05, rel: 0.5 }),
       rx('loud', 'sh', 0, 'sweep', 0.5, { atk: 0.2, rel: 1 }),
       rx('section', 'sh', 0, 'hues', 0.5, { atk: 0.05, rel: 2 }),
+    ],
+  },
+  {
+    // A cratered moon hangs in the dark with five slow arms curling off its rim, and on its face the
+    // sand of a round Chladni plate draws the chord: every chord change scatters the grains and they
+    // settle into a new nodal mandala across the lunar surface. The bass pushes the arms out, drum
+    // hits make the grains jump, the melody curls the arms, and a drop solarises the whole moon.
+    origin: 'X12', name: 'Lunar Chladni', energy: [0.1, 0.8], scheme: 'split', hue: 0.1,
+    color: { sat: 1, adapt: 0.1, exposure: 0.8, bloom: 0.9, vignette: 0.5, contrast: 0.06 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.3 }],
+        place: ['point', { x: 0, y: 0.02 }],
+        motion: ['bob', { amp: 0.6 }],
+        deform: ['arms', { count: 5, reach: 0.8, width: 0.2, curl: 0.9, sway: 1, turn: 16 }],
+        material: ['fill', { gain: 1.1, soft: 0.35, halo: 0.5, core: 0.5 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.05, rel: 0.5 }],
+        color: ['fixed', { hue: 0.5 }],
+      }),
+      body({
+        shape: ['cymatics', { plate: 1, size: 0.28, modes: 7, source: 0, hold: 1, settle: 0.5, sand: 0.7, line: 1.2, shake: 0.3, rim: 0.2 }],
+        place: ['point', { x: 0, y: 0.02 }],
+        material: ['glow', { gain: 0.8 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.12 }],
+        color: ['fixed', { hue: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'de', 0, 'reach', 0.6, { atk: 0.03, rel: 0.4 }),
+      rx('held', 'de', 0, 'width', 0.6, { atk: 0.05, rel: 0.5 }),
+      rx('hit', 'ma', 1, 'gain', 0.6, { atk: 0.005, rel: 0.2 }),
+      rx('chordchange', 'sh', 1, 'line', 0.7, { atk: 0.005, rel: 0.5 }),
+      rx('drop', 'ma', 0, 'gain', 0.5, { atk: 0.02, rel: 2 }),
     ],
   },
 ];
