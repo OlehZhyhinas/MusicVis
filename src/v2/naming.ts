@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -74,6 +74,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   beams: ['Searchlight', 'Floodlight', 'Spotlight', 'Lightshow', 'Beacons', 'Shafts', 'Rays', 'Laser', 'Stagelight', 'Limelight', 'Footlights', 'Lighthouse'],
   depth: ['Sculpture', 'Cavern', 'Chamber', 'Abyss', 'Vault', 'Hollow', 'Monolith', 'Reliquary', 'Atrium', 'Void', 'Depths', 'Diorama'],
   segment: ['Stroke', 'Dash', 'Needle', 'Streak', 'Stitch', 'Splinter', 'Rod', 'Baton', 'Quill', 'Sliver', 'Spoke', 'Wand'],
+  figure: ['Silhouette', 'Figure', 'Monument', 'Tower', 'Crescent', 'Emblem', 'Totem', 'Effigy', 'Glyph', 'Cameo', 'Landmark', 'Spire'],
   scope: ['Scope', 'Knot', 'Gyroscope', 'Armillary', 'Spirograph', 'Torus', 'Orrery', 'Astrolabe', 'Whorl', 'Rotor', 'Loop', 'Oscillograph'],
 };
 
@@ -104,6 +105,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'notes': return 'melody';
     case 'curve': return 'wave';
     case 'superscope': return 'scope';
+    case 'compound': return 'figure';
     case 'bars': return 'spectrum';
     case 'solid': return 'wire';
     case 'segment': return pk === 'walker' ? 'snake' : 'segment';

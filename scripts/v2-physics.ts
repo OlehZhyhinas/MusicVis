@@ -75,20 +75,25 @@ export function shapeGeneChecks(check: Check, kind: ShapeKind, marker: string, n
 
   // Mutation of a genome of this kind keeps it valid; parameters move. Its own random stream, so the
   // count does not depend on how many seeds the crossover loop above walked through.
-  const mrng = mulberry32(9090 + kind.length);
-  let g = host;
+  // Three streams of 300: a single stream moves the shape's params only ~7 times on average (a shape
+  // param is a small share of all mutations), too few to threshold without flaking when the operator
+  // mix changes.
   const mbad: string[] = [];
   let moved = 0;
-  for (let i = 0; i < 300; i++) {
-    const m = mutate(g, mrng, 1);
-    const errs = validate(m);
-    if (errs.length) mbad.push(errs.join(';'));
-    const a = g.bodies.find((b) => b.shape.kind === kind);
-    const b = m.bodies.find((x) => x.shape.kind === kind);
-    if (a && b && JSON.stringify(a.shape.p) !== JSON.stringify(b.shape.p)) moved++;
-    if (m.bodies.some((x) => x.shape.kind === kind)) g = m;
+  for (let st = 0; st < 3; st++) {
+    const mrng = mulberry32(9090 + kind.length + st * 101);
+    let g = host;
+    for (let i = 0; i < 300; i++) {
+      const m = mutate(g, mrng, 1);
+      const errs = validate(m);
+      if (errs.length) mbad.push(errs.join(';'));
+      const a = g.bodies.find((b) => b.shape.kind === kind);
+      const b = m.bodies.find((x) => x.shape.kind === kind);
+      if (a && b && JSON.stringify(a.shape.p) !== JSON.stringify(b.shape.p)) moved++;
+      if (m.bodies.some((x) => x.shape.kind === kind)) g = m;
+    }
   }
-  check(`${kind}.mutation`, !mbad.length && moved >= 3, mbad.slice(0, 3).join(' | ') || `300 mutations valid, ${moved} moved the ${kind} parameters`);
+  check(`${kind}.mutation`, !mbad.length && moved >= 9, mbad.slice(0, 3).join(' | ') || `3 x 300 mutations valid, ${moved} moved the ${kind} parameters`);
 
   // A hidden-body slime emission names the preset after its network, so name a trail-emitting copy.
   const nb = { ...(host.bodies.find((b) => b.shape.kind === kind) as BodyGene), emit: { kind: 'trail', p: {} } } as BodyGene;

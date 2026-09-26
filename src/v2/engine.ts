@@ -30,7 +30,7 @@ import { NEUTRAL_NUDGE, easeNudge, lineKick, lyricTarget, type LyricNudge } from
 import { CaptionLayer } from './genes/lyricsGpu';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
-  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
+  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, bodyBxCount, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
   type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type PaletteGene, type Params, type Scheme, type Schema,
   type ShapeGene, type Signal,
   paletteHue,
@@ -50,6 +50,7 @@ import { packTonnetz } from './genes/tonnetz';
 import { NOTE_W, NoteHistory, packNotes } from './genes/notes';
 import { LandWorld } from './genes/landscapeGpu';
 import { packCymatics } from './genes/cymatics';
+import { compoundExtent, packParts } from './genes/compound';
 import { DriftDriver } from './genes/driftPlay';
 
 /**
@@ -592,6 +593,8 @@ export class Slot {
   readonly wv: Float32Array;
   readonly drA: Float32Array;
   readonly drB: Float32Array;
+  /** Per body: its extra uniform array (compound parts, ring halos), null when it declares none. */
+  readonly bx: (Float32Array | null)[];
   readonly seg = new Float32Array(48 * 4);
   readonly segZ = new Float32Array(48);
   segN = 0;
@@ -641,6 +644,10 @@ export class Slot {
     this.wv = new Float32Array(this.nb * 16);
     this.drA = new Float32Array(this.nb * 12);
     this.drB = new Float32Array(this.nb * 12);
+    this.bx = genome.bodies.map((b) => {
+      const n = bodyBxCount(b);
+      return n ? new Float32Array(n * 4) : null;
+    });
     this.sparks = genome.bodies.findIndex((b) => b.emit.kind === 'sparks');
     this.slime = genome.bodies.findIndex((b) => b.emit.kind === 'slime');
     this.flock = genome.bodies.findIndex((b) => b.emit.kind === 'flock');
@@ -1256,6 +1263,15 @@ export class Stage {
       case 'dots': E[o + 2] = PA('spacing'); E[o + 3] = PA('size'); break;
       case 'textured': E[o + 2] = PA('amount'); E[o + 3] = PA('halo'); E[o + 4] = b.material.p.tex; E[o + 5] = PA('clip'); E[o + 6] = halo; break;
       case 'chrome': E[o + 2] = PA('chrome'); break;
+    }
+
+    // Ring halos: slot 0 of the body's extra array (count, gap, fade).
+    const bx = s.bx[bi];
+    if (bx) {
+      bx[0] = b.material.p.rings ?? 0;
+      bx[1] = PA('rgap');
+      bx[2] = PA('rfade');
+      bx[3] = 0;
     }
 
     // Copies: placement, then motion.
@@ -1902,6 +1918,13 @@ export class Stage {
         }
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
+      }
+      case 'compound': {
+        // Several primitives in one field: the size scales the figure; the parts go to the body's extra array.
+        const bx = s.bx[bi];
+        if (bx && sh.parts && !fused) packParts(sh.parts, bx);
+        E[o] = P('size');
+        return P('size') * compoundExtent(sh.parts);
       }
       case 'superscope': {
         // AVS superscope: 3D tumble on the body's bar clock, pushed by the bass and the beat.
@@ -2675,6 +2698,7 @@ export class Stage {
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex)
       .tex('uNote', this.sig.noteTex);
+    s.bx.forEach((a, i) => { if (a) p.f4v(`uBx${i}`, a); });
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
     if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
   }

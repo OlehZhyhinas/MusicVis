@@ -18,13 +18,14 @@ import { WATER_GLSL } from './genes/water';
 import { BLEND_GLSL, blendCall } from './genes/blend';
 import { CYMATICS_GLSL } from './genes/cymatics';
 import {
-  SHAPE_CLASS, STATIC_MATERIALS, bodyLayer, isFoldPlace, sdfCapable,
+  SHAPE_CLASS, STATIC_MATERIALS, bodyBxCount, bodyLayer, isFoldPlace, ringsOn, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
 } from './genome';
 import { SCENE_PASS, sceneField } from './genes/raymarch';
 import { LAND_PASS, landField } from './genes/landscape';
 import { TONNETZ_GLSL } from './genes/tonnetz';
 import { NOTES_GLSL } from './genes/notes';
+import { COMPOUND_LIB, RINGS_GLSL, compoundShp } from './genes/compound';
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -708,7 +709,8 @@ function slot(src: string, bi: number, suffix: string): string {
     .replace(/\bEC\b/g, `uBd[${b + 18}]`)
     .replace(/\bED\b/g, `uBd[${b + 19}]`)
     .replace(/\bWV(\d)\b/g, (_m, k: string) => `uWv[${bi * 4 + Number(k)}]`)
-    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
+    .replace(/\bBX\((\d+)\)/g, (_m, k: string) => `uBx${bi}[${k}]`)
+    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|RINGS|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
 }
 
 /** Shape distance field for the body (SA/SB = its parameter slots). */
@@ -755,10 +757,16 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
     if (!shared.has(own)) { shared.add(own); fieldHelpers = own; }
     pre += fld;
   }
-  if (drawsSdf(b)) pre += shapeCode(b.shape.kind, 'SHP', [2, 3]) + '\n';
+  // Compound parts and ring halos read the body's extra uniform array (declared only when used).
+  const nbx = bodyBxCount(b);
+  if (nbx) pre += `uniform vec4 uBx${sfx}[${nbx}];\n`;
+  if (drawsSdf(b)) pre += (b.shape.kind === 'compound' ? compoundShp(b.shape.parts ?? []).replace(/\bSA\b/g, 'BD(2)') : shapeCode(b.shape.kind, 'SHP', [2, 3])) + '\n';
   if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
   if (drawsSdf(b)) pre += BODY_COL + '\n' + MATERIAL_GLSL[b.material.kind].replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
+  const rings = ringsOn(b);
+  if (rings) pre += RINGS_GLSL + '\n';
+  const ringsAt = (sd: string, Q: string, sc: string) => (rings ? `  ex += RINGS(${sd}, ${Q}, p, ${sc});\n` : '');
 
   // Fuse: blend the second shape's field into s (same local frame).
   const fuseOp = !fuse
@@ -783,7 +791,7 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
     ${fuseOp}
     vec3 ex;
     vec4 m = MAT(s, qq, ${Q}, max(BD(4).w, 1e-3) * sc, p, ex);
-    m.a *= 1.0${regionBoost};
+${ringsAt('s', Q, 'sc')}    m.a *= 1.0${regionBoost};
 `;
     if (cover) {
       s += `    vec3 col = m.rgb * gain;
@@ -844,7 +852,7 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   vec3 ex;
   vec4 m = MAT(vec3(dm, 0.0, 1.0), p, Qm, max(BD(4).w, 1e-3), p, ex);
   gMetaOn = 0.0;
-`;
+${ringsAt('vec3(dm, 0.0, 1.0)', 'Qm', '1.0')}`;
       placeCode += cover
         ? `  vec3 col = m.rgb * gain;
   c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
@@ -938,7 +946,7 @@ ${evalCopy('rot2(-T0.z) * (mp - T0.xy)', 'Qc', 'T0').replace(/length\(p - T0\.xy
   QF /= max(wsum, 1e-4);
   vec3 ex;
   vec4 m = MAT(sF, p - uCp[${C0}].xy, QF, max(BD(4).w, 1e-3), p, ex);
-`;
+${ringsAt('sF', 'QF', '1.0')}`;
       placeCode += cover
         ? `  vec3 col = m.rgb * gain;
   c = mix(c + col * m.a * 0.3 * uAccum, mix(c, col, clamp(m.a, 0.0, 1.0)), BD(12).x);
@@ -1024,7 +1032,7 @@ export function buildSources(g: Genome): Sources {
   if (g.carrier.kind === 'flow') defs.push('USE_FLOW');
   if (g.tone.p.reflect > 0.5) defs.push('REFLECT');
   if (g.tone.p.tonemap > 0.5) defs.push('LOG_TONE');
-  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL + BLEND_GLSL + (g.timbre ? timbreGlsl(nb) : '');
+  const pre = HEAD + defs.map((d) => `#define ${d}\n`).join('') + COMMON + lib(nb) + FLAME_VARIATION_GLSL + DRAW_GLSL + BLEND_GLSL + (g.timbre ? timbreGlsl(nb) : '') + (g.bodies.some((b) => b.shape.kind === 'compound') ? COMPOUND_LIB : '');
 
   const warpOps = g.chain.map((o, i) => (o.stage === 'warp' ? opCode(o, i) : '')).join('');
   const viewOps = g.chain.map((o, i) => (o.stage === 'view' ? opCode(o, i) : '')).join('');

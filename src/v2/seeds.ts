@@ -40,6 +40,9 @@ import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
+import { part, type CompoundPart } from './genes/compound';
+// Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
+export { part };
 
 export const SEED_VERSION = 130;
 
@@ -72,6 +75,8 @@ interface BodyDef {
   feel?: [FeelKind, P?];
   /** Colour mapping; by default what the placement implies (grid: pitch, copies: instrument, one shape: fixed). */
   color?: [MappingKind, P?];
+  /** A compound shape's parts (shape 'compound'; see genes/compound.ts), made with part(). */
+  parts?: CompoundPart[];
 }
 function body(d: BodyDef): BodyGene {
   const [sk, sp = {}, xforms] = d.shape;
@@ -94,6 +99,7 @@ function body(d: BodyDef): BodyGene {
     color: { kind: ck, p: { ...defaultParams(MAPPING_SCHEMAS[ck]), amount: 1, ...cp } },
   };
   if (xforms) b.shape.xforms = xforms;
+  if (d.parts) b.shape.parts = d.parts.map((x) => ({ ...x }));
   return b;
 }
 

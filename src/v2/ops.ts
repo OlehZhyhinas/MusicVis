@@ -12,6 +12,7 @@ import {
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema, type ShapeGene, type ShapeKind,
 } from './genome';
 import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
+import { compoundExtent, crossParts, jitterParts, randomParts, restructureParts } from './genes/compound';
 import { crossAccent, jitterAccent, randomAccent } from './genes/accent';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
 import { crossHarmony, jitterHarmony, randomHarmony } from './genes/harmony';
@@ -64,7 +65,7 @@ function jitterValue(v: number, s: ParamSpec, rng: Rng, amt: number): number {
 }
 
 /** Params that mutate only rarely (a placement's static turn changes the look wholesale). */
-const RARE_KEYS = new Set(['angle']);
+const RARE_KEYS = new Set(['angle', 'rings']);
 
 function jitterParams(p: Params, schema: Schema, rng: Rng, amt: number, frac = 0.4): boolean {
   const keys = Object.keys(schema);
@@ -173,7 +174,7 @@ export function randomXform(rng: Rng): FlameXformGene {
 
 /** Random pick weights per locus kind (the favoured kinds read well on most shapes). */
 const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
-  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6 },
+  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6, compound: 0.25 },
   place: { point: 3, orbit: 2, walker: 1.5, stations: 1.5, row: 0.7, float: 1.2, outline: 1.2, grid: 1.2, ring: 1.5, mirror: 1 },
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8 },
@@ -202,6 +203,8 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   if (locus === 'material') p.gain = 0.6 + 0.8 * rng();
   // Most bodies add their light; a few blend another way (AVS effect-list modes).
   if (locus === 'material') p.blend = rng() < 0.15 ? 1 + Math.floor(rng() * 5) : 0;
+  // Ring halos are a strong look: a few random materials carry them.
+  if (locus === 'material') p.rings = rng() < 0.04 ? randInt(rng, 2, 5) : 0;
   // Shapes are nearly always placed as drawn; a few stand turned (upright, diagonal).
   if (locus === 'place') p.angle = rng() < 0.1 ? pick(rng, [0.25, -0.25, 0.125, -0.125]) : 0;
   if (locus === 'emit' && k === 'sparks') p.count = Math.min(p.count, 32768);
@@ -211,6 +214,7 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   if (locus === 'shape' && k === 'flame') p.count = pick(rng, [65536, 131072, 262144]);
   const g: Gene = { kind: k, p };
   if (locus === 'shape' && k === 'flame') (g as ShapeGene).xforms = Array.from({ length: randInt(rng, 2, 3) }, () => randomXform(rng));
+  if (locus === 'shape' && k === 'compound') (g as ShapeGene).parts = randomParts(rng);
   return g;
 }
 
@@ -251,6 +255,7 @@ export function shapeSize(s: ShapeGene): number {
     case 'bars': return s.p.mode === 1 || s.p.mode === 2 ? s.p.radius + s.p.len * 0.5 : 0.5;
     case 'curve': return s.p.form === 0 ? 0.6 : s.p.radius;
     case 'superscope': return s.p.size;
+    case 'compound': return s.p.size * compoundExtent(s.parts);
     default: return 0.5;
   }
 }
@@ -267,6 +272,7 @@ function setShapeSize(s: ShapeGene, r: number): void {
     case 'bars': if (s.p.mode === 1 || s.p.mode === 2) { put('radius', r * 0.6); put('len', r * 0.6); } break;
     case 'curve': if (s.p.form !== 0) put('radius', r); break;
     case 'superscope': put('size', r); break;
+    case 'compound': put('size', r / compoundExtent(s.parts)); break;
   }
 }
 
@@ -447,6 +453,7 @@ export function morphXforms(xa: FlameXformGene[], xb: FlameXformGene[], rng: Rng
 function morphGene<G extends Gene>(locus: Locus, a: G, b: G, rng: Rng): G {
   const out = { ...a, p: morphParams(a.p, b.p, locusSchema(locus, a.kind), rng) } as G;
   if (locus === 'shape' && a.kind === 'flame') (out as unknown as ShapeGene).xforms = morphXforms((a as unknown as ShapeGene).xforms ?? [], (b as unknown as ShapeGene).xforms ?? [], rng);
+  if (locus === 'shape' && a.kind === 'compound') (out as unknown as ShapeGene).parts = crossParts((a as unknown as ShapeGene).parts ?? [], (b as unknown as ShapeGene).parts ?? [], rng);
   return out;
 }
 
@@ -489,7 +496,7 @@ export const LINK_SPLIT = 0.2;
 
 /** Can this shape fuse the other one in? */
 export function canFuse(a: BodyGene, s: ShapeGene): boolean {
-  if (a.fuse || s.kind === a.shape.kind || !sdfCapable(s)) return false;
+  if (a.fuse || s.kind === a.shape.kind || s.kind === 'compound' || !sdfCapable(s)) return false;
   return !(UNIQUE_SHAPES.includes(s.kind) && s.kind === a.shape.kind);
 }
 
@@ -1045,6 +1052,18 @@ const MUTATORS: [number, string, Mutator][] = [
     g.chain.splice(randInt(rng, 0, g.chain.length), 0, xformToOp(pick(rng, f.xforms), rng));
     return true;
   }],
+  // Compound shapes: parts nudged in small steps; rarely a part added, removed, reordered, re-joined or re-shaped.
+  [2, 'compound-parts', (g, rng, amt) => {
+    const bs = g.bodies.filter((b) => b.shape.kind === 'compound' && b.shape.parts?.length);
+    if (!bs.length) return false;
+    jitterParts(pick(rng, bs).shape.parts!, rng, amt);
+    return true;
+  }],
+  [0.4, 'compound-structure', (g, rng) => {
+    const bs = g.bodies.filter((b) => b.shape.kind === 'compound' && b.shape.parts?.length);
+    if (!bs.length) return false;
+    return restructureParts(pick(rng, bs).shape.parts!, rng);
+  }],
   // Deform ops: bend the drawing itself.
   [1.5, 'jitter-deform-op', (g, rng, amt) => {
     const b = pick(rng, g.bodies);
@@ -1096,7 +1115,7 @@ const MUTATORS: [number, string, Mutator][] = [
       return true;
     }
     const used = g.bodies.flatMap((x) => [x.shape.kind, ...(x.fuse ? [x.fuse.shape.kind] : [])]);
-    const kinds = SHAPE_KINDS.filter((k) => SHAPE_CLASS[k] === 'sdf' && k !== b.shape.kind && !(UNIQUE_SHAPES.includes(k) && used.includes(k)));
+    const kinds = SHAPE_KINDS.filter((k) => SHAPE_CLASS[k] === 'sdf' && k !== b.shape.kind && k !== 'compound' && !(UNIQUE_SHAPES.includes(k) && used.includes(k)));
     const s = randomGene('shape', rng, pick(rng, kinds)) as ShapeGene;
     const base = cloneBody(b);
     delete base.fuse;
@@ -1222,7 +1241,7 @@ const MUTATORS: [number, string, Mutator][] = [
 ];
 export const MUTATION_NAMES = MUTATORS.map((m) => m[1]);
 /** Mutations that change what a preset is, damped for light (post-crossover) mutation. */
-const STRUCTURAL = new Set(['swap-shape', 'remove-body', 'add-layer', 'change-carrier', 'replace-op', 'swap-emit', 'fuse-shape']);
+const STRUCTURAL = new Set(['compound-structure', 'swap-shape', 'remove-body', 'add-layer', 'change-carrier', 'replace-op', 'swap-emit', 'fuse-shape']);
 /** Mutations that replace or add what a crossover child draws. */
 const BODY = new Set(['swap-shape', 'remove-body', 'add-layer', 'fuse-shape']);
 

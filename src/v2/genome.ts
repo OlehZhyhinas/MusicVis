@@ -46,6 +46,7 @@ import { CYMATICS_SCHEMA, cymaticsCost } from './genes/cymatics';
 
 import { TONNETZ_COST, TONNETZ_SCHEMA } from './genes/tonnetz';
 import { NOTES_COST, NOTES_SCHEMA } from './genes/notes';
+import { COMPOUND_SCHEMA, RINGS_COST, RINGS_SCHEMA, bxCount, compoundCost, repairParts, validateParts, type CompoundPart } from './genes/compound';
 import { CHOREO_COST_MS, repairChoreo, validateChoreo, type ChoreoGene } from './genes/choreo';
 import { repairAccent, validateAccent, type AccentGene } from './genes/accent';
 import { DRIFT_COST_MS, driftCost, repairDrift, validateDrift, type DriftGene } from './genes/drift';
@@ -147,7 +148,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -167,6 +168,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   landscape: 'field',
   tonnetz: 'field',
   notes: 'field',
+  compound: 'sdf',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene', 'landscape'];
@@ -207,6 +209,8 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   tonnetz: TONNETZ_SCHEMA,
   // The melody's notes drawn as they are played: ribbons for held notes, marks at note starts (see genes/notes.ts).
   notes: NOTES_SCHEMA,
+  // Several primitives blended into one figure (parts on the gene; see genes/compound.ts).
+  compound: COMPOUND_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -317,7 +321,8 @@ export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
 export const MATERIAL_KINDS = ['line', 'fill', 'glow', 'dots', 'textured', 'chrome'] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];
 // blend: how the body goes onto the picture below it (AVS effect-list modes, genes/blend.ts).
-const MAT_COMMON: Schema = { gain: P(0.02, 3, 1), ...BLEND_SCHEMA };
+// rings / rgap / rfade: concentric ring halos round a distance-field shape (genes/compound.ts; rings 0 = none).
+const MAT_COMMON: Schema = { gain: P(0.02, 3, 1), ...BLEND_SCHEMA, ...RINGS_SCHEMA };
 export const MATERIAL_SCHEMAS: Record<MaterialKind, Schema> = {
   // Thin glowing outline (width in pixels at 1080p), brighter with loudness.
   line: { ...MAT_COMMON, width: P(0.8, 3, 1.3), halo: P(0, 1, 0.12) },
@@ -477,6 +482,7 @@ export interface Gene<K extends string = string> {
 }
 export interface ShapeGene extends Gene<ShapeKind> {
   xforms?: FlameXformGene[]; // flame only
+  parts?: CompoundPart[]; // compound only (genes/compound.ts)
 }
 export interface DeformGene extends Gene<DeformKind> {
   /** Draw-space ops bending the body after its own deformation (absent when empty). */
@@ -602,7 +608,7 @@ export const MAX_REACTIONS = 6;
 const NO_REACT = new Set([
   'mode', 'form', 'solid', 'side', 'axis', 'count', 'reflect', 'tonemap', 'alt', 'radial', 'rounds', 'lock', 'sides', 'ra', 'rb', 'n',
   'bins', 'halfLife', 'lanes', 'strips', 'drive', 'inside', 'heads', 'every', 'square', 'wrap', 'jump', 'swap', 'lattice',
-  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q', 'rep',
+  'path', 'period', 'lobes', 'turn', 'tex', 'top', 'fuse', 'div', 'q', 'rep', 'rings',
   ...SCENE_NO_REACT,
   ...LAND_NO_REACT,
 ]);
@@ -799,6 +805,7 @@ export function repairShape(raw: unknown, fallback: ShapeKind = 'dot'): ShapeGen
     if (!xs.length) xs.push(repairXform({ vars: { linear: 0.5, spherical: 0.5 } }), repairXform({ aff: [0.5, 0, 0, 0.5, 0.5, 0], vars: { sinusoidal: 1 } }));
     g.xforms = xs;
   }
+  if (g.kind === 'compound') g.parts = repairParts(isObj(raw) ? raw.parts : undefined);
   return g;
 }
 
@@ -864,7 +871,8 @@ export function repairBody(raw: unknown): BodyGene {
     if (fp.mode !== 2 && !sdfCapable(shape)) fp.mode = 2;
     // The same kind twice only makes sense as a region (e.g. sparks born inside a disc).
     // A superscope has no distance field to light up inside, so it never fuses.
-    const ok = sdfCapable(fs) && (fs.kind !== shape.kind || fp.mode === 2) && shape.kind !== 'superscope';
+    // A compound is only ever the body's own shape (its parts use the body's extra uniforms).
+    const ok = sdfCapable(fs) && (fs.kind !== shape.kind || fp.mode === 2) && shape.kind !== 'superscope' && fs.kind !== 'compound';
     if (ok) {
       body.fuse = { shape: fs, p: fp };
       // A fused curve is drawn through its distance field.
@@ -1087,6 +1095,11 @@ function fitBudget(g: Genome): void {
     }
     if (ops && !ops.length) delete b.deform.ops;
   }
+  // A compound sheds its last parts (the first, its base, stays).
+  for (const b of g.bodies) {
+    const parts = b.shape.kind === 'compound' ? b.shape.parts : undefined;
+    while (parts && parts.length > 1 && estimateCost(g) > COST_BUDGET_MS * 0.95) parts.pop();
+  }
   // Physics fields with a fixture count shed fixtures last.
   for (const b of g.bodies) {
     while (b.shape.kind === 'beams' && b.shape.p.count > 1 && estimateCost(g) > COST_BUDGET_MS * 0.95) b.shape.p.count--;
@@ -1191,6 +1204,8 @@ export function validate(g: Genome): string[] {
       });
     };
     checkXforms(b.shape, `${w}.shape`);
+    if (b.shape.kind === 'compound') errs.push(...validateParts(b.shape.parts, `${w}.shape`));
+    else if (b.shape.parts) errs.push(`${w}.shape stray parts`);
     if (b.deform.ops !== undefined) {
       if (!Array.isArray(b.deform.ops) || !b.deform.ops.length || b.deform.ops.length > MAX_DRAW) errs.push(`${w} deform ops length`);
       b.deform.ops?.forEach?.((o, j) => {
@@ -1224,6 +1239,7 @@ export function validate(g: Genome): string[] {
         checkXforms(f.shape, `${w}.fuse.shape`);
         if (!sdfCapable(f.shape)) errs.push(`${w}.fuse shape has no distance field`);
         if (f.shape.kind === b.shape.kind && f.p.mode !== 2) errs.push(`${w}.fuse same kind`);
+        if (f.shape.kind === 'compound' || f.shape.parts) errs.push(`${w}.fuse compound`);
       }
       chk(f.p, FUSE_SCHEMA, `${w}.fuse`);
       if (f.p.mode !== 2 && !sdfCapable(b.shape)) errs.push(`${w}.fuse needs a distance field`);
@@ -1290,6 +1306,16 @@ export function bodyLayer(b: BodyGene): 'fb' | 'top' {
   return b.emit.kind === 'none' ? 'top' : 'fb';
 }
 
+/** Ring halos are drawn (a distance-field body with rings > 0). */
+export function ringsOn(b: BodyGene): boolean {
+  const c = SHAPE_CLASS[b.shape.kind];
+  return (b.material.p.rings ?? 0) > 0 && (c === 'sdf' || (c === 'curve' && !!b.fuse));
+}
+/** vec4 slots of a body's extra uniform array (compound parts, ring halos); 0 = none declared. */
+export function bodyBxCount(b: BodyGene): number {
+  return bxCount(b.shape.kind === 'compound' ? b.shape.parts : undefined, ringsOn(b) ? 1 : 0);
+}
+
 /** Structural key of one body (what changes its shader code). Motion and all numbers are uniforms. */
 export function bodyKey(b: BodyGene): string {
   const place = isFoldPlace(b.place.kind) ? b.place.kind : 'loop';
@@ -1297,7 +1323,10 @@ export function bodyKey(b: BodyGene): string {
   const fuse = b.fuse ? `+${b.fuse.p.mode}${b.fuse.shape.kind}${b.fuse.p.inside}` : '';
   const emit = b.emit.kind === 'cover' ? 'c' : b.emit.kind === 'sparks' ? (b.emit.p.top > 0.5 ? 'st' : 's') : '';
   const blend = b.material.p.blend ? `~${b.material.p.blend}` : '';
-  return `${b.shape.kind}:${place}${metaball}:${b.deform.kind}:${b.material.kind}${b.material.kind === 'textured' ? b.material.p.tex : ''}${blend}:${bodyLayer(b)}${emit}${fuse}`;
+  // A compound's parts (primitive, combine op) and ring halos on/off are shader structure.
+  const parts = b.shape.kind === 'compound' ? `[${(b.shape.parts ?? []).map((p) => `${p.prim}${p.op}`).join('')}]` : '';
+  const rings = ringsOn(b) ? '@r' : '';
+  return `${b.shape.kind}${parts}:${place}${metaball}:${b.deform.kind}:${b.material.kind}${b.material.kind === 'textured' ? b.material.p.tex : ''}${blend}:${bodyLayer(b)}${emit}${fuse}${rings}`;
 }
 
 /** Everything that changes the compiled shaders (numeric params are uniforms). */
@@ -1487,12 +1516,13 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35,
 };
 const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };
 /** One evaluation of a shape; a wireframe costs by its segment count (plus the inner solid). */
 function shapeEvalCost(sh: ShapeGene): number {
+  if (sh.kind === 'compound') return compoundCost(sh.parts);
   if (sh.kind !== 'solid') return SDF_COST[sh.kind];
   const segs = sh.p.solid === 4 ? sh.p.sides : [6, 12, 12, 30, 0, 30][sh.p.solid] + (sh.p.inner > 0.01 ? 12 : 0);
   return 0.4 + 0.11 * segs;
@@ -1542,7 +1572,7 @@ export function bodyCost(b: BodyGene): number {
     return ms + 0.05 + perDraw * draws + (b.deform.kind === 'noise' ? 0.1 : 0);
   }
   const n = evalCount(b);
-  let per = shapeEvalCost(b.shape) + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;
+  let per = shapeEvalCost(b.shape) + (ringsOn(b) ? RINGS_COST : 0) + deformCost(b) + (b.fuse ? SDF_COST[b.fuse.shape.kind] + 0.05 : 0) + 0.02;
   if (b.place.kind === 'grid' && b.place.p.links > 0.01) per += 0.1;
   ms += BODY_OVERHEAD + n * per + MATERIAL_COST[b.material.kind] * (b.place.p.fuse > 0 ? 1 : Math.min(n, 3)) + (b.emit.kind === 'cover' ? 0.03 : 0);
   return ms;
