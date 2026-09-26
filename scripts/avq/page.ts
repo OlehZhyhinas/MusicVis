@@ -520,6 +520,7 @@ export class Instrument {
       'F.tension', 'F.resolve', 'F.chordPulse', 'F.modPulse', 'F.chord', 'F.tonnetzX', 'F.tonnetzY',
       'harm.brk', 'harm.warp', 'harm.zoom', 'harm.roll', 'harm.hue', 'harm.sat', 'harm.exposure',
       'pose.zoom', 'pose.roll', 'pose.tx', 'pose.ty', 'pose.hue', 'pose.sat', 'pose.exposure', 'flash',
+      'harm.phase', 'harm.seed', 'harm.bend',
     );
     for (let i = 0; i < this.names.length; i++) this.cols.push([]);
   }
@@ -538,6 +539,8 @@ export class Instrument {
     v.push(h?.brk ?? 0, h?.warp ?? 0, h?.zoom ?? 1, h?.roll ?? 0, h?.hue ?? 0, h?.sat ?? 1, h?.exposure ?? 1);
     const q = this.stage.pose;
     v.push(q.zoom, q.roll, q.tx, q.ty, q.hue, q.sat, q.exposure, this.stage.flash);
+    // Harmony shape: warp phase, hashed-fold seed, smooth-fold (mirror, polar) loosening.
+    v.push(h?.phase ?? 0, h?.seed ?? 0, h?.bend ?? 0);
     for (let i = 0; i < v.length; i++) this.cols[i].push(Math.round(v[i] * 1e5) / 1e5);
   }
   json(): string {
