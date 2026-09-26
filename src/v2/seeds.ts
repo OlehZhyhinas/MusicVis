@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 129;
+export const SEED_VERSION = 130;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2316,6 +2316,47 @@ const ART3: Def[] = [
       rx('surge', 'op', 0, 'vy', -0.5, { atk: 0.05, rel: 0.6 }),
       rx('noteon', 'ma', 1, 'gain', 0.8, { atk: 0.005, rel: 0.2 }),
       rx('legato', 'cm', 1, 'hue', 0.5, { atk: 0.4, rel: 1.2 }),
+    ],
+  },
+  {
+    // A bubble paperweight: a clear glass sphere packed with glinting bubbles, a cloud of pink ink
+    // swirling in its lower half. The bass swells and brightens the bubbles, drum hits stir the ink,
+    // each new section recolours it, and the riff makes a handful of bubbles flare.
+    origin: 'X23', name: 'Bubble Glass', energy: [0.1, 0.85], scheme: 'triad', hue: 0.9,
+    color: { adapt: 0.15, bloom: 1.1, vignette: 0.55, reflect: 1, reflectY: -0.31 }, carrier: 'warp', car: { halfLife: 1.8, floor: 0.4, blur: 0.02 },
+    chain: [op('swirl', { amt: 0.012, k: 4 }), op('zoom', { rate: -0.006 }), op('noise', { amp: 0.0018, scale: 4, speed: 0.35 })],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.25 }],
+        material: ['fill', { gain: 0.13, soft: 0.02, outline: 1, core: 1, halo: 0.3 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.03, rel: 0.4 }],
+        color: ['height', { hue: 0.45, amount: 0.5, detail: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0 }],
+        place: ['orbit', { count: 3, radius: 0.13, x: 0, y: -0.02, follow: 0, rate: 0, fuse: 0 }],
+        material: ['glow', { gain: 0.4, width: 0.012 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['instrument', { hue: 0, amount: 1 }],
+      }),
+      body({
+        shape: ['notes', { mode: 0, span: 2.2, len: 0.5, height: 0.36, now: 0.5, tilt: -0.25, ribbon: 0, marks: 1, form: 3, size: 0.006, fade: 1.6, rise: 0, shimmer: 0, hues: 0.2, glow: 0.3 }],
+        material: ['glow', { gain: 1.3 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['fixed', { hue: 0.5 }],
+      }),
+    ],
+    timbre: { src: 0, sheen: 0.3, glass: 1, grain: 0, scale: 18, velvet: 0.2, edge: 0.2, emboss: 0 },
+    reactions: [
+      rx('bass', 'sh', 0, 'r', 0.3, { atk: 0.03, rel: 0.4 }),
+      rx('bass', 'ma', 0, 'gain', 0.5, { atk: 0.03, rel: 0.4 }),
+      rx('hit', 'op', 0, 'amt', 0.5, { atk: 0.02, rel: 0.5 }),
+      rx('hit', 'pl', 1, 'radius', 0.4, { atk: 0.02, rel: 0.4 }),
+      rx('noteon', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.3 }),
+      rx('other', 'op', 2, 'amp', 0.5, { atk: 0.1, rel: 0.6 }),
     ],
   },
 ];
