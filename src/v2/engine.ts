@@ -798,9 +798,8 @@ export class Stage {
   /** Harmony gene: each slot's spring state and effect this frame, and the final pass warp. */
   private motors = new WeakMap<Slot, HarmonyMotor>();
   private harmOut = new WeakMap<Slot, HarmonyOut>();
-  private harmIn: HarmonyInputs = { tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, tonnetzX: 0.5, tonnetzY: 0.2887, keyWalk: 0 };
+  private harmIn: HarmonyInputs = { chord: -1, keyTonic: 0, minor: false, keyWalk: 0, bpm: 120 };
   private harmWarp = new Float32Array(4);
-  private harmSeed = 0;
   /** Visual deja vu: each slot's snapshots of returning sections (genes/dejavu.ts). */
   readonly dejavu: DejaVuBank;
   /** Lyrics gene: each slot's eased nudges from the words (genes/lyrics.ts); temporary, never saved. */
@@ -916,7 +915,7 @@ export class Stage {
       // Accents: the hook gesture, section look and drum kick every preset gets unless its genome turns them off.
       applyAccents(accentPlan(s.genome, this.accPlan), acc, q);
     }
-    this.harmonyWarp(slots, state);
+    this.harmonyWarp(slots);
     blendPoses(slots.map((s) => this.poses.get(s)!), slots.map((s) => s.weight), this.pose);
     cameraUniforms(this.pose, this.w / this.h, this.cam);
 
@@ -2752,12 +2751,10 @@ export class Stage {
     if (!m) this.motors.set(s, (m = new HarmonyMotor()));
     const F = this.sig.F;
     const I = this.harmIn;
-    I.tension = F.tension;
-    I.resolve = F.resolve;
-    I.chordPulse = F.chordPulse;
-    I.modPulse = F.modPulse;
-    I.tonnetzX = num(state.tonnetzX, 0.5);
-    I.tonnetzY = num(state.tonnetzY, 0.2887);
+    I.chord = F.chord;
+    I.keyTonic = F.keyTonic;
+    I.minor = F.minor;
+    I.bpm = F.bpm;
     I.keyWalk = num(state.keyWalk, 0);
     m.update(h, I, sdt, o);
     q.zoom *= o.zoom;
@@ -2768,7 +2765,7 @@ export class Stage {
   }
 
   /** The final pass warp: the slots' warp amounts blended by weight, the heaviest slot's style. */
-  private harmonyWarp(slots: Slot[], state: MusicState): void {
+  private harmonyWarp(slots: Slot[]): void {
     const w = this.harmWarp;
     w[0] = w[1] = w[2] = w[3] = 0;
     let top = 0;
@@ -2784,15 +2781,13 @@ export class Stage {
         w[2] = s.genome.harmony.p.style;
       }
     }
-    // Each chord breaks the folds its own way: the loosening seed follows the chord.
-    this.harmSeed = (num(state.chord, -1) + 1) * 1.618;
   }
 
-  /** A fold op's loosening (OB.w) and seed (OB.z) from the slot's harmony motor. */
+  /** A fold op's loosening (OB.w) and seed (OB.z, fixed per chord) from the slot's harmony motor. */
   private loosen(s: Slot, b: Float32Array, j: number, i: number, stage: string): void {
     const o = s.genome.harmony ? this.harmOut.get(s) : undefined;
     if (!o || o.brk === 0) return;
-    b[j + 2] = this.harmSeed + i * 0.73;
+    b[j + 2] = o.seed + i * 0.73;
     b[j + 3] = o.brk * (stage === 'warp' ? 0.35 : 1);
   }
 

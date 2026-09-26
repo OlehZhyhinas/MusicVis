@@ -1662,13 +1662,15 @@ const LANDSCAPE: Def[] = [
 ];
 
 // H01.. showcase the harmony gene (genes/harmony.ts): the chord progression read on the Tonnetz,
-// consonance as symmetry, tension breaking it, resolutions snapping it back.
+// same chord, same shape. The home chord is the clean symmetric picture, every other chord bends
+// it its own fixed way, and each change glides to the new shape and holds it for the chord.
 const HARMONY: Def[] = [
   {
-    // An eight-fold mandala of a slowly turning star, streaming outward. While the harmony sits on
-    // the home chord the mandala is perfect; as the chords wander away its segments slide apart and
-    // an off-centre swirl pulls at the frame; when the progression comes home (V-I) every segment
-    // clicks back into place with a flash. Each chord change nudges the colours along the lattice.
+    // An eight-fold mandala of a slowly turning star, streaming outward. On the home chord the
+    // mandala is perfect; every other chord slides its segments apart in its own fixed pattern and
+    // an off-centre swirl pulls at the frame, further for chords further from home, so a repeating
+    // progression repeats its shapes. Coming home (V-I) the segments glide back into place with a
+    // lift of light. Each chord change nudges the colours along the lattice.
     origin: 'H01', name: 'Cadence Mandala', energy: [0.2, 0.85], scheme: 'analogous', hue: 0.6,
     color: { bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.975,
     chain: [op('zoom', { rate: 0.016, radial: 1 }), op('rotate', { lock: 0.0625 }), op('kaleido', { n: 8, lock: 0.0625 }, 1, 'view')],
@@ -1681,17 +1683,16 @@ const HARMONY: Def[] = [
     })],
     reactions: [
       rx('chordchange', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.4 }),
-      rx('tension', 'op', 0, 'rate', 0.14, { atk: 0.3, rel: 0.6 }),
       rx('bass', 'sh', 0, 'r', 0.2, { atk: 0.03, rel: 0.3 }),
     ],
     harmony: { brk: 0.85, warp: 0.3, style: 1, snap: 0.8, settle: 0.3, walk: 0.08, kick: 0.3, modHue: 0.1, modTurn: 0.008, calm: 0.4 },
   },
   {
     // A pendulum harmonograph (its frequency ratios walk the circle of fifths) drawn four ways in a
-    // mirror, leaving long warm trails that sink inward. Consonant chords keep the four quarters in
-    // perfect reflection; tension leans the reflections apart and bends the frame sideways, the trails
-    // lengthen and the colours slide away from home. A resolution lets the quarters fall back
-    // together with a slow, pendulum-like wobble.
+    // mirror, leaving long warm trails that sink inward. The home chord keeps the four quarters in
+    // perfect reflection; each other chord leans the reflections apart and bends the frame sideways
+    // by its own fixed amount, and the colours slide away from home. The glides between chords are
+    // the slowest of the set, so a cadence home lets the quarters drift back together.
     origin: 'H02', name: 'Suspended Mirror', energy: [0.1, 0.7], scheme: 'split', hue: 0.07,
     color: { bloom: 0.9, vignette: 0.55, adapt: 0.7 }, carrier: 'warp', decay: 0.975,
     chain: [op('zoom', { rate: -0.006, wander: 0.1 }), op('rotate', { lock: -0.0625 }), op('mirror', { axis: 2 }, 1, 'view')],
@@ -1701,7 +1702,6 @@ const HARMONY: Def[] = [
       color: ['age', { rate: 0.03125, detail: 0.7 }],
     })],
     reactions: [
-      rx('tension', 'car', 0, 'floor', -0.5, { atk: 0.4, rel: 1 }),
       rx('resolve', 'ma', 0, 'gain', 0.6, { atk: 0.01, rel: 0.8 }),
       rx('vocals', 'sh', 0, 'amp', 0.25, { atk: 0.1, rel: 0.6 }),
     ],
@@ -1709,10 +1709,10 @@ const HARMONY: Def[] = [
   },
   {
     // A hexagon keyboard lit by the chroma, folded into a wall of mirrored tiles. On the home chord the tiles meet
-    // seamlessly like a tiled floor; as the harmony strays, each tile turns and slips on its own
-    // (every chord shuffles them a different way) and the whole wall buckles; the resolution clicks
-    // them back flush with a hard flash. Key changes swing the wall's hue far round the wheel and
-    // tilt it, so a modulation reads as a new room.
+    // seamlessly like a tiled floor; on every other chord each tile turns and slips on its own
+    // (every chord shuffles them its own fixed way, so the same chord always gives the same wall)
+    // and the whole wall buckles; coming home they glide back flush with a bright lift of light.
+    // Key changes swing the wall's hue far round the wheel and tilt it, so a modulation reads as a new room.
     origin: 'H03', name: 'Modulation Tiles', energy: [0.3, 0.9], scheme: 'triad', hue: 0.35,
     color: { bloom: 1.05, vignette: 0.4, adapt: 0.35 }, carrier: 'warp', decay: 0.9,
     chain: [op('tile', { n: 2.4 }, 1, 'view')],
@@ -1723,7 +1723,6 @@ const HARMONY: Def[] = [
     })],
     reactions: [
       rx('chordchange', 'ma', 0, 'gain', 0.5, { atk: 0.01, rel: 0.4 }),
-      rx('tension', 'pl', 0, 'jitter', 0.5, { atk: 0.4, rel: 0.8 }),
       rx('modulation', 'col', 0, 'exposure', 0.4, { atk: 0.02, rel: 1.5 }),
     ],
     harmony: { brk: 0.9, warp: 0.5, style: 2, snap: 1, settle: 0.15, walk: 0.1, kick: 0.4, modHue: 0.22, modTurn: 0.012, calm: 0.2 },
@@ -1731,8 +1730,9 @@ const HARMONY: Def[] = [
   {
     // The harmony map itself: the tonal lattice (fifths across, thirds on the diagonals) with every
     // note node glowing as it sounds. The current chord's triangle burns, the last chords leave a
-    // fading path, and the camera drifts after the walk. Tension bends the lattice off true; a
-    // cadence home straightens it with a flash, and a key change turns the whole map.
+    // fading path, and the camera drifts after the walk. Each chord away from home bends the lattice
+    // off true in its own fixed way; a cadence home glides it straight with a lift of light, and a
+    // key change turns the whole map.
     origin: 'H04', name: 'Tonnetz Walk', energy: [0.1, 0.8], scheme: 'analogous', hue: 0.52,
     color: { sat: 0.85, adapt: 0.3, bloom: 1.15, vignette: 0.5 }, carrier: 'warp', decay: 0.7,
     bodies: [body({
@@ -1754,9 +1754,10 @@ const HARMONY: Def[] = [
   {
     // A spectrum skyline standing on a lake: the bars rise from the waterline and the lower half of
     // the frame mirrors them, while the trails drift slowly upward like heat haze. On the home chord
-    // the reflection is exact; as the harmony strays the reflection slides and tilts out of register
-    // and the whole scene buckles in waves, the colours drifting with each chord; a cadence snaps
-    // the water still with a kick of light. Key changes swing the palette.
+    // the reflection is exact; each other chord tilts the reflection and buckles the scene in its
+    // own fixed way, gliding there on the change and holding still for the whole chord, so the
+    // water ripples in time with the progression; a cadence home glides it flat again with a lift
+    // of light. Key changes swing the palette.
     origin: 'H05', name: 'Reflecting Pool', energy: [0.3, 1], scheme: 'complementary', hue: 0.78,
     color: { bloom: 1.2, vignette: 0.5, contrast: 0.05 }, carrier: 'warp', decay: 0.94,
     chain: [op('translate', { vy: 0.06 }), op('mirror', { axis: 1 }, 1, 'view')],
@@ -1766,7 +1767,6 @@ const HARMONY: Def[] = [
       material: ['line', { gain: 1, width: 1.6, halo: 0.2 }],
     })],
     reactions: [
-      rx('tension', 'car', 0, 'floor', -0.4, { atk: 0.4, rel: 0.8 }),
       rx('resolve', 'col', 0, 'bloom', 0.6, { atk: 0.01, rel: 0.6 }),
       rx('drums', 'sh', 0, 'len', 0.3, { atk: 0.01, rel: 0.2 }),
     ],
@@ -2369,8 +2369,8 @@ const ART3: Def[] = [
     // Millefiori: a slab of glass-cane slices, a honeycomb of little flowers in jewel colours, each
     // cane a glowing ring round a star-shaped flower. Each cane lights with its pitch class as the
     // melody and chords sound it, so the slab sparkles in the song's harmony; each chord change reshapes
-    // the flowers (their petals open and narrow), harmonic tension slides the canes out of register and
-    // a resolution clicks them back, the bass swells the rings, and each drum hit turns the slab a notch.
+    // the flowers (their petals open and narrow) and slides the canes out of register by that chord's
+    // own fixed amount (home keeps them exact), the bass swells the rings, and each drum hit turns the slab a notch.
     origin: 'X29', name: 'Millefiori', energy: [0.1, 0.85], scheme: 'triad', hue: 0.0,
     color: { adapt: 0.2, bloom: 1.1, vignette: 0.7, ca: 0 }, carrier: 'none',
     chain: [op('kaleido', { n: 8, lock: 0 }, 1, 'view')],

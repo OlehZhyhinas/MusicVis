@@ -1,6 +1,6 @@
 // Tests for the harmony gene (src/v2/genes/harmony.ts): repair, validation, breeding with every
-// species, cost, naming, shader wiring, and the motor (tension breaks symmetry, a resolution snaps
-// it back). Called from v2-test.ts.
+// species, cost, naming, shader wiring, and the motor (same chord, same shape: home is clean,
+// every chord holds its own fixed shape, changes glide, flickers are ignored). Called from v2-test.ts.
 
 import { COST_BUDGET_MS, SPECIES, cloneGenome, estimateCost, repair, speciesScores, validate, type Genome } from '../src/v2/genome';
 import { crossover, mulberry32, mutate } from '../src/v2/ops';
@@ -11,14 +11,14 @@ import { genomeGene } from '../src/v2/geneRegistry';
 import { seedChecks, shapeGeneChecks } from './v2-physics';
 import { packTonnetz, type TonnetzFrame } from '../src/v2/genes/tonnetz';
 import {
-  HARMONY_COST_MS, HARMONY_SCHEMA, HarmonyMotor, IDLE_HARMONY, repairHarmony, tensionShape, validateHarmony,
+  HARMONY_COST_MS, HARMONY_SCHEMA, HarmonyMotor, IDLE_HARMONY, chordShape, glideTime, repairHarmony, validateHarmony,
   type HarmonyGene, type HarmonyInputs, type HarmonyOut,
 } from '../src/v2/genes/harmony';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
 
 const withHarmony = (g: Genome, h: HarmonyGene = repairHarmony({})): Genome => repair({ ...cloneGenome(g), harmony: h });
-const inputs = (x: Partial<HarmonyInputs> = {}): HarmonyInputs => ({ tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, tonnetzX: 0.5, tonnetzY: 0.2887, keyWalk: 0, ...x });
+const inputs = (x: Partial<HarmonyInputs> = {}): HarmonyInputs => ({ chord: 0, keyTonic: 0, minor: false, keyWalk: 0, bpm: 120, ...x });
 const out = (): HarmonyOut => ({ ...IDLE_HARMONY });
 
 export function harmonyGeneTests(check: Check): void {
@@ -105,45 +105,73 @@ export function harmonyGeneTests(check: Check): void {
     check('harmony.shader-folds', !!src && (src.feedback + src.composite).includes(`uOpB[${i}].w != 0.0`), g?.origin ?? 'no harmony seed with a fold');
   }
 
-  // --- Motor ---
+  // --- Motor: same chord, same shape ---
   {
-    const h = repairHarmony({ p: { brk: 1, warp: 1, snap: 1, settle: 0.3, walk: 0.1, modTurn: 0.01, calm: 0.5, kick: 0.5 } });
-    const m = new HarmonyMotor();
-    const o = out();
-    const none = m.update(undefined, inputs({ tension: 1 }), 0.016, out());
+    const h = repairHarmony({ p: { brk: 1, warp: 1, snap: 1, settle: 0.3, walk: 0.1, modHue: 0.1, modTurn: 0.01, calm: 0.5, kick: 0.5 } });
+    const dt = 1 / 60;
+    const G = 7, F = 5, Am = 21, C = 0;
+    const none = new HarmonyMotor().update(undefined, inputs({ chord: G }), dt, out());
     check('harmony.motor-identity-without-gene', JSON.stringify(none) === JSON.stringify(IDLE_HARMONY), JSON.stringify(none));
-    m.update(h, inputs({ tension: 0 }), 0.016, o);
-    check('harmony.motor-consonance-is-order', o.brk === 0 && o.warp === 0 && Math.abs(o.hue) < 1e-6 && o.zoom === 1 && o.sat < 1, JSON.stringify(o));
-    const rise: number[] = [];
-    for (let i = 0; i < 180; i++) {
-      m.update(h, inputs({ tension: 0.8 }), 1 / 60, o);
-      if (i % 30 === 29) rise.push(o.brk);
+    const geo = (o: HarmonyOut) => [o.brk, o.warp, o.phase, o.seed];
+    const same = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+    // Runs a chord for some seconds; returns the frames' outputs.
+    const run = (m: HarmonyMotor, x: Partial<HarmonyInputs>, secs: number): HarmonyOut[] => {
+      const r: HarmonyOut[] = [];
+      for (let i = 0; i < Math.round(secs / dt); i++) r.push({ ...m.update(h, inputs(x), dt, out()) });
+      return r;
+    };
+    const m = new HarmonyMotor();
+    const home = run(m, { chord: C }, 1).at(-1)!;
+    check('harmony.motor-home-is-clean', home.brk === 0 && home.warp === 0 && Math.abs(home.hue) < 1e-9 && home.zoom === 1 && home.sat < 1, JSON.stringify(home));
+    const g1 = run(m, { chord: G }, 1.5);
+    const f1 = run(m, { chord: F }, 1.5);
+    const a1 = run(m, { chord: Am }, 1.5);
+    const g2 = run(m, { chord: G }, 1.5);
+    const f2 = run(m, { chord: F }, 1.5);
+    const back = run(m, { chord: C }, 1.5);
+    check('harmony.motor-chords-deform', g1.at(-1)!.brk > 0.3 && g1.at(-1)!.warp > 0.3 && f1.at(-1)!.brk > 0.3 && a1.at(-1)!.brk > 0.3, `${g1.at(-1)!.brk.toFixed(2)} ${f1.at(-1)!.brk.toFixed(2)} ${a1.at(-1)!.brk.toFixed(2)}`);
+    check('harmony.motor-same-chord-same-shape', same(geo(g1.at(-1)!), geo(g2.at(-1)!)) && same(geo(f1.at(-1)!), geo(f2.at(-1)!)) && !same(geo(g1.at(-1)!), geo(f1.at(-1)!)),
+      `${geo(g1.at(-1)!).map((v) => v.toFixed(3))} / ${geo(g2.at(-1)!).map((v) => v.toFixed(3))}`);
+    // Held still for the whole chord once the glide is done.
+    const settleF = Math.ceil((glideTime(0.3) + 0.25 + 0.05) / dt);
+    let drift = 0;
+    for (const seg of [g1, f1, a1, g2, f2, back]) for (let i = settleF + 1; i < seg.length; i++) drift = Math.max(drift, ...geo(seg[i]).map((v, k) => Math.abs(v - geo(seg[i - 1])[k])));
+    check('harmony.motor-holds-within-chord', drift === 0, `max frame change after the glide ${drift}`);
+    // Glides: no single frame moves far (smoothstep over ~0.3 s), and the new shape is reached in time.
+    let step = 0;
+    const all = [...g1, ...f1, ...a1, ...g2, ...f2, ...back];
+    for (let i = 1; i < all.length; i++) step = Math.max(step, Math.abs(all[i].warp - all[i - 1].warp), Math.abs(all[i].brk - all[i - 1].brk));
+    check('harmony.motor-glides', step < 0.12 && step > 0, `largest frame step ${step.toFixed(3)}`);
+    const reached = g1.findIndex((o) => Math.abs(o.warp - g1.at(-1)!.warp) < 1e-9);
+    check('harmony.motor-glide-time', reached > 0.25 / dt && reached * dt < 0.25 + glideTime(0.3) + 0.05, `${(reached * dt).toFixed(3)} s`);
+    // A cadence home: a smooth glide back to the clean picture, with a lift of light and no zoom.
+    const lift = Math.max(...back.map((o) => o.exposure));
+    check('harmony.motor-cadence-glides-home', back.at(-1)!.brk === 0 && back.at(-1)!.warp === 0 && lift > 1.15 && back.every((o) => o.zoom === 1), `lift ${lift.toFixed(2)}`);
+    check('harmony.motor-kick-is-light', g1.some((o) => o.exposure > 1.02) && all.every((o) => o.zoom === 1), '');
+    // Flicker: a chord that does not hold for half a beat never changes the shape.
+    const m3 = new HarmonyMotor();
+    run(m3, { chord: G }, 1);
+    const before = geo(m3.update(h, inputs({ chord: G }), dt, out()));
+    for (let i = 0; i < 6; i++) {
+      run(m3, { chord: F }, 0.1);
+      run(m3, { chord: G }, 0.1);
     }
-    check('harmony.motor-tension-breaks', rise.every((v, i) => i === 0 || v >= rise[i - 1]) && rise[rise.length - 1] > 0.85 && o.warp > 0.85 && o.sat > 1, rise.map((v) => v.toFixed(2)).join(' '));
-    check('harmony.tension-shape', tensionShape(0.1) === 0 && tensionShape(0.8) > 0.99 && tensionShape(0.4) > 0.2 && tensionShape(0.4) < 0.8, '');
-    // The resolution: tension drops and the resolve pulse fires; the fold snaps back fast, overshooting a little.
-    let minBrk = 1;
-    let snapped = -1;
-    let flash = 0;
-    let r = 0.9;
-    for (let i = 0; i < 60; i++) {
-      m.update(h, inputs({ tension: 0.05, resolve: r }), 1 / 60, o);
-      r *= Math.exp(-1 / 60 / 0.7);
-      minBrk = Math.min(minBrk, o.brk);
-      if (snapped < 0 && Math.abs(o.brk) < 0.1) snapped = i;
-      if (i === 1) flash = o.exposure;
-    }
-    check('harmony.motor-resolve-snaps', snapped >= 0 && snapped <= 12 && minBrk < -0.02 && minBrk > -0.5 && Math.abs(o.brk) < 0.05, `back in ${snapped} frames, overshoot ${minBrk.toFixed(2)}, end ${o.brk.toFixed(3)}`);
-    check('harmony.motor-resolve-flash', flash > 1.2, flash.toFixed(2));
-    // Chord walk and modulation.
-    const m2 = new HarmonyMotor();
-    const a = m2.update(h, inputs({ tonnetzX: 1.5 }), 0.016, out()).hue; // G major: a fifth right of home
-    const b = m2.update(h, inputs({ tonnetzX: -0.5 }), 0.016, out()).hue; // F major
-    check('harmony.motor-walk', a > 0 && b < 0 && Math.abs(a + b) < 1e-9, `${a.toFixed(3)} ${b.toFixed(3)}`);
-    for (let i = 0; i < 600; i++) m2.update(h, inputs({ keyWalk: 2 }), 1 / 60, o);
-    check('harmony.motor-modulation-turns', Math.abs(o.roll - 0.02 * Math.PI * 2) < 0.01 && o.hue > 0.1, `roll ${o.roll.toFixed(3)} hue ${o.hue.toFixed(3)}`);
-    const k = m2.update(h, inputs({ keyWalk: 2, chordPulse: 1 }), 0.016, out());
-    check('harmony.motor-chord-kick', k.zoom > 1.01, k.zoom.toFixed(3));
+    const flick = run(m3, { chord: -1 }, 1); // unknown chord: hold
+    check('harmony.motor-ignores-flicker', flick.every((o) => same(geo(o), before)) && m3.heldChord === G, `${geo(flick.at(-1)!).map((v) => v.toFixed(3))} vs ${before.map((v) => v.toFixed(3))}`);
+    // Key relative: V in C major has the same shape as V in G major; i is clean in a minor key.
+    const s1 = chordShape(G, 0, false);
+    const s2 = chordShape(2, 7, false);
+    check('harmony.shape-key-relative', s1.amt === s2.amt && s1.seed === s2.seed && s1.phase === s2.phase && s1.amt > 0, `${s1.amt} ${s2.amt}`);
+    check('harmony.shape-minor-home', chordShape(Am, 9, true).home && chordShape(Am, 9, true).amt === 0 && !chordShape(9, 9, true).home, '');
+    // Palette walk: a fifth up and a fifth down go opposite ways; modulations swing the hue and roll smoothly.
+    const mw = new HarmonyMotor();
+    const hg = run(mw, { chord: G }, 1).at(-1)!.hue;
+    const hf = run(mw, { chord: F }, 1).at(-1)!.hue;
+    check('harmony.motor-walk', hg > 0 && hf < 0, `${hg.toFixed(3)} ${hf.toFixed(3)}`);
+    const mod = run(mw, { chord: F, keyWalk: 2 }, 10);
+    let hueStep = 0;
+    for (let i = 1; i < mod.length; i++) hueStep = Math.max(hueStep, Math.abs(mod[i].hue - mod[i - 1].hue));
+    check('harmony.motor-modulation-swings', Math.abs(mod.at(-1)!.roll - 0.02 * Math.PI * 2) < 0.01 && mod.at(-1)!.hue - hf > 0.15 && hueStep < 0.01, `roll ${mod.at(-1)!.roll.toFixed(3)} hue step ${hueStep.toFixed(4)}`);
   }
 
   // --- Tonnetz shape: the lattice walk ---
