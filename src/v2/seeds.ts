@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 117;
+export const SEED_VERSION = 118;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2419,20 +2419,20 @@ const ART: Def[] = [
 // colour side by side, embossed with a sandy relief, flowing along one form into a spiral vortex.
 const ART4: Def[] = [
   {
-    // Marbled clay: four dye sources, one per instrument, pour neon strands into a slow, thick fluid
-    // that folds them over each other; the picture is lit as an embossed surface with a fine sandy
-    // grain and its brightness mapped into palette bands, so the colours lie as distinct strands side
-    // by side instead of blending. Drum hits shove a fresh strand in and flash the clay, the bass stirs
-    // the whole mass and puts a sheen on it, the melody steers where the vocal strand enters and
-    // tints the palette with its pitch, the hook re-stripes the bands the same way on every repeat,
-    // and each section type turns the palette to another family.
+    // Marbled clay: four dye sources, one per instrument, pour thick strands of colour into a slow,
+    // heavy fluid that folds them over and round each other; the whole mass is lit as glossy
+    // embossed clay with a faint sandy grain, each strand keeping its own colour beside the next.
+    // Drum hits shove a fresh strand in and brighten the clay, the bass stirs the mass and puts a
+    // sheen on it, the melody steers where the vocal strand enters and turns the palette with its
+    // pitch, the riff swings the light across the relief the same way each repeat, and each section
+    // type moves the palette to another family.
     origin: 'X30', name: 'Marbled Clay', energy: [0.2, 0.9], scheme: 'triad', hue: 0.55,
-    color: { sat: 1, exposure: 0.9, adapt: 0.1, bloom: 0.5, vignette: 0.4, relief: 1, bump: 2.2, gloss: 0.15, light: 0.375, huemap: 0.9, bands: 4, poster: 0.6, solar: 0.2 },
-    carrier: 'fluid', car: { halfLife: 8, floor: 0.45, amount: 0.8, vort: 5, fnoise: 0, blur: 0.06, sharpen: 0.04, grain: 0.003 },
+    color: { sat: 1, exposure: 0.95, contrast: 0.05, adapt: 0.1, bloom: 0.45, vignette: 0.4, relief: 1, bump: 2.5, gloss: 0.6, light: 0.375 },
+    carrier: 'fluid', car: { halfLife: 12, floor: 0.3, amount: 0.85, vort: 8, fnoise: 0.05, blur: 0.04, sharpen: 0.04, grain: 0.003 },
     bodies: [body({
-      shape: ['dot', { r: 0.02 }],
+      shape: ['dot', { r: 0.016 }],
       place: ['stations', { count: 4, inst: 1, xs: 0.9, jump: 0, wander: 0.05 }],
-      material: ['glow', { gain: 0.36, width: 0.025 }],
+      material: ['glow', { gain: 0.4, width: 0.02 }],
       emit: ['dye', { force: 1.1 }],
       feel: ['flow', { atk: 0.01, rel: 0.25 }],
     })],
@@ -2442,7 +2442,7 @@ const ART4: Def[] = [
       rx('bass', 'car', 0, 'amount', 0.35, { atk: 0.05, rel: 0.5 }),
       rx('bass', 'col', 0, 'gloss', 0.5, { atk: 0.03, rel: 0.4 }),
       rx('melody', 'pal', 0, 'hue', 1, { atk: 0.08, rel: 0.4 }),
-      rx('hook', 'col', 0, 'bands', 0.3, { atk: 0.01, rel: 0.5 }),
+      rx('hook', 'col', 0, 'light', 0.5, { atk: 0.01, rel: 0.5 }),
     ],
     accent: { section: 0.25, hue: 1 },
   },
