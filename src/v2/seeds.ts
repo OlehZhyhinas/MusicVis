@@ -105,8 +105,6 @@ interface Def {
   hue: number;
   color?: Record<string, number>;
   carrier: CarrierKind;
-  /** Extra palette params (e.g. key 0 for a literal colour that ignores the song key). */
-  palette?: Record<string, number>;
   decay?: number;
   car?: Record<string, number>;
   chain?: OpGene[];
@@ -142,7 +140,6 @@ function build(d: Def): Seed {
       p: { ...defaultParams(CARRIER_SCHEMA), halfLife: d.decay ? hl(d.decay) : 0.5, floor: 1, ...d.car },
     },
     palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue, ...d.pal } },
-    palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue, ...d.palette } },
     tone: { p: { ...defaultParams(TONE_SCHEMA), sat: 1, adapt: 0.6, bloom: 1, vignette: 0.45, ...d.color } },
     reactions: d.reactions ?? [],
     energy: d.energy,
@@ -2393,7 +2390,7 @@ const ART2: Def[] = [
     // curls off the stroke. The whole picture is lit as a raised surface, so the ink stands up like
     // wet lacquer. Note starts dab bigger marks, the bass thickens the stroke, held (legato) phrases
     // glow, the riff draws the same strokes every repeat, and a new section wipes to a fresh sheet.
-    origin: 'X13', name: 'Sumi Calligraphy', energy: [0.1, 0.8], scheme: 'mono', hue: 0.075, palette: { key: 0, spread: 0.6 },
+    origin: 'X13', name: 'Sumi Calligraphy', energy: [0.1, 0.8], scheme: 'mono', hue: 0.075, pal: { key: 0, spread: 0.6 },
     color: { sat: 0.4, adapt: 0.25, bloom: 0.8, vignette: 0.5, relief: 0.9, bump: 2.5, gloss: 0.4, light: 0.3 },
     carrier: 'fluid', car: { halfLife: 6, floor: 0.12, amount: 0.8, vort: 16, fnoise: 0.15, blur: 0.01 },
     bodies: [body({
