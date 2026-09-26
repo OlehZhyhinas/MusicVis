@@ -12,6 +12,8 @@
 //   --frames                    also save every frame as JPEG (for review clips / filmstrips)
 //   --embed [N]                 DINOv2-small CLS embedding of every Nth frame (default 5 = 6 per s)
 //   --jobs N                    parallel tabs (default 1, max 3)
+//   --accent off|on|PART,...    built-in accents off, the genome's own, or only those parts
+//   --tag NAME                  write under '<preset>@NAME' (variant renders beside the plain ones)
 //   --info                      only analyse the songs and print sections, moments, hooks, windows
 //   --cf                        counterfactual lockstep renders instead (half-bar shift, far offset,
 //                               each stem muted, each reaction ablated) -> .testdata/avq/cf/
@@ -107,6 +109,8 @@ async function main() {
     for (const k of ['w', 'h', 'fps', 'seed', 'warm']) if (a[k] !== undefined) opts[k] = Number(a[k]);
     if (a.embed) opts.embedEvery = a.embed === true ? 5 : Number(a.embed);
     if (a.frames) opts.frames = true;
+    if (a.accent !== undefined) opts.accent = a.accent === 'off' ? false : a.accent === 'on' || a.accent === true ? true : String(a.accent).split(',');
+    if (a.tag) opts.tag = String(a.tag);
     const jobs: Job[] = [];
     const method = a.cf ? 'counterfactual' : 'render';
     if (a.cf) delete opts.frames;
