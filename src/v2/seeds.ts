@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 134;
+export const SEED_VERSION = 135;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2534,32 +2534,6 @@ const ART2: Def[] = [
       rx('drop', 'sh', 1, 'r', 0.15, { atk: 0.05, rel: 2 }),
     ],
   },
-  {
-    // Chord rose: one rose drawn in fine stippled light, folded by a five-way kaleidoscope into a
-    // flower. On the home chord the petals sit in perfect register; as the chords stray from home the
-    // harmonic tension slides the folds out of register and bends the flower off centre, and a
-    // cadence home settles it back into symmetry with a flash. Each chord change shifts its colour,
-    // drum hits brighten it, the bass swells it, note starts tip it in depth, and the dots drift
-    // slowly on a flow field like pollen in still air. Nothing moves the whole frame.
-    origin: 'X16', name: 'Chord Rose', energy: [0.1, 0.8], scheme: 'triad', hue: 0.9,
-    color: { adapt: 0.3, bloom: 1.15, vignette: 0.45 }, carrier: 'flow', car: { halfLife: 1.2, blur: 0.08, floor: 0.5 },
-    chain: [op('kaleido', { n: 5, lock: 0 }, 1, 'view')],
-    bodies: [body({
-      shape: ['superscope', { family: 2, p: 3, q: 1, size: 0.42, audio: 0.3, spec: 0, spinX: 0, spinY: 0, persp: 0.4, n: 2048 }],
-      place: ['point', { x: 0, y: 0 }],
-      material: ['dots', { gain: 1.2, spacing: 0.01, size: 0.5 }],
-      emit: ['trail', { tip: 0.3 }],
-      feel: ['flow', { atk: 0.02, rel: 0.5 }],
-      color: ['pitch', { amount: 0.6 }],
-    })],
-    harmony: { brk: 0.7, warp: 0.4, style: 1, snap: 0.35, settle: 0.6, walk: 0.1, kick: 0, calm: 0.4 },
-    reactions: [
-      rx('chordchange', 'cm', 0, 'hue', 0.3, { atk: 0.02, rel: 1.2 }),
-      rx('hit', 'ma', 0, 'gain', 0.6, { atk: 0.005, rel: 0.25 }),
-      rx('bass', 'sh', 0, 'size', 0.3, { atk: 0.03, rel: 0.35 }),
-      rx('noteon', 'sh', 0, 'persp', 0.4, { atk: 0.005, rel: 0.3 }),
-    ],
-  },
 ];
 
 // X01.. new artistic presets built from existing genes, each around one focal idea tied to specific
@@ -2809,7 +2783,87 @@ const ART5: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5];
+// ------------------------------------------------------------ art direction, neon lilies
+// X39..X41: glowing rainbow lilies on black. A bloom is a compound of six long pointed petals (tapered
+// capsules turned round the centre, each a little different in length, width, angle and palette hue),
+// curled toward the tips by a twist deform, lit as a soft fill with two neon ring outlines. Inside it
+// a small copy of the same bloom is drawn into the feedback and carried outward by a slow zoom (its
+// twist scaled so the copy lands on the petals), its hue drifting with age, so bands of iridescent
+// colour flow through the petals from base to tip. Palettes are absolute (key 0) magenta, teal and
+// gold so the petals stay vivid in every key; the section accent turns the colour family.
+/** Six lily petals: [turn, length, width, hue] each, as tapered capsules pointing out from the centre. */
+const LILY_PETALS: [number, number, number, number][] = [
+  [0.01, 1.0, 0.36, 0], [0.175, 0.9, 0.31, 0.3], [0.33, 1.06, 0.37, 0.62], [0.505, 0.93, 0.32, 0.15], [0.655, 1.02, 0.35, 0.47], [0.835, 0.88, 0.3, 0.8],
+];
+function lilyParts(open = 0.92, k = 0.1): CompoundPart[] {
+  return LILY_PETALS.map(([a, len, w, hue], i) => part('capsule', i ? 'smooth' : 'union', {
+    x: -Math.sin(a * 2 * Math.PI) * len * open, y: Math.cos(a * 2 * Math.PI) * len * open,
+    sx: w * 1.35, sy: len, m: 1, rot: a > 0.5 ? a - 1 : a, k, hue,
+  }));
+}
+/** Three stamens with glowing anthers: thin filaments and a bright bead at each tip. */
+function stamenParts(): CompoundPart[] {
+  const st: [number, number][] = [[0.07, 1.0], [0.4, 0.85], [0.74, 1.1]];
+  return [
+    ...st.map(([a, len]) => part('capsule', 'union', { x: -Math.sin(a * 2 * Math.PI) * len, y: Math.cos(a * 2 * Math.PI) * len, sx: 0.05, sy: len, m: 0.5, rot: a > 0.5 ? a - 1 : a, bright: 0.7 })),
+    ...st.map(([a, len]) => part('ellipse', 'union', { x: -Math.sin(a * 2 * Math.PI) * len * 2, y: Math.cos(a * 2 * Math.PI) * len * 2, sx: 0.12, sy: 0.08, rot: a > 0.5 ? a - 1 : a, bright: 2, hue: 0 })),
+  ];
+}
+const LILIES: Def[] = [
+  {
+    // One hero lily filling the middle of the frame, six iridescent petals each its own neon hue, three
+    // glowing stamens over the throat. Drum hits swell the petals' glow, the bass breathes the bloom's
+    // size, the voice opens the petals (less curl while singing, curling closed in the gaps), each
+    // melody note start sends a brighter wave of colour up the petals and legato passages speed the
+    // flow, the melody's pitch tints the petals, and each section turns the palette.
+    origin: 'X39', name: 'Neon Lily', energy: [0.1, 0.9], scheme: 'free', hue: 0.88, pal: { key: 0, s1: 0.62, s2: 0.24 },
+    color: { sat: 1, exposure: 0.8, adapt: 0.2, bloom: 1.1, vignette: 0.35 }, carrier: 'warp', car: { halfLife: 0.5, floor: 1.4, blur: 0 },
+    chain: [op('zoom', { rate: 0.008 })],
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.09 }],
+        parts: lilyParts(),
+        place: ['point', { x: 0, y: 0 }],
+        deform: ['twist', { amt: 2.6 }],
+        material: ['line', { gain: 0.2, width: 3.5, halo: 0.3 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.4 }],
+        color: ['age', { hue: 0.3, rate: 0.5, detail: 0.5 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.235 }],
+        parts: lilyParts(),
+        place: ['point', { x: 0, y: 0 }],
+        deform: ['twist', { amt: 1 }],
+        material: ['fill', { gain: 0.45, soft: 0.06, core: 0, rings: 2, rgap: 0.009, rfade: 0.4 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.02, rel: 0.4 }],
+        color: ['melody', { hue: 0, amount: 1, detail: 1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.13 }],
+        parts: stamenParts(),
+        place: ['point', { x: 0, y: 0 }],
+        deform: ['twist', { amt: 0.6 }],
+        material: ['line', { gain: 1.4, width: 1.6, halo: 0.25 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.25 }],
+        color: ['fixed', { hue: 0.55, detail: 1 }],
+      }),
+    ],
+    accent: { kick: 0, hook: 0, hue: 1, drop: 0.3 },
+    reactions: [
+      rx('hit', 'ma', 1, 'gain', 0.6, { atk: 0.02, rel: 0.3 }),
+      rx('bass', 'sh', 1, 'size', 0.35, { atk: 0.05, rel: 0.45 }),
+      rx('vocals', 'de', 1, 'amt', -0.05, { atk: 0.4, rel: 1.2 }),
+      rx('vocals', 'de', 0, 'amt', -0.13, { atk: 0.4, rel: 1.2 }),
+      rx('legato', 'op', 0, 'rate', 0.15, { atk: 0.3, rel: 1 }),
+      rx('noteon', 'ma', 0, 'gain', 0.2, { atk: 0.005, rel: 0.3 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
