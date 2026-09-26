@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 130;
+export const SEED_VERSION = 131;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2691,9 +2691,51 @@ const TORONTO_X36: Def[] = [
 // ------------------------------------------------------------ art direction, after Van Gogh's The Starry Night
 // X33..X35: the painting's sky of short impasto dashes swirling in vortices, haloed stars, the dark cypress
 // and the village, in literal blues and yellows (palette key 0: the same colours in every song key).
-// X33 (Starry Night) withdrawn until it matches the painting; the group stays in place, empty, so
-// its spot in ALL_DEFS and any future re-addition need no other change.
-const ART5: Def[] = [];
+// X33 (Starry Night) withdrawn until it matches the painting.
+const ART5: Def[] = [
+  {
+    // Close up on the painting's central double swirl as pure brushwork: interlocking vortices of paint
+    // strokes in cerulean, ultramarine and white with flecks of yellow, the paint kept on the canvas (no
+    // black) and embossed like impasto. The riff turns the left vortex the same way on every repeat, drum
+    // hits jolt the right one and flare fresh yellow strokes, the bass tightens the left vortex's core,
+    // held notes lengthen the strokes (the flow runs faster), each melody note lightens the paint; the
+    // built-in drop punch flares the whole sky.
+    origin: 'X34', name: 'Brushstroke Vortex', energy: [0.2, 0.9], scheme: 'free', hue: 0.58, pal: { key: 0, s1: 0.56, s2: 0.03 },
+    color: { sat: 0.95, exposure: 0.85, contrast: 0.07, adapt: 0.35, bloom: 1.05, vignette: 0.3, relief: 1, bump: 2.6, light: 0.375, gloss: 0.4 },
+    carrier: 'flow', car: { halfLife: 2, floor: 0.15, famt: 0.0008, fscale: 1.6, blur: 0 },
+    chain: [
+      op('swirl', { amt: 0.018, k: 4, cx: -0.3, cy: 0.05 }),
+      op('swirl', { amt: -0.012, k: 4, cx: 0.3, cy: -0.06 }),
+    ],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.004 }],
+        place: ['grid', { lattice: 1, scale: 24, jitter: 0.6, density: 0.9, lit: 1, twinkle: 0.3 }],
+        material: ['glow', { gain: 0.1, width: 0.008, base: 0.5 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['height', { hue: 0.95, amount: 0.4, detail: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.008 }],
+        place: ['grid', { lattice: 2, scale: 9, jitter: 0.6, density: 0.3, lit: 0.5, twinkle: 0.6 }],
+        material: ['glow', { gain: 0.3, width: 0.008, base: 0.4 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.3 }],
+        color: ['fixed', { hue: 0.333, detail: 0.5 }],
+      }),
+    ],
+    accent: { hue: 0.25 },
+    reactions: [
+      rx('hook', 'op', 0, 'amt', 0.45, { atk: 0.005, rel: 0.5 }),
+      rx('hit', 'op', 1, 'amt', -0.6, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'ma', 1, 'gain', 0.9, { atk: 0.005, rel: 0.3 }),
+      rx('bass', 'op', 0, 'k', -0.3, { atk: 0.03, rel: 0.5 }),
+      rx('held', 'car', 0, 'famt', 0.6, { atk: 0.1, rel: 0.6 }),
+      rx('noteon', 'ma', 0, 'gain', 0.6, { atk: 0.005, rel: 0.25 }),
+    ],
+  },
+];
 
 const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
