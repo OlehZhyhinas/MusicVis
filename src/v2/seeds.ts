@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 139;
+export const SEED_VERSION = 140;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3065,7 +3065,79 @@ const TORONTO_X38: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38];
+// X25..X28 FLOWERS: after the owner's photos of pressed-flower pictures and glass paperweights; organic
+// petals built from compound parts, moved only by the music (no clock sway, no camera moves).
+// Pale paper ground (a fine warm cell field in the feedback, blurred flat) with ink drawn by
+// subtraction: the visible colour is the complement of the body's palette colour.
+function paper25(gain: number): BodyGene {
+  // One rounded box bigger than the frame: an even sheet, a warm off-white between the palette's first two slots.
+  return body({
+    shape: ['compound', { size: 0.6 }],
+    parts: [part('box', 'union', { sx: 1.7, sy: 1, m: 0.2, hue: 0.24 })],
+    material: ['fill', { gain, soft: 0 }],
+    emit: ['none'],
+    color: ['fixed', { hue: 0, detail: 1 }],
+  });
+}
+/** A pressed poppy: four broad overlapping petals (uneven sizes and turns) round a dark seed boss, and its stem. */
+function poppy25(v: number, stem: number): CompoundPart[] {
+  const j = (k: number) => (((Math.sin(v * 12.9898 + k * 78.233) * 43758.5453) % 1) + 1) % 1 - 0.5; // -0.5..0.5, fixed per poppy
+  const petal = (a: number, k: number) => {
+    const r = 0.62 + 0.12 * j(k);
+    const ang = (a + 0.04 * j(k + 9)) * Math.PI * 2;
+    return part('ellipse', k === 1 ? 'union' : 'smooth', {
+      x: Math.cos(ang) * r, y: Math.sin(ang) * r, sx: 0.9 + 0.16 * j(k + 3), sy: 0.72 + 0.1 * j(k + 5), rot: a + 0.25 + 0.03 * j(k + 13), k: 0.14,
+      hue: 0.01 * j(k + 7), bright: 1.25 + 0.7 * j(k + 11),
+    });
+  };
+  return [
+    petal(0.1, 1), petal(0.35, 2), petal(0.6, 3), petal(0.85, 4),
+    part('capsule', 'union', { x: 0.1 * stem, y: -1.2 - stem, sx: 0.1, sy: 1 + stem, rot: 0.02 * stem, m: 0.4, hue: 2 / 3, bright: 2 }),
+    part('ellipse', 'union', { sx: 0.46, sy: 0.42, hue: 1 / 6, bright: 2 }),
+  ];
+}
+const FLOWERS: Def[] = [
+  {
+    // Pressed poppies on warm paper: three big orange-red flower heads, each five rounded, overlapping,
+    // slightly uneven petals round a dark seed boss, the ink embossed a little into the paper. The bass
+    // swells the petals, drum hits make them flutter and crinkle, the melody tilts the heads.
+    origin: 'X25', name: 'Poppy Press', energy: [0.15, 0.9], scheme: 'free', hue: 0.555, pal: { key: 0, s1: 0.565, s2: 0.29 },
+    color: { sat: 1, exposure: 0.9, adapt: 0.1, bloom: 0.4, vignette: 0.3, contrast: 0, relief: 0 },
+    carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    bodies: [
+      paper25(2),
+      body({
+        shape: ['compound', { size: 0.17 }],
+        parts: poppy25(1, 1.2),
+        place: ['point', { x: -0.08, y: 0.1, angle: 0.02 }],
+        deform: ['twist', { amt: 0.6 }],
+        material: ['fill', { gain: 2.4, soft: 0.012, core: 0.9, blend: 2 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.125 }],
+        parts: poppy25(2, 0.6),
+        place: ['mirror', { axis: 0, x: 0.6, y: -0.1, angle: 0.06 }],
+        deform: ['twist', { amt: -0.7 }],
+        material: ['fill', { gain: 2.4, soft: 0.012, core: 0.9, blend: 2 }],
+        emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+    ],
+    accent: { kick: 0, hook: 0, drop: 0, hue: 0, section: 0.3 },
+    reactions: [
+      rx('bass', 'sh', 1, 'size', 0.14, { atk: 0.03, rel: 0.4 }),
+      rx('hook', 'sh', 2, 'size', 0.14, { atk: 0.01, rel: 0.35 }),
+      rx('hit', 'de', 1, 'amt', 0.05, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'de', 2, 'amt', 0.05, { atk: 0.005, rel: 0.3 }),
+      rx('noteon', 'pl', 1, 'angle', 0.04, { atk: 0.04, rel: 0.4 }),
+      rx('held', 'pl', 2, 'angle', -0.06, { atk: 0.15, rel: 0.6 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
