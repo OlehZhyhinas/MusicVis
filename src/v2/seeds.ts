@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 148;
+export const SEED_VERSION = 149;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2597,6 +2597,41 @@ const ART2: Def[] = [
       rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
       rx('hook', 'em', 0, 'birth', 0.7, { atk: 0.005, rel: 0.3 }),
       rx('vocals', 'em', 0, 'sa', 0.3, { atk: 0.2, rel: 0.8 }),
+    ],
+  },
+  {
+    // Polaron: a wireframe octahedron hangs at the centre like a crystal, and the melody winds round it
+    // as a ring of light, the present at twelve o'clock: held notes draw arcs that bend with the
+    // pitch, short notes flare as sparks round the rim. The crystal answers the tune: each note start
+    // makes it swell, held notes tip it toward the viewer and the drums turn it to a new face (both
+    // stepping on the beat and holding), and the bass breathes its light. Short crisp trails of its
+    // edges linger as it moves.
+    origin: 'X19', name: 'Polaron', energy: [0.1, 0.85], scheme: 'triad', hue: 0.6,
+    color: { sat: 0.85, adapt: 0.3, bloom: 1.2, vignette: 0.45, contrast: 0.04 }, carrier: 'warp', car: { halfLife: 0.16, blur: 0.02 },
+    bodies: [
+      body({
+        shape: ['notes', { mode: 1, span: 6, len: 1.55, height: 0.4, now: 0, tilt: 0, ribbon: 0.85, thick: 0.007, marks: 1, form: 1, size: 0.04, fade: 0.8, rise: 0, shimmer: 0.6, hues: 0.8, glow: 0.5 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['glow', { gain: 1.3 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['fixed'],
+      }),
+      body({
+        shape: ['solid', { solid: 2, size: 0.19, tilt: 0.3, inner: 0.6 }],
+        place: ['point', { x: 0, y: 0 }],
+        motion: ['none'],
+        material: ['line', { gain: 1.2, width: 1.6, halo: 0.2 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['fixed', { hue: 0.33 }],
+      }),
+    ],
+    reactions: [
+      rx('noteon', 'sh', 1, 'size', 0.35, { atk: 0.005, rel: 0.25 }),
+      rx('held', 'sh', 1, 'tilt', 0.5, { atk: 0.08, rel: 0.08, q: 1, div: 1 }),
+      rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.03, rel: 0.4 }),
+      rx('drums', 'pl', 1, 'angle', 0.5, { atk: 0.06, rel: 0.06, q: 1, div: 1 }),
     ],
   },
 ];
