@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 135;
+export const SEED_VERSION = 136;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2532,6 +2532,32 @@ const ART2: Def[] = [
       rx('bass', 'pl', 1, 'y', 0.12, { atk: 0.05, rel: 0.5 }),
       rx('hit', 'ma', 1, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
       rx('drop', 'sh', 1, 'r', 0.15, { atk: 0.05, rel: 2 }),
+    ],
+  },
+  {
+    // Chord rose: one rose drawn in fine stippled light, folded by a five-way kaleidoscope into a
+    // flower. On the home chord the petals sit in perfect register; as the chords stray from home the
+    // harmonic tension slides the folds out of register and bends the flower off centre, and a
+    // cadence home settles it back into symmetry with a flash. Each chord change shifts its colour,
+    // drum hits brighten it, the bass swells it, note starts tip it in depth, and the dots drift
+    // slowly on a flow field like pollen in still air. Nothing moves the whole frame.
+    origin: 'X16', name: 'Chord Rose', energy: [0.1, 0.8], scheme: 'triad', hue: 0.9,
+    color: { adapt: 0.3, bloom: 1.15, vignette: 0.45 }, carrier: 'flow', car: { halfLife: 1.2, blur: 0.08, floor: 0.5 },
+    chain: [op('kaleido', { n: 5, lock: 0 }, 1, 'view')],
+    bodies: [body({
+      shape: ['superscope', { family: 2, p: 3, q: 1, size: 0.42, audio: 0.3, spec: 0, spinX: 0, spinY: 0, persp: 0.4, n: 2048 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['dots', { gain: 1.2, spacing: 0.01, size: 0.5 }],
+      emit: ['trail', { tip: 0.3 }],
+      feel: ['flow', { atk: 0.02, rel: 0.5 }],
+      color: ['pitch', { amount: 0.6 }],
+    })],
+    harmony: { brk: 0.7, warp: 0.4, style: 1, snap: 0.35, settle: 0.6, walk: 0.1, kick: 0, calm: 0.4 },
+    reactions: [
+      rx('chordchange', 'cm', 0, 'hue', 0.3, { atk: 0.02, rel: 1.2 }),
+      rx('hit', 'ma', 0, 'gain', 0.6, { atk: 0.005, rel: 0.25 }),
+      rx('bass', 'sh', 0, 'size', 0.3, { atk: 0.03, rel: 0.35 }),
+      rx('noteon', 'sh', 0, 'persp', 0.4, { atk: 0.005, rel: 0.3 }),
     ],
   },
 ];
