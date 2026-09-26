@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 114;
+export const SEED_VERSION = 115;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2266,46 +2266,53 @@ const NOTES: Def[] = [
 // pressed flowers on pale paper (the paper is a light field the ink cuts into with subtractive bodies).
 const ART3: Def[] = [
   {
-    // A glass paperweight: pale green cane stripes curl out from the centre like an anemone on a deep
-    // blue glass sphere with a bright glint, over its reflection on the shelf. Drum hits turn the
-    // stripes a notch, held notes curl them further, the bass breathes the sphere, and each note start
-    // lets small bubbles rise through the glass.
-    origin: 'X21', name: 'Paperweight Anemone', energy: [0.1, 0.85], scheme: 'triad', hue: 0.6,
-    color: { adapt: 0.12, bloom: 0.9, vignette: 0.5, reflect: 1, reflectY: -0.31 }, carrier: 'none',
+    // A bioluminescent jellyfish seen from the side, drifting slowly round the dark water: a soft
+    // glowing bell that never holds a perfect circle (wobbling lobes), and below it long tentacles
+    // that curl and sway and stream behind it as it moves. Light travels down the tentacles: each
+    // melody note start sends a spark of light down them, held notes long waves, the colour
+    // following the melody as it flows. Drum hits contract the bell and thrust the creature upward,
+    // the bass deepens its glow; faint motes drift in the water around it.
+    origin: 'X21', name: 'Pandora Jelly', energy: [0.1, 0.85], scheme: 'triad', hue: 0.5,
+    color: { adapt: 0.15, bloom: 1.25, vignette: 0.55 }, carrier: 'warp', car: { halfLife: 0.7, floor: 0.3, blur: 0.18 },
+    chain: [op('translate', { vy: -0.1 }), op('noise', { amp: 0.0014, scale: 2.5, speed: 0.35 })],
     bodies: [
       body({
-        shape: ['dot', { r: 0.25 }],
-        place: ['point', { x: 0, y: 0 }],
-        material: ['chrome', { gain: 0.5, chrome: 0.5 }],
+        shape: ['dot', { r: 0.17 }],
+        place: ['point', { x: 0, y: 0.14 }],
+        motion: ['circle', { radius: 0.07, period: 16 }],
+        deform: ['wobble', { lobes: 3, amp: 0.1, rate: 0.125 }],
+        material: ['chrome', { gain: 1.1, chrome: 0.3 }],
         emit: ['none'],
-        feel: ['flow', { atk: 0.03, rel: 0.4 }],
-        color: ['fixed', { hue: 0 }],
+        feel: ['flow', { atk: 0.02, rel: 0.4 }],
+        color: ['fixed', { hue: 0.1 }],
       }),
-      {
-        ...body({
-          shape: ['segment', { len: 0.5, w: 0.0065 }],
-          place: ['point', { x: 0, y: 0 }],
-          material: ['fill', { gain: 1.2, soft: 0 }],
-          emit: ['none'],
-          feel: ['flow', { atk: 0.02, rel: 0.3 }],
-          color: ['fixed', { hue: 0.667 }],
-        }),
-        deform: { kind: 'none', p: {}, ops: [op('rotate', { lock: 0.0625, rate: 0 }), op('twist', { amt: 0.005 }), op('kaleido', { n: 12, lock: 0 })] },
-      },
       body({
-        shape: ['notes', { mode: 0, span: 1.8, len: 0.44, height: 0.3, now: -0.5, tilt: 0.25, ribbon: 0, marks: 1, form: 3, size: 0.016, fade: 1, rise: 0, shimmer: 0, hues: 0.2, glow: 0.2 }],
-        material: ['glow', { gain: 1.3 }],
+        shape: ['dot', { r: 0.12 }],
+        place: ['point', { x: 0, y: 0.1 }],
+        motion: ['circle', { radius: 0.07, period: 16 }],
+        deform: ['arms', { count: 6, reach: 1, width: 0.15, curl: 1, sway: 0.8, turn: 16 }],
+        material: ['line', { gain: 0.42, width: 1.3, halo: 0.35 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.25 }],
+        color: ['age', { hue: 0.3, rate: 0.25, detail: 0.5 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.002 }],
+        place: ['grid', { lattice: 1, scale: 7, jitter: 0.6, density: 0.2, lit: 1, links: 0, twinkle: 0.8 }],
+        motion: ['drift', { vx: 0.004, vy: 0.008 }],
+        material: ['glow', { gain: 0.06, base: 0.3, width: 0.003 }],
         emit: ['none'],
-        feel: ['flow', { atk: 0.01, rel: 0.2 }],
-        color: ['fixed', { hue: 0.5 }],
+        feel: ['flow', { atk: 0.1, rel: 0.8 }],
       }),
     ],
+    timbre: { src: 0, sheen: 0.15, glass: 1, grain: 0, scale: 18, velvet: 0.2, edge: 0.3, emboss: 0 },
     reactions: [
-      rx('hit', 'dr', 4, 'amt', 0.7, { atk: 0.005, rel: 0.25 }),
-      rx('held', 'dr', 4, 'amt', 0.35, { atk: 0.15, rel: 0.6 }),
-      rx('bass', 'sh', 0, 'r', 0.5, { atk: 0.03, rel: 0.4 }),
-      rx('other', 'ma', 0, 'chrome', 0.5, { atk: 0.1, rel: 0.6 }),
-      rx('hook', 'ma', 0, 'gain', 0.4, { atk: 0.01, rel: 0.3 }),
+      rx('hit', 'sh', 0, 'r', -0.7, { atk: 0.005, rel: 0.35 }),
+      rx('hit', 'pl', 0, 'y', 0.3, { atk: 0.03, rel: 1.2 }),
+      rx('hit', 'pl', 1, 'y', 0.3, { atk: 0.03, rel: 1.2 }),
+      rx('surge', 'op', 0, 'vy', -0.5, { atk: 0.05, rel: 0.6 }),
+      rx('noteon', 'ma', 1, 'gain', 0.8, { atk: 0.005, rel: 0.2 }),
+      rx('legato', 'cm', 1, 'hue', 0.5, { atk: 0.4, rel: 1.2 }),
     ],
   },
 ];
