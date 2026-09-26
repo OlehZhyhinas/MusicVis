@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 128;
+export const SEED_VERSION = 129;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2407,6 +2407,41 @@ const ART2: Def[] = [
       rx('noteon', 'sh', 0, 'size', 0.6, { atk: 0.005, rel: 0.3 }),
       rx('legato', 'sh', 0, 'glow', 0.5, { atk: 0.3, rel: 0.8 }),
       rx('section', 'car', 0, 'floor', 1, { atk: 0.05, rel: 1.5 }),
+    ],
+  },
+  {
+    // Moon tide: a glowing blue moon with five slow curling arms hangs over black water, and the
+    // melody skims the surface below it: every note start drops a ring on the water that swells as
+    // the note lands, a held note draws a thread across it, and the whole scene is mirrored in the
+    // water. The arms reach with the instruments, the bass lifts the moon, drum hits brighten it, and
+    // a drop swells it full. Colours are literal (moonlit blue and gold), not the song key.
+    origin: 'X15', name: 'Moon Tide', energy: [0.05, 0.75], scheme: 'complementary', hue: 0.58, pal: { key: 0 },
+    color: { sat: 0.75, adapt: 0.2, bloom: 1.0, vignette: 0.45, reflect: 1, reflectY: -0.24 },
+    carrier: 'warp', car: { halfLife: 0.12, floor: 0.6, blur: 0.02, water: 0.35, wsize: 0.05 },
+    bodies: [
+      body({
+        shape: ['notes', { mode: 0, span: 5, len: 1.75, height: 0.22, now: 0.2, tilt: 0, ribbon: 0.6, thick: 0.005, marks: 1, form: 3, size: 0.035, fade: 0.9, rise: 0, shimmer: 0.6, hues: 0.6, glow: 0.5 }],
+        place: ['point', { x: 0, y: -0.15 }],
+        material: ['glow', { gain: 1.1 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['fixed', { hue: 0.06 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.075 }],
+        place: ['point', { x: 0, y: 0.13 }],
+        deform: ['arms', { count: 5, reach: 0.9, width: 0.2, curl: 0.9, sway: 1, turn: 16 }],
+        material: ['glow', { gain: 1.2, width: 0.03, base: 0.7, halo: 0.3 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.05, rel: 0.5 }],
+        color: ['fixed', { hue: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('noteon', 'sh', 0, 'size', 0.5, { atk: 0.005, rel: 0.3 }),
+      rx('bass', 'pl', 1, 'y', 0.12, { atk: 0.05, rel: 0.5 }),
+      rx('hit', 'ma', 1, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('drop', 'sh', 1, 'r', 0.15, { atk: 0.05, rel: 2 }),
     ],
   },
 ];
