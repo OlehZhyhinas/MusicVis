@@ -896,9 +896,10 @@ export class Stage {
 
     // Choreography over the song timeline (look-ahead from the offline analysis).
     const cue = cueOf(state);
-    const acc = (this.accIn ??= { cue, hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0 });
+    const acc = (this.accIn ??= { cue, hookOn: 0, hookPhase: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0 });
     acc.cue = cue;
     acc.hookOn = F.hookOn;
+    acc.hookPhase = F.hookPhase;
     acc.hookPulse = F.hookPulse;
     acc.hookNotePulse = F.hookNotePulse;
     acc.hookNote = F.hookNote;

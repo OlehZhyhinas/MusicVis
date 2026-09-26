@@ -13,7 +13,7 @@ type Check = (name: string, ok: boolean, detail: string) => void;
 const cue = (over: Partial<ChoreoCue> = {}): ChoreoCue => ({
   timeToDrop: Infinity, sinceDrop: Infinity, barSeconds: 2, label: 'verse', prevLabel: null, sinceSection: 10, sectionLen: 30, bars: 5, ...over,
 });
-const input = (over: Partial<AccentInput> = {}): AccentInput => ({ cue: cue(), hookOn: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0, ...over });
+const input = (over: Partial<AccentInput> = {}): AccentInput => ({ cue: cue(), hookOn: 0, hookPhase: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1, hit: 0, ...over });
 const pose = (): ChoreoPose => ({ ...IDENTITY_POSE });
 const same = (a: ChoreoPose, b: ChoreoPose) => (Object.keys(a) as (keyof ChoreoPose)[]).every((k) => Math.abs(a[k] - b[k]) < 1e-9);
 const fmt = (q: ChoreoPose) => JSON.stringify(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, +v.toFixed(4)])));
@@ -45,18 +45,30 @@ export function accentTests(check: Check): void {
   setAccentOverride(null);
   check('accent.override', forced.hook === 0 && accentPlan(plain).hook > 0, JSON.stringify(forced));
 
-  // Pose: identity with no hook; the same pose for the same moment of two repeats (the rhyme);
-  // different notes nudge different ways.
+  // Pose: identity with no hook; the same pose for the same moment of two repeats (the rhyme); the
+  // camera draws one smooth arc per repeat (at rest at both ends, never a per-note snap), each riff
+  // note lifts the light only.
   const plan = { ...accentPlan(plain), section: 0, hue: 0, drop: 0, kick: 0 };
   const q0 = applyAccents(plan, input(), pose());
   check('accent.identity-outside-hooks', same(q0, IDENTITY_POSE as ChoreoPose), fmt(q0));
-  const a = applyAccents(plan, input({ hookOn: 1, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 12.3 }) }), pose());
-  const b = applyAccents(plan, input({ hookOn: 1, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 40.3, label: 'chorus' }) }), pose());
+  const a = applyAccents(plan, input({ hookOn: 1, hookPhase: 0.4, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 12.3 }) }), pose());
+  const b = applyAccents(plan, input({ hookOn: 1, hookPhase: 0.4, hookNotePulse: 0.8, hookNote: 2, hookId: 0, cue: cue({ bars: 40.3, label: 'chorus' }) }), pose());
   check('accent.rhymes', same(a, b) && a.zoom > 1, `${fmt(a)} vs ${fmt(b)}`);
-  const c = applyAccents(plan, input({ hookOn: 1, hookNotePulse: 0.8, hookNote: 1, hookId: 0 }), pose());
-  check('accent.notes-differ', Math.hypot(a.tx - c.tx, a.ty - c.ty) > 0.005 && Math.sign(a.roll) !== Math.sign(c.roll), `${fmt(a)} vs ${fmt(c)}`);
-  const start = applyAccents(plan, input({ hookOn: 1, hookPulse: 1, hookNotePulse: 1, hookNote: 0, hookId: 0 }), pose());
-  check('accent.bounded', start.zoom < 1.15 && Math.abs(start.hue) < 0.1 && start.exposure === 1, fmt(start));
+  const quiet = applyAccents(plan, input({ hookOn: 1, hookPhase: 0.4, hookNotePulse: 0, hookNote: 2, hookId: 0 }), pose());
+  const cam = (x: ChoreoPose) => [x.zoom, x.tx, x.ty, x.roll];
+  check('accent.notes-light-only', cam(a).every((v, i) => Math.abs(v - cam(quiet)[i]) < 1e-12) && a.exposure > quiet.exposure, `${fmt(a)} vs ${fmt(quiet)}`);
+  const ends = [0, 1].map((ph) => applyAccents(plan, input({ hookOn: 1, hookPhase: ph, hookId: 1 }), pose()));
+  check('accent.arc-rests-at-ends', ends.every((e) => Math.abs(e.zoom - 1) < 1e-9 && Math.abs(e.tx) < 1e-9 && Math.abs(e.ty) < 1e-9 && Math.abs(e.roll) < 1e-9), ends.map(fmt).join(' / '));
+  // Largest frame-to-frame change of the camera across a 2 s repeat at 30 fps: a glide, not a jump.
+  let step = 0;
+  for (let k = 1; k <= 60; k++) {
+    const p1 = applyAccents(plan, input({ hookOn: 1, hookPhase: (k - 1) / 60, hookId: 0 }), pose());
+    const p2 = applyAccents(plan, input({ hookOn: 1, hookPhase: k / 60, hookId: 0 }), pose());
+    step = Math.max(step, Math.abs(p2.zoom - p1.zoom) + Math.hypot(p2.tx - p1.tx, p2.ty - p1.ty) + Math.abs(p2.roll - p1.roll));
+  }
+  check('accent.arc-glides', step < 0.003, `largest per-frame camera step ${step.toFixed(5)}`);
+  const start = applyAccents(plan, input({ hookOn: 1, hookPhase: 0, hookPulse: 1, hookNotePulse: 1, hookNote: 0, hookId: 0 }), pose());
+  check('accent.bounded', start.zoom === 1 && Math.abs(start.hue) < 0.1 && start.exposure > 1 && start.exposure < 1.1, fmt(start));
 
   // Sections: each type its own framing and hue, the same every time it comes back; a quick glide
   // at the boundary; a punch on drops that settles within a bar; parts the choreography does are its own.
@@ -71,8 +83,16 @@ export function accentTests(check: Check): void {
   const half = applyAccents(sp, input({ cue: cue({ label: 'chorus', sinceSection: 0.17, prevLabel: 'verse' }) }), pose());
   check('accent.section-glide', same(edge, verse) && dz(half, verse) > 0.01 && dz(half, chorus) > 0.01, `${fmt(edge)} / ${fmt(half)}`);
   const d0 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: 0 }) }), pose());
+  const dq = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: 0.5 }) }), pose());
   const d1 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: 2.5 }) }), pose());
-  check('accent.drop-punch', d0.zoom > d1.zoom * 1.05 && d0.exposure > 1.1 && d1.exposure === 1 && d0.exposure < 1.2, `${fmt(d0)} vs ${fmt(d1)}`);
+  check('accent.drop-punch', d0.zoom === d1.zoom && dq.zoom > d1.zoom * 1.05 && d0.exposure > 1.1 && d1.exposure === 1 && d0.exposure < 1.2, `light hits on the drop, the zoom swells in over a quarter bar: ${fmt(d0)} / ${fmt(dq)} / ${fmt(d1)}`);
+  let dstep = 0;
+  for (let k = 1; k <= 60; k++) {
+    const z1 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: (k - 1) / 30 }) }), pose()).zoom;
+    const z2 = applyAccents(sp, input({ cue: cue({ label: 'drop', sinceSection: 2, sinceDrop: k / 30 }) }), pose()).zoom;
+    dstep = Math.max(dstep, Math.abs(z2 - z1));
+  }
+  check('accent.drop-swells', dstep < 0.012, `largest per-frame zoom step after a drop ${dstep.toFixed(4)}`);
   const choreo = repair({ ...cloneGenome(plain), choreo: { p: { frame: 0.5, scene: 0, punch: 0.6 } }, accent: repairAccent({ p: { frame: 0.5 } }) } as Genome);
   const cp = accentPlan(choreo);
   check('accent.choreo-not-doubled', cp.frame === 0 && cp.drop === 0 && cp.hue > 0 && cp.section > 0 && cp.hook > 0, JSON.stringify(cp));

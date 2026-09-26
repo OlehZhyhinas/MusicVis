@@ -1,15 +1,16 @@
 // Accents: small built-in gestures every preset gets by default, so the song's riff, its section
 // changes and its drum hits read on screen even when a preset's own reactions miss them.
 //
-//  * hook: on each repeat of the song's hook (src/analysis/hooks.ts) the camera makes the same small
-//    gesture on every note of the motif, a nudge whose direction follows the note's place in the
-//    motif, plus a lift on the repeat's first note. Every repeat moves the same way, so the riff rhymes.
+//  * hook: on each repeat of the song's hook (src/analysis/hooks.ts) the camera draws the same slow
+//    arc across the repeat (a push-in, drift and lean that start and end at rest), each note of the
+//    motif lifts the light a little and the repeat's first note steps the hue. Every repeat moves the
+//    same way, so the riff rhymes; nothing moves the frame on the riff's individual notes.
 //  * section: every section type gets its own light, colour and hue step (calm sections dimmer and
 //    paler, choruses and drops fuller), reached in a fraction of a second at the boundary, so a chorus
 //    looks like the other choruses and not like the verse; an optional framing per section type (a
-//    push, a pan, a lean; off by default: a push-in magnifies fine flickering texture); drop: a zoom,
-//    colour and light punch on each drop that settles over a bar.
-//  * kick: a small zoom and exposure punch on drum hits, for presets without a hit or drums reaction.
+//    push, a pan, a lean; off by default: a push-in magnifies fine flickering texture); drop: a colour
+//    and light punch on each drop that settles over a bar, with a zoom that swells in and eases out.
+//  * kick: a small zoom and exposure punch on drum hits; off by default, only a preset's own gene opts in.
 //
 // Everything is a camera / colour pose composed onto the choreography's (see choreo.ts): no extra
 // passes and no full-frame flashes (the kick's exposure punch stays under 10 % at the default, far
@@ -47,7 +48,7 @@ registerGenomeGene({
   title: 'Accents',
   schemas: ACCENT_SCHEMA,
   optional: true,
-  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera nudges on each note of the motif the same way every time, so the riff rhymes visually; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = zoom, colour and light punch on drops; kick = small zoom and brightness punch on drum hits, off by default (0 by default and by every random or bred genome; a preset\'s own gene can still set it above 0 to opt in); shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
+  glossary: 'built-in accents every preset has by default (absent gene = these defaults; add the gene to tune them, set a part to 0 to turn it off): hook = on every repeat of the song\'s riff or sung hook the camera draws the same slow arc (a push-in, drift and lean that starts and ends at rest) and each note of the motif lifts the light a little, so the riff rhymes visually without the picture jumping on its notes; section = each section type gets its own light and colour (calm sections dimmer and paler, choruses and drops fuller) so choruses match each other and differ from verses; hue = hue step per section type; frame = each section type also gets its own framing (push, pan, lean; 0 by default); drop = colour and light punch on drops with a zoom that swells in over a quarter bar and eases back (never a one-frame snap); kick = small zoom and brightness punch on drum hits, off by default (0 by default and by every random or bred genome; a preset\'s own gene can still set it above 0 to opt in); shot = which set of framings and nudge directions. Parts the choreography gene already does (its frame, scene, punch) are left to it',
 });
 
 export interface AccentGene {
@@ -58,6 +59,11 @@ export interface AccentGene {
 export const ACCENT_COST_MS = 0;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** Smoothstep of x clamped to 0..1 (zero slope at both ends). */
+const smooth01 = (x: number) => {
+  const t = clamp(x, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
 
 function clampSpec(v: unknown, s: ParamSpec): number {
@@ -226,6 +232,8 @@ export interface AccentInput {
   cue: ChoreoCue;
   /** Hook signals (MusicState hook fields). */
   hookOn: number;
+  /** 0..1 through the current repeat (0 outside). */
+  hookPhase: number;
   hookPulse: number;
   hookNotePulse: number;
   hookNote: number;
@@ -236,12 +244,19 @@ export interface AccentInput {
 
 /** Seconds the camera takes to move into a new section's framing. */
 export const SECTION_GLIDE_S = 0.35;
-/** Hook gesture at full strength: zoom lift on a repeat's first note, zoom and nudge per note (fraction of the frame), roll per note (turns), held push while the hook plays. */
-const HOOK_START_ZOOM = 0.08;
-const HOOK_NOTE_ZOOM = 0.05;
-const HOOK_NOTE_PAN = 0.03;
-const HOOK_NOTE_ROLL = 0.006;
-const HOOK_HOLD_ZOOM = 0.04;
+/**
+ * Hook gesture at full strength. The camera draws one slow arc across each repeat of the hook, a
+ * function of the repeat's phase that starts and ends at rest with zero speed (push-in, drift and lean
+ * in the hook's own direction, back out by the repeat's end), so every repeat moves the same way and
+ * the riff rhymes without the picture snapping on the riff's notes. Each motif note lifts the light a
+ * little and the repeat's first note steps the hue; no per-note camera motion (a per-note nudge made
+ * the whole frame jerk on every riff note, which lands on the beat in most songs: measured with
+ * scripts/avq/jerk.ts). Zoom and pan as fractions of the frame, roll in radians.
+ */
+const HOOK_ARC_ZOOM = 0.06;
+const HOOK_ARC_PAN = 0.025;
+const HOOK_ARC_ROLL = 0.02;
+const HOOK_NOTE_LIGHT = 0.08;
 const HOOK_START_HUE = 0.05;
 /**
  * Section framing at full strength goes through choreo's sceneFraming with frame = SECTION_FRAME *
@@ -259,11 +274,16 @@ const SECTION_TONE: Record<SectionLabel, [number, number]> = {
 };
 /** Hue step per section type at full strength, as choreo's scene amount. */
 const SECTION_SCENE = 0.35;
-/** Drop punch at full strength (zoom kick, saturation and exposure lift), settling over DROP_RELAX_BARS. */
+/**
+ * Drop punch at full strength: a saturation and exposure lift that hits on the drop and settles over
+ * DROP_RELAX_BARS, and a zoom that swells in over the first DROP_SWELL of that time and eases back
+ * out (a one-frame zoom kick snapped the whole picture; measured with scripts/avq/jerk.ts).
+ */
 const DROP_ZOOM = 0.16;
 const DROP_SAT = 0.3;
 const DROP_EXPOSURE = 0.3;
 const DROP_RELAX_BARS = 1;
+const DROP_SWELL = 0.25;
 /** Kick at full strength: zoom and exposure lift per unit hit pulse. */
 const KICK_ZOOM = 0.035;
 const KICK_EXPOSURE = 0.15;
@@ -328,23 +348,27 @@ export function applyAccents(plan: AccentPlan, m: AccentInput, q: ChoreoPose): C
     exposure *= f.exposure;
     sat *= f.sat;
   }
-  if (plan.drop > 0 && m.cue.sinceDrop < DROP_RELAX_BARS * m.cue.barSeconds) {
-    const x = 1 - m.cue.sinceDrop / (DROP_RELAX_BARS * m.cue.barSeconds);
+  if (plan.drop > 0 && m.cue.sinceDrop >= 0 && m.cue.sinceDrop < DROP_RELAX_BARS * m.cue.barSeconds) {
+    const u = m.cue.sinceDrop / (DROP_RELAX_BARS * m.cue.barSeconds);
+    const x = 1 - u;
     const env = x * x;
-    zoom *= 1 + DROP_ZOOM * plan.drop * env;
+    zoom *= 1 + DROP_ZOOM * plan.drop * smooth01(u / DROP_SWELL) * (1 - smooth01((u - DROP_SWELL) / (1 - DROP_SWELL)));
     sat *= 1 + DROP_SAT * plan.drop * env;
     exposure *= 1 + DROP_EXPOSURE * plan.drop * env;
   }
   if (plan.hook > 0 && (m.hookOn > 0 || m.hookPulse > 0 || m.hookNotePulse > 0)) {
     const h = plan.hook;
-    const np = m.hookNotePulse;
-    zoom *= 1 + h * (HOOK_HOLD_ZOOM * m.hookOn + HOOK_START_ZOOM * m.hookPulse + HOOK_NOTE_ZOOM * np);
-    if (m.hookNote >= 0 && np > 0) {
-      const a = noteAngle(plan, m.hookNote, Math.max(0, m.hookId));
-      tx += Math.cos(a) * HOOK_NOTE_PAN * h * np;
-      ty += Math.sin(a) * HOOK_NOTE_PAN * h * np;
-      roll += (m.hookNote % 2 === 0 ? 1 : -1) * HOOK_NOTE_ROLL * TAU * h * np;
+    if (m.hookOn > 0) {
+      // One arc per repeat: zero with zero speed at both ends of the repeat.
+      const ph = TAU * clamp(m.hookPhase, 0, 1);
+      const bump = 0.5 * (1 - Math.cos(ph));
+      const a = noteAngle(plan, 0, Math.max(0, m.hookId));
+      zoom *= 1 + HOOK_ARC_ZOOM * h * bump;
+      tx += Math.cos(a) * HOOK_ARC_PAN * h * bump;
+      ty += Math.sin(a) * HOOK_ARC_PAN * h * bump;
+      roll += (Math.max(0, m.hookId) % 2 === 0 ? 1 : -1) * HOOK_ARC_ROLL * h * Math.sin(ph) * bump;
     }
+    exposure *= 1 + HOOK_NOTE_LIGHT * h * m.hookNotePulse;
     hue += HOOK_START_HUE * h * m.hookPulse;
   }
   if (plan.kick > 0 && m.hit > 0) {
