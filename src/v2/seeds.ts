@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 121;
+export const SEED_VERSION = 122;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -971,15 +971,16 @@ const PHYSICS: Def[] = [
     origin: 'V01', name: 'Stage Rig', energy: [0.35, 1], scheme: 'triad', hue: 0.62,
     color: { sat: 0.85, adapt: 0.35, bloom: 1.2, vignette: 0.5 }, carrier: 'warp', car: { halfLife: 0.12 },
     bodies: [body({
-      shape: ['beams', { count: 8, spread: 1.1, fan: 0.35, sweep: 0.55, pattern: 4, period: 1, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.4, accent: 0.8 }],
+      shape: ['beams', { count: 8, spread: 1.1, fan: 0.35, sweep: 0.55, pattern: 4, period: 1, width: 0.035, haze: 0.7, gobo: 0, hues: 0.06, length: 1.4, flare: 0.4, accent: 0.8, trig: 1 }],
       place: ['point', { x: 0, y: 0.45 }],
       material: ['glow', { gain: 1 }],
       feel: ['flow', { atk: 0.02, rel: 0.15 }],
     })],
-    // Run like a lighting operator, not a metronome: every head jumps to a new aim on each beat and
-    // holds, drum hits flare the lenses, the rig dims in quiet passages and blazes when it's loud, the
-    // bass fattens the shafts, and a drop fans every head out wide. The choreography dims and drains the
-    // rig through the build, punches it on the drop and gives each section type its own colour.
+    // Run like a lighting operator, not a metronome: every head jumps to a new aim on each drum hit
+    // and holds (the riff lights one head per riff note), drum hits flare the lenses, the rig dims
+    // in quiet passages and blazes when it's loud, the bass fattens the shafts, and a drop fans every
+    // head out wide. The choreography dims and drains the rig through the build, punches it on the
+    // drop and gives each section type its own colour.
     reactions: [
       rx('hit', 'sh', 0, 'width', 0.9, { rel: 0.15 }), rx('loud', 'ma', 0, 'gain', 0.8, { atk: 0.05, rel: 0.4 }),
       rx('bass', 'sh', 0, 'haze', 0.5, { atk: 0.02, rel: 0.25 }), rx('drop', 'sh', 0, 'fan', 0.6, { atk: 0.02, rel: 2 }),
@@ -2324,14 +2325,14 @@ const ART2: Def[] = [
   {
     // A smoke machine on the stage floor: four moving heads stand at the foot of the frame and throw
     // crossing shafts up through real simulated smoke. The rig moves only when the music tells it to:
-    // on each drum hit every head snaps to a new aim and the smoke machine puffs a curl of smoke into
-    // the shafts, and between hits the heads settle back and the smoke rolls on its own. Each riff note
-    // opens the fan, the bass fattens the shafts, quiet passages dim the rig to a glow in the haze,
-    // each chord change steps the gels across the rig, and the gel colour follows the melody.
+    // on each drum hit every head snaps to a new aim and holds it, and the smoke machine puffs a curl
+    // of smoke into the shafts that keeps rolling on its own. Each riff note flares one head (the same
+    // head for the same note every repeat) and opens the fan, the bass fattens the shafts, the voice
+    // thickens the haze, quiet passages dim the rig, and the gel colour follows the melody.
     origin: 'X11', name: 'Smoke Machine', energy: [0.3, 1], scheme: 'analogous', hue: 0.58,
     color: { sat: 0.8, adapt: 0.3, bloom: 1.3, vignette: 0.3 }, carrier: 'fluid', car: { halfLife: 0.8, floor: 0.55, amount: 1.2, vort: 24, fnoise: 0.2, blur: 0.02 },
     bodies: [body({
-      shape: ['beams', { count: 4, spread: 1.6, fan: 0.55, sweep: 0, pattern: 4, period: 1, width: 0.045, haze: 0.9, gobo: 3, hues: 0.1, length: 2.2, flare: 0.5, accent: 0.3 }],
+      shape: ['beams', { count: 4, spread: 1.6, fan: 0.55, sweep: 0.5, pattern: 4, period: 1, width: 0.045, haze: 0.9, gobo: 3, hues: 0.1, length: 2.2, flare: 0.5, accent: 1, trig: 1 }],
       place: ['point', { x: 0, y: -0.45 }],
       material: ['glow', { gain: 1.1 }],
       emit: ['dye', { force: 1.5 }],
@@ -2339,11 +2340,10 @@ const ART2: Def[] = [
       color: ['melody', { amount: 0.45, detail: 0.3 }],
     })],
     reactions: [
-      rx('hit', 'sh', 0, 'sweep', 1, { atk: 0.005, rel: 0.7 }),
+      rx('vocals', 'sh', 0, 'haze', 0.5, { atk: 0.05, rel: 0.5 }),
       rx('bass', 'sh', 0, 'width', 0.9, { atk: 0.02, rel: 0.3 }),
       rx('hook', 'sh', 0, 'fan', 0.7, { atk: 0.005, rel: 0.4 }),
       rx('loud', 'ma', 0, 'gain', 0.9, { atk: 0.1, rel: 0.8 }),
-      rx('chordchange', 'sh', 0, 'hues', 0.9, { atk: 0.01, rel: 1.2 }),
     ],
   },
   {
