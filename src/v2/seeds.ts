@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 111;
+export const SEED_VERSION = 112;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2340,7 +2340,44 @@ const ART2: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART2, ...ART3];
+// X01.. new artistic presets built from existing genes, each around one focal idea tied to specific
+// musical events.
+const ART: Def[] = [
+  {
+    // Melody Mycelium: the melody runs across the frame as a lane of glowing seeds and a thin ribbon,
+    // and a slime mould grows out of it. Every note start is a spore that the agents are reborn at, so
+    // veins sprout from each note and bridge it to the last; a held phrase feeds one continuous root
+    // along the ribbon, a staccato riff leaves a row of separate nodes. Drum hits flare the whole net,
+    // the bass drives the agents faster so the veins surge and re-route; on a drop every agent bursts
+    // out of the notes and the network regrows.
+    origin: 'X01', name: 'Melody Mycelium', energy: [0.15, 0.85], scheme: 'complementary', hue: 0.12,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 5, len: 1.7, height: 0.6, now: 0.3, ribbon: 1, thick: 0.01, marks: 1, form: 0, size: 0.04, fade: 1.2, rise: 0.04, shimmer: 0.4, hues: 0.5, glow: 0.6 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 1.7 }],
+      emit: ['trail'],
+      feel: ['flow', { atk: 0.01, rel: 0.2 }],
+      color: ['melody', { amount: 0.5 }],
+    }), body({
+      shape: ['dot', { r: 0.003 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 0.12, width: 0.004 }],
+      emit: ['slime', { count: 262144, sa: 0.4, sd: 0.02, steer: 0.8, step: 0.0005, deposit: 0.2, decay: 0.97, diffuse: 0.3, body: 0, feed: 0.4, birth: 0.02, onDrop: 2 }],
+      feel: ['flow', { atk: 0.02, rel: 0.3 }],
+      color: ['fixed', { hue: 0.5 }],
+    })],
+    reactions: [
+      rx('hit', 'ma', 1, 'gain', 0.8, { atk: 0.005, rel: 0.25 }),
+      rx('bass', 'pl', 0, 'y', 0.25, { atk: 0.03, rel: 0.35 }),
+      rx('noteon', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
+      rx('hook', 'sh', 0, 'size', 0.5, { atk: 0.005, rel: 0.3 }),
+      rx('held', 'sh', 0, 'glow', 0.5, { atk: 0.05, rel: 0.3 }),
+    ],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
