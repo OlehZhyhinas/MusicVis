@@ -29,7 +29,7 @@ export function grooveGeneTests(check: Check): void {
     const bad = cloneGenome(g);
     bad.groove!.p.crisp = 4;
     check('groove.genome-validate', validate(bad).some((e) => e.startsWith('groove')), validate(bad).join(','));
-    check('groove.seeds-untouched', SEEDS.every((s) => (s.origin.startsWith('Q') ? !!s.genome.groove : !('groove' in s.genome))), 'only Q seeds carry a groove');
+    check('groove.seeds-untouched', SEEDS.every((s) => (/^[UX]/.test(s.origin) ? true : s.origin.startsWith('Q') ? !!s.genome.groove : !('groove' in s.genome))), 'only Q seeds carry a groove');
     check('groove.signals', ['swing', 'push', 'humanity', 'synco'].every((s) => (SIGNALS as readonly string[]).includes(s)), SIGNALS.join(','));
   }
 

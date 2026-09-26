@@ -88,7 +88,7 @@ export function dejavuTests(check: Check): void {
     const bad = cloneGenome(g);
     bad.dejavu!.p.recall = 7;
     check('dejavu.genome-validate', validate(bad).some((e) => e.startsWith('dejavu')), validate(bad).join(','));
-    check('dejavu.seeds-untouched', SEEDS.every((s) => (/^D\d\d$/.test(s.origin) ? true : !('dejavu' in s.genome))), 'only D seeds carry a dejavu gene');
+    check('dejavu.seeds-untouched', SEEDS.every((s) => (/^D\d\d$/.test(s.origin) || /^[UX]/.test(s.origin) ? true : !('dejavu' in s.genome))), 'only D seeds carry a dejavu gene');
     check('dejavu.absent-stays-absent', !('dejavu' in repair(cloneGenome(SEEDS[3].genome))), 'repair does not invent a dejavu gene');
     // Migration: a genome saved before the gene existed loads unchanged; a garbled gene is repaired.
     const old = JSON.parse(JSON.stringify(SEEDS[2].genome));

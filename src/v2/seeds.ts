@@ -35,12 +35,13 @@ import { CHOREO_SCHEMA } from './genes/choreo';
 import { DRIFT_SCHEMA } from './genes/drift';
 import { HARMONY_SCHEMA } from './genes/harmony';
 import { ACCENT_SCHEMA } from './genes/accent';
+import { USER_GENOMES } from './seedsUser';
 import { GROOVE_SCHEMA } from './genes/groove';
 import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 106;
+export const SEED_VERSION = 109;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2262,6 +2263,9 @@ const NOTES: Def[] = [
 ];
 
 const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES];
-export const SEEDS: Seed[] = ALL_DEFS.map(build);
+export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
-export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries(ALL_DEFS.map((d) => [d.origin, d.reactions ?? []]));
+export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
+  ...ALL_DEFS.map((d) => [d.origin, d.reactions ?? []] as const),
+  ...USER_GENOMES.map((u) => [u.origin, ((u.genome as { reactions?: ReactionGene[] }).reactions ?? [])] as const),
+]);

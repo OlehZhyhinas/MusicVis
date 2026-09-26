@@ -27,7 +27,7 @@ export function timbreGeneTests(check: Check): void {
     const bad = cloneGenome(g);
     bad.timbre!.p.velvet = 3;
     check('timbre.genome-validate', validate(bad).some((e) => e.startsWith('timbre')), validate(bad).join(','));
-    check('timbre.seeds-untouched', SEEDS.every((s) => (s.origin.startsWith('T') ? !!s.genome.timbre : !('timbre' in s.genome))), 'only T seeds carry a timbre gene');
+    check('timbre.seeds-untouched', SEEDS.every((s) => (/^[UX]/.test(s.origin) ? true : s.origin.startsWith('T') ? !!s.genome.timbre : !('timbre' in s.genome))), 'only T seeds carry a timbre gene');
     check('timbre.signals', ['bright', 'noisy', 'rough', 'attack'].every((s) => (SIGNALS as readonly string[]).includes(s)), SIGNALS.join(','));
     check('timbre.structural', structuralKey(g) !== structuralKey(repair(cloneGenome(SEEDS[0].genome))), 'the surface is compiled only with the gene');
   }

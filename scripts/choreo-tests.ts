@@ -62,7 +62,7 @@ export function choreoTests(check: Check): void {
     const bad = cloneGenome(g);
     bad.choreo!.p.dim = 7;
     check('choreo.genome-validate', validate(bad).some((e) => e.startsWith('choreo')), validate(bad).join(','));
-    check('choreo.seeds-untouched', SEEDS.every((s) => (s.origin.startsWith('C') || CHOREO_TUNED.has(s.origin)) ? true : !('choreo' in s.genome)), 'only C seeds and seeds tuned with choreography carry it');
+    check('choreo.seeds-untouched', SEEDS.every((s) => (s.origin.startsWith('C') || /^[UX]/.test(s.origin) || CHOREO_TUNED.has(s.origin)) ? true : !('choreo' in s.genome)), 'only C seeds and seeds tuned with choreography carry it');
     check('choreo.absent-stays-absent', !('choreo' in repair(cloneGenome(SEEDS[3].genome))), 'repair does not invent a choreo gene');
   }
 
