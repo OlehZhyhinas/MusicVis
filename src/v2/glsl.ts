@@ -766,7 +766,9 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   if (drawsSdf(b)) pre += BODY_COL + '\n' + MATERIAL_GLSL[b.material.kind].replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
   const rings = ringsOn(b);
   if (rings) pre += RINGS_GLSL + '\n';
-  const ringsAt = (sd: string, Q: string, sc: string) => (rings ? `  ex += RINGS(${sd}, ${Q}, p, ${sc});\n` : '');
+  // Rings obey the material's clip height like the rest of the body (fill: BD(1).z, textured: BD(1).y).
+  const ringClip = b.material.kind === 'fill' ? ' * smoothstep(BD(1).z - 0.0015, BD(1).z + 0.0015, p.y)' : b.material.kind === 'textured' ? ' * smoothstep(BD(1).y - 0.0015, BD(1).y + 0.0015, p.y)' : '';
+  const ringsAt = (sd: string, Q: string, sc: string) => (rings ? `  ex += RINGS(${sd}, ${Q}, p, ${sc})${ringClip};\n` : '');
 
   // Fuse: blend the second shape's field into s (same local frame).
   const fuseOp = !fuse

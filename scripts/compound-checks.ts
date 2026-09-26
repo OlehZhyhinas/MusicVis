@@ -177,5 +177,9 @@ export function compoundChecks(check: Check): void {
       && structuralKey(on) !== structuralKey(off) && Math.abs(estimateCost(on) - estimateCost(off) - RINGS_COST) < 1e-9 && !validate(on).length
       && both(comp).includes('uniform vec4 uBx0[4];') && ringed > 20 && ringed < 160;
     check('rings.halo', ok, `ring halos add no code when off; on: one nearest-ring lookup per evaluation (+${RINGS_COST} ms), a compound shares the extra array; ${ringed}/2000 random materials ringed`);
+    // Rings obey the material's clip height: a clipped fill star shows no rings below the clip line either.
+    const clipped = withBody({ ...star, material: { kind: 'fill', p: { rings: 3, rgap: 0.03, rfade: 0.7, clip: -0.1 } } });
+    const srcClip = both(clipped);
+    check('rings.clip', /ex \+= RINGS_0\(s, Q, p, sc\) \* smoothstep\(BD_0\(1\)\.z|ex \+= RINGS_0\(s, Q, p, sc\) \* smoothstep/.test(srcClip) && srcOn.includes('ex += RINGS_0(s, Q, p, sc);'), 'fill and textured rings are multiplied by the clip step; materials without a clip unchanged');
   }
 }
