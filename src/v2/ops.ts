@@ -303,8 +303,16 @@ export function randomCurve(rng: Rng): Pick<ReactionGene, 'atk' | 'rel' | 'thr' 
 /** A palette: mostly the classic schemes, sometimes three free slots. */
 export function randomPalette(rng: Rng): Genome['palette'] {
   const kind = rng() < 0.15 ? 'free' : pick(rng, SCHEMES);
-  return { kind, p: randomParams(PALETTE_SCHEMAS[kind], rng, 0.6) };
+  const p = randomParams(PALETTE_SCHEMAS[kind], rng, 0.6);
+  // Colour follows the song key by design: only about one palette in ten sits (partly) off the key.
+  p.key = rng() < KEY_OFF_RATE ? rng() : 1;
+  return { kind, p };
 }
+/** Share of random palettes that do not fully follow the song key. */
+export const KEY_OFF_RATE = 0.1;
+/** Mutation moves a palette's key rarely, and only a small step. */
+export const KEY_MUTATE_RATE = 0.05;
+export const KEY_MUTATE_STEP = 0.1;
 
 export function randomGenome(rng: Rng): Genome {
   const chain = Array.from({ length: randInt(rng, 1, 4) }, () => randomOp(rng));
@@ -872,7 +880,9 @@ const MUTATORS: [number, string, Mutator][] = [
   [2, 'jitter-carrier', (g, rng, amt) => jitterParams(g.carrier.p, CARRIER_SCHEMA, rng, amt, 0.3)],
   [2, 'jitter-tone', (g, rng, amt) => jitterParams(g.tone.p, TONE_SCHEMA, rng, amt, 0.3)],
   [2, 'jitter-palette', (g, rng, amt) => {
+    const key = g.palette.p.key ?? 1;
     jitterParams(g.palette.p, PALETTE_SCHEMAS[g.palette.kind], rng, amt, 0.5);
+    g.palette.p.key = rng() < KEY_MUTATE_RATE ? Math.min(1, Math.max(0, key + gauss(rng) * KEY_MUTATE_STEP)) : key;
     if (rng() < 0.4) g.palette.p.hue = (g.palette.p.hue + gauss(rng) * 0.15 + 1) % 1;
     return true;
   }],
@@ -975,7 +985,7 @@ const MUTATORS: [number, string, Mutator][] = [
   }],
   [0.7, 'change-palette', (g, rng) => {
     const kind = pick(rng, PALETTE_KINDS.filter((k) => k !== g.palette.kind));
-    g.palette = { kind, p: { ...randomParams(PALETTE_SCHEMAS[kind], rng, 0.3), hue: g.palette.p.hue } };
+    g.palette = { kind, p: { ...randomParams(PALETTE_SCHEMAS[kind], rng, 0.3), hue: g.palette.p.hue, key: g.palette.p.key ?? 1 } };
     return true;
   }],
   [2, 'flame-variation', (g, rng) => {

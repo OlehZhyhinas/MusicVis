@@ -728,6 +728,22 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
     if (paletteHue(p, kh) !== kh + p.hue) same = false;
   }
   check('palette.key-1-identical', same, 'paletteHue(key 1) === keyHue + hue');
+  {
+    // Key-relative colour is the design default: ~10% of random palettes get a key off 1, and mutation
+    // rarely moves it, in small steps, so bred children keep following the song key.
+    const r = mulberry32(11);
+    let off = 0;
+    for (let i = 0; i < 3000; i++) if (randomGenome(r).palette.p.key !== 1) off++;
+    let moved = 0, worst = 0;
+    const base = cloneGenome(seedByOrigin('E13'));
+    for (let i = 0; i < 3000; i++) {
+      const k = mutate(base, r, 1).palette.p.key;
+      if (k !== 1) moved++;
+      worst = Math.max(worst, 1 - k);
+    }
+    check('palette.key-random-rate', off > 3000 * 0.06 && off < 3000 * 0.14, `${off} / 3000 random genomes off the key`);
+    check('palette.key-mutation-rare-small', moved < 3000 * 0.02 && worst < 0.45, `${moved} / 3000 mutations moved key, largest step ${worst.toFixed(2)}`);
+  }
   check('palette.key-0-absolute', paletteHue({ ...g.palette.p, key: 0, hue: 0.62 }, 0.25) === 0.62 && paletteHue({ ...g.palette.p, key: 0, hue: 0.62 }, 0.75) === 0.62, 'key 0 ignores the key hue');
 }
 
