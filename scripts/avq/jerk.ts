@@ -112,7 +112,8 @@ function solve(A: number[][], b: number[]): number[] | null {
  * W(x) = ((1 + s) x - r y + tx, r x + (1 + s) y + ty) about the centre. Returns [tx, ty, s, r] with
  * tx, ty in pixels of the finest level.
  */
-function fit(pa: Img[], pb: Img[]): number[] {
+function fit(pa: Img[], pb: Img[]): number[] | null {
+  if (!spread(pa[0])) return null;
   let p = [0, 0, 0, 0, 0, 0]; // tx ty s r g c
   for (let L = pa.length - 1; L >= 0; L--) {
     const A = pa[L];
@@ -159,7 +160,52 @@ function fit(pa: Img[], pb: Img[]): number[] {
     }
     if (L > 0) p = [p[0] * 2, p[1] * 2, p[2], p[3], p[4], p[5]];
   }
+  // The motion must explain the change clearly better than no motion (same light change), or the
+  // fit locked onto noise or a new element appearing.
+  const still = [0, 0, 0, 0, p[4], p[5]];
+  const c0 = cost(pa[0], pb[0], still);
+  const c1 = cost(pa[0], pb[0], p);
+  if (!(c1 < 0.85 * c0) || Math.hypot(p[0] / W, p[1] / W, p[2] / 2, p[3] / 2) > 0.2) return null;
   return p.slice(0, 4);
+}
+
+/** Robust (Huber) residual of b warped by p against a, over the pixels both frames cover. */
+function cost(A: Img, B: Img, p: number[]): number {
+  const cx = (A.w - 1) / 2;
+  const cy = (A.h - 1) / 2;
+  let sum = 0;
+  let n = 0;
+  const k = 0.02;
+  for (let y = 1; y < A.h - 1; y++)
+    for (let x = 1; x < A.w - 1; x++) {
+      const X = x - cx;
+      const Y = y - cy;
+      const v = sample(B, (1 + p[2]) * X - p[3] * Y + p[0] + cx, p[3] * X + (1 + p[2]) * Y + p[1] + cy);
+      if (Number.isNaN(v)) continue;
+      const e = Math.abs(v - (1 + p[4]) * A.d[y * A.w + x] - p[5]);
+      sum += e <= k ? 0.5 * e * e : k * (e - 0.5 * k);
+      n++;
+    }
+  return n ? sum / n : Infinity;
+}
+
+/**
+ * Whether a frame has texture spread over the picture (gradient energy in at least 5 of a 3x3 grid
+ * of cells): a whole-frame move shows everywhere, while a lone element on black would make the fit
+ * report that element's own motion.
+ */
+function spread(A: Img): boolean {
+  const e = new Array(9).fill(0);
+  let tot = 0;
+  for (let y = 1; y < A.h - 1; y++)
+    for (let x = 1; x < A.w - 1; x++) {
+      const gx = A.d[y * A.w + x + 1] - A.d[y * A.w + x - 1];
+      const gy = A.d[(y + 1) * A.w + x] - A.d[(y - 1) * A.w + x];
+      const g = gx * gx + gy * gy;
+      e[Math.min(2, Math.floor((3 * y) / A.h)) * 3 + Math.min(2, Math.floor((3 * x) / A.w))] += g;
+      tot += g;
+    }
+  return tot > 1e-6 && e.filter((c) => c > 0.03 * tot).length >= 5;
 }
 
 function pyramid(d: Float32Array): Img[] {
@@ -187,6 +233,8 @@ export interface JerkResult {
   frames: number;
   /** Rhythmic events in the clip (drum hits and beats). */
   events: number;
+  /** Fraction of frame pairs whose global motion could be measured (texture spread over the frame, a clear fit). */
+  known: number;
   /** Mean global motion speed (% W / frame): steady drift, fine on its own. */
   speed: number;
   /** Global jerk: the jerk above SPIKE summed per second, outside the drop moments. */
@@ -201,11 +249,22 @@ export interface JerkResult {
   camJerk: number;
   camBeat: number;
   camDrop: number;
+  /** The same on the local motion of a 4x4 grid of cells where most of the picture jerks together (warps, swirls, ripples). */
+  warp: number;
+  warpBeat: number;
+  warpDrop: number;
+  /** Whole-frame jerk: the largest of the global fit's, the camera's and the warp's. */
+  global: number;
 }
 
 const DROP_WIN = 8;
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
-const jerkOf = (v: number[][]) => v.map((x, i) => (i < 2 ? 0 : Math.hypot(...x.map((y, k) => y - v[i - 1][k]))));
+/** Frame-to-frame change of the velocity (0 where either frame's motion is unknown: NaN). */
+const jerkOf = (v: number[][]) => v.map((x, i) => {
+  if (i < 2) return 0;
+  const j = Math.hypot(...x.map((y, k) => y - v[i - 1][k]));
+  return Number.isNaN(j) ? 0 : j;
+});
 
 /** Global jerk, its beat-locked part, spike rate and drop jerk of a per-frame jerk series. */
 function score(J: number[], ev: number[], drops: number[], fps: number): { jerk: number; beat: number; spikes: number; drop: number } {
@@ -236,25 +295,119 @@ function score(J: number[], ev: number[], drops: number[], fps: number): { jerk:
   return { jerk: tot / sec, beat: Math.max(0, inW - share * tot) / sec, spikes: spk / sec, drop };
 }
 
-/** Per-frame global velocity [tx, ty, zoom, roll] (%W / frame) and jerk of a clip. */
-export function analyseSeries(base: string): { h: ClipHeader; v: number[][]; J: number[] } | null {
+const CELLS = 4;
+
+/**
+ * Local translation of each cell of a CELLS x CELLS grid from a to b (half resolution, Gauss-Newton
+ * with a brightness offset), in % of the frame width; NaN for a cell without texture or a clear fit.
+ */
+function cellFlow(A: Img, B: Img): number[][] {
+  const out: number[][] = [];
+  const cw = Math.floor(A.w / CELLS);
+  const ch = Math.floor(A.h / CELLS);
+  for (let cy = 0; cy < CELLS; cy++)
+    for (let cx = 0; cx < CELLS; cx++) {
+      const x0 = Math.max(1, cx * cw);
+      const y0 = Math.max(1, cy * ch);
+      const x1 = Math.min(A.w - 1, x0 + cw);
+      const y1 = Math.min(A.h - 1, y0 + ch);
+      let t = [0, 0, 0];
+      let ok = true;
+      let tex = 0;
+      for (let it = 0; it < 5 && ok; it++) {
+        const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        const b = [0, 0, 0];
+        tex = 0;
+        for (let y = y0; y < y1; y++)
+          for (let x = x0; x < x1; x++) {
+            const v = sample(B, x + t[0], y + t[1]);
+            const gx = 0.5 * (sample(B, x + t[0] + 1, y + t[1]) - sample(B, x + t[0] - 1, y + t[1]));
+            const gy = 0.5 * (sample(B, x + t[0], y + t[1] + 1) - sample(B, x + t[0], y + t[1] - 1));
+            if (Number.isNaN(v) || Number.isNaN(gx) || Number.isNaN(gy)) continue;
+            const e = v - A.d[y * A.w + x] - t[2];
+            const j = [gx, gy, -1];
+            tex += gx * gx + gy * gy;
+            for (let r = 0; r < 3; r++) {
+              b[r] -= j[r] * e;
+              for (let c = 0; c < 3; c++) M[r][c] += j[r] * j[c];
+            }
+          }
+        if (tex < 0.02) {
+          ok = false;
+          break;
+        }
+        for (let r = 0; r < 3; r++) M[r][r] += 1e-6 * (1 + M[r][r]);
+        const d = solve(M, b);
+        if (!d) {
+          ok = false;
+          break;
+        }
+        t = t.map((x, k) => x + d[k]);
+        if (Math.abs(t[0]) > cw / 2 || Math.abs(t[1]) > ch / 2) ok = false;
+      }
+      out.push(ok ? [(100 * t[0]) / A.w, (100 * t[1]) / A.w] : [NaN, NaN]);
+    }
+  return out;
+}
+
+/**
+ * Warp jerk per frame: the change of each cell's local motion, taken at the 60th percentile over the
+ * cells measured in both frames (so at least ~40 % of the picture must jerk together: a whole-frame
+ * warp, swirl or ripple, not one element), 0 with fewer than 6 cells.
+ */
+function warpJerk(F: number[][][]): number[] {
+  return F.map((c, i) => {
+    if (i < 2) return 0;
+    const d: number[] = [];
+    for (let k = 0; k < c.length; k++) {
+      const a = c[k];
+      const p = F[i - 1][k];
+      const q = F[i - 2][k];
+      // acceleration of the cell: (a - p) - (p - q) in displacement terms is velocity change
+      const j = Math.hypot(a[0] - p[0], a[1] - p[1]);
+      if (!Number.isNaN(j) && !Number.isNaN(q[0])) d.push(j);
+    }
+    if (d.length < 6) return 0;
+    d.sort((x, y) => x - y);
+    return d[Math.floor(0.6 * (d.length - 1))];
+  });
+}
+
+/** Per-cell local motion (%W / frame) of every frame pair of a clip (diagnostics). */
+export function cellSeries(base: string): number[][][] | null {
+  const h = JSON.parse(readFileSync(join(OUT, 'clips', base + '.json'), 'utf8')) as ClipHeader;
+  if (!h.framesDir || !existsSync(join(OUT, h.framesDir))) return null;
+  const pyr = frames(h).map(pyramid);
+  return pyr.map((p, i) => (i ? cellFlow(pyr[i - 1][1], p[1]) : Array.from({ length: CELLS * CELLS }, () => [NaN, NaN])));
+}
+
+/** Per-frame global velocity [tx, ty, zoom, roll] (%W / frame) and jerk of a clip, and the warp jerk. */
+export function analyseSeries(base: string): { h: ClipHeader; v: number[][]; J: number[]; WJ: number[] } | null {
   const h = JSON.parse(readFileSync(join(OUT, 'clips', base + '.json'), 'utf8')) as ClipHeader;
   if (!h.framesDir || !existsSync(join(OUT, h.framesDir))) return null;
   const fr = frames(h);
   const pyr = fr.map(pyramid);
+  const flow: number[][][] = [Array.from({ length: CELLS * CELLS }, () => [NaN, NaN])];
+  for (let i = 1; i < fr.length; i++) flow.push(cellFlow(pyr[i - 1][1], pyr[i][1]));
+  const WJ = warpJerk(flow);
   const v: number[][] = [[0, 0, 0, 0]];
   for (let i = 1; i < fr.length; i++) {
-    const [tx, ty, s, r] = fit(pyr[i - 1], pyr[i]);
+    const f = fit(pyr[i - 1], pyr[i]);
+    if (!f) {
+      v.push([NaN, NaN, NaN, NaN]);
+      continue;
+    }
+    const [tx, ty, s, r] = f;
     // displacement at half the frame width, as % of the frame width
     v.push([(100 * tx) / W, (100 * ty) / W, 50 * s, 50 * r]);
   }
-  return { h, v, J: jerkOf(v) };
+  return { h, v, J: jerkOf(v), WJ };
 }
 
 export function analyse(base: string): JerkResult | null {
   const S = analyseSeries(base);
   if (!S) return null;
-  const { h, v, J } = S;
+  const { h, v, J, WJ } = S;
   const inst = loadInst(base);
   const col = (name: string) => {
     const k = inst?.names.indexOf(name) ?? -1;
@@ -269,6 +422,7 @@ export function analyse(base: string): JerkResult | null {
   const ev = [...new Set([...hitEv, ...beatEv])].sort((x, y) => x - y).filter((x, i, a) => i === 0 || x - a[i - 1] > 2);
   const drops = h.moments.filter((m) => m.kind === 'drop' && m.t > h.clip.start && m.t < h.clip.end).map((m) => Math.ceil((m.t - h.clip.start) * fps) - 1);
   const img = score(J, ev, drops, fps);
+  const wrp = score(WJ, ev, drops, fps);
   let cam = { jerk: 0, beat: 0, spikes: 0, drop: 0 };
   const pz = col('pose.zoom');
   if (pz) {
@@ -281,9 +435,12 @@ export function analyse(base: string): JerkResult | null {
   }
   return {
     base, preset: h.preset.id, frames: v.length, events: ev.length,
-    speed: mean(v.map((x) => Math.hypot(...x))),
+    speed: mean(v.map((x) => Math.hypot(...x)).filter((x) => !Number.isNaN(x))),
+    known: v.filter((x) => !Number.isNaN(x[0])).length / v.length,
     jerk: img.jerk, beat: img.beat, spikes: img.spikes, drop: img.drop,
     camJerk: cam.jerk, camBeat: cam.beat, camDrop: cam.drop,
+    warp: wrp.jerk, warpBeat: wrp.beat, warpDrop: wrp.drop,
+    global: Math.max(img.jerk, cam.jerk, wrp.jerk),
   };
 }
 
@@ -297,7 +454,7 @@ async function main() {
     const r = analyse(b);
     if (!r) continue;
     out.push(r);
-    console.log(`${r.base.padEnd(48)} beat${f(r.beat)} jerk${f(r.jerk)} spk/s${f(r.spikes)} drop${f(r.drop)} | cam beat${f(r.camBeat)} jerk${f(r.camJerk)} drop${f(r.camDrop)} | speed${f(r.speed)}`);
+    console.log(`${r.base.padEnd(48)} beat${f(r.beat)} jerk${f(r.jerk)} spk/s${f(r.spikes)} drop${f(r.drop)} | cam beat${f(r.camBeat)} jerk${f(r.camJerk)} drop${f(r.camDrop)} | warp${f(r.warp)} beat${f(r.warpBeat)} drop${f(r.warpDrop)} | GLOBAL${f(r.global)} speed${f(r.speed)} known${f(r.known)}`);
   }
   if (a.json) writeFileSync(String(a.json), JSON.stringify(out, null, 1));
 }
