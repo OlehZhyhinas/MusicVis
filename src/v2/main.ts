@@ -45,6 +45,8 @@ import '../lyrics/lyrics.css';
 
 const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
+/** Evolve mode breeds a new pair in the background after this many seconds of music. */
+const EVOLVE_BREED_SECS = 60;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
   let shuffle = loadSetting<boolean>('shuffle', false);
   let repeat = loadSetting<RepeatMode>('repeat', 'off');
   let evolveOn = loadSetting<boolean>('v2.evolve', false);
+  let evolveBreedTimer = 0;
   let muted = false;
   hudEl.hidden = !hudOn;
   appRoot.classList.toggle('hud-on', hudOn);
@@ -181,7 +184,6 @@ async function main(): Promise<void> {
     evo.vote(m.id, like, evo.nicheFor(songCx));
     presetBar.voted(like);
     updateBar();
-    if (!like && evolveOn) choose('evolve', 1.2, false, true);
   }
 
   const presetBar = new PresetBar({
@@ -207,7 +209,8 @@ async function main(): Promise<void> {
     evolveOn = on;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? 'A new candidate with each new song. Vote with L / D.' : 'Presets change on new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding new presets in the background every ${EVOLVE_BREED_SECS} s of music. Vote with L / D.` : 'Presets change on new songs and N.');
+    evolveBreedTimer = 0;
   }
 
   const browser = new PresetBrowser(evo, {
@@ -496,7 +499,7 @@ async function main(): Promise<void> {
       onNewSong: (cx) => {
         songCx = cx;
         eng.setSongComplexity(songCx);
-        choose(evolveOn ? 'evolve' : 'new', 1.5);
+        choose('new', 1.5);
       },
     },
     transport,
@@ -661,7 +664,7 @@ async function main(): Promise<void> {
       songCx = result.songComplexity ?? 0.5;
       eng.setSongComplexity(songCx);
       eng.setSongWorld(result);
-      choose(evolveOn ? 'evolve' : 'new', 1.5);
+      choose('new', 1.5);
       applyVolume();
       transport.setSections(result.sections, result.duration);
       transport.setTrackLoading(null);
@@ -880,8 +883,15 @@ async function main(): Promise<void> {
       return;
     }
     // The preset changes only on a new song (a new file, or a track change the live analyzer detects) or
-    // when the user asks (N, or a dislike in evolve mode); never on drops or a timer. In evolve mode a new
-    // song brings the next candidate.
+    // when the user asks (N); never on drops or a timer. Evolve mode never switches: it only breeds new
+    // presets in the background while music plays, which new songs then pick up (unseen presets get airtime).
+    if (evolveOn && !editor.dirty && evo.breeding === 0 && !screener.runner.busy && (state.playing || liveMode.active)) {
+      evolveBreedTimer += dt;
+      if (evolveBreedTimer > EVOLVE_BREED_SECS) {
+        evolveBreedTimer = 0;
+        void evo.autoBreed(evo.nicheFor(songCx));
+      }
+    }
 
     // The shown preset's lyrics gene: the caption on screen, and the copy it smears into the feedback.
     const cap = lyricOverlay.update(state, eng.current()?.lyrics?.p, dt);
