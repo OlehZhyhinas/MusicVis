@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 115;
+export const SEED_VERSION = 116;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2386,35 +2386,30 @@ const ART2: Def[] = [
 // musical events.
 const ART: Def[] = [
   {
-    // Melody Mycelium: the melody runs across the frame as a lane of glowing seeds and a thin ribbon,
-    // and a slime mould grows out of it. Every note start is a spore that the agents are reborn at, so
-    // veins sprout from each note and bridge it to the last; a held phrase feeds one continuous root
-    // along the ribbon, a staccato riff leaves a row of separate nodes. Drum hits flare the whole net,
-    // the bass drives the agents faster so the veins surge and re-route; on a drop every agent bursts
-    // out of the notes and the network regrows.
-    origin: 'X01', name: 'Melody Mycelium', energy: [0.15, 0.85], scheme: 'complementary', hue: 0.12,
-    color: { adapt: 0.35, bloom: 1.15, vignette: 0.4, contrast: 0.05 }, carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
+    // Melody Mycelium: a living slime-mould network seen as a six-fold rose window. The melody is
+    // written into it as food: each note and held phrase is laid down where the veins can reach it, so
+    // they race to the tune and thicken into glowing spokes and rings, the notes lit only through the
+    // veins that feed on them. The bass drives the agents faster so the whole window surges and
+    // re-routes, drum hits make them lay down bright bursts of trail and flash the web, note starts
+    // feed bigger knots, held notes wider roots, the riff widens their senses so the web opens into
+    // bigger loops, and a drop scatters every agent into haze from which the window regrows.
+    origin: 'X01', name: 'Melody Mycelium', energy: [0.15, 0.85], scheme: 'analogous', hue: 0.45,
+    color: { adapt: 0.35, bloom: 1.15, vignette: 0.4, contrast: 0.05 }, chain: [op('kaleido', { n: 6, lock: 0 }, 1, 'view')], carrier: 'warp', car: { halfLife: 0.3, floor: 1 },
     bodies: [body({
-      shape: ['notes', { mode: 0, span: 5, len: 1.7, height: 0.6, now: 0.3, ribbon: 1, thick: 0.01, marks: 1, form: 0, size: 0.04, fade: 1.2, rise: 0.04, shimmer: 0.4, hues: 0.5, glow: 0.6 }],
-      place: ['point', { x: 0, y: 0 }],
-      material: ['glow', { gain: 1.7 }],
-      emit: ['trail'],
-      feel: ['flow', { atk: 0.01, rel: 0.2 }],
-      color: ['melody', { amount: 0.5 }],
-    }), body({
-      shape: ['dot', { r: 0.003 }],
-      place: ['point', { x: 0, y: 0 }],
-      material: ['glow', { gain: 0.12, width: 0.004 }],
-      emit: ['slime', { count: 262144, sa: 0.4, sd: 0.02, steer: 0.8, step: 0.0005, deposit: 0.2, decay: 0.97, diffuse: 0.3, body: 0, feed: 0.4, birth: 0.02, onDrop: 2 }],
-      feel: ['flow', { atk: 0.02, rel: 0.3 }],
-      color: ['fixed', { hue: 0.5 }],
+      shape: ['notes', { mode: 0, span: 6, len: 1.8, height: 0.6, now: 0.32, ribbon: 1, thick: 0.016, marks: 1, form: 0, size: 0.055, fade: 1.5, rise: 0, shimmer: 0.3, hues: 0.4, glow: 0 }],
+      place: ['point', { x: 0, y: 0.12 }],
+      material: ['glow', { gain: 1 }],
+      emit: ['slime', { count: 262144, sa: 0.45, sd: 0.022, steer: 0.7, step: 0.0015, deposit: 0.25, decay: 0.96, diffuse: 0.3, body: 0.6, feed: 1, birth: 0.03, onDrop: 1 }],
+      feel: ['flow', { atk: 0.01, rel: 0.25 }],
+      color: ['melody', { amount: 0.4 }],
     })],
     reactions: [
-      rx('hit', 'ma', 1, 'gain', 0.8, { atk: 0.005, rel: 0.25 }),
-      rx('bass', 'pl', 0, 'y', 0.25, { atk: 0.03, rel: 0.35 }),
-      rx('noteon', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.25 }),
-      rx('hook', 'sh', 0, 'size', 0.5, { atk: 0.005, rel: 0.3 }),
-      rx('held', 'sh', 0, 'glow', 0.5, { atk: 0.05, rel: 0.3 }),
+      rx('bass', 'em', 0, 'step', 0.45, { atk: 0.03, rel: 0.35 }),
+      rx('hit', 'em', 0, 'deposit', 0.6, { atk: 0.005, rel: 0.25 }),
+      rx('hook', 'em', 0, 'sa', 0.3, { atk: 0.01, rel: 0.4 }),
+      rx('held', 'sh', 0, 'thick', 0.5, { atk: 0.05, rel: 0.4 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.2 }),
+      rx('noteon', 'sh', 0, 'size', 0.5, { atk: 0.005, rel: 0.3 }),
     ],
   },
 ];
