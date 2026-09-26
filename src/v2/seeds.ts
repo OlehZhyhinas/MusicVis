@@ -41,7 +41,7 @@ import { TIMBRE_SCHEMA } from './genes/timbre';
 import { DEJAVU_SCHEMA } from './genes/dejavu';
 import { LYRICS_SCHEMA } from './genes/lyrics';
 
-export const SEED_VERSION = 124;
+export const SEED_VERSION = 125;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -105,6 +105,8 @@ interface Def {
   hue: number;
   color?: Record<string, number>;
   carrier: CarrierKind;
+  /** Extra palette params (e.g. key 0 for a literal colour that ignores the song key). */
+  palette?: Record<string, number>;
   decay?: number;
   car?: Record<string, number>;
   chain?: OpGene[];
@@ -140,6 +142,7 @@ function build(d: Def): Seed {
       p: { ...defaultParams(CARRIER_SCHEMA), halfLife: d.decay ? hl(d.decay) : 0.5, floor: 1, ...d.car },
     },
     palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue, ...d.pal } },
+    palette: { kind: d.scheme, p: { ...defaultParams(PALETTE_SCHEMAS[d.scheme]), hue: d.hue, ...d.palette } },
     tone: { p: { ...defaultParams(TONE_SCHEMA), sat: 1, adapt: 0.6, bloom: 1, vignette: 0.45, ...d.color } },
     reactions: d.reactions ?? [],
     energy: d.energy,
@@ -2381,6 +2384,32 @@ const ART2: Def[] = [
       rx('hit', 'ma', 1, 'gain', 0.6, { atk: 0.005, rel: 0.2 }),
       rx('chordchange', 'sh', 1, 'line', 0.7, { atk: 0.005, rel: 0.5 }),
       rx('drop', 'ma', 0, 'gain', 0.5, { atk: 0.02, rel: 2 }),
+    ],
+  },
+  {
+    // Sumi ink in gold on black lacquer: the melody is written across the frame as brush strokes that
+    // bleed into a slow fluid and keep spreading after the brush has passed, so a phrase leaves a
+    // painted sheet behind it. Each drum hit presses the brush: the ink flares and a plume of pigment
+    // curls off the stroke. The whole picture is lit as a raised surface, so the ink stands up like
+    // wet lacquer. Note starts dab bigger marks, the bass thickens the stroke, held (legato) phrases
+    // glow, the riff draws the same strokes every repeat, and a new section wipes to a fresh sheet.
+    origin: 'X13', name: 'Sumi Calligraphy', energy: [0.1, 0.8], scheme: 'mono', hue: 0.075, palette: { key: 0, spread: 0.6 },
+    color: { sat: 0.4, adapt: 0.25, bloom: 0.8, vignette: 0.5, relief: 0.9, bump: 2.5, gloss: 0.4, light: 0.3 },
+    carrier: 'fluid', car: { halfLife: 6, floor: 0.12, amount: 0.8, vort: 16, fnoise: 0.15, blur: 0.01 },
+    bodies: [body({
+      shape: ['notes', { mode: 0, span: 5, len: 1.8, height: 0.75, now: 0.3, tilt: 0.02, ribbon: 1, thick: 0.016, marks: 0.9, form: 0, size: 0.022, fade: 0.8, rise: 0, shimmer: 0.25, hues: 0.15, glow: 0.12 }],
+      place: ['point', { x: 0, y: 0 }],
+      material: ['glow', { gain: 1 }],
+      emit: ['dye', { force: 1 }],
+      feel: ['flow', { atk: 0.01, rel: 0.2 }],
+      color: ['melody', { amount: 0.3 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'thick', 0.7, { atk: 0.03, rel: 0.4 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.3 }),
+      rx('noteon', 'sh', 0, 'size', 0.6, { atk: 0.005, rel: 0.3 }),
+      rx('legato', 'sh', 0, 'glow', 0.5, { atk: 0.3, rel: 0.8 }),
+      rx('section', 'car', 0, 'floor', 1, { atk: 0.05, rel: 1.5 }),
     ],
   },
 ];

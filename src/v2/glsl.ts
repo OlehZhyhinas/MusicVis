@@ -728,7 +728,17 @@ export function isMetaball(b: BodyGene): boolean {
   return b.shape.kind === 'dot' && (b.place.p.fuse ?? 0) > 0 && !isFoldPlace(b.place.kind) && b.deform.kind === 'none' && !b.fuse;
 }
 
-function bodyCode(b: BodyGene, bi: number): BodyCode {
+/**
+ * Splits a field source at its FLD: the top-level helpers before it (ntAt, cymMode, tzPlane, ...)
+ * and FLD itself. Helpers that come out the same for every body are emitted once per program.
+ */
+function splitField(src: string): [string, string] {
+  const at = src.indexOf('\nvec3 FLD(');
+  return at < 0 ? ['', src] : [src.slice(0, at), src.slice(at)];
+}
+
+/** `shared`: helper sources already emitted in this program (a body with the same ones skips them). */
+function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   const sfx = String(bi);
   const cls = SHAPE_CLASS[b.shape.kind];
   const layerK = STATIC_MATERIALS.includes(b.material.kind) ? 'uLayerK' : 'uAccum';
@@ -737,7 +747,14 @@ function bodyCode(b: BodyGene, bi: number): BodyCode {
   const ops = b.deform.ops?.length ? `p = drawWarp(p, ${bi * 3}, int(BD(12).z + 0.5));` : '';
   const fuse = b.fuse;
   let pre = '';
-  if (cls === 'field') pre += (b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : FIELD_GLSL[b.shape.kind]) ?? '';
+  let fieldHelpers = '';
+  if (cls === 'field') {
+    const [hs, fld] = splitField((b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : FIELD_GLSL[b.shape.kind]) ?? '');
+    // Helpers that take this body's slots or suffix come out different per body and stay.
+    const own = slot(hs, bi, sfx);
+    if (!shared.has(own)) { shared.add(own); fieldHelpers = own; }
+    pre += fld;
+  }
   if (drawsSdf(b)) pre += shapeCode(b.shape.kind, 'SHP', [2, 3]) + '\n';
   if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
@@ -979,7 +996,7 @@ vec3 ringFold(vec2 p, vec4 T, float nr, float rad) {
 ${placeCode}  return c;
 }`;
   const needHelpers = bi === 0 ? helpers + '\n' : '';
-  const code = slot(needHelpers + pre + (fbMask ? fbMask + '\n' : '') + body, bi, sfx);
+  const code = slot(needHelpers, bi, sfx) + fieldHelpers + slot(pre + (fbMask ? fbMask + '\n' : '') + body, bi, sfx);
   const draws = cls === 'field' || drawsSdf(b);
   return {
     code,
@@ -1016,8 +1033,9 @@ export function buildSources(g: Genome): Sources {
   let fbDraw = '';
   let topDraw = '';
   let masks = '';
+  const shared = new Set<string>();
   g.bodies.forEach((b, bi) => {
-    const bc = bodyCode(b, bi);
+    const bc = bodyCode(b, bi, shared);
     code += (g.timbre ? timbreWrap(bc.code, bi) : bc.code) + '\n';
     if (bodyLayer(b) === 'fb') fbDraw += bc.call('p');
     else topDraw += bc.call('q');
