@@ -174,10 +174,18 @@ export interface HarmonyInputs {
 
 /** The harmony gene's effect this frame. */
 export interface HarmonyOut {
-  /** Fold loosening 0..1 (the chord's fixed shape; 0 on the home chord). */
+  /**
+   * Fold loosening 0..1 for the folds whose seed is hashed (tile, kaleido): the chord's fixed
+   * shape, 0 on the home chord; on a change it eases out to 0, switches `seed`, and eases in.
+   */
   brk: number;
-  /** The fold ops' loosening seed (fixed per chord relative to the key). */
+  /** Their loosening seed (fixed per chord relative to the key). */
   seed: number;
+  /**
+   * Fold loosening for the folds whose seed is smooth (mirror, polar): glides straight to the
+   * chord's shape, with `phase` as their seed.
+   */
+  bend: number;
   /** Whole-frame lopsided warp amount 0..1. */
   warp: number;
   /** Warp pattern phase (radians, fixed per chord: its direction from home on the Tonnetz). */
@@ -203,7 +211,7 @@ export interface ChordShape {
   home: boolean;
   /** Deformation amount 0..1, growing with the triad's Tonnetz distance from the home triad. */
   amt: number;
-  /** Warp phase: the chord's direction from home on the lattice (radians). */
+  /** Warp phase: the chord's direction from home on the lattice (radians, half its angle so neighbouring chords stay close). */
   phase: number;
   /** Fold seed. */
   seed: number;
@@ -229,7 +237,7 @@ export function chordShape(chord: number, tonic: number, minor: boolean): ChordS
     id,
     home,
     amt: home ? 0 : clamp(0.3 + 0.35 * dist, 0, 1),
-    phase: home ? 0 : Math.atan2(dy, dx),
+    phase: home ? 0 : 0.5 * Math.atan2(dy, dx),
     seed: (id + 1) * 1.618,
     dx: home ? 0 : dx,
     dy: home ? 0 : dy,
@@ -280,10 +288,11 @@ class Glide {
 /**
  * Per-slot state. The picture takes each chord's fixed shape. Once a new chord has held for half a
  * beat (so a flickering live reading never flicks the shape), the warp amount, warp phase and
- * palette walk glide to it over glideTime(settle) and then hold still for the whole chord. The fold
- * seed cannot glide (tile and kaleido hash it), so the folds ease out to the exact fold over the
- * first half of the glide, switch seed there where nothing shows, and ease into the new chord's
- * shape over the second half. Unknown chords hold the current shape.
+ * palette walk glide to it over glideTime(settle) and then hold still for the whole chord. Mirror
+ * and polar folds glide the same way (their seed is the warp phase). Tile and kaleido hash their
+ * seed, which cannot glide, so those folds ease out to the exact fold (0.6 of the glide time),
+ * switch seed there where nothing shows, and ease into the new chord's shape (another 0.6).
+ * Unknown chords hold the current shape.
  */
 export class HarmonyMotor {
   private amt = new Glide();
@@ -344,11 +353,11 @@ export class HarmonyMotor {
       this.seed = s.seed;
       this.fold.set(s.amt, T);
     } else if (s.home || s.seed === this.seed) this.fold.set(s.amt, T);
-    else this.fold.set(0, T * 0.5);
+    else this.fold.set(0, T * 0.6);
   }
 
   update(h: HarmonyGene | undefined, inp: HarmonyInputs, dt: number, out: HarmonyOut): HarmonyOut {
-    out.brk = out.warp = out.seed = out.phase = 0;
+    out.brk = out.warp = out.seed = out.phase = out.bend = 0;
     out.zoom = out.sat = out.exposure = 1;
     out.roll = out.hue = 0;
     if (!h) return out;
@@ -382,7 +391,7 @@ export class HarmonyMotor {
     // The folds reached the exact picture on their way out: take the new seed and ease in.
     if (!this.fold.moving && this.fold.v === 0 && this.seed !== this.wantSeed) {
       this.seed = this.wantSeed;
-      if (this.wantFold > 0) this.fold.set(this.wantFold, this.foldT * 0.5);
+      if (this.wantFold > 0) this.fold.set(this.wantFold, this.foldT * 0.6);
     }
     // Light accents only (no geometry): a small lift on each chord change, a larger one arriving
     // home. Eased attacks, so the light never jumps in one frame.
@@ -397,6 +406,7 @@ export class HarmonyMotor {
     this.modHue += (p.modHue * walk - this.modHue) * e;
 
     out.brk = p.brk * this.fold.v;
+    out.bend = p.brk * this.amt.v;
     out.seed = this.seed;
     out.warp = p.warp * this.amt.v;
     out.phase = this.ph.v;
@@ -409,4 +419,4 @@ export class HarmonyMotor {
   }
 }
 
-export const IDLE_HARMONY: Readonly<HarmonyOut> = { brk: 0, seed: 0, warp: 0, phase: 0, zoom: 1, roll: 0, hue: 0, sat: 1, exposure: 1 };
+export const IDLE_HARMONY: Readonly<HarmonyOut> = { brk: 0, seed: 0, bend: 0, warp: 0, phase: 0, zoom: 1, roll: 0, hue: 0, sat: 1, exposure: 1 };

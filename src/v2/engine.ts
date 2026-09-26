@@ -1168,21 +1168,21 @@ export class Stage {
         }
         case 'mirror':
           a[j] = o.p.axis;
-          this.loosen(s, b, j, i, o.stage);
+          this.loosen(s, b, j, i, o.stage, false);
           break;
         case 'tile':
           a[j] = P('n');
-          this.loosen(s, b, j, i, o.stage);
+          this.loosen(s, b, j, i, o.stage, true);
           break;
         case 'polar':
           a[j] = P('scale');
           a[j + 1] = F.spin * o.p.lock;
-          this.loosen(s, b, j, i, o.stage);
+          this.loosen(s, b, j, i, o.stage, false);
           break;
         case 'kaleido':
           a[j] = o.p.n;
           a[j + 1] = F.spin * o.p.lock;
-          this.loosen(s, b, j, i, o.stage);
+          this.loosen(s, b, j, i, o.stage, true);
           break;
         case 'mosaic':
           packMosaic(a, j, P, o.p, F.stem[1], F.spin);
@@ -2783,12 +2783,17 @@ export class Stage {
     }
   }
 
-  /** A fold op's loosening (OB.w) and seed (OB.z, fixed per chord) from the slot's harmony motor. */
-  private loosen(s: Slot, b: Float32Array, j: number, i: number, stage: string): void {
+  /**
+   * A fold op's loosening (OB.w) and seed (OB.z) from the slot's harmony motor, both fixed per
+   * chord. Mirror and polar read their seed smoothly and glide; tile and kaleido hash it, so they
+   * take the motor's dip-and-switch loosening.
+   */
+  private loosen(s: Slot, b: Float32Array, j: number, i: number, stage: string, hashed: boolean): void {
     const o = s.genome.harmony ? this.harmOut.get(s) : undefined;
-    if (!o || o.brk === 0) return;
-    b[j + 2] = o.seed + i * 0.73;
-    b[j + 3] = o.brk * (stage === 'warp' ? 0.35 : 1);
+    const w = !o ? 0 : hashed ? o.brk : o.bend;
+    if (!o || w === 0) return;
+    b[j + 2] = (hashed ? o.seed : o.phase) + i * 0.73;
+    b[j + 3] = w * (stage === 'warp' ? 0.35 : 1);
   }
 
   private post(pp: PostParams, target: 'canvas' | 'out', rawDt: number): void {

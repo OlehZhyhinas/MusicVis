@@ -112,7 +112,7 @@ export function harmonyGeneTests(check: Check): void {
     const G = 7, F = 5, Am = 21, C = 0;
     const none = new HarmonyMotor().update(undefined, inputs({ chord: G }), dt, out());
     check('harmony.motor-identity-without-gene', JSON.stringify(none) === JSON.stringify(IDLE_HARMONY), JSON.stringify(none));
-    const geo = (o: HarmonyOut) => [o.brk, o.warp, o.phase, o.seed];
+    const geo = (o: HarmonyOut) => [o.brk, o.bend, o.warp, o.phase, o.seed];
     const same = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
     // Runs a chord for some seconds; returns the frames' outputs.
     const run = (m: HarmonyMotor, x: Partial<HarmonyInputs>, secs: number): HarmonyOut[] => {
@@ -133,14 +133,14 @@ export function harmonyGeneTests(check: Check): void {
     check('harmony.motor-same-chord-same-shape', same(geo(g1.at(-1)!), geo(g2.at(-1)!)) && same(geo(f1.at(-1)!), geo(f2.at(-1)!)) && !same(geo(g1.at(-1)!), geo(f1.at(-1)!)),
       `${geo(g1.at(-1)!).map((v) => v.toFixed(3))} / ${geo(g2.at(-1)!).map((v) => v.toFixed(3))}`);
     // Held still for the whole chord once the glide is done.
-    const settleF = Math.ceil((glideTime(0.3) + 0.25 + 0.05) / dt);
+    const settleF = Math.ceil((1.2 * glideTime(0.3) + 0.25 + 0.05) / dt);
     let drift = 0;
     for (const seg of [g1, f1, a1, g2, f2, back]) for (let i = settleF + 1; i < seg.length; i++) drift = Math.max(drift, ...geo(seg[i]).map((v, k) => Math.abs(v - geo(seg[i - 1])[k])));
     check('harmony.motor-holds-within-chord', drift === 0, `max frame change after the glide ${drift}`);
     // Glides: no single frame moves far (smoothstep over ~0.3 s), and the new shape is reached in time.
     let step = 0;
     const all = [...g1, ...f1, ...a1, ...g2, ...f2, ...back];
-    for (let i = 1; i < all.length; i++) step = Math.max(step, Math.abs(all[i].warp - all[i - 1].warp), Math.abs(all[i].brk - all[i - 1].brk));
+    for (let i = 1; i < all.length; i++) step = Math.max(step, Math.abs(all[i].warp - all[i - 1].warp), Math.abs(all[i].brk - all[i - 1].brk), Math.abs(all[i].bend - all[i - 1].bend));
     check('harmony.motor-glides', step < 0.12 && step > 0, `largest frame step ${step.toFixed(3)}`);
     const reached = g1.findIndex((o) => Math.abs(o.warp - g1.at(-1)!.warp) < 1e-9);
     check('harmony.motor-glide-time', reached > 0.25 / dt && reached * dt < 0.25 + glideTime(0.3) + 0.05, `${(reached * dt).toFixed(3)} s`);
