@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 153;
+export const SEED_VERSION = 154;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2991,6 +2991,64 @@ const ART5: Def[] = [
       rx('bass', 'op', 0, 'k', -0.3, { atk: 0.03, rel: 0.5 }),
       rx('held', 'car', 0, 'famt', 0.6, { atk: 0.1, rel: 0.6 }),
       rx('noteon', 'ma', 0, 'gain', 0.6, { atk: 0.005, rel: 0.25 }),
+    ],
+  },
+  {
+    // A village under the stars: rolling blue hills, a steeple and houses with lit windows along the
+    // bottom, a bright moon at the heart of one great vortex of fine blue brush strokes that sweeps the
+    // whole sky round it, and the melody written into the sky as stars: each note stamps a new one,
+    // ringed in a halo that spreads and fades. Drum hits stir the vortex (eased) and brighten the
+    // strokes, the bass swells the hills and the moon, chord changes lift the night's light, and each
+    // section shifts the night's colour.
+    origin: 'X35', name: 'Village Under Stars', energy: [0.1, 0.85], scheme: 'free', hue: 0.63, pal: { key: 0, s1: 0.51, s2: 0.95 },
+    color: { sat: 0.75, exposure: 1, adapt: 0.35, bloom: 0.8, vignette: 0.25 },
+    carrier: 'warp', car: { halfLife: 3, floor: 0.03, blur: 0.012 },
+    chain: [
+      op('swirl', { amt: -0.016, k: 4, cx: 0.3, cy: 0.28 }),
+    ],
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.0014 }],
+        place: ['grid', { lattice: 2, scale: 14, jitter: 0.6, density: 1, lit: 1, twinkle: 0.4 }],
+        material: ['glow', { gain: 0.09, width: 0.0015, base: 0.6 }],
+        emit: ['trail'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['height', { hue: 0.9, amount: 0.35, detail: 1 }],
+      }),
+      body({
+        shape: ['notes', { mode: 0, span: 8, len: 1.6, height: 0.34, now: -0.1, tilt: 0, ribbon: 0, thick: 0.004, marks: 1, form: 3, size: 0.026, fade: 1.5, rise: 0.05, shimmer: 0.3, hues: 0, glow: 0.6 }],
+        place: ['point', { x: -0.1, y: 0.2 }],
+        material: ['glow', { gain: 1.8 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['fixed', { hue: 0.333, detail: 0 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.5 }],
+        parts: [
+          part('ellipse', 'union', { x: 0, y: 0, sx: 0.12, sy: 0.12, bright: 2, hue: 0.36 }),
+          part('ellipse', 'union', { x: -1.5, y: -1.72, sx: 1.3, sy: 0.55, bright: 0.2 }),
+          part('ellipse', 'smooth', { x: 0.4, y: -1.6, sx: 1.3, sy: 0.55, k: 0.12, bright: 0.26 }),
+          part('box', 'union', { x: -0.62, y: -1.12, sx: 0.12, sy: 0.07, m: 0.2, bright: 0.3 }),
+          part('box', 'union', { x: -0.22, y: -1.1, sx: 0.1, sy: 0.08, m: 0.2, bright: 0.3 }),
+          part('triangle', 'union', { x: -0.42, y: -0.92, sx: 0.03, sy: 0.3, bright: 0.35 }),
+          part('box', 'union', { x: -0.62, y: -1.06, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
+          part('box', 'union', { x: -0.22, y: -1.03, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
+          part('box', 'union', { x: 0.2, y: -1.08, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
+        ],
+        place: ['point', { x: 0.3, y: 0.28 }],
+        material: ['fill', { gain: 1.6, soft: 0, halo: 0.2 }],
+        emit: ['cover', { amt: 1, tip: 0 }],
+        feel: ['flow', { atk: 0.05, rel: 0.4 }],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+    ],
+    accent: { hook: 0, kick: 0, drop: 0 },
+    reactions: [
+      rx('bass', 'sh', 2, 'size', 0.45, { atk: 0.08, rel: 0.6 }),
+      rx('hit', 'op', 0, 'amt', -0.35, { atk: 0.2, rel: 0.6 }),
+      rx('hit', 'ma', 0, 'gain', 0.5, { atk: 0.08, rel: 0.4 }),
+      rx('chordchange', 'col', 0, 'exposure', 0.4, { atk: 0.05, rel: 1 }),
     ],
   },
 ];
