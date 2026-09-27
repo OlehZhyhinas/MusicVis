@@ -22,6 +22,8 @@
 //                               scripts/avq/liveCompare.ts compares them with the offline renders
 //   --live-lag S                the notes' visual lag with the look-ahead note tracker (default 0.1 =
 //                               the app's default; 0 = the greedy tracker)
+//   --live-flux                 live beats from the spectral flux instead of the beat RNN (the app's
+//                               "Neural beats" off)
 //   --keep                      leave vite/chrome running afterwards
 
 import { readdirSync } from 'node:fs';
@@ -117,7 +119,7 @@ async function main() {
     if (a.accent !== undefined) opts.accent = a.accent === 'off' ? false : a.accent === 'on' || a.accent === true ? true : String(a.accent).split(',');
     if (a.tag) opts.tag = String(a.tag);
     if (a.live) opts.live = true;
-    if (a.live && a['live-lag'] !== undefined) opts.liveOpts = { lag: Number(a['live-lag']) };
+    if (a.live && (a['live-lag'] !== undefined || a['live-flux'])) opts.liveOpts = { lag: a['live-lag'] !== undefined ? Number(a['live-lag']) : undefined, beatRnn: a['live-flux'] ? false : undefined };
     const jobs: Job[] = [];
     const method = a.cf ? 'counterfactual' : 'render';
     if (a.cf) delete opts.frames;

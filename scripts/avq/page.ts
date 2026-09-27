@@ -16,6 +16,7 @@ import { TimelineSampler } from '../../src/analysis/TimelineSampler';
 import { RealtimeAnalyzer } from '../../src/analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../../src/analysis/RealtimeSampler';
 import { DEFAULT_VISUAL_LAG, LiveLookahead } from '../../src/analysis/LiveLookahead';
+import { BeatRnnOnset, DEFAULT_BEAT_RNN, loadBeatRnn, type BeatRnnModel } from '../../src/analysis/beatRnn';
 import type { AnalysisResult, LiveAudioFrame, MusicState, NoteStats } from '../../src/types';
 import { MelodyProbe, OfflineLive, SPEC_BANDS, monoMix, stemRegion, type StemId } from './audio';
 import { VIS_FIELDS, VisualFeatures } from './features';
@@ -178,17 +179,24 @@ function snapshot(s: MusicState): MusicState {
 export interface LiveOpts {
   /** The notes' visual lag, seconds (default DEFAULT_VISUAL_LAG = the app's "Sharper notes" default; 0 = the greedy zero-lag tracker). */
   lag?: number;
+  /** Beat tracking from the beat RNN (the live panel's "Neural beats", default DEFAULT_BEAT_RNN) instead of the spectral flux. */
+  beatRnn?: boolean;
 }
+
+let beatRnnWeights: Promise<BeatRnnModel> | null = null;
 
 async function liveTrack(song: Song, fps: number, lo: LiveOpts = {}): Promise<MusicState[]> {
   const lag = Math.max(0, Math.min(0.5, lo.lag ?? DEFAULT_VISUAL_LAG));
-  const key = `${song.path}@${fps}@${lag}`;
+  const rnn = lo.beatRnn ?? DEFAULT_BEAT_RNN;
+  const key = `${song.path}@${fps}@${lag}@${rnn ? 'rnn' : 'flux'}`;
   const have = liveTracks.get(key);
   if (have) return have;
   const a = new RealtimeAnalyzer(song.sr);
   const sampler = new RealtimeSampler(a);
   const la = lag > 0 ? new LiveLookahead(a, lag) : null;
   if (la) sampler.noteSource = la.sampleNotes;
+  const beatSrc = rnn ? new BeatRnnOnset(await (beatRnnWeights ??= loadBeatRnn('/models/beat-lstm.bin')), song.sr, 0) : null;
+  if (beatSrc) a.beatOnset = beatSrc.at;
   const dummy: LiveAudioFrame = { bass: 0, mid: 0, treb: 0, bassAtt: 0, midAtt: 0, trebAtt: 0, waveform: new Float32Array(1024), spectrum: new Float32Array(512) };
   const n = Math.floor(song.data.duration * fps);
   const out: MusicState[] = new Array(n + 1);
@@ -201,6 +209,7 @@ async function liveTrack(song: Song, fps: number, lo: LiveOpts = {}): Promise<Mu
     const end = Math.min(L.length, Math.floor(t * song.sr));
     while (pos + LIVE_BLOCK <= end) {
       const l = L.subarray(pos, pos + LIVE_BLOCK), r = R.subarray(pos, pos + LIVE_BLOCK);
+      beatSrc?.push(l, r);
       if (la) la.process(l, r);
       else a.process(l, r);
       pos += LIVE_BLOCK;
@@ -442,7 +451,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     clip: { label: win.label, start: t0 + kStart * dt, end: t0 + kEnd * dt, warm: o.warm },
     render: { w: o.w, h: o.h, fps: o.fps, seed: o.seed, ms: Math.round(ms), hq: e.hq },
     source: liveMode ? 'live' : 'offline',
-    live: liveMode ? { lag: liveMode.lag ?? DEFAULT_VISUAL_LAG } : undefined,
+    live: liveMode ? { lag: liveMode.lag ?? DEFAULT_VISUAL_LAG, beatRnn: liveMode.beatRnn ?? DEFAULT_BEAT_RNN } : undefined,
     fields: [...FIELDS],
     frames: n,
     thumb: { w: THUMB_W, h: THUMB_H, offset: rows.byteLength },

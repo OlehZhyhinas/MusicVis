@@ -42,7 +42,7 @@ export interface ClipHeader {
   /** What drove the visuals: the offline analysis (default) or the live analysis path (render --live). The music fields are always the offline analysis. */
   source?: 'offline' | 'live';
   /** Live mode: the notes' visual lag (seconds). */
-  live?: { lag: number };
+  live?: { lag: number; beatRnn?: boolean };
   fields: string[];
   frames: number;
   thumb: { w: number; h: number; offset: number };
