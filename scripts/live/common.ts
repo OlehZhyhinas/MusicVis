@@ -77,6 +77,45 @@ export function offlineCached(key: string, pcm: Pcm): AnalysisResult {
   return r;
 }
 
+/**
+ * Beat reference for the parity tools: Beat This! beats and downbeats (a strong offline tracker; our
+ * own offline beats are a half beat or a tempo octave off on several test songs) replace the offline
+ * analysis' beat grid when .testdata/live/beatref/<key>.json exists. Written by scripts/ml/beatref.py
+ * (test-only: nothing of it ships). Everything else in the result stays the offline analysis.
+ */
+export const BEATREF = join(OUT, 'beatref');
+export function withBeatRef(key: string, res: AnalysisResult, pcm?: Pcm): AnalysisResult {
+  const p = join(BEATREF, key + '.json');
+  if (!existsSync(p)) {
+    if (pcm) {
+      // Leave the PCM where beatref.py looks for inputs.
+      const f = join(OUT, 'pcm', key + '.f32');
+      if (!existsSync(f)) {
+        mkdirSync(join(OUT, 'pcm'), { recursive: true });
+        const buf = new Float32Array(pcm.left.length * 2);
+        for (let i = 0; i < pcm.left.length; i++) (buf[2 * i] = pcm.left[i]), (buf[2 * i + 1] = pcm.right[i]);
+        writeFileSync(f, Buffer.from(buf.buffer));
+      }
+    }
+    console.error(`  no beat reference for ${key}: offline beats used (run scripts/ml/beatref.py)`);
+    return res;
+  }
+  const j = JSON.parse(readFileSync(p, 'utf8')) as { beats: number[]; downbeats: number[] };
+  if (j.beats.length < 8) return res;
+  const beats = Float32Array.from(j.beats);
+  const ibi = [...beats.slice(1)].map((b, i) => b - beats[i]).sort((a, b) => a - b);
+  const perBar: number[] = [];
+  for (let i = 1; i < j.downbeats.length; i++) perBar.push(j.beats.filter((b) => b >= j.downbeats[i - 1] - 0.02 && b < j.downbeats[i] - 0.02).length);
+  perBar.sort((a, b) => a - b);
+  return {
+    ...res,
+    beats,
+    downbeats: Float32Array.from(j.downbeats),
+    bpm: 60 / ibi[ibi.length >> 1],
+    beatsPerBar: perBar.length ? Math.max(2, Math.min(7, perBar[perBar.length >> 1])) : res.beatsPerBar,
+  };
+}
+
 export function mono(pcm: Pcm): Float32Array {
   const out = new Float32Array(pcm.left.length);
   for (let i = 0; i < out.length; i++) out[i] = 0.5 * (pcm.left[i] + pcm.right[i]);

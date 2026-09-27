@@ -8,12 +8,15 @@
 // --out NAME: write .testdata/live/parity-NAME/ and parity-table-NAME.md instead.
 // --newsong: new-song detection on whole songs back to back (no gap, 2 s, 6 s, a 15 s ad) and on the mixes.
 //
+// The beat channels are scored against Beat This! beats / downbeats where scripts/ml/beatref.py has
+// cached them (.testdata/live/beatref/), else against the offline analysis' beats.
+//
 // Writes .testdata/live/parity/<input>.json (scores per input) and .testdata/live/parity-table.md.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEngine } from './live/bundle';
-import { decode, offlineCached, OUT, slugOf, testSongs } from './live/common';
+import { decode, offlineCached, OUT, slugOf, testSongs, withBeatRef } from './live/common';
 import { buildMixes, mixTruthReport, type Mix } from './live/mix';
 import { newSongReport } from './live/newsong';
 import { record, scoreAll, signalChannels, stateChannels, type Score } from './live/parity';
@@ -84,7 +87,7 @@ async function main() {
         name, kind: 'song',
         run: () => {
           const pcm = decode(path);
-          const res = offlineCached(name, pcm);
+          const res = withBeatRef(name, offlineCached(name, pcm), pcm);
           const rec = record(E, pcm, res, channels, { t1: seconds });
           console.error(`  live analyzer ${(rec.seconds / (rec.liveProcessMs / 1000)).toFixed(0)}x real time`);
           return { scores: scoreAll(rec) };
@@ -98,7 +101,7 @@ async function main() {
       inputs.push({
         name: mix.name, kind: 'mix',
         run: () => {
-          const res = offlineCached(mix.name + '-' + mix.hash, mix.pcm);
+          const res = withBeatRef(mix.name + '-' + mix.hash, offlineCached(mix.name + '-' + mix.hash, mix.pcm), mix.pcm);
           const rec = record(E, mix.pcm, res, channels, { t1: seconds });
           return { scores: scoreAll(rec), extra: mixTruthReport(mix, rec, res) };
         },
