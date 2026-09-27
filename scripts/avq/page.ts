@@ -55,12 +55,34 @@ export function slugOf(path: string): string {
 const DB = 'avq';
 function idb(): Promise<IDBDatabase> {
   return new Promise((ok, fail) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('analysis');
+    const r = indexedDB.open(DB, 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('analysis')) db.createObjectStore('analysis');
+      if (!db.objectStoreNames.contains('live')) db.createObjectStore('live');
+    };
     r.onsuccess = () => ok(r.result);
     r.onerror = () => fail(r.error);
   });
 }
+async function storeGet<T>(store: string, key: string): Promise<T | undefined> {
+  const db = await idb();
+  return new Promise((ok) => {
+    const r = db.transaction(store).objectStore(store).get(key);
+    r.onsuccess = () => ok(r.result as T | undefined);
+    r.onerror = () => ok(undefined);
+  });
+}
+async function storePut(store: string, key: string, v: unknown): Promise<void> {
+  const db = await idb();
+  await new Promise<void>((ok) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(v, key);
+    tx.oncomplete = () => ok();
+    tx.onerror = () => ok();
+  });
+}
+
 async function cacheGet(key: string): Promise<AnalysisResult | undefined> {
   const db = await idb();
   return new Promise((ok) => {
@@ -198,6 +220,21 @@ const beatRefOf = new Map<string, 'beatthis' | 'offline'>();
 const LIVE_BLOCK = 512;
 const liveTracks = new Map<string, MusicState[]>();
 
+/**
+ * Hash of every source file of the live analysis, so the IndexedDB cache of live tracks (one per
+ * song, frame rate and options; the driver reloads the page for every job) never serves a track
+ * computed by different code.
+ */
+const LIVE_CODE = (() => {
+  const src = import.meta.glob(['../../src/analysis/*.ts', '../../src/types.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+  let h = 2166136261;
+  for (const k of Object.keys(src).sort()) {
+    const t = k + '\n' + src[k];
+    for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619) >>> 0;
+  }
+  return h.toString(16);
+})();
+
 function snapshot(s: MusicState): MusicState {
   const c: MusicState = { ...s, stems: { ...s.stems }, stemOnsets: { ...s.stemOnsets }, stemPresence: { ...s.stemPresence }, chroma: s.chroma.slice(), section: { ...s.section } };
   if (s.groove) c.groove = { ...s.groove };
@@ -221,6 +258,12 @@ async function liveTrack(song: Song, fps: number, lo: LiveOpts = {}): Promise<Mu
   const key = `${song.path}@${fps}@${lag}@${rnn ? 'rnn' : 'flux'}`;
   const have = liveTracks.get(key);
   if (have) return have;
+  const dbKey = `${LIVE_CODE}:${key}:${song.left.length}`;
+  const stored = await storeGet<MusicState[]>('live', dbKey);
+  if (stored && stored.length === Math.floor(song.data.duration * fps) + 1) {
+    liveTracks.set(key, stored);
+    return stored;
+  }
   const a = new RealtimeAnalyzer(song.sr);
   const sampler = new RealtimeSampler(a);
   const la = lag > 0 ? new LiveLookahead(a, lag) : null;
@@ -253,6 +296,7 @@ async function liveTrack(song: Song, fps: number, lo: LiveOpts = {}): Promise<Mu
     }
   }
   liveTracks.set(key, out);
+  await storePut('live', dbKey, out);
   return out;
 }
 
