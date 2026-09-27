@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 151;
+export const SEED_VERSION = 152;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3288,6 +3288,20 @@ function bent(b: BodyGene, ops: OpGene[]): BodyGene {
   b.deform.ops = ops;
   return b;
 }
+/** A flower head seen from above for the paperweight: n petals round a small boss, turned by `turn`. */
+function bloom28(v: number, n: number, r: number, sx: number, sy: number, turn: number): CompoundPart[] {
+  const j = (k: number) => (((Math.sin(v * 12.9898 + k * 78.233) * 43758.5453) % 1) + 1) % 1 - 0.5;
+  const out: CompoundPart[] = [];
+  for (let k = 0; k < n; k++) {
+    const a = (k / n + turn + 0.03 * j(k)) * Math.PI * 2;
+    out.push(part('ellipse', k === 0 ? 'union' : 'smooth', {
+      x: Math.cos(a) * r, y: Math.sin(a) * r, sx: sx + 0.06 * j(k + 3), sy: sy + 0.04 * j(k + 5), rot: k / n + turn + 0.02 * j(k + 7), k: 0.06,
+      hue: 0.04 * j(k + 9), bright: 1 + 0.3 * j(k + 11),
+    }));
+  }
+  out.push(part('ellipse', 'union', { sx: r * 0.45, sy: r * 0.42, hue: 0.33, bright: 1.6 }));
+  return out;
+}
 const FLOWERS: Def[] = [
   {
     // Pressed poppies on warm paper: three big orange-red flower heads, each five rounded, overlapping,
@@ -3371,6 +3385,56 @@ const FLOWERS: Def[] = [
       rx('bass', 'pl', 1, 'radius', 0.2, { atk: 0.03, rel: 0.35 }),
       rx('bass', 'pl', 2, 'radius', 0.2, { atk: 0.03, rel: 0.35 }),
 
+    ],
+  },
+  {
+    // A pressed flower sealed in a glass paperweight on a dark shelf: a clear dome of glass with a soft
+    // highlight, resting on its own reflection, and inside it a flower of two petal rings (warm outer
+    // petals, pale inner ones) that curl like drawn glass cane. The melody opens the flower: held notes
+    // unfurl the petals and turn their spiral, note starts brighten them; the bass breathes the glass dome,
+    // drum hits flare the inner ring; the glass takes the song's timbre (clear on pure tones).
+    origin: 'X28', name: 'Glass Garden', energy: [0.15, 0.85], scheme: 'free', hue: 0.58, pal: { key: 0, s1: 0.45, s2: 0.56 },
+    color: { sat: 1, exposure: 1, adapt: 0.3, bloom: 1.1, vignette: 0.5, contrast: 0.02, reflect: 1, reflectY: -0.36 },
+    carrier: 'warp', car: { halfLife: 0.3, floor: 0.6, blur: 0.02 },
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.158 }],
+        parts: bloom28(3, 5, 0.9, 0.72, 0.46, 0.05),
+        place: ['point', { x: 0, y: -0.08 }],
+        deform: ['twist', { amt: 0.35 }],
+        material: ['fill', { gain: 1.3, soft: 0.06, core: 0.6, halo: 0 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['fixed', { hue: 1 / 3, detail: 1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.09 }],
+        parts: bloom28(8, 5, 0.85, 0.65, 0.38, 0.15),
+        place: ['point', { x: 0, y: -0.08 }],
+        deform: ['twist', { amt: -0.6 }],
+        material: ['fill', { gain: 1.4, soft: 0.06, core: 0.6, halo: 0 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.02, rel: 0.3 }],
+        color: ['fixed', { hue: 2 / 3, detail: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.28 }],
+        place: ['point', { x: 0, y: -0.08 }],
+        deform: ['wobble', { lobes: 3, amp: 0.03, rate: 0 }],
+        material: ['chrome', { gain: 0.4, chrome: 0.85 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.03, rel: 0.4 }],
+        color: ['fixed', { hue: 0, detail: 0 }],
+      }),
+    ],
+    accent: { kick: 0, hook: 0, drop: 0, hue: 0.3, section: 0.4 },
+    reactions: [
+      rx('bass', 'sh', 2, 'r', 0.12, { atk: 0.04, rel: 0.45 }),
+      rx('held', 'sh', 0, 'size', 0.08, { atk: 0.1, rel: 0.6 }),
+      rx('legato', 'de', 0, 'amt', 0.2, { atk: 0.2, rel: 0.8 }),
+      rx('noteon', 'ma', 0, 'gain', 0.5, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'sh', 1, 'size', 0.1, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'ma', 1, 'gain', 0.6, { atk: 0.005, rel: 0.3 }),
     ],
   },
 ];
