@@ -27,8 +27,8 @@ MAX_MACHINE=3
 free_pct() { memory_pressure 2>/dev/null | awk '/free percentage/ {gsub("%", "", $NF); print $NF}'; }
 machine_heavy() {
   ps -axo rss=,args= | awk '
-    /analysis-test\.hooks\.mjs/ && !/avq\/render|vite|zsh -c/ { n++; next }
-    /[Pp]ython/ && $1 > 204800 && !/http\.server/ { n++ }
+    /analysis-test\.hooks\.mjs/ && !/avq\/render|vite|zsh -c|slot\.sh|chain_/ { n++; next }
+    /[Pp]ython/ && $1 > 204800 && !/http\.server|slot\.sh/ { n++ }
     END { print n + 0 }'
 }
 
