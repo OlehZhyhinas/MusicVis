@@ -199,6 +199,11 @@ export class RealtimeAnalyzer {
   levelDb = -120;
   /** Onset strength of the latest frame (normalized flux). */
   onset = 0;
+  /**
+   * Optional beat onset source (the beat RNN, src/analysis/beatRnn.ts): the beat tracker's onset
+   * strength for the frame at stream time t, in place of the spectral flux. Null: the flux.
+   */
+  beatOnset: ((t: number) => number) | null = null;
 
   readonly beat: BeatTracker;
   /** Running timing-feel estimate against the beat clock (groove.ts). */
@@ -465,7 +470,9 @@ export class RealtimeAnalyzer {
   reset(): void {
     // Cheapest correct reset: rebuild via a fresh instance's state.
     const fresh = new RealtimeAnalyzer(this.inputRate);
+    const beatOnset = this.beatOnset;
     Object.assign(this, fresh);
+    this.beatOnset = beatOnset;
   }
 
   /** Bar length in seconds from the current tempo. */
@@ -602,7 +609,7 @@ export class RealtimeAnalyzer {
 
     // ---------------- beats ----------------
     const active = this.gate > 0.5;
-    this.beat.push(this.onset, this.frameTime, active, accents, this.chroma);
+    this.beat.push(this.beatOnset ? this.beatOnset(this.frameTime) : this.onset, this.frameTime, active, accents, this.chroma);
     {
       const pos = this.beat.positionAt(this.frameTime);
       const fl = Math.floor(pos);

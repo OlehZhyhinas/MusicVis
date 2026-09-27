@@ -7,6 +7,7 @@ import { LiveAnalyser } from './LiveAnalyser';
 import { RealtimeAnalyzer } from '../analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../analysis/RealtimeSampler';
 import { LiveLookahead } from '../analysis/LiveLookahead';
+import { BeatRnnOnset, DEFAULT_BEAT_RNN, loadBeatRnn, type BeatRnnModel } from '../analysis/beatRnn';
 
 export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test' | 'tab';
 
@@ -200,6 +201,11 @@ export interface LiveInputOptions {
    * stay at the sound's time.
    */
   visualLag?: number;
+  /**
+   * Beat tracking from the beat RNN (src/analysis/beatRnn.ts) instead of the spectral flux
+   * (default DEFAULT_BEAT_RNN). Until its weights have loaded, and if they fail to, the flux is used.
+   */
+  beatRnn?: boolean;
 }
 
 export interface LiveInputEvents {
@@ -208,6 +214,16 @@ export interface LiveInputEvents {
 }
 
 const workletLoaded = new WeakSet<BaseAudioContext>();
+
+let beatRnnModel: Promise<BeatRnnModel> | null = null;
+/** The beat RNN weights, fetched once (public/models/beat-lstm.bin, ~0.95 MB). */
+function beatRnnWeights(): Promise<BeatRnnModel> {
+  if (!beatRnnModel) {
+    beatRnnModel = loadBeatRnn(import.meta.env.BASE_URL + 'models/beat-lstm.bin');
+    beatRnnModel.catch(() => (beatRnnModel = null));
+  }
+  return beatRnnModel;
+}
 
 export class LiveInput {
   readonly context: AudioContext;
@@ -226,6 +242,9 @@ export class LiveInput {
   /** In front of the waveform / spectrum analyser (no delay: the analyser stays at the sound's time). */
   private lagNode: DelayNode | null = null;
   private lookahead: LiveLookahead | null = null;
+  /** The beat RNN onset source while "Neural beats" is on and its weights have loaded. */
+  private beatSrc: BeatRnnOnset | null = null;
+  private beatRnnWanted = false;
   private lastMsgAt = 0;
   private stopped = false;
   private readonly events: LiveInputEvents;
@@ -287,6 +306,7 @@ export class LiveInput {
     }
     li.wire();
     li.setVisualLag(opts.visualLag ?? 0);
+    void li.setBeatRnn(opts.beatRnn ?? DEFAULT_BEAT_RNN);
     return li;
   }
 
@@ -305,6 +325,8 @@ export class LiveInput {
     node.port.onmessage = (e: MessageEvent<{ l: Float32Array; r: Float32Array | null }>) => {
       if (this.stopped) return;
       const { l, r } = e.data;
+      // The beat RNN hears each block first, so the analyzer's frames of this block find its activations.
+      this.beatSrc?.push(l, r ?? l);
       if (this.lookahead) this.lookahead.process(l, r ?? l);
       else this.analyzer.process(l, r ?? l);
       this.lastMsgAt = performance.now();
@@ -343,6 +365,35 @@ export class LiveInput {
       this.lookahead = new LiveLookahead(this.analyzer, lag);
       this.sampler.noteSource = this.lookahead.sampleNotes;
     }
+  }
+
+  /** Whether the beat clock currently follows the beat RNN. */
+  get beatRnn(): boolean {
+    return this.beatSrc !== null;
+  }
+
+  /**
+   * Turns the beat RNN on or off while running (off: the spectral flux drives the beat tracker).
+   * Turning it on loads the weights first; the flux keeps the beat until then, or if loading fails.
+   */
+  async setBeatRnn(on: boolean): Promise<void> {
+    this.beatRnnWanted = on;
+    if (!on) {
+      this.beatSrc = null;
+      this.analyzer.beatOnset = null;
+      return;
+    }
+    if (this.beatSrc) return;
+    let model: BeatRnnModel;
+    try {
+      model = await beatRnnWeights();
+    } catch (err) {
+      console.warn('Beat RNN unavailable, using the spectral flux:', err);
+      return;
+    }
+    if (!this.beatRnnWanted || this.stopped || this.beatSrc) return;
+    this.beatSrc = new BeatRnnOnset(model, this.context.sampleRate, this.analyzer.streamTime);
+    this.analyzer.beatOnset = this.beatSrc.at;
   }
 
   private endedExternally(reason: string): void {

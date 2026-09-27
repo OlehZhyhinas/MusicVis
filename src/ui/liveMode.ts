@@ -22,9 +22,11 @@ import { loadSetting, saveSetting } from './storage';
 import { icon } from './icons';
 import type { Popovers } from './popover';
 import { DEFAULT_VISUAL_LAG } from '../analysis/LiveLookahead';
+import { DEFAULT_BEAT_RNN } from '../analysis/beatRnn';
 
 const DEVICE_KEY = 'liveDevice';
 const LAG_KEY = 'liveSharpNotes';
+const BEAT_RNN_KEY = 'liveNeuralBeats';
 /** Seconds of music after a long silence before the new song's complexity is trusted. */
 const NEW_SONG_MUSIC_S = 6;
 
@@ -85,6 +87,8 @@ export class LiveMode {
   private readonly tabHelp: HTMLElement;
   private readonly lagBtn: HTMLButtonElement;
   private sharpNotes: boolean;
+  private readonly beatBtn: HTMLButtonElement;
+  private neuralBeats: boolean;
   /** A one-off status line shown while idle (e.g. "Tab sharing was cancelled."). */
   private note = '';
 
@@ -114,6 +118,7 @@ export class LiveMode {
       <div class="sub lp-grant" hidden><span class="muted">Device names are hidden until the browser grants microphone access.</span><button class="btn sm lp-grant-btn">${icon('eye', 14)}<span>Show device names</span></button></div>
       <div class="row lp-level" hidden><span class="muted">${icon('volume', 14)}</span><div class="meter level h6"><i class="lp-meter-fill" style="--v:0%"></i></div><span class="mono dim lp-db">–</span></div>
       <label class="row lp-lag"><button class="tog lp-lag-btn" aria-pressed="false" aria-label="Sharper notes"></button><span class="grow">Sharper notes <span class="muted">· notes trail the sound by ${Math.round(DEFAULT_VISUAL_LAG * 1000)} ms</span></span></label>
+      <label class="row lp-lag lp-beat"><button class="tog lp-beat-btn" aria-pressed="false" aria-label="Neural beats"></button><span class="grow">Neural beats <span class="muted">· a small beat-tracking network finds the beat</span></span></label>
       <div class="status lp-status" role="status" aria-live="polite"></div>
       <div class="row"><button class="btn primary lp-start">${icon('play', 16)}<span>Start</span></button><button class="btn danger lp-stop" hidden>${icon('stop', 14)}<span>Stop</span></button><span class="grow"></span><button class="btn ghost lp-cancel">Cancel</button></div>
       <details class="lp-help"><summary>${icon('info', 14)}Play audio from other apps (BlackHole, Loopback)</summary><p>Visualizes a microphone or audio interface in real time. To visualize audio already playing on this Mac (Spotify, YouTube, a DJ app), install a virtual device such as BlackHole, create a Multi-Output Device in Audio MIDI Setup that sends to your speakers and to BlackHole (so you still hear it), pick it as the system output, then choose BlackHole here. For sound playing in another Chrome or Edge tab, "Listen to a tab" needs none of this.</p></details>
@@ -142,6 +147,18 @@ export class LiveMode {
       saveSetting(LAG_KEY, this.sharpNotes);
       this.lagBtn.setAttribute('aria-pressed', String(this.sharpNotes));
       this.input?.setVisualLag(this.visualLag);
+    });
+
+    this.beatBtn = panel.querySelector('.lp-beat-btn')!;
+    this.neuralBeats = loadSetting<boolean>(BEAT_RNN_KEY, DEFAULT_BEAT_RNN);
+    this.beatBtn.setAttribute('aria-pressed', String(this.neuralBeats));
+    this.beatBtn.title = 'Finds the beat with a small recurrent network (1 MB, runs in the page) instead of the plain onset detector: the beat and bar lock on more songs';
+    this.beatBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      this.neuralBeats = !this.neuralBeats;
+      saveSetting(BEAT_RNN_KEY, this.neuralBeats);
+      this.beatBtn.setAttribute('aria-pressed', String(this.neuralBeats));
+      void this.input?.setBeatRnn(this.neuralBeats);
     });
 
     panel.querySelector('.lp-close')!.addEventListener('click', () => this.setOpen(false));
@@ -343,7 +360,7 @@ export class LiveMode {
           if (tab) showToast('Stopped listening to the tab', 'info', 5000, reason);
           else showToast('Live input stopped', 'error', 0, reason);
         },
-      }, { stream, visualLag: this.visualLag });
+      }, { stream, visualLag: this.visualLag, beatRnn: this.neuralBeats });
       const prev = this.input;
       this.input = next;
       prev?.stop();
