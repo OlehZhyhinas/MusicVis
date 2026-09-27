@@ -5,6 +5,7 @@
 //
 //   node --import ./scripts/analysis-test.hooks.mjs scripts/live-parity.ts [--songs test|slug,slug] [--mixes] [--newsong] [--no-songs] [--seconds N]
 //
+// --lag S: the notes' visual lag (LiveInput visualLag; default the app's 0.1, 0 = the greedy tracker).
 // --out NAME: write .testdata/live/parity-NAME/ and parity-table-NAME.md instead.
 // --newsong: new-song detection on whole songs back to back (no gap, 2 s, 6 s, a 15 s ad) and on the mixes.
 //
@@ -75,6 +76,7 @@ async function main() {
   const channels = [...signalChannels(E.SIGNALS), ...stateChannels()];
   const inputs: { name: string; kind: 'song' | 'mix'; run: () => { scores: Score[]; extra?: unknown } }[] = [];
   const seconds = a.seconds ? Number(a.seconds) : undefined;
+  const lag = a.lag !== undefined ? Number(a.lag) : undefined;
   if (!a['no-songs']) {
     let songs = testSongs();
     if (typeof a.songs === 'string' && a.songs !== 'test') {
@@ -88,7 +90,7 @@ async function main() {
         run: () => {
           const pcm = decode(path);
           const res = withBeatRef(name, offlineCached(name, pcm), pcm);
-          const rec = record(E, pcm, res, channels, { t1: seconds });
+          const rec = record(E, pcm, res, channels, { t1: seconds, lag });
           console.error(`  live analyzer ${(rec.seconds / (rec.liveProcessMs / 1000)).toFixed(0)}x real time`);
           return { scores: scoreAll(rec) };
         },
@@ -102,7 +104,7 @@ async function main() {
         name: mix.name, kind: 'mix',
         run: () => {
           const res = withBeatRef(mix.name + '-' + mix.hash, offlineCached(mix.name + '-' + mix.hash, mix.pcm), mix.pcm);
-          const rec = record(E, mix.pcm, res, channels, { t1: seconds });
+          const rec = record(E, mix.pcm, res, channels, { t1: seconds, lag });
           return { scores: scoreAll(rec), extra: mixTruthReport(mix, rec, res) };
         },
       });
