@@ -41,6 +41,8 @@ export interface ClipHeader {
   render: { w: number; h: number; fps: number; seed: number; ms: number; hq: boolean };
   /** What drove the visuals: the offline analysis (default) or the live analysis path (render --live). The music fields are always the offline analysis. */
   source?: 'offline' | 'live';
+  /** Where the clip's beats and downbeats come from: Beat This! labels, or the offline analysis. */
+  beatRef?: 'beatthis' | 'offline';
   /** Live mode: the notes' visual lag (seconds). */
   live?: { lag: number; beatRnn?: boolean };
   fields: string[];

@@ -1,6 +1,7 @@
-// Live vs offline report cards (CLI): compares each preset's cards rendered from the offline
-// analysis (<P>/...) with the same clips rendered from the live analysis path (<P>@live/...,
-// render.ts --live, then report.ts) and ranks the presets that lose the most reactivity live.
+// Live vs offline report cards (CLI): compares each preset's cards rendered from the live analysis
+// path (<P>/..., render.ts's default) with the same clips rendered from the offline reference
+// (<P>@offline/..., render.ts --offline), both scored by report.ts, and ranks the presets that
+// lose the most reactivity live.
 // "Why" lists the preset's signals (reactions) and gene inputs whose live parity gap is large,
 // from scripts/live-parity.ts output (.testdata/live/parity/*.json), and the reactions that are
 // dead only live.
@@ -56,12 +57,12 @@ async function main() {
   const { geneInputs } = await import('../live/usage');
   const E = await loadEngine();
   const seedOf = new Map(E.SEEDS.map((s) => [s.origin, s]));
-  const presets = existsSync(CARDS) ? readdirSync(CARDS).filter((p) => !p.includes('@') && existsSync(join(CARDS, p + '@live'))) : [];
+  const presets = existsSync(CARDS) ? readdirSync(CARDS).filter((p) => !p.includes('@') && existsSync(join(CARDS, p + '@offline'))) : [];
   interface Row { preset: string; name: string; n: number; off: Record<string, number>; live: Record<string, number>; d: Record<string, number>; foot: [number, number]; dead: [number, number]; deadLive: string[]; why: string[] }
   const rows: Row[] = [];
   for (const p of presets) {
-    const off = loadCards(join(CARDS, p));
-    const live = loadCards(join(CARDS, p + '@live'));
+    const off = loadCards(join(CARDS, p + '@offline'));
+    const live = loadCards(join(CARDS, p));
     const keys = [...off.keys()].filter((k) => live.has(k));
     if (!keys.length) continue;
     const o: Record<string, number> = {}, l: Record<string, number> = {}, d: Record<string, number> = {};

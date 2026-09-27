@@ -17,9 +17,11 @@
 //   --info                      only analyse the songs and print sections, moments, hooks, windows
 //   --cf                        counterfactual lockstep renders instead (half-bar shift, far offset,
 //                               each stem muted, each reaction ablated) -> .testdata/avq/cf/
-//   --live                      drive the visuals from the live analysis path (as live input would),
-//                               writing <preset>@live/...; report.ts --preset X@live scores them and
-//                               scripts/avq/liveCompare.ts compares them with the offline renders
+//   (default)                   the visuals come from the live analysis path, as the app runs every
+//                               source, written to <preset>/...
+//   --offline                   the offline reference instead (TimelineSampler over analyzePcm),
+//                               written to <preset>@offline/...; scripts/avq/liveCompare.ts compares
+//                               the two. Clip beats come from Beat This! labels when they exist.
 //   --live-lag S                the notes' visual lag with the look-ahead note tracker (default 0.1 =
 //                               the app's default; 0 = the greedy tracker)
 //   --live-flux                 live beats from the spectral flux instead of the beat RNN (the app's
@@ -118,8 +120,8 @@ async function main() {
     if (a.frames) opts.frames = true;
     if (a.accent !== undefined) opts.accent = a.accent === 'off' ? false : a.accent === 'on' || a.accent === true ? true : String(a.accent).split(',');
     if (a.tag) opts.tag = String(a.tag);
-    if (a.live) opts.live = true;
-    if (a.live && (a['live-lag'] !== undefined || a['live-flux'])) opts.liveOpts = { lag: a['live-lag'] !== undefined ? Number(a['live-lag']) : undefined, beatRnn: a['live-flux'] ? false : undefined };
+    opts.live = !a.offline;
+    if (!a.offline && (a['live-lag'] !== undefined || a['live-flux'])) opts.liveOpts = { lag: a['live-lag'] !== undefined ? Number(a['live-lag']) : undefined, beatRnn: a['live-flux'] ? false : undefined };
     const jobs: Job[] = [];
     const method = a.cf ? 'counterfactual' : 'render';
     if (a.cf) delete opts.frames;

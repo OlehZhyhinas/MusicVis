@@ -133,6 +133,7 @@ async function loadSong(path: string): Promise<Song> {
     await cachePut(key, result);
   }
   const analysisMs = performance.now() - t0;
+  result = await withBeatRef(path, result);
   const left = audio.getChannelData(0);
   const right = audio.numberOfChannels > 1 ? audio.getChannelData(1) : left;
   const data = songData(result);
@@ -152,6 +153,35 @@ async function loadSong(path: string): Promise<Song> {
   }));
   return s;
 }
+
+/**
+ * The song's beat grid from Beat This! (the ML agents' shared labels, via /avq/beatref) in place of
+ * the offline analysis' grid, which is a half beat or a tempo octave off on several test songs. The
+ * clip context (beats, downbeats, bar length) and the offline reference renders then use it, so
+ * sync and the bar-based metrics score live and offline renders against the right beats. Without a
+ * reference the offline grid stays (beatRef 'offline').
+ */
+async function withBeatRef(path: string, res: AnalysisResult): Promise<AnalysisResult> {
+  const r = await fetch('/avq/beatref?song=' + encodeURIComponent(path));
+  beatRefOf.set(path, 'offline');
+  if (!r.ok) return res;
+  const j = (await r.json()) as { beats: number[]; downbeats: number[] };
+  if (!j.beats || j.beats.length < 8) return res;
+  const beats = Float32Array.from(j.beats);
+  const ibi = j.beats.slice(1).map((b, i) => b - j.beats[i]).sort((a, b) => a - b);
+  const perBar: number[] = [];
+  for (let i = 1; i < j.downbeats.length; i++) perBar.push(j.beats.filter((b) => b >= j.downbeats[i - 1] - 0.02 && b < j.downbeats[i] - 0.02).length);
+  perBar.sort((a, b) => a - b);
+  beatRefOf.set(path, 'beatthis');
+  return {
+    ...res,
+    beats,
+    downbeats: Float32Array.from(j.downbeats),
+    bpm: 60 / ibi[ibi.length >> 1],
+    beatsPerBar: perBar.length ? Math.max(2, Math.min(7, perBar[perBar.length >> 1])) : res.beatsPerBar,
+  };
+}
+const beatRefOf = new Map<string, 'beatthis' | 'offline'>();
 
 // ------------------------------------------------------------------ live mode
 
@@ -281,10 +311,12 @@ export interface RenderOpts {
   /** Appended to the preset folder and id as '<id>@<tag>', so variant renders sit beside the plain ones. */
   tag?: string;
   /**
-   * Drive the visuals from the live analysis path (RealtimeAnalyzer + RealtimeSampler fed like
-   * LiveInput, listening from the song start) instead of the offline analysis. The recorded music
-   * fields and the clip context stay the offline analysis, so the metrics still score the picture
-   * against the music itself. Implies tag 'live' unless a tag is given.
+   * true (the default): drive the visuals from the live analysis path (RealtimeAnalyzer +
+   * RealtimeSampler fed like LiveInput, listening from the song start), as the app now runs every
+   * source. false: the offline reference (TimelineSampler over analyzePcm), written as
+   * '<id>@offline' unless a tag is given. Either way the recorded music fields and the clip
+   * context are the offline analysis (with the Beat This! beat grid when there is one), so the
+   * metrics score the picture against the music itself.
    */
   live?: boolean;
   /** Live mode options: the notes' visual lag (default the app's 0.1 s). */
@@ -451,6 +483,7 @@ async function renderWindow(song: Song, g: Genome, presetId: string, presetName:
     clip: { label: win.label, start: t0 + kStart * dt, end: t0 + kEnd * dt, warm: o.warm },
     render: { w: o.w, h: o.h, fps: o.fps, seed: o.seed, ms: Math.round(ms), hq: e.hq },
     source: liveMode ? 'live' : 'offline',
+    beatRef: beatRefOf.get(song.path) ?? 'offline',
     live: liveMode ? { lag: liveMode.lag ?? DEFAULT_VISUAL_LAG, beatRnn: liveMode.beatRnn ?? DEFAULT_BEAT_RNN } : undefined,
     fields: [...FIELDS],
     frames: n,
@@ -480,7 +513,8 @@ async function render(opts: RenderOpts) {
     name = seed.name;
   }
   if (opts.accent !== undefined) setAccentOverride(opts.accent);
-  const tag = opts.tag ?? (opts.live ? 'live' : undefined);
+  const live = opts.live !== false;
+  const tag = opts.tag ?? (live ? undefined : 'offline');
   if (tag) id = `${id}@${tag}`;
   const o = {
     w: opts.w ?? 320, h: opts.h ?? 180, fps: opts.fps ?? 30, seed: opts.seed ?? 1, warm: opts.warm ?? 3,
@@ -490,7 +524,7 @@ async function render(opts: RenderOpts) {
   const clips = opts.clips ?? 'auto';
   const wins: ClipWindow[] = clips === 'auto' ? autoWindows(song.data, song.hooks) : clips === 'song' ? [{ label: 'song', start: 0, end: song.data.duration }] : clips;
   const out = [];
-  for (const w of wins) out.push(await renderWindow(song, g, id, name, w, o, opts.live ? (opts.liveOpts ?? {}) : null));
+  for (const w of wins) out.push(await renderWindow(song, g, id, name, w, o, live ? (opts.liveOpts ?? {}) : null));
   return { preset: id, name, song: song.slug, analysisMs: Math.round(song.analysisMs), hooks: song.hooks.map((h) => ({ bars: h.bars, n: h.occurrences.length, len: +h.len.toFixed(2), score: +h.score.toFixed(3) })), clips: out };
 }
 
@@ -771,9 +805,10 @@ async function counterfactual(opts: CfOpts) {
     id = seed.origin;
     name = seed.name;
   }
-  const tag = opts.tag ?? (opts.live ? 'live' : undefined);
+  const live = opts.live !== false;
+  const tag = opts.tag ?? (live ? undefined : 'offline');
   if (tag) id = `${id}@${tag}`;
-  const lt = opts.live ? await liveTrack(song, opts.fps ?? 30, opts.liveOpts ?? {}) : null;
+  const lt = live ? await liveTrack(song, opts.fps ?? 30, opts.liveOpts ?? {}) : null;
   const bpb = Math.max(2, song.data.beatsPerBar || 4);
   const variants: Variant[] = opts.variants ?? [
     { kind: 'shift', beats: bpb / 2 },
