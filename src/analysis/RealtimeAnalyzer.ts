@@ -16,6 +16,7 @@ import { GrooveTracker } from './groove';
 import { TimbreFrames } from './timbre';
 import { NoteTracker } from './notes';
 import type { StemName } from '../types';
+import type { StemLevels } from './stemNet';
 import { STEM_NAMES } from '../types';
 import { RealFFT } from './fft';
 import { clamp01, hann } from './dsp';
@@ -204,6 +205,13 @@ export class RealtimeAnalyzer {
    * strength for the frame at stream time t, in place of the spectral flux. Null: the flux.
    */
   beatOnset: ((t: number) => number) | null = null;
+  /**
+   * Optional stem level source (the stem network, src/analysis/stemNet.ts): levels for the frame at
+   * stream time t, in place of the DSP stem split for the stems.* envelopes. Null (or a null return): the DSP.
+   */
+  stemSource: ((t: number) => StemLevels | null) | null = null;
+  /** The stem source's frame used by the latest analyzer frame (stem levels and instrument activity), or null. */
+  stemNet: StemLevels | null = null;
 
   readonly beat: BeatTracker;
   /** Running timing-feel estimate against the beat clock (groove.ts). */
@@ -471,8 +479,10 @@ export class RealtimeAnalyzer {
     // Cheapest correct reset: rebuild via a fresh instance's state.
     const fresh = new RealtimeAnalyzer(this.inputRate);
     const beatOnset = this.beatOnset;
+    const stemSource = this.stemSource;
     Object.assign(this, fresh);
     this.beatOnset = beatOnset;
+    this.stemSource = stemSource;
   }
 
   /** Bar length in seconds from the current tempo. */
@@ -900,10 +910,12 @@ export class RealtimeAnalyzer {
 
     // Normalized envelopes / onsets (running references instead of song percentiles).
     const silent = !(top > -150);
-    this.stems.drums = silent ? 0 : this.env.drums.push(dr, top, -60, -30);
-    this.stems.bass = silent ? 0 : this.env.bass.push(ba, top, -60, -30);
-    this.stems.vocals = silent ? 0 : this.env.vocals.push(vo, top, -60, -30);
-    this.stems.other = silent ? 0 : this.env.other.push(ot, top, -60, -30);
+    // Neural stems: the network's power share of the mix times this frame's total power (same scale as the DSP split).
+    const ns = (this.stemNet = this.stemSource ? this.stemSource(this.decCount / this.sr) : null);
+    this.stems.drums = silent ? 0 : this.env.drums.push(ns ? total * ns.drums : dr, top, -60, -30);
+    this.stems.bass = silent ? 0 : this.env.bass.push(ns ? total * ns.bass : ba, top, -60, -30);
+    this.stems.vocals = silent ? 0 : this.env.vocals.push(ns ? total * ns.vocals : vo, top, -60, -30);
+    this.stems.other = silent ? 0 : this.env.other.push(ns ? total * ns.other : ot, top, -60, -30);
     const lDb = toDb(lo);
     if (lo > 0) this.loudTop = Number.isFinite(this.loudTop) ? Math.max(lDb, this.loudTop - 0.1 / fr) : lDb;
     this.loudness = silent || !Number.isFinite(this.loudTop) ? 0 : this.loudEnv.push(lo, this.loudTop, -50, -12);

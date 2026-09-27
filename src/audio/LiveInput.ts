@@ -8,6 +8,7 @@ import { RealtimeAnalyzer } from '../analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../analysis/RealtimeSampler';
 import { LiveLookahead } from '../analysis/LiveLookahead';
 import { BeatRnnOnset, DEFAULT_BEAT_RNN, loadBeatRnn, type BeatRnnModel } from '../analysis/beatRnn';
+import { DEFAULT_NEURAL_STEMS, loadStemNet, StemNetSource, type StemNetModel } from '../analysis/stemNet';
 
 export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test' | 'tab';
 
@@ -206,6 +207,11 @@ export interface LiveInputOptions {
    * (default DEFAULT_BEAT_RNN). Until its weights have loaded, and if they fail to, the flux is used.
    */
   beatRnn?: boolean;
+  /**
+   * Stem levels from the stem network (src/analysis/stemNet.ts) instead of the DSP stem split
+   * (default DEFAULT_NEURAL_STEMS). Until its weights have loaded, and if they fail to, the DSP is used.
+   */
+  neuralStems?: boolean;
 }
 
 export interface LiveInputEvents {
@@ -223,6 +229,16 @@ function beatRnnWeights(): Promise<BeatRnnModel> {
     beatRnnModel.catch(() => (beatRnnModel = null));
   }
   return beatRnnModel;
+}
+
+let stemNetModel: Promise<StemNetModel> | null = null;
+/** The stem network weights, fetched once (public/models/stems.bin). */
+function stemNetWeights(): Promise<StemNetModel> {
+  if (!stemNetModel) {
+    stemNetModel = loadStemNet(import.meta.env.BASE_URL + 'models/stems.bin');
+    stemNetModel.catch(() => (stemNetModel = null));
+  }
+  return stemNetModel;
 }
 
 export class LiveInput {
@@ -245,6 +261,9 @@ export class LiveInput {
   /** The beat RNN onset source while "Neural beats" is on and its weights have loaded. */
   private beatSrc: BeatRnnOnset | null = null;
   private beatRnnWanted = false;
+  /** The stem network while "Neural stems" is on and its weights have loaded. */
+  private stemSrc: StemNetSource | null = null;
+  private neuralStemsWanted = false;
   private lastMsgAt = 0;
   private stopped = false;
   private readonly events: LiveInputEvents;
@@ -307,6 +326,7 @@ export class LiveInput {
     li.wire();
     li.setVisualLag(opts.visualLag ?? 0);
     void li.setBeatRnn(opts.beatRnn ?? DEFAULT_BEAT_RNN);
+    void li.setNeuralStems(opts.neuralStems ?? DEFAULT_NEURAL_STEMS);
     return li;
   }
 
@@ -327,6 +347,7 @@ export class LiveInput {
       const { l, r } = e.data;
       // The beat RNN hears each block first, so the analyzer's frames of this block find its activations.
       this.beatSrc?.push(l, r ?? l);
+      this.stemSrc?.push(l, r ?? l);
       if (this.lookahead) this.lookahead.process(l, r ?? l);
       else this.analyzer.process(l, r ?? l);
       this.lastMsgAt = performance.now();
@@ -394,6 +415,35 @@ export class LiveInput {
     if (!this.beatRnnWanted || this.stopped || this.beatSrc) return;
     this.beatSrc = new BeatRnnOnset(model, this.context.sampleRate, this.analyzer.streamTime);
     this.analyzer.beatOnset = this.beatSrc.at;
+  }
+
+  /** Whether the stems.* envelopes currently come from the stem network. */
+  get neuralStems(): boolean {
+    return this.stemSrc !== null;
+  }
+
+  /**
+   * Turns the stem network on or off while running (off: the DSP stem split). Turning it on loads
+   * the weights first; the DSP keeps the stems until then, or if loading fails.
+   */
+  async setNeuralStems(on: boolean): Promise<void> {
+    this.neuralStemsWanted = on;
+    if (!on) {
+      this.stemSrc = null;
+      this.analyzer.stemSource = null;
+      return;
+    }
+    if (this.stemSrc) return;
+    let model: StemNetModel;
+    try {
+      model = await stemNetWeights();
+    } catch (err) {
+      console.warn('Stem network unavailable, using the DSP stems:', err);
+      return;
+    }
+    if (!this.neuralStemsWanted || this.stopped || this.stemSrc) return;
+    this.stemSrc = new StemNetSource(model, this.context.sampleRate, this.analyzer.streamTime);
+    this.analyzer.stemSource = this.stemSrc.at;
   }
 
   private endedExternally(reason: string): void {

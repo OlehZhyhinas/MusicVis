@@ -13,6 +13,7 @@ import { RealtimeAnalyzer } from '../../src/analysis/RealtimeAnalyzer';
 import { RealtimeSampler } from '../../src/analysis/RealtimeSampler';
 import { DEFAULT_VISUAL_LAG, LiveLookahead } from '../../src/analysis/LiveLookahead';
 import { BeatRnnOnset, DEFAULT_BEAT_RNN, parseBeatRnn, type BeatRnnModel } from '../../src/analysis/beatRnn';
+import { DEFAULT_NEURAL_STEMS, parseStemNet, StemNetSource, type StemNetModel } from '../../src/analysis/stemNet';
 import type { AnalysisResult, LiveAudioFrame, MusicState } from '../../src/types';
 
 export const TEST_DIR = '/Users/oleh/Downloads/YoutubeToMp3';
@@ -144,13 +145,24 @@ export function beatRnnModelSync(): BeatRnnModel {
 }
 /** Whether LivePath runs the beat RNN: the app default, or MUSICVIS_BEAT_RNN=0 / 1 to force it. */
 export const LIVE_BEAT_RNN = process.env.MUSICVIS_BEAT_RNN ? process.env.MUSICVIS_BEAT_RNN === '1' : DEFAULT_BEAT_RNN;
+let stemNetModel: StemNetModel | null = null;
+/** The shipped stem network weights (public/models/stems.bin). */
+export function stemNetModelSync(): StemNetModel {
+  if (!stemNetModel) {
+    const b = readFileSync(join(import.meta.dirname, '../../public/models/stems.bin'));
+    stemNetModel = parseStemNet(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  }
+  return stemNetModel;
+}
+/** Whether LivePath runs the stem network: the app default, or MUSICVIS_NEURAL_STEMS=0 / 1 to force it. */
+export const LIVE_NEURAL_STEMS = process.env.MUSICVIS_NEURAL_STEMS ? process.env.MUSICVIS_NEURAL_STEMS === '1' : DEFAULT_NEURAL_STEMS;
 
 export class LivePath {
   readonly analyzer: RealtimeAnalyzer;
   readonly sampler: RealtimeSampler;
   private pos = 0;
   private lastBlockEnd = 0;
-  /** Milliseconds spent in RealtimeAnalyzer.process (and the look-ahead notes and the beat RNN). */
+  /** Milliseconds spent in RealtimeAnalyzer.process (and the look-ahead notes, the beat RNN and the stem network). */
   processMs = 0;
   private pcm: Pcm;
   /** The delay line with the look-ahead note tracker (LiveInput's visual lag), or null for lag 0. */
@@ -159,12 +171,16 @@ export class LivePath {
   readonly lag: number;
   /** The beat RNN onset source (LiveInput's "Neural beats"), or null for the spectral flux. */
   readonly beatRnn: BeatRnnOnset | null;
-  constructor(pcm: Pcm, lag = DEFAULT_VISUAL_LAG, beatRnn = LIVE_BEAT_RNN) {
+  /** The stem network (LiveInput's "Neural stems"), or null for the DSP stem split. */
+  readonly stemNet: StemNetSource | null;
+  constructor(pcm: Pcm, lag = DEFAULT_VISUAL_LAG, beatRnn = LIVE_BEAT_RNN, neuralStems = LIVE_NEURAL_STEMS) {
     this.pcm = pcm;
     this.lag = lag;
     this.analyzer = new RealtimeAnalyzer(pcm.sr);
     this.beatRnn = beatRnn ? new BeatRnnOnset(beatRnnModelSync(), pcm.sr) : null;
     if (this.beatRnn) this.analyzer.beatOnset = this.beatRnn.at;
+    this.stemNet = neuralStems ? new StemNetSource(stemNetModelSync(), pcm.sr) : null;
+    if (this.stemNet) this.analyzer.stemSource = this.stemNet.at;
     this.sampler = new RealtimeSampler(this.analyzer);
     this.lookahead = lag > 0 ? new LiveLookahead(this.analyzer, lag) : null;
     if (this.lookahead) this.sampler.noteSource = this.lookahead.sampleNotes;
@@ -177,6 +193,7 @@ export class LivePath {
       const t0 = performance.now();
       const l = left.subarray(this.pos, this.pos + BLOCK), r = right.subarray(this.pos, this.pos + BLOCK);
       this.beatRnn?.push(l, r);
+      this.stemNet?.push(l, r);
       if (this.lookahead) this.lookahead.process(l, r);
       else this.analyzer.process(l, r);
       this.processMs += performance.now() - t0;
