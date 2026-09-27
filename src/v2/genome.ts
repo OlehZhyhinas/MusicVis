@@ -305,8 +305,9 @@ export const MOTION_SCHEMAS: Record<MotionKind, Schema> = {
   drift: { vx: P(-0.1, 0.1, 0.005), vy: P(-0.1, 0.1, 0) },
   // A small circle around the placement, period in bars.
   circle: { radius: P(0, 0.12, 0.03), period: C([1, 2, 4, 8, 16], 4) },
-  // Turn on drum hits (walker heads: a sharp turn; other copies: a jolt that stays).
-  hits: { amt: P(0, 1.5, 1) },
+  // Turn on drum hits (walker heads: a sharp turn; other copies: a jolt that stays, easing into
+  // the new angle over `glide` seconds; a slow glide reads as the shapes turning, not a frame jolt).
+  hits: { amt: P(0, 1.5, 1), glide: P(0.02, 0.5, 0.07) },
   // Size kick on the beat.
   pulse: { amp: P(0, 0.5, 0.15) },
 };

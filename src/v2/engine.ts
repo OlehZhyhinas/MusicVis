@@ -1851,7 +1851,7 @@ export class Stage {
               const n = set('hn', mm('hn') + 1);
               set('ha', mm('ha') + P('amt') * (0.5 + 0.5 * h11(n * 3.1)) * (h11(n * 7.7) < 0.5 ? -1 : 1));
             }
-            set('hs', approach(mm('hs'), mm('ha'), 14, sdt));
+            set('hs', approach(mm('hs'), mm('ha'), 1 / Math.max(0.02, P('glide')), sdt));
           }
           c.a += mm('hs');
           break;

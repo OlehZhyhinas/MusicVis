@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 155;
+export const SEED_VERSION = 156;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2042,8 +2042,8 @@ const TIMBRE: Def[] = [
   },
   {
     // A ring of eight rounded hexagons around the centre over a wheeling fan of their halos. Each
-    // drum hit kicks the panes round by a new amount, clockwise or anticlockwise, the fan reverses
-    // every other bar, and the ring breathes out with the bass and rises with the melody. They read the vocals: a pure sung note turns every pane to clear glass with a
+    // drum hit turns the panes by a new amount, clockwise or anticlockwise, easing round over a fifth
+    // of a second (a turn of the shapes, not a jolt of the frame), the fan reverses every other bar, and the ring breathes out with the bass and rises with the melody. They read the vocals: a pure sung note turns every pane to clear glass with a
     // bright rim, a bright belted line polishes them to chrome, a breathy phrase fogs them into velvet
     // with a soft bloom, and consonants and hard onsets flash their outlines.
     origin: 'T02', name: 'Glass Choir', energy: [0.1, 0.7], scheme: 'split', hue: 0.58,
@@ -2052,7 +2052,7 @@ const TIMBRE: Def[] = [
     bodies: [body({
       shape: ['polygon', { n: 6, r: 0.07, round: 0.5 }],
       place: ['ring', { n: 8, radius: 0.27 }],
-      motion: ['hits', { amt: 0.7 }],
+      motion: ['hits', { amt: 0.45, glide: 0.2 }],
       material: ['fill', { gain: 1.3, soft: 0.05, halo: 0.35, core: 0.5 }],
       emit: ['none'],
       feel: ['flow', { atk: 0.03, rel: 0.4 }],
