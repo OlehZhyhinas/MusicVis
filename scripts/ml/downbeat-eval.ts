@@ -9,6 +9,7 @@
 //   student:<name>     a student's downbeat activation (train-student.py, .testdata/ml/models/<name>.onnx) on
 //                      the beat RNN's clock
 //   student-all:<name> the student's beat activation through BeatTracker, and its downbeats
+//   ts:<nets>:<window>:<hop>:<delay> the TypeScript port (src/analysis/downbeatBlstm.ts) streaming, as live
 // The bar slot: downbeat evidence at each beat (peak within +-50 ms) accumulated per slot of 4 with
 // BeatTracker's decay and hysteresis. 'live' reads the live path from .testdata/live/parity-rnn-ref.
 
@@ -16,6 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, join } from 'node:path';
 import { BeatRnn } from '../../src/analysis/beatRnn';
+import { DownbeatTracker, parseDownbeat, type DownbeatModel } from '../../src/analysis/downbeatBlstm';
 import { BeatTracker } from '../../src/analysis/rtBeat';
 import { beatRnnModelSync, decode, mono, OUT, slugOf, testSongs } from '../live/common';
 import { FPS, score, type Channel } from '../live/parity';
@@ -122,6 +124,15 @@ async function student(name: string, feat: Float32Array): Promise<{ beat: Float3
   return { beat, down };
 }
 
+let dbm: DownbeatModel | null = null;
+function dbModel(): DownbeatModel {
+  if (!dbm) {
+    const b = readFileSync(join(import.meta.dirname, '../../public/models/downbeat-blstm.bin'));
+    dbm = parseDownbeat(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  }
+  return dbm;
+}
+
 const res: Record<string, { beat: number[]; bar: number[]; on: number[] }> = {};
 const put = (k: string, b: number, r: number, o: number) => {
   const a = (res[k] ??= { beat: [], bar: [], on: [] });
@@ -156,7 +167,21 @@ for (const path of testSongs()) {
   const line: string[] = [scoreOf('rnn, no downbeat', barOf(rnnClock, new Float32Array(act.length), 0, n))];
   for (const v of variants) {
     const [kind, tag] = v.split(':');
-    if (kind === 'win') {
+    if (kind === 'ts') {
+      const [, ...rest] = v.split(':');
+      const [n2, w2, h2, d2] = rest.map(Number);
+      const tr = new DownbeatTracker(dbModel(), { sampleRate: 44100, nets: n2, window: w2, hop: h2, delay: d2 });
+      const db = new Float32Array(act.length);
+      tr.onEvidence = (t, d) => {
+        const f = Math.round(t * 100);
+        if (f >= 0 && f < db.length) db[f] = d;
+      };
+      for (let i = 0; i + 512 <= x.length; i += 512) {
+        tr.push(x.subarray(i, i + 512));
+        tr.work(Infinity);
+      }
+      line.push(scoreOf(v, barOf(rnnClock, db, h2 + d2 + 0.05, n)));
+    } else if (kind === 'win') {
       const f = join(ML, 'downbeat', tag, slug + '.f32');
       if (!existsSync(f)) continue;
       const b = readFileSync(f);
@@ -165,7 +190,10 @@ for (const path of testSongs()) {
     } else if (kind === 'student' || kind === 'student-all') {
       const s = await student(tag, feat);
       const clock = kind === 'student' ? rnnClock : clockOf(s.beat, energy);
-      line.push(scoreOf(v, barOf(clock, s.down, 0.06, n)));
+      // A downbeat head trained with a lag (dbLag frames of right context) reports frame k at k + lag.
+      const lag = (JSON.parse(readFileSync(join(ML, 'models', tag + '.json'), 'utf8')) as { dbLag?: number }).dbLag ?? 0;
+      const down = lag ? Float32Array.from({ length: s.down.length }, (_, k) => s.down[k + lag] ?? 0) : s.down;
+      line.push(scoreOf(v, barOf(clock, down, 0.06 + lag / 100, n)));
     }
   }
   console.error(`${slug.slice(0, 22).padEnd(22)} ${line.join(' | ')}`);

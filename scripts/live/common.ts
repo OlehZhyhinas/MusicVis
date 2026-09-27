@@ -14,6 +14,7 @@ import { RealtimeSampler } from '../../src/analysis/RealtimeSampler';
 import { DEFAULT_VISUAL_LAG, LiveLookahead } from '../../src/analysis/LiveLookahead';
 import { BeatRnnOnset, DEFAULT_BEAT_RNN, parseBeatRnn, type BeatRnnModel } from '../../src/analysis/beatRnn';
 import { DEFAULT_NEURAL_STEMS, parseStemNet, StemNetSource, type StemNetModel } from '../../src/analysis/stemNet';
+import { DEFAULT_NEURAL_DOWNBEATS, LiveDownbeats, parseDownbeat, type DownbeatModel, type LiveDownbeatOptions } from '../../src/analysis/downbeatBlstm';
 import type { AnalysisResult, LiveAudioFrame, MusicState } from '../../src/types';
 
 export const TEST_DIR = '/Users/oleh/Downloads/YoutubeToMp3';
@@ -157,6 +158,22 @@ export function stemNetModelSync(): StemNetModel {
 /** Whether LivePath runs the stem network: the app default, or MUSICVIS_NEURAL_STEMS=0 / 1 to force it. */
 export const LIVE_NEURAL_STEMS = process.env.MUSICVIS_NEURAL_STEMS ? process.env.MUSICVIS_NEURAL_STEMS === '1' : DEFAULT_NEURAL_STEMS;
 
+let downbeatModel: DownbeatModel | null = null;
+/** The shipped downbeat network weights (public/models/downbeat-blstm.bin). */
+export function downbeatModelSync(): DownbeatModel {
+  if (!downbeatModel) {
+    const b = readFileSync(join(import.meta.dirname, '../../public/models/downbeat-blstm.bin'));
+    downbeatModel = parseDownbeat(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  }
+  return downbeatModel;
+}
+/**
+ * Whether LivePath runs the neural downbeat detector (with the beat RNN): the app default, or
+ * MUSICVIS_DOWNBEAT=0 / 1. MUSICVIS_DOWNBEAT_OPTS='{"nets":2,...}' overrides its settings (experiments).
+ */
+export const LIVE_DOWNBEAT = process.env.MUSICVIS_DOWNBEAT ? process.env.MUSICVIS_DOWNBEAT === '1' : DEFAULT_NEURAL_DOWNBEATS;
+const LIVE_DOWNBEAT_OPTS: LiveDownbeatOptions = process.env.MUSICVIS_DOWNBEAT_OPTS ? JSON.parse(process.env.MUSICVIS_DOWNBEAT_OPTS) : {};
+
 export class LivePath {
   readonly analyzer: RealtimeAnalyzer;
   readonly sampler: RealtimeSampler;
@@ -173,6 +190,8 @@ export class LivePath {
   readonly beatRnn: BeatRnnOnset | null;
   /** The stem network (LiveInput's "Neural stems"), or null for the DSP stem split. */
   readonly stemNet: StemNetSource | null;
+  /** The neural downbeat detector (with the beat RNN), or null. */
+  readonly downbeats: LiveDownbeats | null;
   constructor(pcm: Pcm, lag = DEFAULT_VISUAL_LAG, beatRnn = LIVE_BEAT_RNN, neuralStems = LIVE_NEURAL_STEMS) {
     this.pcm = pcm;
     this.lag = lag;
@@ -181,6 +200,7 @@ export class LivePath {
     if (this.beatRnn) this.analyzer.beatOnset = this.beatRnn.at;
     this.stemNet = neuralStems ? new StemNetSource(stemNetModelSync(), pcm.sr) : null;
     if (this.stemNet) this.analyzer.stemSource = this.stemNet.at;
+    this.downbeats = beatRnn && LIVE_DOWNBEAT ? new LiveDownbeats(downbeatModelSync(), pcm.sr, this.analyzer, LIVE_DOWNBEAT_OPTS) : null;
     this.sampler = new RealtimeSampler(this.analyzer);
     this.lookahead = lag > 0 ? new LiveLookahead(this.analyzer, lag) : null;
     if (this.lookahead) this.sampler.noteSource = this.lookahead.sampleNotes;
@@ -194,6 +214,12 @@ export class LivePath {
       const l = left.subarray(this.pos, this.pos + BLOCK), r = right.subarray(this.pos, this.pos + BLOCK);
       this.beatRnn?.push(l, r);
       this.stemNet?.push(l, r);
+      if (this.downbeats) {
+        this.downbeats.push(l, r);
+        // Unlike the browser, a test machine may be busy: finish each analysis in the block that
+        // starts it (the evidence is the same; in the app it arrives within the next second).
+        this.downbeats.work(Infinity);
+      }
       if (this.lookahead) this.lookahead.process(l, r);
       else this.analyzer.process(l, r);
       this.processMs += performance.now() - t0;

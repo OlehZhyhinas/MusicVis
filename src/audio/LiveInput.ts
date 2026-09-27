@@ -9,6 +9,7 @@ import { RealtimeSampler } from '../analysis/RealtimeSampler';
 import { LiveLookahead } from '../analysis/LiveLookahead';
 import { BeatRnnOnset, DEFAULT_BEAT_RNN, loadBeatRnn, type BeatRnnModel } from '../analysis/beatRnn';
 import { DEFAULT_NEURAL_STEMS, loadStemNet, StemNetSource, type StemNetModel } from '../analysis/stemNet';
+import { DEFAULT_NEURAL_DOWNBEATS, LiveDownbeats, loadDownbeat, type DownbeatModel } from '../analysis/downbeatBlstm';
 
 export type LiveDeviceKind = 'default' | 'builtin' | 'virtual' | 'external' | 'test' | 'tab';
 
@@ -241,6 +242,19 @@ function stemNetWeights(): Promise<StemNetModel> {
   return stemNetModel;
 }
 
+let downbeatModel: Promise<DownbeatModel> | null = null;
+/** The downbeat network weights, fetched once (public/models/downbeat-blstm.bin, ~3.2 MB). */
+function downbeatWeights(): Promise<DownbeatModel> {
+  if (!downbeatModel) {
+    downbeatModel = loadDownbeat(import.meta.env.BASE_URL + 'models/downbeat-blstm.bin');
+    downbeatModel.catch(() => (downbeatModel = null));
+  }
+  return downbeatModel;
+}
+
+/** Milliseconds per capture block (11.6 ms) the downbeat network may use; its analyses are sliced to fit. */
+const DOWNBEAT_BUDGET_MS = 2;
+
 export class LiveInput {
   readonly context: AudioContext;
   readonly analyzer: RealtimeAnalyzer;
@@ -260,6 +274,8 @@ export class LiveInput {
   private lookahead: LiveLookahead | null = null;
   /** The beat RNN onset source while "Neural beats" is on and its weights have loaded. */
   private beatSrc: BeatRnnOnset | null = null;
+  /** The downbeat network voting into the beat tracker's bar slot, while neural beats are on. */
+  private downbeats: LiveDownbeats | null = null;
   private beatRnnWanted = false;
   /** The stem network while "Neural stems" is on and its weights have loaded. */
   private stemSrc: StemNetSource | null = null;
@@ -350,6 +366,10 @@ export class LiveInput {
       this.stemSrc?.push(l, r ?? l);
       if (this.lookahead) this.lookahead.process(l, r ?? l);
       else this.analyzer.process(l, r ?? l);
+      if (this.downbeats) {
+        this.downbeats.push(l, r ?? l);
+        this.downbeats.work(DOWNBEAT_BUDGET_MS);
+      }
       this.lastMsgAt = performance.now();
     };
     src.connect(node);
@@ -401,9 +421,12 @@ export class LiveInput {
     this.beatRnnWanted = on;
     if (!on) {
       this.beatSrc = null;
+      this.downbeats = null;
       this.analyzer.beatOnset = null;
+      this.analyzer.beat.dspAccentWeight = 1;
       return;
     }
+    if (DEFAULT_NEURAL_DOWNBEATS && !this.downbeats) void this.startDownbeats();
     if (this.beatSrc) return;
     let model: BeatRnnModel;
     try {
@@ -444,6 +467,19 @@ export class LiveInput {
     if (!this.neuralStemsWanted || this.stopped || this.stemSrc) return;
     this.stemSrc = new StemNetSource(model, this.context.sampleRate, this.analyzer.streamTime);
     this.analyzer.stemSource = this.stemSrc.at;
+  }
+
+  /** Loads the downbeat network (with neural beats); the DSP accents keep the bar until it reports. */
+  private async startDownbeats(): Promise<void> {
+    let model: DownbeatModel;
+    try {
+      model = await downbeatWeights();
+    } catch (err) {
+      console.warn('Downbeat network unavailable, using the onset accents:', err);
+      return;
+    }
+    if (!this.beatRnnWanted || this.stopped || this.downbeats) return;
+    this.downbeats = new LiveDownbeats(model, this.context.sampleRate, this.analyzer);
   }
 
   private endedExternally(reason: string): void {

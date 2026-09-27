@@ -619,6 +619,7 @@ export class RealtimeAnalyzer {
 
     // ---------------- beats ----------------
     const active = this.gate > 0.5;
+    this.beat.neural = this.beatOnset !== null;
     this.beat.push(this.beatOnset ? this.beatOnset(this.frameTime) : this.onset, this.frameTime, active, accents, this.chroma);
     {
       const pos = this.beat.positionAt(this.frameTime);

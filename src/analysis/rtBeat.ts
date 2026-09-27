@@ -73,6 +73,36 @@ export class BeatTracker {
 
   private frames = 0;
 
+  /**
+   * Weight of the built-in downbeat accents (kick / bass / snare onsets, chord changes) in the bar
+   * slot vote; lowered when an external downbeat detector feeds downbeatEvidence().
+   */
+  dspAccentWeight = 1;
+  /** Weight of external downbeat evidence (downbeatEvidence) in the bar slot vote. */
+  externalAccentWeight = 1;
+  private evBeat = NaN;
+  private evMax = 0;
+
+  /**
+   * Re-lock settings for a clean beat activation (the beat RNN; RealtimeAnalyzer sets `neural`).
+   * Its tempo evidence is trustworthy enough to follow a DJ's tempo change or a new track quickly:
+   * a tempo 3-8 % away wins after `nearEvals` evaluations (0.5 s each) when it scores `nearRatio`
+   * times the current one; a tempo at a simple ratio (3/4, 2/3, ...) after `relEvals` when it scores
+   * `relRatio` times (half / double time only when `relOctave`).
+   */
+  neural = false;
+  nearEvals = 3;
+  nearRatio = 1.1;
+  relEvals = 10;
+  relRatio = 1.3;
+  relOctave = true;
+  /** Any other tempo: after `farEvals` evaluations scoring `farRatio` times the current one. */
+  farEvals = 4;
+  farRatio = 1.2;
+  private relPendingBpm = 0;
+  private relPendingCount = 0;
+
+
   constructor(frameRate: number) {
     this.frameRate = frameRate;
     const len = Math.ceil(TEMPO_WINDOW_S * frameRate) + 8;
@@ -99,6 +129,9 @@ export class BeatTracker {
     this.confidence = 0;
     this.combConfidence = 0;
     this.firstLockTime = NaN;
+    this.evBeat = NaN;
+    this.evMax = 0;
+    this.relPendingCount = 0;
     this.errEma = 0.5;
     this.halfRatio = 0;
     this.slotScore.fill(0);
@@ -267,7 +300,7 @@ export class BeatTracker {
             }
             const change = na > 0 && nb > 0 ? 1 - dot / Math.sqrt(na * nb) : 0;
             // `fl - 1` is the beat whose chroma we just closed; its start is the change point.
-            this.addAccent(fl - 1, 3 * change);
+            this.addAccent(fl - 1, 3 * change * this.dspAccentWeight);
           }
           for (let k = 0; k < 12; k++) this.prevBeatChroma[k] = this.beatChroma[k] / this.beatChromaFrames;
           this.haveBeatChroma = true;
@@ -289,9 +322,25 @@ export class BeatTracker {
         b = Math.max(b, this.bassOn.at(a));
         s = Math.max(s, this.snare.at(a));
       }
-      this.addAccent(pa.beat, k + 0.5 * b - 0.6 * s);
+      this.addAccent(pa.beat, (k + 0.5 * b - 0.6 * s) * this.dspAccentWeight);
       this.pendingAccents.splice(i, 1);
     }
+  }
+
+  /**
+   * External downbeat evidence (e.g. src/analysis/downbeatBlstm.ts): probability `v` that stream time
+   * `t` (seconds, possibly a few seconds in the past) is a downbeat. Frames near a beat of the current
+   * clock vote for that beat's bar slot with their peak value; call in time order.
+   */
+  downbeatEvidence(t: number, v: number): void {
+    const pos = this.positionAt(t);
+    const b = Math.round(pos);
+    if (b !== this.evBeat) {
+      if (Number.isFinite(this.evBeat)) this.addAccent(this.evBeat, this.externalAccentWeight * this.evMax);
+      this.evBeat = b;
+      this.evMax = 0;
+    }
+    if (Math.abs(pos - b) <= 0.12 && v > this.evMax) this.evMax = v;
   }
 
   private addAccent(beat: number, v: number): void {
@@ -389,6 +438,23 @@ export class BeatTracker {
       if (localScore > 0 && !edge && this.halfRatio < 0.75) this.bpm += (localBpm - this.bpm) * 0.1;
       this.stableEvals++;
       const related = [0.5, 2 / 3, 0.75, 4 / 3, 1.5, 2, 3, 1 / 3].some((r) => Math.abs(ratio / r - 1) < 0.03);
+      if (this.neural && related && Math.abs(ratio - 1) >= 0.03) {
+        const octave = Math.abs(ratio / 2 - 1) < 0.03 || Math.abs(ratio / 0.5 - 1) < 0.03;
+        if (!octave || this.relOctave) {
+          if (this.relPendingCount > 0 && Math.abs(bpm / this.relPendingBpm - 1) < 0.03) this.relPendingCount++;
+          else {
+            this.relPendingBpm = bpm;
+            this.relPendingCount = 1;
+          }
+          if (this.relPendingCount >= this.relEvals && bestScore > this.relRatio * Math.max(0, localScore)) {
+            this.switchTempo(this.relPendingBpm);
+            return;
+          }
+        }
+        this.pendingCount = 0;
+        return;
+      }
+      this.relPendingCount = 0;
       if (Math.abs(ratio - 1) < 0.03 || related) {
         this.pendingCount = 0;
         return;
@@ -398,12 +464,9 @@ export class BeatTracker {
         this.pendingBpm = bpm;
         this.pendingCount = 1;
       }
-      if (this.pendingCount >= 8 && bestScore > 1.5 * Math.max(0, localScore)) {
-        this.bpm = this.pendingBpm;
-        this.pendingCount = 0;
-        this.stableEvals = 0;
-        this.locked = false;
-        this.errEma = 0.3;
+      const near = this.neural && Math.abs(ratio - 1) < 0.08;
+      if (near ? this.pendingCount >= this.nearEvals && bestScore > this.nearRatio * Math.max(0, localScore) : this.pendingCount >= (this.neural ? this.farEvals : 8) && bestScore > (this.neural ? this.farRatio : 1.5) * Math.max(0, localScore)) {
+        this.switchTempo(this.pendingBpm);
       }
       return;
     }
@@ -424,6 +487,17 @@ export class BeatTracker {
         this.stableEvals = 0;
       }
     }
+  }
+
+  /** Adopt a different tempo while locked: unlock so the phase pulls in fast. */
+  private switchTempo(bpm: number): void {
+    this.bpm = bpm;
+    this.period = 60 / bpm;
+    this.pendingCount = 0;
+    this.relPendingCount = 0;
+    this.stableEvals = 0;
+    this.locked = false;
+    this.errEma = 0.3;
   }
 
   /** Strength at the midpoints between beats relative to the beats themselves, for tempo `bpm`. */

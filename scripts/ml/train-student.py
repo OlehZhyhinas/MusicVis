@@ -23,7 +23,8 @@ ap.add_argument('--batch', type=int, default=48)
 ap.add_argument('--lr', type=float, default=2e-3)
 ap.add_argument('--name', default='')
 ap.add_argument('--max-clips', type=int, default=0)
-ap.add_argument('--smoke', action='store_true')  # no held-out split (pipeline check only)
+ap.add_argument('--smoke', action='store_true')
+ap.add_argument('--db-lag', type=int, default=0)  # downbeat head predicts the frame this many frames back (right context)  # no held-out split (pipeline check only)
 a = ap.parse_args()
 DATA = os.path.expanduser('~/personal/MusicVis-data')
 ML = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../.testdata/ml')
@@ -63,7 +64,10 @@ def load(item):
     _, _, f, lab = item
     x = np.fromfile(f, dtype='<f2').reshape(-1, 162)  # kept as float16 in RAM
     j = json.load(open(lab))
-    y = np.stack([spikes(j['beats'], len(x)), spikes(j['downbeats'], len(x))], 1)
+    d = spikes(j['downbeats'], len(x))
+    if a.db_lag:
+        d = np.concatenate([np.zeros(a.db_lag, np.float32), d[:-a.db_lag]])  # output k <- label k - lag
+    y = np.stack([spikes(j['beats'], len(x)), d], 1)
     return x, y
 
 t0 = time.time()
@@ -120,7 +124,8 @@ def lossf(p, y):
 def validate():
     net.eval(); tot = 0; n = 0
     with torch.no_grad():
-        for x, y in VA[:300]:
+        for x, y in VA[:40]:
+            x, y = x[:3000], y[:3000]  # 30 s of each held-out clip
             p, _ = net(torch.tensor(x[None].astype(np.float32), device=dev))
             tot += lossf(p, torch.tensor(y[None], device=dev)).item(); n += 1
     net.train(); return tot / max(1, n)
@@ -141,6 +146,6 @@ torch.save(net.state_dict(), os.path.join(ML, 'models', name + '.pt'))
 x1 = torch.zeros(1, 1, 162); h1 = torch.zeros(a.layers, 1, a.hidden)
 path = os.path.join(ML, 'models', name + '.onnx')
 torch.onnx.export(Step(net), (x1, h1, h1.clone()), path, input_names=['x', 'h', 'c'], output_names=['y', 'h_out', 'c_out'], opset_version=17, dynamo=False)
-json.dump({'hidden': a.hidden, 'layers': a.layers, 'corpus': a.corpus, 'train': len(train), 'val': len(val), 'bytes': os.path.getsize(path)},
+json.dump({'hidden': a.hidden, 'layers': a.layers, 'dbLag': a.db_lag, 'corpus': a.corpus, 'train': len(train), 'val': len(val), 'bytes': os.path.getsize(path)},
           open(os.path.join(ML, 'models', name + '.json'), 'w'), indent=1)
 print('wrote', path)

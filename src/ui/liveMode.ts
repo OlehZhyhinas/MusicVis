@@ -122,7 +122,7 @@ export class LiveMode {
       <div class="sub lp-grant" hidden><span class="muted">Device names are hidden until the browser grants microphone access.</span><button class="btn sm lp-grant-btn">${icon('eye', 14)}<span>Show device names</span></button></div>
       <div class="row lp-level" hidden><span class="muted">${icon('volume', 14)}</span><div class="meter level h6"><i class="lp-meter-fill" style="--v:0%"></i></div><span class="mono dim lp-db">–</span></div>
       <label class="row lp-lag"><button class="tog lp-lag-btn" aria-pressed="false" aria-label="Sharper notes"></button><span class="grow">Sharper notes <span class="muted">· notes trail the sound by ${Math.round(DEFAULT_VISUAL_LAG * 1000)} ms</span></span></label>
-      <label class="row lp-lag lp-beat"><button class="tog lp-beat-btn" aria-pressed="false" aria-label="Neural beats"></button><span class="grow">Neural beats <span class="muted">· a small beat-tracking network finds the beat</span></span></label>
+      <label class="row lp-lag lp-beat"><button class="tog lp-beat-btn" aria-pressed="false" aria-label="Neural beats"></button><span class="grow">Neural beats <span class="muted">· small networks find the beat and the bar</span></span></label>
       <label class="row lp-lag lp-stems"><button class="tog lp-stems-btn" aria-pressed="false" aria-label="Neural stems"></button><span class="grow">Neural stems <span class="muted">· a small network splits drums, bass, vocals and the rest</span></span></label>
       <div class="status lp-status" role="status" aria-live="polite"></div>
       <div class="row"><button class="btn primary lp-start">${icon('play', 16)}<span>Start</span></button><button class="btn danger lp-stop" hidden>${icon('stop', 14)}<span>Stop</span></button><span class="grow"></span><button class="btn ghost lp-cancel">Cancel</button></div>
@@ -157,7 +157,7 @@ export class LiveMode {
     this.beatBtn = panel.querySelector('.lp-beat-btn')!;
     this.neuralBeats = loadSetting<boolean>(BEAT_RNN_KEY, DEFAULT_BEAT_RNN);
     this.beatBtn.setAttribute('aria-pressed', String(this.neuralBeats));
-    this.beatBtn.title = 'Finds the beat with a small recurrent network (1 MB, runs in the page) instead of the plain onset detector: the beat and bar lock on more songs';
+    this.beatBtn.title = 'Finds the beat and the first beat of the bar with small recurrent networks (4 MB, run in the page) instead of the plain onset detector: the beat and bar lock on more songs';
     this.beatBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
       this.neuralBeats = !this.neuralBeats;
