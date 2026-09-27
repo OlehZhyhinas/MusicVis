@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 154;
+export const SEED_VERSION = 155;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
