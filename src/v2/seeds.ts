@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 149;
+export const SEED_VERSION = 150;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2839,25 +2839,26 @@ const TORONTO_X36: Def[] = [
 // and the village, in literal blues and yellows (palette key 0: the same colours in every song key).
 const ART5: Def[] = [
   {
-    // The painting at a glance, laid out after it: a continuous sky of blue brush strokes wound round
-    // one great spiral in the upper middle and a second counter-swirl below it (the flow carrier keeps
-    // the paint, so no black shows), a yellow crescent moon top right and four stars, each in
-    // concentric halo rings, and one silhouette: the near-black flame cypress rising from the bottom
-    // left almost to the top, rolling blue hills climbing to the right, the village band and a pale
-    // church and steeple, edges flickering like brushwork. Drum hits kick the great spiral and pulse
-    // every halo outward, the bass turns the counter-swirl, each melody note lightens the sky.
+    // The painting at a glance, framed like it (height fitted, the sky extended sideways): fine, soft
+    // blue brush strokes streaming round one great spiral in the upper middle and a counter-swirl
+    // below it, the paint kept so no black gaps open; a crescent moon top right and eight stars at the
+    // painting's positions, each in concentric halo rings; one silhouette of the near-black flame
+    // cypress rising from the bottom left almost to the top, rolling hills climbing right, a pale
+    // steeple and church, and lit house windows along the village. Drum hits stir the great spiral
+    // (eased, not jolted) and pulse every halo outward, the bass turns the counter-swirl, each melody
+    // note lightens the sky.
     origin: 'X33', name: 'Starry Night', energy: [0.15, 0.85], scheme: 'free', hue: 0.63, pal: { key: 0, s1: 0.51, s2: 0.95 },
-    color: { sat: 0.72, exposure: 1, adapt: 0.35, bloom: 1.1, vignette: 0.2, relief: 0.8, bump: 2.2, light: 0.375, gloss: 0.35 },
-    carrier: 'flow', car: { halfLife: 2, floor: 0.08, famt: 0.0005, fscale: 1.6, blur: 0.004 },
+    color: { sat: 0.72, exposure: 1, adapt: 0.35, bloom: 0.6, vignette: 0.2, relief: 0, bump: 1.4, light: 0.375, gloss: 0.35 },
+    carrier: 'flow', car: { halfLife: 4, floor: 0.02, famt: 0.0005, fscale: 1.6, blur: 0.012 },
     chain: [
-      op('swirl', { amt: 0.016, k: 3.5, cx: 0.05, cy: 0.17 }),
-      op('swirl', { amt: -0.012, k: 4, cx: 0.3, cy: 0.02 }),
+      op('swirl', { amt: 0.011, k: 6, cx: 0.04, cy: 0.17 }),
+      op('swirl', { amt: -0.008, k: 7, cx: 0.21, cy: 0.02 }),
     ],
     bodies: [
       body({
-        shape: ['dot', { r: 0.004 }],
-        place: ['grid', { lattice: 1, scale: 34, jitter: 0.6, density: 1, lit: 1, twinkle: 0.4 }],
-        material: ['glow', { gain: 0.18, width: 0.007, base: 0.5 }],
+        shape: ['dot', { r: 0.0014 }],
+        place: ['grid', { lattice: 2, scale: 14, jitter: 0.6, density: 1, lit: 1, twinkle: 0.4 }],
+        material: ['glow', { gain: 0.09, width: 0.0015, base: 0.6 }],
         emit: ['trail'],
         feel: ['flow', { atk: 0.02, rel: 0.3 }],
         color: ['height', { hue: 0.9, amount: 0.35, detail: 1 }],
@@ -2865,15 +2866,19 @@ const ART5: Def[] = [
       body({
         shape: ['compound', { size: 0.5 }],
         parts: [
-          part('ellipse', 'union', { x: 1.44, y: 0.64, sx: 0.2, sy: 0.2, bright: 2, hue: 0.36 }),
-          part('ellipse', 'subtract', { x: 1.36, y: 0.71, sx: 0.18, sy: 0.18, k: 0.01 }),
-          part('ellipse', 'union', { x: -0.54, y: -0.06, sx: 0.045, sy: 0.045, bright: 2, hue: 0.333 }),
-          part('ellipse', 'union', { x: -0.9, y: 0.62, sx: 0.035, sy: 0.035, bright: 2, hue: 0.333 }),
-          part('ellipse', 'union', { x: 0.72, y: 0.54, sx: 0.035, sy: 0.035, bright: 2, hue: 0.333 }),
-          part('ellipse', 'union', { x: -1.38, y: 0.91, sx: 0.03, sy: 0.03, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: 1.03, y: 0.65, sx: 0.15, sy: 0.15, bright: 2, hue: 0.36 }),
+          part('ellipse', 'subtract', { x: 0.97, y: 0.7, sx: 0.135, sy: 0.135, k: 0.01 }),
+          part('ellipse', 'union', { x: -0.99, y: 0.91, sx: 0.035, sy: 0.035, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.68, y: 0.93, sx: 0.025, sy: 0.025, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.39, y: 0.92, sx: 0.03, sy: 0.03, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.67, y: 0.65, sx: 0.04, sy: 0.04, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.43, y: 0.35, sx: 0.03, sy: 0.03, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.93, y: 0.05, sx: 0.035, sy: 0.035, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: -0.37, y: -0.06, sx: 0.055, sy: 0.055, bright: 2, hue: 0.333 }),
+          part('ellipse', 'union', { x: 0.51, y: 0.54, sx: 0.04, sy: 0.04, bright: 2, hue: 0.333 }),
         ],
         place: ['point', { x: 0, y: 0 }],
-        material: ['fill', { gain: 2, soft: 0.02, halo: 0.7, rings: 3, rgap: 0.014, rfade: 0.65 }],
+        material: ['fill', { gain: 2, soft: 0.02, halo: 0.2, rings: 3, rgap: 0.011, rfade: 0.65 }],
         emit: ['none'],
         feel: ['flow', { atk: 0.01, rel: 0.25 }],
         color: ['fixed', { hue: 0, detail: 1 }],
@@ -2881,15 +2886,18 @@ const ART5: Def[] = [
       body({
         shape: ['compound', { size: 0.5 }],
         parts: [
-          part('triangle', 'union', { x: -0.92, y: -0.08, sx: 0.3, sy: 1.02, m: -0.25, bright: 0.025, hue: 0.5 }),
-          part('triangle', 'smooth', { x: -0.62, y: -0.62, sx: 0.2, sy: 0.45, m: 0.3, k: 0.04, bright: 0.025, hue: 0.5 }),
-          part('ellipse', 'union', { x: 1.1, y: -0.8, sx: 1.8, sy: 0.3, rot: 0.045, bright: 0.4 }),
-          part('box', 'union', { x: 0.9, y: -0.94, sx: 1.2, sy: 0.08, m: 0.5, bright: 0.16 }),
-          part('triangle', 'union', { x: 0.2, y: -0.44, sx: 0.024, sy: 0.3, bright: 1.3 }),
-          part('box', 'union', { x: 0.2, y: -0.76, sx: 0.08, sy: 0.06, bright: 1.1 }),
+          part('triangle', 'union', { x: -0.6, y: -0.05, sx: 0.32, sy: 0.95, m: -0.5, bright: 0, hue: 0.5 }),
+          part('triangle', 'smooth', { x: -0.3, y: -0.56, sx: 0.16, sy: 0.44, m: 0.3, k: 0.04, bright: 0, hue: 0.5 }),
+          part('ellipse', 'union', { x: 1, y: -0.82, sx: 1.4, sy: 0.24, rot: 0.04, bright: 0.26 }),
+          part('box', 'union', { x: 0.8, y: -0.88, sx: 1, sy: 0.14, m: 0.5, bright: 0.16 }),
+          part('triangle', 'union', { x: 0.16, y: -0.5, sx: 0.02, sy: 0.26, bright: 0.6 }),
+          part('box', 'union', { x: 0.16, y: -0.8, sx: 0.07, sy: 0.06, bright: 0.6 }),
+          part('ellipse', 'union', { x: 0.35, y: -0.72, sx: 0.6, sy: 0.16, bright: 0.24 }),
+          part('box', 'union', { x: 0.3, y: -0.57, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
+          part('box', 'union', { x: 0.5, y: -0.575, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
+          part('box', 'union', { x: 0.72, y: -0.6, sx: 0.028, sy: 0.022, bright: 2, hue: 0.36 }),
         ],
         place: ['point', { x: 0, y: 0 }],
-        deform: ['noise', { amp: 0.012, scale: 6, speed: 0.4 }],
         material: ['fill', { gain: 1.6, soft: 0, halo: 0.1 }],
         emit: ['cover', { amt: 1, tip: 0 }],
         feel: ['flow', { atk: 0.05, rel: 0.4 }],
@@ -2898,10 +2906,10 @@ const ART5: Def[] = [
     ],
     accent: { hue: 0, hook: 0, kick: 0 },
     reactions: [
-      rx('hit', 'op', 0, 'amt', 0.6, { atk: 0.005, rel: 0.3 }),
+      rx('hit', 'op', 0, 'amt', 0.35, { atk: 0.2, rel: 0.6 }),
       rx('bass', 'op', 1, 'amt', -0.5, { atk: 0.03, rel: 0.5 }),
       rx('noteon', 'ma', 0, 'gain', 0.4, { atk: 0.005, rel: 0.25 }),
-      rx('hit', 'ma', 1, 'rgap', 0.35, { atk: 0.005, rel: 0.35 }),
+      rx('hit', 'ma', 1, 'rgap', 0.4, { atk: 0.03, rel: 0.4 }),
     ],
   },
   {
