@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 152;
+export const SEED_VERSION = 153;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -164,12 +164,13 @@ function build(d: Def): Seed {
 const DEFS: Def[] = [
   {
     // Buildings scroll in from the right; each screen strip is a spectrum band that stretches taller and
-    // brightens with its band, jumps on the beat; the reflection follows and the sky glows with the bass.
+    // brightens with its band and lifts a touch on the beat (never the whole skyline jumping); the
+    // reflection follows and the sky glows with the bass.
     origin: 'E01', name: 'Night Skyline', energy: [0.3, 0.8], scheme: 'complementary', hue: 0.05,
     color: { adapt: 0.3, reflect: 1, reflectY: -0.16 }, carrier: 'warp', decay: 0.9995, car: { floor: 0.05 },
     chain: [
       op('translate', { vx: -0.2 }),
-      op('stretch', { base: -0.16, amt: 0.9, beat: 0.18, strips: 32, win: 1, sky: 1 }, 1, 'view'),
+      op('stretch', { base: -0.16, amt: 0.9, beat: 0.03, strips: 32, win: 1, sky: 1 }, 1, 'view'),
     ],
     bodies: [body({ shape: ['edge', { mode: 0, side: 0, base: -0.16, height: 0.3, density: 0.5 }], material: ['fill'] })],
   },
@@ -859,13 +860,14 @@ const MILKDROP: Def[] = [
   },
   {
     // Waltra, Square Orgy: a turning grid of glossy tiles, each lit by the colour behind it, as bright
-    // blobs drift and bloom underneath; the grid swells with the bass and the tiles shine like enamel.
+    // blobs drift and bloom underneath; the grid eases wider with the bass (a slow swell, never a pump on
+    // every kick) and the tiles shine like enamel.
     origin: 'M18', name: 'Square Orgy (after Waltra)', energy: [0.3, 0.9], scheme: 'triad', hue: 0.08,
     color: { sat: 1, exposure: 1.05, adapt: 0.3, bloom: 0.8, vignette: 0.2, relief: 0.6, bump: 1.4, gloss: 0.9, light: 0.3 },
     carrier: 'warp', car: { halfLife: 1.4, floor: 0.2 },
     chain: [
       op('zoom', { rate: 0.006, wander: 0.2 }),
-      op('mosaic', { size: 0.13, shape: 0, gap: 0.12, angle: 0.07, lock: 0.0625, pulse: 0.25 }, 1, 'view'),
+      op('mosaic', { size: 0.13, shape: 0, gap: 0.12, angle: 0.07, lock: 0.0625, pulse: 0 }, 1, 'view'),
     ],
     bodies: [body({
       shape: ['dot', { r: 0.1 }],
@@ -873,7 +875,7 @@ const MILKDROP: Def[] = [
       material: ['fill', { gain: 1.2, soft: 0.5 }],
       color: ['height', { amount: 1.5, detail: 1 }],
     })],
-    reactions: [rx('bass', 'op', 1, 'size', 0.12, { atk: 0.05, rel: 0.4 }), rx('beat', 'ma', 0, 'gain', 0.4, { rel: 0.25 })],
+    reactions: [rx('bass', 'op', 1, 'size', 0.2, { atk: 0.2, rel: 0.8 }), rx('beat', 'ma', 0, 'gain', 0.4, { rel: 0.25 })],
   },
   {
     // Goody + Flexi, Data Crusher: a field of points streams outward from the centre at speed and is
