@@ -50,8 +50,8 @@ def calibrate(screen, htres, norm):
     nz = np.array([z for z in nz if z is not None])
     Z_GATE = float(min(np.percentile(nz, 1), -2.0)) if len(nz) > 50 else -3.0
     R_GATE = 0.88
-    hn = np.array([r['ratio'] for v in htres.values() for r in v if r['null']])
-    H_GATE = float(min(np.percentile(hn, 1) - 0.02, 0.8)) if len(hn) > 20 else 0.7
+    hn = np.array([r['z'] for v in htres.values() for r in v if r['null']])
+    H_GATE = float(max(np.percentile(hn, 99), np.max(hn) if len(hn) else 0, 6.0)) if len(hn) > 20 else 8.0
     return dict(Z_GATE=Z_GATE, R_GATE=R_GATE, null_pairs=int(len(nz)),
                 null_z_p1=float(np.percentile(nz, 1)) if len(nz) else None,
                 null_z_p5=float(np.percentile(nz, 5)) if len(nz) else None,
@@ -204,7 +204,7 @@ def ht_segments(tid, htres, H):
         if r['null']:
             continue
         direct = r['same_video'] and r['dtw_vs_identity'] < 0.3
-        if not (direct or r['ratio'] < H_GATE):
+        if not (direct or r['z'] > H_GATE):
             continue
         clip = H[r['clip']]
         mel, har, beats = ht.clip_events(clip)
@@ -213,13 +213,13 @@ def ht_segments(tid, htres, H):
         lo, hi = u[0], u[-1]
         ins = lambda t: direct or (lo - 0.05 <= t <= hi + 0.05)
         segs.append(dict(
-            clip=r['clip'], song=r['song'], youtube=r['yt'], mode='direct' if direct else 'dtw', ratio=r['ratio'],
+            clip=r['clip'], song=r['song'], youtube=r['yt'], mode='direct' if direct else 'dtw', z=r['z'],
             audio=[round(float(f(lo)), 3), round(float(f(hi)), 3)],
             melody=[[round(float(f(s)), 4), round(float(f(e)), 4), int(p)] for s, e, p in mel if ins(s)],
             chords=[[round(float(f(s)), 4), round(float(f(e)), 4), lab] for s, e, lab, _ in har if ins(s)],
             beats=[[round(float(f(t)), 4), bool(d)] for t, d in beats if ins(t)]))
     # drop overlapping duplicates (two clips of the same section): keep the lower ratio
-    segs.sort(key=lambda s: (s['mode'] != 'direct', s['ratio']))
+    segs.sort(key=lambda s: (s['mode'] != 'direct', -s['z']))
     kept = []
     for s in segs:
         if all(s['audio'][1] <= k['audio'][0] or s['audio'][0] >= k['audio'][1] for k in kept):
@@ -231,10 +231,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--only', default='')
     ap.add_argument('--force', action='store_true')
+    ap.add_argument('--ht-only', action='store_true', help='refresh only the hooktheory part of existing files')
     a = ap.parse_args()
     cands = g.load_json(os.path.join(g.WORK, 'candidates.json'))
     screen = g.load_json(os.path.join(g.WORK, 'screen.json'))
-    htp = os.path.join(g.WORK, 'hooktheory.json')
+    htp = os.path.join(g.WORK, 'hooktheory2.json')
     htres = g.load_json(htp) if os.path.exists(htp) else {}
     H = ht.load() if htres else {}
     norm = g.load_json(os.path.join(g.WORK, 'screen_norm.json'))
@@ -248,6 +249,23 @@ def main():
         if a.only and a.only not in tid:
             continue
         outp = os.path.join(g.GT, corpus, tid + '.json')
+        if a.ht_only:
+            segs = ht_segments(tid, htres, H) if htres else []
+            if os.path.exists(outp):
+                doc = g.load_json(outp); doc['hooktheory'] = segs
+                if doc.get('source') or segs:
+                    g.save_json(doc, outp, separators=(',', ':'))
+                else:
+                    os.remove(outp)
+            elif segs:
+                doc = dict(id=tid, slug=g.slug_of(re.sub(r'^\d+\s*-\s*', '', tid.split('__')[-1])) if corpus == 'own' else g.slug_of(tid),
+                           corpus=corpus, audio=path, duration=round(len(align.audio_raw(corpus, tid, path)) / align.FPS, 3),
+                           format=1, source=None, confidence=None, placements=[], regions=[], instruments=[], drums={},
+                           beats=[], downbeats=[], beats_ok=False, chords=[], hooktheory=segs)
+                os.makedirs(os.path.dirname(outp), exist_ok=True)
+                g.save_json(doc, outp, separators=(',', ':'))
+            summary.setdefault(tid, {})['hooktheory'] = len(segs)
+            continue
         if os.path.exists(outp) and not a.force:
             continue
         t0 = time.time()
@@ -284,6 +302,7 @@ def main():
             g.save_json(doc, outp, separators=(',', ':'))
         g.save_json(summary, sump, indent=1)
         print(f'{tid[:60]:60s} {time.time() - t0:5.1f}s midi={info} ht={len(segs)}', flush=True)
+    g.save_json(summary, sump, indent=1)
 
 
 if __name__ == '__main__':

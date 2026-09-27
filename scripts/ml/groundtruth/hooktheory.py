@@ -6,12 +6,13 @@ notes and chords in beats, plus a human-checked beat->time alignment to one YouT
 Per matched (track, clip):
   * The clip is rendered as MIDI (melody = lead, chords = sustained pad voicing, root in octave 3) on the
     original video's beat times, synthesised in memory and turned into chroma-folded CQT features.
-  * Subsequence DTW (align.subseq_dtw) locates it in the recording; contrast vs. null clips of other songs
-    gives the confidence.
+  * locate(): linear search over offsets and tempo ratios for the best chroma match, scored by how far it
+    stands out from all other placements (robust z); null clips of other songs calibrate the gate. A local
+    DTW gives the fine time map.
   * If the clip's YouTube id is in the track's playlist archive and the durations agree within 0.5 s, the
     file is that very video: the human alignment is used as is when DTW agrees within 0.3 s ("direct").
     Otherwise times come from the DTW path ("dtw").
-Output entries (list per track) go to WORK/hooktheory.json; build_labels.py merges them into the labels.
+Output entries (list per track) go to WORK/hooktheory2.json; build_labels.py merges them into the labels.
 """
 import collections, glob, gzip, json, os, sys
 import numpy as np
@@ -119,31 +120,65 @@ def audio_id_durations():
     return out
 
 
-def locate(Ra_chroma, pm_clip, t0):
-    """Subsequence-DTW the synthesised clip (starting at original time t0) into the recording.
-    Returns (cost ratio, path midi_t (orig secs), path audio_t)."""
+SLOPES = (0.94, 0.97, 1.0, 1.03, 1.06)
+
+
+def locate(Ra_chroma, pm_clip, t0, t1):
+    """Find the clip (original seconds t0..t1) in the recording.
+
+    Chroma of the in-memory synthesis vs the recording. A linear search over every audio offset and
+    tempo ratios SLOPES gives the mean diagonal cost per placement; the score is how far the best
+    placement stands out from all others: z = (median - best) / (1.4826 * MAD). A DTW path inside
+    +-1.5 s of the best placement gives the fine time map.
+    Returns (z, best_cost, path clip_t (orig secs), path audio_t)."""
     y = align.synth(pm_clip)
-    i0 = int(t0 * align.SR)
-    R = align.raw_cqt(y[i0:], 0.0)
-    Fm = align.feat(R, 'chroma')
-    C = 1.0 - Fm @ Ra_chroma.T
-    med = float(np.median(C))
-    D, S = align.subseq_dtw(C.astype(np.float64), med)
+    R = align.raw_cqt(y[int(t0 * align.SR):int(t1 * align.SR) + align.SR // 2], 0.0)
+    Fm0 = align.feat(R, 'chroma')
+    N = len(Ra_chroma)
+    best = None
+    allc = []
+    for sl in SLOPES:
+        n = int(len(Fm0) * sl)
+        if n < 20 or n >= N - 1:
+            continue
+        idx = np.clip(np.round(np.arange(n) / sl).astype(int), 0, len(Fm0) - 1)
+        Fm = Fm0[idx]
+        C = 1.0 - Fm @ Ra_chroma.T                    # n x N
+        m = N - n
+        acc = np.zeros(m)
+        for i in range(n):
+            acc += C[i, i:i + m]
+        acc /= n
+        allc.append(acc)
+        o = int(np.argmin(acc))
+        if best is None or acc[o] < best[0]:
+            best = (float(acc[o]), o, sl, n)
+    allv = np.concatenate(allc)
+    med = float(np.median(allv)); mad = float(np.median(np.abs(allv - med))) * 1.4826 + 1e-6
+    cost, o, sl, n = best
+    z = (med - cost) / mad
+    pad = int(1.5 * align.FPS)
+    a0, a1 = max(0, o - pad), min(N, o + n + pad)
+    C = 1.0 - Fm0 @ Ra_chroma[a0:a1].T
+    D, S = align.subseq_dtw(C.astype(np.float64), 0.5 * med)
     e = int(np.argmin(D)); s = int(S[e])
-    pi, pj = align.full_dtw(C[:, s:e + 1].astype(np.float64), med)
-    ratio = float(np.mean(C[pi, pj + s])) / med
-    return ratio, t0 + pi / align.FPS, (pj + s) / align.FPS
+    pi, pj = align.full_dtw(C[:, s:e + 1].astype(np.float64), 0.5 * med)
+    return z, cost, t0 + pi / align.FPS, (pj + s + a0) / align.FPS
 
 
 def main():
     H = load()
     M = matches(H)
     ids = audio_id_durations()
-    outp = os.path.join(g.WORK, 'hooktheory.json')
+    outp = os.path.join(g.WORK, 'hooktheory2.json')
     out = g.load_json(outp) if os.path.exists(outp) else {}
     rng = np.random.default_rng(1)
     allk = [k for k, v in H.items() if 'HARMONY' in v['tags']]
-    for tid, (corpus, path, ks) in M.items():
+    def same_video_first(item):
+        tid, (corpus, path, ks) = item
+        pl = tid.split('__')[0]
+        return 0 if any(H[k]['youtube']['id'] in ids.get(pl, set()) for k in ks) else 1
+    for tid, (corpus, path, ks) in sorted(M.items(), key=same_video_first):
         if tid in out:
             continue
         Ra = align.audio_raw(corpus, tid, path)
@@ -151,7 +186,7 @@ def main():
         dur = len(Ra) / align.FPS
         pl = tid.split('__')[0] if corpus == 'own' else None
         res = []
-        nulls = [allk[i] for i in rng.integers(0, len(allk), 2)]
+        nulls = [allk[i] for i in rng.integers(0, len(allk), 4)]
         for k in ks + nulls:
             clip = H[k]
             try:
@@ -159,7 +194,8 @@ def main():
                 if not har and not mel:
                     continue
                 t0 = max(0.0, min([x[0] for x in mel] + [x[0] for x in har]) - 0.5)
-                ratio, pt, pa = locate(Fa, clip_midi(mel, har), t0)
+                t1 = max([x[1] for x in mel] + [x[1] for x in har])
+                z, cost, pt, pa = locate(Fa, clip_midi(mel, har), t0, t1)
             except Exception as ex:
                 print('fail', tid[:40], k, ex); continue
             same_video = bool(pl and clip['youtube']['id'] in ids.get(pl, set())
@@ -167,13 +203,13 @@ def main():
             u, inv = np.unique(pt, return_inverse=True)
             av = np.maximum.accumulate(np.bincount(inv, weights=pa) / np.bincount(inv))
             dev = float(np.median(np.abs(av - u)))                   # DTW vs identity (same video)
-            res.append(dict(clip=k, null=k in nulls and k not in ks, ratio=round(ratio, 4), same_video=same_video,
+            res.append(dict(clip=k, null=k in nulls and k not in ks, z=round(z, 3), cost=round(cost, 4), same_video=same_video,
                             dtw_vs_identity=round(dev, 3), map_t=np.round(u[::4], 3).tolist(),
                             map_a=np.round(av[::4], 3).tolist(), yt=clip['youtube']['id'],
                             song=clip['hooktheory']['artist'] + '/' + clip['hooktheory']['song']))
         out[tid] = res
         g.save_json(out, outp)
-        print(tid[:50], [(r['ratio'], r['null'], r['same_video'], r['dtw_vs_identity']) for r in res], flush=True)
+        print(tid[:50], [(r['z'], r['null'], r['same_video'], r['dtw_vs_identity']) for r in res], flush=True)
 
 
 if __name__ == '__main__':
