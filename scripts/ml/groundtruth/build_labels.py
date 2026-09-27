@@ -17,7 +17,8 @@ import align
 import hooktheory as ht
 from notes2chords import chords_from_notes
 
-R_GATE = None          # set from nulls in calibrate()
+R_GATE = None          # raw ratio ceiling
+Z_GATE = None          # two-way null-normalised score gate, calibrated on null pairs
 P_GATE = 0.80          # per-placement path cost / tau; placements above it are dropped
 H_GATE = None          # Hooktheory clip ratio gate, from its nulls
 MIN_COVER = 0.35       # fraction of the recording that must be covered by confident placements
@@ -27,15 +28,34 @@ DRUMS = {'kick': {35, 36}, 'snare': {37, 38, 39, 40}, 'hihat': {42, 44, 46}, 'to
          'crash': {49, 52, 55, 57}, 'ride': {51, 53, 59}, 'perc': set(range(60, 82)) | {54, 56, 58}}
 
 
-def calibrate(screen, htres):
-    global R_GATE, H_GATE
-    nul = np.array([r['ratio'] for v in screen.values() for r in v if r['kind'] == 'null' and 'ratio' in r])
-    # strictest of: 0.5th percentile of nulls and a fixed ceiling
-    R_GATE = float(min(np.percentile(nul, 0.5) - 0.02, 0.86)) if len(nul) > 20 else 0.8
+def zscores(ratio, md5, tid, norm):
+    """(z vs this MIDI's null ratios, z vs this recording's null ratios); None when too few nulls."""
+    out = []
+    for arr in (norm['midi'].get(md5, []), norm['audio'].get(tid, [])):
+        arr = np.asarray(arr, float)
+        out.append(float((ratio - arr.mean()) / max(arr.std(), 0.02)) if len(arr) >= 4 else None)
+    return out
+
+
+def pair_score(ratio, md5, tid, norm):
+    zs = [z for z in zscores(ratio, md5, tid, norm) if z is not None]
+    return max(zs) if len(zs) == 2 else None
+
+
+def calibrate(screen, htres, norm):
+    """Z_GATE: the 1st percentile of the null pairs' pair_score (so ~1% false accepts per candidate)."""
+    global R_GATE, Z_GATE, H_GATE
+    nz = [pair_score(r['ratio'], r['md5'], t, norm) for t, v in screen.items() for r in v
+          if r['kind'] == 'null' and 'ratio' in r]
+    nz = np.array([z for z in nz if z is not None])
+    Z_GATE = float(min(np.percentile(nz, 1), -2.0)) if len(nz) > 50 else -3.0
+    R_GATE = 0.88
     hn = np.array([r['ratio'] for v in htres.values() for r in v if r['null']])
     H_GATE = float(min(np.percentile(hn, 1) - 0.02, 0.8)) if len(hn) > 20 else 0.7
-    return dict(R_GATE=R_GATE, null_n=int(len(nul)), null_min=float(nul.min()) if len(nul) else None,
-                null_p1=float(np.percentile(nul, 1)) if len(nul) else None, H_GATE=H_GATE, ht_null_n=int(len(hn)))
+    return dict(Z_GATE=Z_GATE, R_GATE=R_GATE, null_pairs=int(len(nz)),
+                null_z_p1=float(np.percentile(nz, 1)) if len(nz) else None,
+                null_z_p5=float(np.percentile(nz, 5)) if len(nz) else None,
+                H_GATE=H_GATE, ht_null_n=int(len(hn)))
 
 
 def family(inst):
@@ -157,7 +177,7 @@ def export(corpus, tid, path, Ra, cand, pm, pl, st, lagc_src=None):
         bb = bt[(bt >= a - 1e-3) & (bt <= b + 1e-3)]
         chords += chords_from_notes(pitched, bb)
     cover = sum(b - a for a, b in merged) / dur
-    conf = dict(global_ratio=cand['ratio'], transpose=shift,
+    conf = dict(global_ratio=cand['ratio'], null_z=cand.get('z'), transpose=shift,
                 placements=len(keep), placements_dropped=len(pl) - len(keep),
                 mean_cost_ratio=float(np.average([p['cost'] / st['tau'] for p in keep],
                                                  weights=[p['audio'][1] - p['audio'][0] + 1 for p in keep])) if keep else None,
@@ -212,15 +232,16 @@ def main():
     ap.add_argument('--only', default='')
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args()
-    cands = json.load(open(os.path.join(g.WORK, 'candidates.json')))
-    screen = json.load(open(os.path.join(g.WORK, 'screen.json')))
+    cands = g.load_json(os.path.join(g.WORK, 'candidates.json'))
+    screen = g.load_json(os.path.join(g.WORK, 'screen.json'))
     htp = os.path.join(g.WORK, 'hooktheory.json')
-    htres = json.load(open(htp)) if os.path.exists(htp) else {}
+    htres = g.load_json(htp) if os.path.exists(htp) else {}
     H = ht.load() if htres else {}
-    cal = calibrate(screen, htres)
+    norm = g.load_json(os.path.join(g.WORK, 'screen_norm.json'))
+    cal = calibrate(screen, htres, norm)
     print('calibration', cal, flush=True)
     sump = os.path.join(g.WORK, 'summary.json')
-    summary = json.load(open(sump)) if os.path.exists(sump) else {}
+    summary = g.load_json(sump) if os.path.exists(sump) else {}
     summary['_calibration'] = cal
     ids = {tid: (c, p) for c, tid, p in g.all_tracks()}
     for tid, (corpus, path) in ids.items():
@@ -230,22 +251,24 @@ def main():
         if os.path.exists(outp) and not a.force:
             continue
         t0 = time.time()
-        rs = sorted([r for r in screen.get(tid, []) if r['kind'] != 'null' and 'ratio' in r], key=lambda r: r['ratio'])
-        rs = [r for r in rs if r['ratio'] < R_GATE][:TOPC]
+        rs = [dict(r, z=pair_score(r['ratio'], r['md5'], tid, norm)) for r in screen.get(tid, [])
+              if r['kind'] != 'null' and 'ratio' in r]
+        rs = sorted([r for r in rs if r['z'] is not None and r['z'] < Z_GATE and r['ratio'] < R_GATE],
+                    key=lambda r: r['z'])[:TOPC]
         best = None
         info = []
         if rs:
             Ra = align.audio_raw(corpus, tid, path)
             for r in rs:
                 c = next(c for c in cands[tid]['cands'] if c['md5'] == r['md5'])
-                c = dict(c, ratio=r['ratio'])
+                c = dict(c, ratio=r['ratio'], z=round(r['z'], 2))
                 try:
                     pm, pl, st = align.align(Ra, os.path.join(g.WORK, 'midi', r['md5'] + '.mid'))
                     lab, cover = export(corpus, tid, path, Ra, c, pm, pl, st)
                 except Exception as ex:
                     info.append(dict(md5=r['md5'], error=str(ex)[:100])); continue
                 q = cover * (1.0 - (lab['confidence']['mean_cost_ratio'] or 1.0))
-                info.append(dict(md5=r['md5'], ratio=r['ratio'], cover=round(cover, 3), q=round(q, 4)))
+                info.append(dict(md5=r['md5'], ratio=r['ratio'], z=round(r['z'], 2), cover=round(cover, 3), q=round(q, 4)))
                 if cover >= MIN_COVER and (best is None or q > best[0]):
                     best = (q, lab)
         segs = ht_segments(tid, htres, H) if htres else []
@@ -258,8 +281,8 @@ def main():
                        corpus=corpus, audio=path, duration=round(len(align.audio_raw(corpus, tid, path)) / align.FPS, 3),
                        format=1, **lab, hooktheory=segs)
             os.makedirs(os.path.dirname(outp), exist_ok=True)
-            json.dump(doc, open(outp, 'w'), separators=(',', ':'))
-        json.dump(summary, open(sump, 'w'), indent=1)
+            g.save_json(doc, outp, separators=(',', ':'))
+        g.save_json(summary, sump, indent=1)
         print(f'{tid[:60]:60s} {time.time() - t0:5.1f}s midi={info} ht={len(segs)}', flush=True)
 
 

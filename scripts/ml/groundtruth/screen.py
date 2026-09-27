@@ -16,9 +16,9 @@ NULLS = 3
 
 
 def main():
-    d = json.load(open(os.path.join(g.WORK, 'candidates.json')))
+    d = g.load_json(os.path.join(g.WORK, 'candidates.json'))
     outp = os.path.join(g.WORK, 'screen.json')
-    out = json.load(open(outp)) if os.path.exists(outp) else {}
+    out = g.load_json(outp) if os.path.exists(outp) else {}
     pool = sorted({c['md5'] for v in d.values() for c in v['cands'] if c['why'] == 'artist+title'})
     rnd = random.Random(0)
     t0 = time.time()
@@ -43,7 +43,7 @@ def main():
             except Exception as e:
                 res.append(dict(md5=md5, kind=kind, error=str(e)[:80]))
         out[tid] = res
-        json.dump(out, open(outp, 'w'), indent=0)
+        g.save_json(out, outp, indent=0)
         best = min([r for r in res if r['kind'] != 'null' and 'ratio' in r], key=lambda r: r['ratio'], default=None)
         print(f'[{n}] {time.time()-t0:.0f}s {tid[:50]} best={best and best["ratio"]} '
               f'nulls={[r.get("ratio") for r in res if r["kind"] == "null"]}', flush=True)

@@ -114,3 +114,25 @@ def decode(path, sr=22050):
 def pcm22(corpus, tid, path):
     """Mono 22050 Hz float32, decoded fresh (the shared slug-keyed pcm22 cache has slug collisions)."""
     return decode(path)
+
+
+def load_json(path, tries=20):
+    """json.load that tolerates a concurrent writer (retries on a half-written file)."""
+    import json, time
+    for i in range(tries):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.5)
+
+
+def save_json(obj, path, **kw):
+    """Atomic json write (tmp file + rename)."""
+    import json
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(obj, f, **kw)
+    os.replace(tmp, path)

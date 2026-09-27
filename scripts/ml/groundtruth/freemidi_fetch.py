@@ -42,9 +42,9 @@ def get(url, **kw):
 
 def main():
     cp = os.path.join(g.WORK, 'candidates.json')
-    d = json.load(open(cp))
+    d = g.load_json(cp)
     donep = os.path.join(g.WORK, 'freemidi_done.json')
-    done = json.load(open(donep)) if os.path.exists(donep) else {}
+    done = g.load_json(donep) if os.path.exists(donep) else {}
     for tid, v in d.items():
         if tid in done:
             continue
@@ -82,8 +82,8 @@ def main():
         done[tid] = [x['md5'] for x in got]
         have = {c['md5'] for c in v['cands']}
         v['cands'] += [x for x in got if x['md5'] not in have]
-        json.dump(d, open(cp, 'w'), indent=1, ensure_ascii=False)
-        json.dump(done, open(donep, 'w'))
+        g.save_json(d, cp, indent=1, ensure_ascii=False)
+        g.save_json(done, donep)
         if got:
             print(tid[:60], [x['md5'] + ' ' + x['why'] for x in got], flush=True)
     print('tracks with freemidi files:', sum(1 for x in done.values() if x))

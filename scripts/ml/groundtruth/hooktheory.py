@@ -140,7 +140,7 @@ def main():
     M = matches(H)
     ids = audio_id_durations()
     outp = os.path.join(g.WORK, 'hooktheory.json')
-    out = json.load(open(outp)) if os.path.exists(outp) else {}
+    out = g.load_json(outp) if os.path.exists(outp) else {}
     rng = np.random.default_rng(1)
     allk = [k for k, v in H.items() if 'HARMONY' in v['tags']]
     for tid, (corpus, path, ks) in M.items():
@@ -172,7 +172,7 @@ def main():
                             map_a=np.round(av[::4], 3).tolist(), yt=clip['youtube']['id'],
                             song=clip['hooktheory']['artist'] + '/' + clip['hooktheory']['song']))
         out[tid] = res
-        json.dump(out, open(outp, 'w'))
+        g.save_json(out, outp)
         print(tid[:50], [(r['ratio'], r['null'], r['same_video'], r['dtw_vs_identity']) for r in res], flush=True)
 
 
