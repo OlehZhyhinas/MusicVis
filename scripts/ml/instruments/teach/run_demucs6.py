@@ -25,12 +25,8 @@ import shutil
 import sys
 import time
 
-import shutil
-
 import numpy as np
 import torch
-
-MIN_FREE_GB = 30  # pause writing (large) shared stem caches below this; envelopes/labels always continue
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import common
@@ -41,7 +37,7 @@ HOP = 512
 WIN = 2048
 STEMS = ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano']
 
-MIN_FREE = 30 << 30  # stop caching stem audio below 30 GB free (envelopes still written)
+MIN_FREE_GB = 30  # pause writing (large) shared stem caches below this; envelopes/labels always continue
 STEMS6_DIR = os.path.join(common.WORK, 'stems6')  # test only, float32 (note/instrument agents)
 SHARED_STEMS6_DIR = os.path.join(common.DATA, 'stems6')  # own/fma, float16 (shared with other agents + basicpitch)
 LOG_PATH = os.path.join(common.WORK, 'teach', 'logs', 'demucs6.log')
@@ -136,7 +132,7 @@ def main():
             shared_dir = os.path.join(SHARED_STEMS6_DIR, corpus)
             stems_paths = [os.path.join(shared_dir, f'{tid}.{s}.f16') for s in STEMS]
         stems_done = all(os.path.exists(p) for p in stems_paths)
-        low_disk = shutil.disk_usage(common.DATA).free < MIN_FREE
+        low_disk = corpus != 'test' and free_gb(common.DATA) < MIN_FREE_GB
         if os.path.exists(out_path) and (stems_done or low_disk):
             continue
 
@@ -177,21 +173,17 @@ def main():
                     m22.tofile(tmp)
                     os.replace(tmp, p)
         elif low_disk:
-            ct.log_line(LOG_PATH, f'LOW DISK (<{MIN_FREE >> 30} GB free): envelopes only, no stems for {corpus}/{tid}')
+            ct.log_line(LOG_PATH, f'LOW DISK (<{MIN_FREE_GB} GB free): envelope only, no stems6 for {corpus}/{tid}')
         else:
-            fgb = free_gb(common.DATA)
-            if fgb < MIN_FREE_GB:
-                ct.log_line(LOG_PATH, f'LOW DISK {fgb:.1f}GB free < {MIN_FREE_GB}GB: skipping stems6 write for {corpus}/{tid} (envelope still saved)')
-            else:
-                shared_dir = os.path.join(SHARED_STEMS6_DIR, corpus)
-                os.makedirs(shared_dir, exist_ok=True)
-                for stem, mono in stem_monos.items():
-                    p = os.path.join(shared_dir, f'{tid}.{stem}.f16')
-                    if not os.path.exists(p):
-                        m22 = resample_2x_down(mono).astype(np.float16)
-                        tmp = p + '.tmp'
-                        m22.tofile(tmp)
-                        os.replace(tmp, p)
+            shared_dir = os.path.join(SHARED_STEMS6_DIR, corpus)
+            os.makedirs(shared_dir, exist_ok=True)
+            for stem, mono in stem_monos.items():
+                p = os.path.join(shared_dir, f'{tid}.{stem}.f16')
+                if not os.path.exists(p):
+                    m22 = resample_2x_down(mono).astype(np.float16)
+                    tmp = p + '.tmp'
+                    m22.tofile(tmp)
+                    os.replace(tmp, p)
 
         dt = time.time() - t0
         total_audio_s += audio_s
