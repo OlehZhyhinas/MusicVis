@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 150;
+export const SEED_VERSION = 151;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -2632,6 +2632,43 @@ const ART2: Def[] = [
       rx('held', 'sh', 1, 'tilt', 0.5, { atk: 0.08, rel: 0.08, q: 1, div: 1 }),
       rx('bass', 'ma', 1, 'gain', 0.4, { atk: 0.03, rel: 0.4 }),
       rx('drums', 'pl', 1, 'angle', 0.5, { atk: 0.06, rel: 0.06, q: 1, div: 1 }),
+    ],
+  },
+  {
+    // Void pearl: one luminous pearl hangs in a slow, dark fluid, and four jets of light pour out of
+    // its rim, one per instrument, marbling the fluid around it into blue and silver smoke that is lit
+    // as a glossy raised surface. The jets fire with their instruments (the drum jet kicks on each
+    // hit, the others flow with their stems) and aim anew on their hits, so the marbling is the
+    // arrangement; drum hits also ripple the whole surface. The bass swells the pearl, the voice
+    // pushes every jet harder, the pearl's colour follows the melody and glows on each note start,
+    // and a drop floods it bright.
+    origin: 'X20', name: 'Void Pearl', energy: [0.1, 0.85], scheme: 'analogous', hue: 0.55, pal: { key: 0 },
+    color: { sat: 0.6, adapt: 0.2, bloom: 1.1, vignette: 0.5, relief: 0.5, bump: 1.5, gloss: 0.7, metal: 0.3 }, accent: { hue: 0 },
+    carrier: 'fluid', car: { halfLife: 4, floor: 0.25, amount: 1.1, vort: 26, fnoise: 0.3, water: 0.35, wsize: 0.06 },
+    bodies: [
+      body({
+        shape: ['dot', { r: 0 }],
+        place: ['orbit', { count: 4, radius: 0.2, rate: 0, follow: 0 }],
+        material: ['glow', { gain: 1, width: 0.02 }],
+        emit: ['dye', { force: 1.2 }],
+        feel: ['flow', { atk: 0.01, rel: 0.2 }],
+        color: ['instrument'],
+      }),
+      body({
+        shape: ['dot', { r: 0.17 }],
+        place: ['point', { x: 0, y: 0 }],
+        material: ['fill', { gain: 1.1, soft: 0.2, halo: 0.5, core: 0.8 }],
+        emit: ['none'],
+        feel: ['flow', { atk: 0.03, rel: 0.4 }],
+        color: ['melody', { amount: 0.4 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'sh', 1, 'r', 0.6, { atk: 0.04, rel: 0.4 }),
+      rx('hit', 'car', 0, 'water', 0.5, { atk: 0.005, rel: 0.4 }),
+      rx('vocals', 'em', 0, 'force', 0.5, { atk: 0.1, rel: 0.6 }),
+      rx('drop', 'ma', 1, 'gain', 0.5, { atk: 0.05, rel: 2 }),
+      rx('noteon', 'ma', 1, 'core', 0.4, { atk: 0.005, rel: 0.3 }),
     ],
   },
 ];
