@@ -45,6 +45,11 @@ export class RealtimeSampler {
   private seenKey = -1;
   private readonly harmony = new LiveHarmony();
   private readonly hooks = new LiveHooks();
+  /** Live stand-ins for the look-ahead / repetition fields (see "Fallbacks" in sample()). */
+  private lastDropT = -Infinity;
+  private classCount = [0, 0, 0];
+  private classFirst = [-1, -1, -1];
+  private seenNewSongs = 0;
   /** Where the articulation comes from instead of the analyzer's greedy tracker (LiveLookahead). */
   noteSource: ((time: number, out: NoteStats) => void) | null = null;
 
@@ -216,6 +221,34 @@ export class RealtimeSampler {
     }
     this.seenChanges = st.changes;
     s.buildIntensity = st.buildIntensity;
+
+    // --- Fallbacks for the fields the offline analysis gets from knowing the whole song ---
+    // Each is causal: what a listener could say at this moment. They reset with a new song.
+    if (st.newSongs !== this.seenNewSongs) {
+      this.seenNewSongs = st.newSongs;
+      this.lastDropT = -Infinity;
+      this.classCount = [0, 0, 0];
+      this.classFirst = [-1, -1, -1];
+    }
+    const barS = 240 / (s.bpm > 0 && Number.isFinite(s.bpm) ? s.bpm : 120);
+    s.barSeconds = barS;
+    if (s.dropPulse === 1) this.lastDropT = time;
+    s.sinceDrop = Number.isFinite(this.lastDropT) ? time - this.lastDropT : Infinity;
+    // Not filled in (they stay undefined, i.e. unknown): timeToDrop and prevSectionLabel. Guessing them
+    // from the live sections (an 8-bar build rule, the tracker's previous label) moved choreo's camera
+    // at the wrong moments (C01 on the Avicii drop: sync 0.98 -> 0.66, camera jerk 0 -> 1.3).
+    // Repetition by energy class: a high-energy section (chorus / drop) that follows an earlier one is
+    // taken as its return (the deja vu gene recalls it); low and mid sections count as first appearances.
+    if (s.sectionChanged || s.repeatGroup === undefined) {
+      const cls = sec.label === 'chorus' || sec.label === 'drop' ? 2 : sec.label === 'verse' || sec.label === 'build' ? 1 : 0;
+      const n = this.classCount[cls]++;
+      if (n === 0) this.classFirst[cls] = s.sectionIndex;
+      s.repeatGroup = cls;
+      s.repeatIndex = n;
+      s.repeatOf = n === 0 ? -1 : this.classFirst[cls];
+      s.repeatSim = n > 0 && cls === 2 ? 0.75 : 0;
+      s.repeatReturnSim = cls === 2 ? 0.75 : 0.5;
+    }
 
     // --- Hooks (realtime-lite: a bar that repeats the last few marks the next bar as a hook repeat) ---
     const bpmNow = s.bpm > 0 && Number.isFinite(s.bpm) ? s.bpm : 120;

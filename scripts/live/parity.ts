@@ -70,9 +70,10 @@ export function stateChannels(): Channel[] {
   add('sectionChanged', 'structure', ev(2.0, 0.5), (s) => (s.sectionChanged ? 1 : 0));
   add('buildIntensity', 'structure', cont, (s) => s.buildIntensity);
   add('dropPulse', 'structure', ev(1.0, 0.3), (s) => s.dropPulse);
-  add('timeToDrop', 'structure', { t: 'missing' }, (s) => (s.timeToDrop === undefined ? NaN : Math.min(60, s.timeToDrop)));
-  add('prevSectionLabel', 'structure', { t: 'missing' }, (s) => (s.prevSectionLabel === undefined ? NaN : LABEL_ID[s.prevSectionLabel]));
-  add('repeat (dejavu)', 'structure', { t: 'missing' }, (s) => (s.repeatIndex === undefined ? NaN : s.repeatIndex));
+  // Offline these come from knowing the whole song; live has causal stand-ins (RealtimeSampler fallbacks).
+  add('timeToDrop', 'structure', cont, (s) => (s.timeToDrop === undefined ? NaN : Math.min(30, s.timeToDrop)));
+  add('prevSectionLabel', 'structure', { t: 'cat' }, (s) => (s.prevSectionLabel === undefined ? NaN : LABEL_CLASS[s.prevSectionLabel]));
+  add('repeat (dejavu)', 'structure', { t: 'binary' }, (s) => (s.repeatIndex === undefined ? NaN : s.repeatIndex > 0 && (s.repeatSim ?? 0) >= 0.6 ? 1 : 0));
   add('key', 'harmony', { t: 'cat' }, (s) => s.keyTonic + (s.keyMode === 'minor' ? 12 : 0));
   add('keyChangePulse', 'harmony', ev(4, 0.3), (s) => s.keyChangePulse);
   add('chord', 'harmony', { t: 'cat' }, (s) => (s.chord === undefined || s.chord < 0 ? NaN : s.chord));
