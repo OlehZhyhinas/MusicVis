@@ -82,7 +82,7 @@ export function newSongReport(mixes: Mix[]): string {
   const songs = ['inna-morenito', 'lean-on', 'ghosts', 'saxobeat'].map(song);
   const ad = song('thrift-shop');
   const lines: string[] = [];
-  lines.push(`New-song detection: ${songs.map((s) => s.slug).join(' > ')} played whole, back to back; liveMode announces a new song ${NEW_SONG_MUSIC_S} s into the music after rtStructure sees music return after a 5 s silence. Hit = announced within ${TOL} s after the true start.`);
+  lines.push(`New-song detection: ${songs.map((s) => s.slug).join(' > ')} played whole, back to back, as liveMode announces it (rtStructure.newSongs: music after a 5 s silence, or a sustained fingerprint change from rtNewSong.ts; then ${NEW_SONG_MUSIC_S} s of music). Hit = announced within ${TOL} s after the true start.`);
   lines.push('');
   lines.push('| sequence | true song starts | announced | hits | median latency | misses | false (mid-song / mid-blend) |');
   lines.push('|---|---|---|---|---|---|---|');
@@ -109,6 +109,16 @@ export function newSongReport(mixes: Mix[]): string {
     const sc = score(starts, det);
     const med = sc.lat.length ? [...sc.lat].sort((p, q) => p - q)[sc.lat.length >> 1] : NaN;
     lines.push(`| ${v.name} | ${starts.map((x) => x.toFixed(0)).join(', ')} s | ${det.map((x) => x.toFixed(0)).join(', ') || 'none'} | ${sc.hits}/${starts.length} | ${Number.isFinite(med) ? med.toFixed(1) + ' s' : 'n/a'} | ${sc.misses} | ${sc.falses.length}${sc.falses.length ? ' at ' + sc.falses.map((x) => x.toFixed(0)).join(', ') + ' s' : ''} |`);
+  }
+  {
+    const falses: string[] = [];
+    let n = 0;
+    for (const p of testSongs()) {
+      const det = detectNewSongs(decode(p));
+      n += det.length;
+      if (det.length) falses.push(`${slugOf(p)} at ${det.map((x) => x.toFixed(0)).join(', ')} s`);
+    }
+    lines.push(`| each test song alone (${testSongs().length}) | none | ${n} | | | | ${n}${falses.length ? ': ' + falses.join('; ') : ''} |`);
   }
   for (const m of mixes) {
     const takes = m.transitions.filter((x) => Number.isFinite(x.takeover)).map((x) => x.takeover);

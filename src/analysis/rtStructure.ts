@@ -105,6 +105,13 @@ export class StructureTracker {
     this.started = false;
   }
 
+  /** A track change found elsewhere (the fingerprint detector, rtNewSong.ts): start the new song. */
+  newSong(t: number, barSeconds: number): void {
+    this.resetSong();
+    this.newSongs++;
+    this.begin(t, 'intro', barSeconds);
+  }
+
   private resetSong(): void {
     for (const h of [this.db, this.cx, this.pd, this.pb, this.rate, this.kick, ...this.timbre]) h.reset();
     this.tMean.fill(0);

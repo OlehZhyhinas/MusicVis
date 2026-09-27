@@ -37,6 +37,7 @@ import { BeatTracker } from './rtBeat';
 import { KeyTracker } from './rtKey';
 import { HarmonyTracker } from './harmony';
 import { StructureTracker, STRUCT_RATE } from './rtStructure';
+import { NewSongDetector } from './rtNewSong';
 
 const TINY = 1e-20;
 const RING = 4096; // decimated samples kept (power of two)
@@ -323,6 +324,8 @@ export class RealtimeAnalyzer {
 
   private structCountdown = 0;
   private lastNewSongs = 0;
+  /** Track changes from a sustained fingerprint change (no silence needed). */
+  readonly newSong = new NewSongDetector();
 
   constructor(inputRate: number) {
     this.inputRate = inputRate > 0 ? inputRate : 44100;
@@ -631,13 +634,22 @@ export class RealtimeAnalyzer {
         },
         this.barSeconds,
       );
+      const bar = this.beat.confidence > 0.2 ? ((((this.beat.positionAt(this.frameTime) - this.beat.downbeatSlot) / 4) % 1) + 1) % 1 : NaN;
+      let heard = 0;
+      if (this.newSong.push(this.frameTime, this.chroma, this.timbre, this.dbfs, this.gate, this.beat.bpm, this.beat.confidence, bar, 1 / STRUCT_RATE)) {
+        // The new track has been playing for the detector's memory already: announce it without
+        // waiting for more music (liveMode waits for NEW_SONG_MUSIC_S of it).
+        heard = this.newSong.memory + 3;
+        this.structure.newSong(this.frameTime, this.barSeconds);
+      }
       if (this.structure.newSongs !== this.lastNewSongs) {
         this.lastNewSongs = this.structure.newSongs;
         this.cxSongSum = 0;
         this.cxSongN = 0;
-        this.musicSeconds = 0;
+        this.musicSeconds = heard;
         this.key.reset();
         this.harmony.reset();
+        if (!heard) this.newSong.reset();
       }
     }
   }
