@@ -2,6 +2,50 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Cross-origin isolation (public/coi-sw.js): registers the header-adding service worker for the
+      // site's path and reloads at most once per session. Off: ?coi=0 or localStorage 'coi-off' = '1'
+      // (?coi=1 clears it); the worker is also dropped when coi-sw.js is gone from the deploy.
+      (function () {
+        var sw = navigator.serviceWorker;
+        if (!sw || !window.isSecureContext) return;
+        var base = new URL('../', document.baseURI).href;
+        var url = new URL('coi-sw.js', base);
+        var off = false;
+        try {
+          var q = new URLSearchParams(location.search).get('coi');
+          if (q === '0') localStorage.setItem('coi-off', '1');
+          if (q === '1') localStorage.removeItem('coi-off');
+          off = localStorage.getItem('coi-off') === '1';
+        } catch (e) {}
+        function drop() {
+          return sw.getRegistrations().then(function (rs) {
+            rs.forEach(function (r) {
+              var w = r.active || r.waiting || r.installing;
+              if (r.scope === base && w && w.scriptURL.indexOf('/coi-sw.js') >= 0) r.unregister();
+            });
+          });
+        }
+        if (off) { drop(); return; }
+        var safari = /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg|OPR|Android/.test(navigator.userAgent);
+        url.searchParams.set('coep', safari ? 'require-corp' : 'credentialless');
+        fetch(url.href, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+          // removed from the deploy (a 404, or a host's HTML fallback page): unregister
+          if (!r.ok || !/javascript/.test(r.headers.get('content-type') || '')) return drop();
+          return sw.register(url.href, { scope: base, updateViaCache: 'none' }).then(function (reg) {
+            if (window.crossOriginIsolated) return;
+            var key = 'coi-reloaded';
+            try { if (sessionStorage.getItem(key)) return; } catch (e) { return; } // once per session, then give up quietly
+            function go() {
+              try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) { return; }
+              location.reload();
+            }
+            if (sw.controller || reg.active) go();
+            else sw.addEventListener('controllerchange', go);
+          });
+        }).catch(function () {});
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>MusicVis</title>
