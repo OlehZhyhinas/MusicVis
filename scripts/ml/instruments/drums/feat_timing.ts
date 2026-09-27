@@ -1,0 +1,12 @@
+import { StreamFeatures, ML_HOP } from '../../features';
+import { decode } from '../../../live/common';
+import { readdirSync } from 'node:fs';
+const TEST_DIR = '/Users/oleh/Downloads/YoutubeToMp3';
+const file = readdirSync(TEST_DIR).find((f) => /\.(mp3|m4a)$/i.test(f))!;
+const pcm = decode(TEST_DIR + '/' + file);
+const fx = new StreamFeatures();
+const T = Math.floor(pcm.left.length / ML_HOP);
+const t0 = performance.now();
+for (let k = 0; k < T; k++) fx.push(pcm.left.subarray(k*ML_HOP,(k+1)*ML_HOP), pcm.right.subarray(k*ML_HOP,(k+1)*ML_HOP));
+const t1 = performance.now();
+console.log(JSON.stringify({T, ms_per_hop: (t1-t0)/T}));
