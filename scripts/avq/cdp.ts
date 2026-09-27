@@ -61,6 +61,8 @@ export async function ensureServers(log = (s: string) => console.error(s)): Prom
     for (let i = 0; i < 60 && !(await up(`http://127.0.0.1:${CDP_PORT}/json/version`)); i++) await sleep(500);
     if (!(await up(`http://127.0.0.1:${CDP_PORT}/json/version`))) throw new Error('chrome did not come up');
   }
+  // The servers must not keep this process alive: with --keep a render left them running and never exited.
+  for (const p of started) p.unref();
   return {
     stop() {
       for (const p of started) p.kill('SIGTERM');
