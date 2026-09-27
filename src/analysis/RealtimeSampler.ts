@@ -210,7 +210,9 @@ export class RealtimeSampler {
     s.sectionProgress = prog < 0 ? 0 : prog > 1 ? 1 : prog;
     s.sectionChanged = events && st.changes !== this.seenChanges;
     if (s.sectionChanged) {
-      if (sec.label === 'drop' || (sec.label === 'chorus' && st.prevLabel === 'build')) s.dropPulse = 1;
+      // Only the structure tracker's gated drop rule (a build, then a sudden return of level and low end) pulses: a chorus
+      // after a build that faded out is a section change, not a drop (it fired most of the false live drops).
+      if (sec.label === 'drop') s.dropPulse = 1;
     }
     this.seenChanges = st.changes;
     s.buildIntensity = st.buildIntensity;

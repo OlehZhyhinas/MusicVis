@@ -1,14 +1,20 @@
 // Online song structure for live input. Runs at ~10 Hz on smoothed features.
 //
-// - Drops: a large jump in complexity / drum + bass presence / loudness right
-//   after a build or a quieter passage, with absolute minimums in the spirit of
-//   the offline strict drop rule (structure.ts). Checked on a short window so
-//   a drop registers within ~0.5-1 s.
+// - Drops: only right after a detected build, a sudden, big return of level
+//   and of the low end (kick or bass presence), with absolute minimums in the
+//   spirit of the offline strict drop rule (structure.ts). Checked on a short
+//   window so a drop registers within ~0.5-1 s. A lift after a quiet passage
+//   without a build is a section change, not a drop (false drops hit every
+//   preset's drop reactions; a missed one only costs a pulse).
 // - Builds: rising loudness / onset density over the last few seconds while
 //   the low end (bass) is thin.
 // - Other changes: novelty between the last ~2 s and the preceding ~8 s of
-//   timbre + energy features; labels from energy and complexity relative to
-//   what has been heard so far (intro / verse / chorus / breakdown).
+//   timbre + energy features, strong enough (NOVELTY_MIN) and at least
+//   NOVELTY_MIN_BARS after the last change; the new section starts on the
+//   downbeat nearest the boundary. Labels from energy and complexity relative
+//   to what has been heard so far (intro / verse / chorus / breakdown).
+// - A build ends when it has not dropped after 16 bars, or its level stops
+//   rising for 4 s after 8 bars.
 
 import type { Section, SectionLabel } from '../types';
 import { History, histMean, histSlope } from './rtUtil';
@@ -18,10 +24,9 @@ const TIMBRE_DIMS = 16;
 const HIST_S = 24;
 
 // Drop rule (absolute parts mirror structure.ts: DROP_MIN_COMPLEXITY 0.65, DROP_MIN_PRESENCE 0.4,
-// DROP_MIN_CX_JUMP 0.15; slightly relaxed because the live measures are causal and short-windowed).
+// DROP_MIN_CX_JUMP 0.15, which live input no longer uses: a drop needs a build; slightly relaxed because the live measures are causal and short-windowed).
 const DROP_MIN_CX = 0.68;
 const DROP_MIN_PRESENCE = 0.4;
-const DROP_MIN_CX_JUMP = 0.15;
 const DROP_MIN_LOW_JUMP = 0.35; // rise of drums + bass presence after a build
 const DROP_MIN_DB_JUMP = 3;
 const DROP_MIN_SUDDEN_DB = 2.5; // the lift must be sudden (last 0.5 s vs 0.7-1.5 s ago), unlike a build's ramp
@@ -33,6 +38,14 @@ const DROP_CONFIRM_S = 2; // presence / complexity may confirm up to this long a
 const DROP_COOLDOWN_S = 12;
 
 const NOVELTY_MIN_GAP_S = 6;
+/** Novelty a section change needs (was 1.4: live changes fired 3-6x as often as the offline sections). */
+const NOVELTY_MIN = 2.2;
+/** Bars at least between two novelty changes. */
+const NOVELTY_MIN_BARS = 8;
+/** How far the build must have come (buildIntensity at the lift) for its drop to count. */
+const DROP_MIN_BUILD = 0.15;
+/** Bass presence must come back by this much for a drop (with the level). */
+const DROP_MIN_BASS_JUMP = 0.2;
 const SILENCE_SECTION_S = 1.5;
 const NEW_SONG_SILENCE_S = 5;
 
@@ -46,6 +59,8 @@ export interface StructFrame {
   rate: number; // onsets per second
   gate: number; // 0..1, 0 = silent
   timbre: ArrayLike<number>; // TIMBRE_DIMS log band energies (dB)
+  /** 0..1 position in the bar from the beat clock (NaN when unknown). */
+  bar?: number;
 }
 
 export class StructureTracker {
@@ -232,7 +247,7 @@ export class StructureTracker {
           p.pb = histMean(this.pb, 10, 55);
           p.kick = histMean(this.kick, 10, 55);
           p.db = histMean(this.db, 10, 55);
-          this.liftAfterBuild = lab === 'build' || (this.prevLabel === 'build' && age < 4);
+          this.liftAfterBuild = lab === 'build' && this.buildIntensity >= DROP_MIN_BUILD;
         }
         this.liftT = t;
       }
@@ -242,12 +257,10 @@ export class StructureTracker {
       const kickJump = cur.kick - pre.kick;
       const lowJump = cur.pd + cur.pb - (pre.pd + pre.pb);
       const dbJump = cur.db - pre.db;
-      // After a build the build carries the lift: the kick / low end must come
-      // back and the level must jump. Otherwise (after a quieter passage) the
-      // complexity must also jump, as in the offline rule.
-      const liftOk = this.liftAfterBuild
-        ? dbJump >= DROP_MIN_DB_JUMP && (kickJump >= DROP_MIN_KICK_JUMP || lowJump >= DROP_MIN_LOW_JUMP)
-        : dbJump >= DROP_MIN_DB_JUMP && kickJump >= DROP_MIN_KICK_JUMP && cur.cx - pre.cx >= DROP_MIN_CX_JUMP;
+      // Only after a build that has come far enough: the level must jump and the
+      // kick or the low end must come back.
+      const bassJump = cur.pb - pre.pb;
+      const liftOk = this.liftAfterBuild && dbJump >= DROP_MIN_DB_JUMP && (kickJump >= DROP_MIN_KICK_JUMP || bassJump >= DROP_MIN_BASS_JUMP || lowJump >= DROP_MIN_LOW_JUMP);
       // Fast path: right after a build, a big kick + level jump is a drop even before
       // the slower complexity / presence measures have caught up.
       const strong = this.liftAfterBuild && kickJump >= DROP_STRONG_KICK_JUMP && dbJump >= DROP_STRONG_DB_JUMP && cur.kick >= 2 * DROP_MIN_KICK;
@@ -264,8 +277,10 @@ export class StructureTracker {
       const rise = histMean(this.db, 0, 5) - this.buildStartDb;
       const p = Math.max(0, Math.min(1, 0.7 * (elapsed / (8 * barSeconds)) + 0.3 * (rise / 8)));
       this.buildIntensity = Math.max(this.buildIntensity * Math.exp(-dt / 0.4), p * p);
-      // A build that never drops is not a build after all.
-      if (elapsed > 24 * barSeconds && age >= 4) {
+      // A build that never drops is not a build after all; nor one whose level has stopped rising
+      // for the last 4 s (a plateau: the section just got louder).
+      const plateau = elapsed > 8 * barSeconds && histMean(this.db, 0, 2 * R) - histMean(this.db, 2 * R, 4 * R) < 0.2 && histSlope(this.db, 4 * R) * R < 0.1;
+      if ((elapsed > 16 * barSeconds || plateau) && age >= 4) {
         this.begin(t, this.labelFor(cx2, e2), barSeconds);
         return;
       }
@@ -294,8 +309,9 @@ export class StructureTracker {
       }
     }
 
+    const bar = f.bar;
     // --- Novelty ---
-    if (n >= 8 * R && age >= NOVELTY_MIN_GAP_S) {
+    if (n >= 8 * R && age >= Math.max(NOVELTY_MIN_GAP_S, NOVELTY_MIN_BARS * barSeconds)) {
       let d = 0;
       for (let k = 0; k < TIMBRE_DIMS; k++) {
         const sd = Math.sqrt(Math.max(1, this.tVar[k]));
@@ -309,7 +325,7 @@ export class StructureTracker {
       const dDb = histMean(this.db, 0, 2 * R) - histMean(this.db, 25, 100);
       const nov = Math.sqrt(d) + 3 * Math.abs(dCx) + 1.5 * (Math.abs(dPd) + Math.abs(dPb)) + Math.abs(dDb) / 6;
       this.novelty = nov;
-      if (nov > 1.4) {
+      if (nov > NOVELTY_MIN) {
         // Label from the last ~0.7 s: the 2 s means still straddle the boundary.
         const dbS = histMean(this.db, 0, 7);
         const label = this.labelFor(histMean(this.cx, 0, 7), this.energyOf(dbS, histMean(this.pd, 0, 7), histMean(this.pb, 0, 7)));
@@ -317,7 +333,13 @@ export class StructureTracker {
         // A build keeps its label until the drop (or the novelty says otherwise and it is not rising).
         const same = label === lab && (lab === 'intro' || lab === 'outro');
         if (!same && !(lab === 'build' && label !== 'breakdown' && label !== 'intro')) {
-          this.begin(t - 1, label, barSeconds);
+          // The boundary is ~1 s back (the 2 s means straddle it): start the section on the downbeat nearest to it.
+          let start = t - 1;
+          if (bar !== undefined && Number.isFinite(bar)) {
+            const last = t - bar * barSeconds;
+            start = Math.abs(last - (t - 1)) <= Math.abs(last - barSeconds - (t - 1)) ? last : last - barSeconds;
+          }
+          this.begin(start, label, barSeconds);
           return;
         }
       }

@@ -627,6 +627,8 @@ export class RealtimeAnalyzer {
     // ---------------- structure (~10 Hz) ----------------
     if (--this.structCountdown <= 0) {
       this.structCountdown = Math.max(1, Math.round(fr / STRUCT_RATE));
+      // Position in the bar from the beat clock (NaN until it has some confidence).
+      const bar = this.beat.confidence > 0.2 ? ((((this.beat.positionAt(this.frameTime) - this.beat.downbeatSlot) / 4) % 1) + 1) % 1 : NaN;
       this.structure.update(
         {
           t: this.frameTime,
@@ -638,10 +640,10 @@ export class RealtimeAnalyzer {
           rate: this.onsetRate,
           gate: this.gate,
           timbre: this.timbre,
+          bar,
         },
         this.barSeconds,
       );
-      const bar = this.beat.confidence > 0.2 ? ((((this.beat.positionAt(this.frameTime) - this.beat.downbeatSlot) / 4) % 1) + 1) % 1 : NaN;
       let heard = 0;
       if (this.newSong.push(this.frameTime, this.chroma, this.timbre, this.dbfs, this.gate, this.beat.bpm, this.beat.confidence, bar, 1 / STRUCT_RATE)) {
         // The new track has been playing for the detector's memory already: announce it without
