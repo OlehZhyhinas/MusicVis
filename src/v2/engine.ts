@@ -134,12 +134,26 @@ function paletteColors(pal: PaletteGene, hue: number, sat: number, out: Float32A
 
 // ------------------------------------------------------------- signals
 
+/** Hits the running hit mean spans, and the relative strength a hit needs to pass the hit gate. */
+const HIT_MEAN_N = 16;
+const HIT_REL_GATE = 0.85;
+/** Shortest gap between gated hits, in beats (a quarter note: denser jolts read as chatter and whole-frame jerk). */
+const HIT_GATE_BEATS = 1;
+
 export interface Frame {
   time: number; dt: number; phase: number; act: number; cx: number; speed: number; spin: number;
   bars: number; beats: number; barIndex: number; beatIndex: number; barPhase: number; beatPhase: number;
   beatPulse: number; onBeat: boolean; stem: Float32Array; onset: Float32Array; gate: Float32Array;
   loud: number; melody: number; build: number; drop: number; keyTonic: number; minor: boolean;
   sectionIndex: number; aspect: number; hit: number; hitPulse: number; dropStart: boolean; keyHue: number; keyPulse: number;
+  /**
+   * A hit's strength relative to the song's recent hits (F.hit / the mean of the last ~16), 0 between
+   * hits, and whether it passes the hit gate: relative strength above HIT_REL_GATE (about the stronger
+   * 60 % of hits in any song) and at least an eighth note since the last gated hit. Hit-triggered
+   * motions (motion 'hits', walkers, stations) fire on hitGate instead of a fixed F.hit threshold,
+   * which let through only 15-45 % of hits and depended on the mix.
+   */
+  hitRel: number; hitGate: boolean;
   barPulse: number; bpm: number;
   /** Harmony map: tension 0..1 and the resolve / chord change / modulation pulses. */
   tension: number; resolve: number; chordPulse: number; modPulse: number;
@@ -165,7 +179,7 @@ export class Signals {
     time: 0, dt: 0, phase: 0, act: 0.5, cx: 0.5, speed: 1, spin: 0, bars: 0, beats: 0, barIndex: 0, beatIndex: 0,
     barPhase: 0, beatPhase: 0, beatPulse: 0, onBeat: false, stem: new Float32Array(4), onset: new Float32Array(4),
     gate: new Float32Array(4), loud: 0, melody: 0.5, build: 0, drop: 0, keyTonic: 0, minor: false, sectionIndex: 0,
-    aspect: 1, hit: 0, hitPulse: 0, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
+    aspect: 1, hit: 0, hitPulse: 0, hitRel: 0, hitGate: false, dropStart: false, keyHue: 0, keyPulse: 0, barPulse: 0, bpm: 120, surge: 0,
     tension: 0, resolve: 0, chordPulse: 0, modPulse: 0, chord: -1, tonnetzX: 0.5, tonnetzY: 0.2887, line: 0, valence: 0.5, arousal: 0.5,
     hookOn: 0, hookPhase: 0, hookPulse: 0, hookNotePulse: 0, hookNote: -1, hookId: -1,
     groove: { swing: 0, push: 0, humanity: 0, synco: 0 },
@@ -190,6 +204,10 @@ export class Signals {
   private prevBarPhase = 0;
   private prevDrumOnset = 0;
   private hitCooldown = 0;
+  /** Running mean of hit strengths (~16 hits) and the time of the last gated hit. */
+  private hitMean = 0;
+  private hitN = 0;
+  private lastHitGate = -Infinity;
   private lastSection = -1;
   /** 1 on a section change, easing back to 0 over about a bar. */
   sectionPulse = 0;
@@ -297,6 +315,17 @@ export class Signals {
     if (state.playing && this.hitCooldown <= 0 && F.gate[0] > 0.2 && (edge || (F.onBeat && F.stem[0] > 0.25))) {
       F.hit = Math.max(on, 0.3) * (0.4 + F.stem[0]);
       this.hitCooldown = 0.1;
+    }
+    F.hitRel = 0;
+    F.hitGate = false;
+    if (F.hit > 0) {
+      this.hitN = Math.min(this.hitN + 1, HIT_MEAN_N);
+      this.hitMean += (F.hit - this.hitMean) / this.hitN;
+      F.hitRel = Math.min(2, F.hit / Math.max(1e-3, this.hitMean));
+      if (F.hitRel > HIT_REL_GATE && F.time - this.lastHitGate >= Math.max(0.1, (HIT_GATE_BEATS * 60) / bpm - 0.03)) {
+        F.hitGate = true;
+        this.lastHitGate = F.time;
+      }
     }
     F.hitPulse = Math.max(F.hit, F.hitPulse * Math.exp(-dt * 8));
 
@@ -1698,8 +1727,7 @@ export class Stage {
     set('lb', F.beats);
     db *= this.clk.mul;
     const hits = b.motion.kind === 'hits' ? s.P('mo', bi, b.motion.p, 'amt', MOTION_SCHEMAS.hits) : 0;
-    const hitRise = F.hit > 0.7 && mm('hp') <= 0.7;
-    set('hp', F.hit);
+    const hitRise = F.hitGate;
     const bassRise = F.onset[1] > 0.6 && mm('bp') <= 0.6;
     set('bp', F.onset[1]);
     const step = P('step') * (0.7 + 0.5 * F.act);
@@ -1818,8 +1846,7 @@ export class Stage {
           if (walker) break;
           // A jolt that stays: each drum hit turns the copy.
           if (i === 0) {
-            const rise = F.hit > 0.5 && mm('hp') <= 0.5;
-            set('hp', F.hit);
+            const rise = F.hitGate;
             if (rise) {
               const n = set('hn', mm('hn') + 1);
               set('ha', mm('ha') + P('amt') * (0.5 + 0.5 * h11(n * 3.1)) * (h11(n * 7.7) < 0.5 ? -1 : 1));
@@ -2211,7 +2238,7 @@ export class Stage {
     const inst = b.place.kind === 'stations' ? s.P('pl', bi, b.place.p, 'inst', PLACE_SCHEMAS.stations) : 0;
     const newBeat = F.beatIndex >= 0 && F.beatIndex !== mm('bt', F.beatIndex);
     m[key('bt')] = F.beatIndex;
-    const hits = [F.hit > 0.5 && mm('h0') <= 0.5, F.onset[1] > 0.5 && mm('h1') <= 0.5, F.onset[2] > 0.5 && mm('h2') <= 0.5, F.onset[3] > 0.5 && mm('h3') <= 0.5];
+    const hits = [F.hitGate, F.onset[1] > 0.5 && mm('h1') <= 0.5, F.onset[2] > 0.5 && mm('h2') <= 0.5, F.onset[3] > 0.5 && mm('h3') <= 0.5];
     m[key('h0')] = F.hit;
     m[key('h1')] = F.onset[1];
     m[key('h2')] = F.onset[2];

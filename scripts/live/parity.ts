@@ -24,7 +24,8 @@ export interface Channel {
   key: string;
   kind: Kind;
   /** Reads the value from a MusicState (after Signals.update) or a signal. */
-  read: (s: MusicState, sig: (name: string) => number) => number;
+  /** Reads the value from a MusicState, a preset signal, or the engine frame (Signals.F). */
+  read: (s: MusicState, sig: (name: string) => number, F: Record<string, unknown>) => number;
   group: string;
 }
 
@@ -144,11 +145,11 @@ export function record(E: EngineBundle, pcm: Pcm, result: AnalysisResult, channe
     const so = tl.sample(t, dt, true, liveA.read(t, dt));
     sigOff.update(so, dt, 16 / 9);
     const offSig = (x: string) => sigOff.signal(x as never);
-    for (let c = 0; c < channels.length; c++) off[c][k] = channels[c].read(so, offSig);
+    for (let c = 0; c < channels.length; c++) off[c][k] = channels[c].read(so, offSig, sigOff.F as unknown as Record<string, unknown>);
     const sl = lpAt.sample(t - t0, dt, liveB.read(t, dt));
     sigLive.update(sl, dt, 16 / 9);
     const liveSig = (x: string) => sigLive.signal(x as never);
-    for (let c = 0; c < channels.length; c++) live[c][k] = channels[c].read(sl, liveSig);
+    for (let c = 0; c < channels.length; c++) live[c][k] = channels[c].read(sl, liveSig, sigLive.F as unknown as Record<string, unknown>);
   }
   return { n, fps: FPS, channels, off, live, liveProcessMs: lpAt.processMs, seconds: t1 - t0 };
 }
