@@ -27,6 +27,7 @@ import {
   type ParamControl, type Target,
 } from '../src/v2/geneEdit';
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
+import { kindHelp, paramHelp, reactionTargetHelp, SIGNAL_HELP } from '../src/v2/geneHelp';
 import { BODY_VEC4, buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { CELLS_SCHEMA } from '../src/v2/genes/cells';
@@ -446,6 +447,29 @@ function freshGenome(): Genome {
 }
 
 // -------------------------------------------------------- 9. serialization
+
+{
+  let controls = 0;
+  const unexplained: string[] = [];
+  for (const seed of SEEDS) {
+    for (const sec of buildModel(seed.genome)) {
+      if (sec.target) for (const c of sec.params) {
+        controls++;
+        if (paramHelp(seed.genome, sec.target, c).includes('Controls ')) unexplained.push(`${sec.id}.${c.key}`);
+      }
+      for (const item of sec.items ?? []) for (const c of item.params) {
+        controls++;
+        if (paramHelp(seed.genome, item.target, c).includes('Controls ')) unexplained.push(`${item.id}.${c.key}`);
+      }
+    }
+  }
+  check('editor.help-covers-seed-controls', controls > 10_000 && unexplained.length === 0, `${controls} controls, ${unexplained.length} generic explanations`);
+  const g = SEEDS[0].genome;
+  const sat = reactionTargets(g).find((t) => t.g === 'col' && t.k === 'sat');
+  const help = sat ? reactionTargetHelp(sat, 'drums') : '';
+  check('editor.reaction-target-help', help.includes('entire finished picture') && help.includes('drums signal changes'), help);
+  check('editor.source-and-kind-help', SIGNAL_HELP.drums.includes('drum stem') && kindHelp('feel', 'step').includes('beat clock'), 'reaction source and gene kind are explained');
+}
 
 {
   const pop = Population.seeded();

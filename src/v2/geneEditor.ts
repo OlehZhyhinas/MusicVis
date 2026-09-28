@@ -16,6 +16,7 @@ import type { Evolution } from './evolve';
 import type { Member } from './population';
 import { loadSetting, saveSetting } from '../ui/storage';
 import { icon, type IconName } from '../ui/icons';
+import { kindHelp, paramHelp, reactionHelp, reactionTargetHelp, sectionHelp, SIGNAL_HELP } from './geneHelp';
 
 export interface GeneEditorDeps {
   eng: Engine;
@@ -593,10 +594,15 @@ export class GeneEditor {
     const count = m ? `${m[2]} / ${m[3]}` : sec.alleles ? String(sec.alleles.length) : '';
     const chev = h('span', { class: 'chev' });
     chev.innerHTML = icon('cright', 14);
-    const sum = h('summary', {}, chev, h('b', { text: title }), count ? h('span', { class: 'dim mono vg-count', text: count }) : null, h('span', { class: 'sp' }));
+    const sectionDescription = sec.target ? sectionHelp(this.scratch!, sec.target) : sec.gene ? kindHelp('gene', sec.gene.key) :
+      sec.list === 'reactions' ? 'Music signals drive chosen visual parameters. Each target can have one reaction.' :
+      sec.list === 'chain' ? 'Whole-picture transformations. Warp affects feedback trails; view affects only the displayed frame.' :
+      sec.alleles ? 'Stored alternate genes that can replace the visible gene.' : title;
+    const sum = h('summary', { title: sectionDescription, 'aria-description': sectionDescription }, chev, h('b', { text: title }), count ? h('span', { class: 'dim mono vg-count', text: count }) : null, h('span', { class: 'sp' }));
     if (sec.kind && sec.target) {
       const t = sec.target;
-      const sel = this.select(sec.kind.options.map((o) => ({ value: o, label: o })), sec.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id), `${title} kind`);
+      const group = t.t === 'locus' ? t.locus : t.t === 'fuseShape' ? 'shape' : t.t === 'drawOp' ? 'op' : t.t === 'gene' ? 'gene' : t.t;
+      const sel = this.select(sec.kind.options.map((o) => ({ value: o, label: o })), sec.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id), `${title} kind`, (v) => kindHelp(group, v));
       sel.classList.add('vg-kind');
       // The dropdown lives in the summary: keep clicks and keys from folding the section.
       for (const ev of ['click', 'keydown', 'keyup']) sel.addEventListener(ev, (e) => e.stopPropagation());
@@ -658,7 +664,7 @@ export class GeneEditor {
       const head = h('div', { class: 'sh' });
       head.append(h('span', { class: sec.list === 'xforms' ? '' : 'dim mono vg-n', text: it.title }));
       if (it.kind) {
-        const sel = this.select(it.kind.options.map((o) => ({ value: o, label: o })), it.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), it.id), 'Op kind');
+        const sel = this.select(it.kind.options.map((o) => ({ value: o, label: o })), it.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), it.id), 'Op kind', (v) => kindHelp('op', v));
         sel.classList.add('vg-opkind');
         head.append(sel);
       }
@@ -684,7 +690,7 @@ export class GeneEditor {
         const opts = FLAME_VARIATIONS.filter((v) => !present.has(v));
         const sel = this.select([{ value: '', label: 'add variation…' }, ...opts.map((v) => ({ value: v, label: v }))], '', (v) => {
           if (v) this.structural((g) => E.addVariation(g, body, j, v as FlameVar), it.id);
-        }, 'Add a variation');
+        }, 'Add a variation', (v) => v ? kindHelp('op', `v_${v}`) : 'Choose a flame variation to add to this transform.');
         item.append(h('div', { class: 'prow' }, h('span', { class: 'pl', text: 'Variation' }), sel));
       }
       wrap.append(item);
@@ -694,7 +700,7 @@ export class GeneEditor {
     if (sec.list === 'chain' || sec.list === 'drawOps') {
       const kinds = sec.list === 'chain' ? OP_KINDS : DRAW_OPS;
       let pick: string = 'swirl';
-      const sel = this.select(kinds.map((k) => ({ value: k, label: k })), pick, (v) => (pick = v), 'Op to add');
+      const sel = this.select(kinds.map((k) => ({ value: k, label: k })), pick, (v) => (pick = v), 'Op to add', (v) => kindHelp('op', v));
       sel.classList.add('grow');
       const btn = this.button('Add op', () => this.structural((g) => (sec.list === 'chain' ? E.addOp(g, pick as OpKind) : E.addDrawOp(g, body, pick as OpKind)), addAnchor), undefined, !sec.canAdd, 'plus');
       wrap.append(h('div', { class: 'row' }, sel, btn));
@@ -713,7 +719,7 @@ export class GeneEditor {
     const g = this.scratch!;
     const r = g.reactions[j];
     const anchor = `reaction${j}`;
-    const src = this.select(SIGNALS.map((s) => ({ value: s, label: s })), r.src, (v) => this.structural((x) => E.switchKind(x, { t: 'reaction', j }, v), anchor), 'Source signal');
+    const src = this.select(SIGNALS.map((s) => ({ value: s, label: s })), r.src, (v) => this.structural((x) => E.switchKind(x, { t: 'reaction', j }, v), anchor), 'Source signal', (v) => SIGNAL_HELP[v as keyof typeof SIGNAL_HELP]);
     const tsel = h('select', { class: 'dd', 'aria-label': 'Target parameter' });
     const used = new Set(g.reactions.filter((_x, i) => i !== j).map(E.reactKey));
     const groups = new Map<string, HTMLOptGroupElement>();
@@ -725,7 +731,12 @@ export class GeneEditor {
         tsel.append(og);
       }
       const key = E.reactKey(t);
-      og.append(h('option', { value: key, disabled: used.has(key), selected: key === E.reactKey(r), text: E.labelFor(t.k) + (used.has(key) ? ' (driven)' : '') }));
+      const help = reactionTargetHelp(t, r.src);
+      og.append(h('option', { value: key, disabled: used.has(key), selected: key === E.reactKey(r), text: E.labelFor(t.k) + (used.has(key) ? ' (driven)' : ''), title: help }));
+      if (key === E.reactKey(r)) {
+        tsel.title = help;
+        tsel.setAttribute('aria-description', help);
+      }
     }
     tsel.addEventListener('change', () => {
       const [gg, i, k] = tsel.value.split('|');
@@ -738,7 +749,7 @@ export class GeneEditor {
     const arrow = h('span', { class: 'dim' });
     arrow.innerHTML = icon('cright', 14);
     const rm = this.iconButton('x', () => this.structural((x) => E.removeReaction(x, j), anchor), 'Remove reaction');
-    return h('div', { class: 'rx' },
+    return h('div', { class: 'rx', title: reactionHelp(g, j) },
       h('div', { class: 'row' }, src, arrow, tsel, rm),
       h('div', { class: 'mm', title: 'Live: source signal (in), response after the curve (out), driven value' },
         h('span', { text: 'in' }), h('div', { class: 'meter h3' }, srcBar), h('span', { text: 'out' }), h('div', { class: 'meter h3', style: '--c:var(--ok)' }, respBar), val));
@@ -761,17 +772,24 @@ export class GeneEditor {
     return b;
   }
 
-  private select(options: { value: string; label: string }[], value: string, fn: (v: string) => void, label: string): HTMLSelectElement {
-    const s = h('select', { class: 'dd', 'aria-label': label });
-    for (const o of options) s.append(h('option', { value: o.value, selected: o.value === value, text: o.label }));
-    s.addEventListener('change', () => fn(s.value));
+  private select(options: { value: string; label: string }[], value: string, fn: (v: string) => void, label: string, describe?: (value: string) => string): HTMLSelectElement {
+    const help = describe?.(value);
+    const s = h('select', { class: 'dd', 'aria-label': label, title: help, 'aria-description': help });
+    for (const o of options) s.append(h('option', { value: o.value, selected: o.value === value, text: o.label, title: describe?.(o.value) }));
+    s.addEventListener('change', () => {
+      if (describe) {
+        s.title = describe(s.value);
+        s.setAttribute('aria-description', s.title);
+      }
+      fn(s.value);
+    });
     return s;
   }
 
   private segmented(options: { value: string; label: string }[], value: string, fn: (v: string) => void, title: string): HTMLElement {
-    const wrap = h('span', { class: 'seg', role: 'group', title });
+    const wrap = h('span', { class: 'seg', role: 'group', title, 'aria-description': title });
     for (const o of options) {
-      const b = h('button', { 'aria-pressed': String(o.value === value) }, o.label);
+      const b = h('button', { 'aria-pressed': String(o.value === value), title: `${o.label}: ${title}` }, o.label);
       b.addEventListener('click', () => fn(o.value));
       wrap.append(b);
     }
@@ -780,16 +798,16 @@ export class GeneEditor {
 
   private paramRow(t: E.Target, c: E.ParamControl, anchor: string): HTMLElement {
     const spec = c.spec;
-    const title = `${c.key} · ${spec.choices ? spec.choices.join(' / ') : `${spec.min} … ${spec.max}${spec.log ? ' (log)' : ''}${spec.int ? ' (integer)' : ''}`} · default ${spec.def}`;
+    const title = paramHelp(this.scratch!, t, c);
     const row = h('div', { class: 'prow', title, 'data-path': `${E.targetId(t)}.${c.key}` });
-    row.append(h('span', { class: 'pl', text: c.label }));
+    row.append(h('span', { class: 'pl', text: c.label, title }));
     const current = () => {
       const g = this.scratch;
       return g && E.schemaAt(g, t)?.[c.key] ? E.getParam(g, t, c.key) : NaN;
     };
     if (c.widget === 'slider') {
-      const range = h('input', { type: 'range', class: 'rng', min: 0, max: E.SLIDER_STEPS, step: 1, value: E.toSlider(c.value, spec), 'aria-label': c.label });
-      const num = h('input', { type: 'text', class: 'val', value: E.formatValue(c.value, spec), 'aria-label': `${c.label} value`, inputmode: 'decimal' });
+      const range = h('input', { type: 'range', class: 'rng', min: 0, max: E.SLIDER_STEPS, step: 1, value: E.toSlider(c.value, spec), 'aria-label': c.label, 'aria-description': title, title });
+      const num = h('input', { type: 'text', class: 'val', value: E.formatValue(c.value, spec), 'aria-label': `${c.label} value`, 'aria-description': title, title, inputmode: 'decimal' });
       const fill = () => range.style.setProperty('--v', `${(Number(range.value) / E.SLIDER_STEPS) * 100}%`);
       fill();
       range.addEventListener('input', () => {
@@ -840,7 +858,7 @@ export class GeneEditor {
           this.applyParam(t, c.key, Number(s), false, anchor);
           build(current());
         };
-        holder.append(c.widget === 'segmented' ? this.segmented(opts, String(v), pick, title) : this.select(opts, String(v), pick, c.label));
+        holder.append(c.widget === 'segmented' ? this.segmented(opts, String(v), pick, title) : this.select(opts, String(v), pick, c.label, () => title));
       };
       build(c.value);
       row.append(holder);
