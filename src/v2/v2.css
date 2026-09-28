@@ -272,7 +272,8 @@
 }
 #app.phone .v2b-views,
 #app.phone #v2-browser .sec-h .lbl,
-#app.phone #v2b-hide .lbl {
+#app.phone #v2b-hide .lbl,
+#app.phone #v2b-delete .lbl {
   display: none;
 }
 #app.phone #v2-browser .sec-h .btn {

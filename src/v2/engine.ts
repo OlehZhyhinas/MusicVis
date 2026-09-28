@@ -3025,6 +3025,13 @@ export class Engine {
     this.cache.request(g);
   }
 
+  /** Clear the stage when the last preset is deleted. */
+  clear(): void {
+    this.pending = null;
+    for (const slot of [...this.main.slots]) this.main.disposeSlot(slot);
+    this.from = this.to = null;
+  }
+
   current(): Genome | null {
     return this.pending?.home ?? this.pending?.g ?? this.to?.home ?? null;
   }

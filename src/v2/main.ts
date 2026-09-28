@@ -222,6 +222,19 @@ async function main(): Promise<void> {
     onClose: () => {
       if (dock.tab === 'presets') dock.close();
     },
+    onDelete: (ids) => {
+      if (!currentId || !ids.includes(currentId)) return;
+      currentId = null;
+      const next = evo.choose('new', songCx, null);
+      if (next) play(next.id, 0, false, true);
+      else {
+        eng.clear();
+        editor.load(null);
+        presetLabel.classList.remove('show');
+        faintId.textContent = '';
+        updateBar();
+      }
+    },
     novelty: (m) => pheno.novelty(m),
   });
   const explore = new ExploreControls(pheno.mode, (m) => {

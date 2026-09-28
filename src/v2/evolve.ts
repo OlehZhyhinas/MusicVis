@@ -3,7 +3,7 @@
 
 import { cloneGenome, energyOf, type Energy, type Genome } from './genome';
 import { crossoverTagged, mulberry32, mutate, sameGenome, type CrossTag, type Rng } from './ops';
-import { BREED_EVERY, POP_CAP, Population, fitness, type Member } from './population';
+import { BREED_EVERY, Population, fitness, type Member } from './population';
 import type { ScreenResult, Screener } from './screen';
 import type { Store } from './store';
 import type { Phenotype } from './phenotype';
@@ -238,8 +238,6 @@ export class Evolution {
         onEvent?.({ kind: 'child', member: child, tried });
         this.changed();
       }
-      const removed = this.pop.cull(POP_CAP);
-      if (removed.length) void this.store.deleteThumbs(removed.map((m) => m.id));
     } finally {
       this.breeding--;
       onEvent?.({ kind: 'done', tried });
@@ -312,6 +310,21 @@ export class Evolution {
     this.view = null;
     await this.store.clearThumbs();
     this.changed();
+  }
+
+  /** Remove selected presets and their cached thumbnails. */
+  remove(ids: string[]): string[] {
+    const removed: string[] = [];
+    for (const id of ids) {
+      if (this.view?.id === id) this.endView(false);
+      if (this.pop.remove(id)) removed.push(id);
+    }
+    if (removed.length) {
+      this.history = this.history.filter((id) => !removed.includes(id));
+      void this.store.deleteThumbs(removed);
+      this.changed();
+    }
+    return removed;
   }
 
   nicheFor(songCx: number): Energy {

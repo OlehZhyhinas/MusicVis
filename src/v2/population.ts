@@ -1,4 +1,4 @@
-// Population: members, lineage, votes, fitness, selection and culling.
+// Population: members, lineage, votes, fitness and selection.
 // Pure logic (no DOM, no GL) so it runs in the Node tests.
 
 import {
@@ -68,12 +68,13 @@ export interface PopulationData {
   version: 1 | 2 | 3 | 4 | 5 | 6;
   /** Seed encoding the G0 genomes come from (missing in files from before versioning: 1). */
   seedVersion?: number;
+  /** Seed IDs the user deleted; seed upgrades must not restore them. */
+  deletedSeeds?: string[];
   counter: number;
   votesSinceBreed: number;
   members: Member[];
 }
 
-export const POP_CAP = 150;
 export const BREED_EVERY = 5; // votes between automatic breeding rounds
 
 // ---------------------------------------------------------------- names
@@ -145,6 +146,7 @@ function seedMember(s: (typeof SEEDS)[number], now: number): Member {
 
 export class Population {
   members = new Map<string, Member>();
+  deletedSeeds = new Set<string>();
   counter = 0;
   votesSinceBreed = 0;
   seedVersion = SEED_VERSION;
@@ -174,6 +176,7 @@ export class Population {
     const liveIds = new Set(SEEDS.map((s) => `G0-${s.origin}`));
     for (const s of SEEDS) {
       const fresh = seedMember(s, now);
+      if (this.deletedSeeds.has(fresh.id)) continue;
       const cur = this.members.get(fresh.id);
       if (!cur) {
         this.members.set(fresh.id, fresh);
@@ -210,6 +213,15 @@ export class Population {
 
   get(id: string): Member | undefined {
     return this.members.get(id);
+  }
+
+  /** Delete a member. Deleted built-in seeds stay absent after reload and seed upgrades. */
+  remove(id: string): boolean {
+    const m = this.members.get(id);
+    if (!m) return false;
+    this.members.delete(id);
+    if (m.gen === 0) this.deletedSeeds.add(id);
+    return true;
   }
 
   /** Add a bred child. generation = max(parent gen) + 1; id counter is per population. */
@@ -301,38 +313,6 @@ export class Population {
     return [a, tour(cands, a)];
   }
 
-  /** Remove the weakest non-seed members until the population fits the cap. */
-  cull(cap = POP_CAP, now = Date.now()): Member[] {
-    const removed: Member[] = [];
-    while (this.members.size > cap) {
-      const cands = this.list().filter((m) => m.gen > 0);
-      if (!cands.length) break;
-      // Unwatched children younger than 10 minutes get a grace period.
-      const graced = cands.filter((m) => !(m.views === 0 && now - m.created < 600_000));
-      const pool = graced.length ? graced : cands;
-      let worst: Member | null = null;
-      let ws = Infinity;
-      for (const m of pool) {
-        let s = fitness(m) + (m.hidden ? -0.2 : 0);
-        // A near-duplicate of a fitter member is the first to go.
-        for (const o of this.members.values()) {
-          if (o !== m && fitness(o) >= fitness(m) && descriptorDistance(m.descriptor, o.descriptor) < DUP_DIST) {
-            s -= 0.1;
-            break;
-          }
-        }
-        if (s < ws) {
-          ws = s;
-          worst = m;
-        }
-      }
-      if (!worst) break;
-      this.members.delete(worst.id);
-      removed.push(worst);
-    }
-    return removed;
-  }
-
   // -------------------------------------------------------- serialization
 
   toJSON(): PopulationData {
@@ -340,6 +320,7 @@ export class Population {
       format: 'musicvis-v2-population',
       version: POPULATION_VERSION,
       seedVersion: this.seedVersion,
+      deletedSeeds: [...this.deletedSeeds],
       counter: this.counter,
       votesSinceBreed: this.votesSinceBreed,
       members: this.list().map((m) => ({ ...m, genome: cloneGenome(m.genome) })),
@@ -351,9 +332,13 @@ export class Population {
     if (!d || d.format !== 'musicvis-v2-population' || !Array.isArray(d.members)) throw new Error('Not a MusicVis V2 population file.');
     if (typeof d.version === 'number' && d.version > POPULATION_VERSION) throw new Error('This population file was saved by a newer version of MusicVis.');
     const p = new Population();
+    if (Array.isArray(d.deletedSeeds)) {
+      for (const id of d.deletedSeeds) if (typeof id === 'string' && /^G0-[A-Z0-9]+$/.test(id)) p.deletedSeeds.add(id);
+    }
     const n = (v: unknown, def = 0) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : def);
     for (const raw of d.members) {
       if (!raw || typeof raw.id !== 'string' || !/^G\d+-[A-Z0-9]+$/.test(raw.id)) continue;
+      if (p.deletedSeeds.has(raw.id)) continue;
       // Structurally broken genomes are dropped; only parameter values get repaired.
       const rg = raw.genome as unknown as Record<string, unknown> | undefined;
       if (!rg || !Array.isArray(rg.chain) || !rg.carrier || !(rg.color || rg.palette)) continue;
@@ -393,7 +378,7 @@ export class Population {
       }
       p.members.set(m.id, m);
     }
-    if (!p.members.size) throw new Error('The file has no valid presets.');
+    if (!p.members.size && SEEDS.some((s) => !p.deletedSeeds.has(`G0-${s.origin}`))) throw new Error('The file has no valid presets.');
     let maxN = 0;
     for (const id of p.members.keys()) {
       const mm = /^G\d+-(\d{4,})$/.exec(id);

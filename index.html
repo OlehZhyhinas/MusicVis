@@ -152,7 +152,13 @@
               <button id="v2b-breed" class="btn sm" title="Breed the two selected presets" disabled data-icon="breed" data-icon-size="14"><span>Breed</span></button>
               <button id="v2b-mutate" class="btn sm" title="Mutate the selected preset" disabled data-icon="mutate" data-icon-size="14"><span>Mutate</span></button>
               <button id="v2b-hide" class="btn sm" title="Hide / unhide the selected presets" disabled data-icon="eyeoff" data-icon-size="14"><span class="lbl">Hide</span></button>
+              <button id="v2b-delete" class="btn sm danger" title="Delete selected presets" aria-expanded="false" disabled data-icon="trash" data-icon-size="14"><span class="lbl">Delete</span></button>
               <button id="v2b-clear" class="btn sm ghost" disabled>Clear</button>
+            </div>
+            <div id="v2b-delete-confirm" class="confirm" role="alertdialog" aria-labelledby="v2b-delete-question" hidden>
+              <b id="v2b-delete-question"></b>
+              <span class="muted">Deleted presets are removed from this population. Export first if you want a backup.</span>
+              <div class="row"><button id="v2b-delete-yes" class="btn danger sm">Delete presets</button><button id="v2b-delete-no" class="btn ghost sm">Cancel</button></div>
             </div>
             <div id="v2b-scroll" class="scroll grow">
               <div id="v2b-results" class="results" hidden>

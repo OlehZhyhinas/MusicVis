@@ -1,5 +1,5 @@
 // Tests for the V2 genome operators (repair, validate, crossover, mutate,
-// classify, population lineage/fitness/serialization, cull, glsl builders,
+// classify, population lineage/fitness/serialization, glsl builders,
 // migration of older formats, names).
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/v2-test.ts
 
@@ -445,7 +445,7 @@ function freshGenome(): Genome {
   check('fitness.weak-like', pop.get('G0-E05')!.weakLikes === 1, 'watch > 60 s counts');
 }
 
-// -------------------------------------------------------- 9. serialization, cull
+// -------------------------------------------------------- 9. serialization
 
 {
   const pop = Population.seeded();
@@ -470,11 +470,22 @@ function freshGenome(): Genome {
   const pop3 = Population.fromJSON(JSON.parse(JSON.stringify(withBad)));
   check('serialization.drops-invalid-members', pop3.size === j1.members.length, `size=${pop3.size} expected=${j1.members.length}`);
 
-  const big = Population.seeded();
-  const oldNow = Date.now() - 700_000;
-  for (let i = 0; i < 200; i++) big.addChild(randomGenome(mulberry32(50000 + i)), [p1, p2], oldNow);
-  big.cull(150);
-  check('cull.leaves-150-keeps-seeds', big.size === 150 && SEEDS.every((s) => big.get(`G0-${s.origin}`)), `size=${big.size}`);
+  const many = Population.seeded();
+  for (let i = 0; i < 12; i++) many.addChild(randomGenome(mulberry32(50000 + i)), [p1, p2]);
+  const saved = Population.fromJSON(JSON.parse(JSON.stringify(many.toJSON())));
+  check('population.keeps-all-bred-children', saved.size === SEEDS.length + 12 && many.list().filter((m) => m.gen > 0).every((m) => saved.get(m.id)), `${saved.size} presets after reload`);
+  const deletedSeed = many.get('G0-E01')!;
+  const deletedChild = many.list().find((m) => m.gen > 0)!;
+  many.remove(deletedSeed.id);
+  many.remove(deletedChild.id);
+  const afterDelete = Population.fromJSON(JSON.parse(JSON.stringify(many.toJSON())));
+  afterDelete.upgradeSeeds();
+  check('population.manual-delete-persists', !afterDelete.get(deletedSeed.id) && !afterDelete.get(deletedChild.id) && afterDelete.size === SEEDS.length + 10, 'deleted seed and child stay absent after reload and seed upgrade');
+  const empty = Population.seeded();
+  for (const m of empty.list()) empty.remove(m.id);
+  const emptyReloaded = Population.fromJSON(JSON.parse(JSON.stringify(empty.toJSON())));
+  emptyReloaded.upgradeSeeds();
+  check('population.delete-last-seed', emptyReloaded.size === 0, 'an intentionally empty population stays empty after reload');
 }
 
 // ------------------------------------------------------ 10. migration (format 2 -> 3)

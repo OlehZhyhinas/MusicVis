@@ -14,6 +14,7 @@ export interface BrowserCallbacks {
   toast(msg: string, kind?: 'info' | 'error' | 'ok', detail?: string): void;
   /** A child was picked: close the browser (the dock). */
   onClose?(): void;
+  onDelete?(ids: string[]): void;
   /** Phenotype novelty (rel 0..1 against the archive), null before the preset is fingerprinted. */
   novelty?(m: Member): { nov: number; rel: number } | null;
 }
@@ -40,6 +41,8 @@ export class PresetBrowser {
   private breedBtn = $<HTMLButtonElement>('v2b-breed');
   private mutateBtn = $<HTMLButtonElement>('v2b-mutate');
   private hideBtn = $<HTMLButtonElement>('v2b-hide');
+  private deleteBtn = $<HTMLButtonElement>('v2b-delete');
+  private deleteConfirm = $<HTMLElement>('v2b-delete-confirm');
   private clearBtn = $<HTMLButtonElement>('v2b-clear');
   private results = $<HTMLElement>('v2b-results');
   private resultsGrid = $<HTMLElement>('v2b-results-grid');
@@ -50,6 +53,7 @@ export class PresetBrowser {
   private energy = '';
   private showHidden = false;
   private selected = new Set<string>();
+  private deletePending: string[] = [];
   private observer: IntersectionObserver;
   private renderQueued = false;
   private highlight: string | null = null;
@@ -83,6 +87,24 @@ export class PresetBrowser {
       }
       this.selected.clear();
       this.evo.changed();
+    });
+    this.deleteBtn.addEventListener('click', () => this.setDeleteConfirm(true));
+    $('v2b-delete-no').addEventListener('click', () => this.setDeleteConfirm(false));
+    $('v2b-delete-yes').addEventListener('click', () => {
+      const removed = this.evo.remove(this.deletePending);
+      this.selected.clear();
+      this.setDeleteConfirm(false);
+      this.results.hidden = true;
+      this.cb.onDelete?.(removed);
+      this.render();
+      if (removed.length) this.cb.toast(`Deleted ${removed.length} preset${removed.length === 1 ? '' : 's'}.`, 'ok');
+    });
+    this.deleteConfirm.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        this.setDeleteConfirm(false);
+        this.deleteBtn.focus();
+      }
     });
     $('v2b-export').addEventListener('click', () => this.exportFile());
     const imp = $<HTMLInputElement>('v2-import-input');
@@ -163,7 +185,10 @@ export class PresetBrowser {
     this.shown = open;
     this.root.hidden = !open;
     if (open) this.render();
-    else this.setConfirm(false);
+    else {
+      this.setConfirm(false);
+      this.setDeleteConfirm(false);
+    }
   }
 
   private setConfirm(on: boolean): void {
@@ -171,6 +196,17 @@ export class PresetBrowser {
     this.resetBtn.setAttribute('aria-expanded', String(on));
     this.resetBtn.classList.toggle('active', on);
     if (on) ($('v2b-reset-no') as HTMLButtonElement).focus();
+  }
+
+  private setDeleteConfirm(on: boolean): void {
+    this.deletePending = on ? [...this.selected] : [];
+    this.deleteConfirm.hidden = !on;
+    this.deleteBtn.setAttribute('aria-expanded', String(on));
+    if (on) {
+      const n = this.deletePending.length;
+      $('v2b-delete-question').textContent = `Delete ${n} selected preset${n === 1 ? '' : 's'}?`;
+      ($('v2b-delete-no') as HTMLButtonElement).focus();
+    }
   }
 
   private setEnergy(v: string): void {
@@ -299,6 +335,7 @@ export class PresetBrowser {
     this.breedBtn.classList.toggle('primary', n === 2 && !busy);
     this.mutateBtn.disabled = n !== 1 || busy;
     this.hideBtn.disabled = n === 0;
+    this.deleteBtn.disabled = n === 0 || busy;
     this.clearBtn.disabled = n === 0;
   }
 
@@ -359,6 +396,13 @@ export class PresetBrowser {
     this.resultsStatus.textContent = `${children.length} ${children.length === 1 ? 'child' : 'children'}${nRej ? ` · ${nRej} rejected` : ''}`;
     this.resultsStatus.title = nRej ? `Rejected: ${summarize(this.evo.lastRejects)}` : '';
     this.selected.clear();
+    if (children.length) {
+      // Show the new children directly below the results, even if an old filter hid them.
+      this.typeSel.value = '';
+      this.setEnergy('');
+      this.setShowHidden(false);
+      this.sortSel.value = 'newest';
+    }
     this.render();
   }
 
