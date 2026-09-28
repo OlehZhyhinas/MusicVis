@@ -28,6 +28,7 @@ import {
 } from '../src/v2/geneEdit';
 import { nameFor, nounKind, NOUN_POOLS, ADJ_POOLS, HUE_WORDS } from '../src/v2/naming';
 import { kindHelp, paramHelp, reactionTargetHelp, SIGNAL_HELP } from '../src/v2/geneHelp';
+import { kindUnavailableReason, paramInactiveReason, reactionTargetInactiveReason } from '../src/v2/geneAvailability';
 import { BODY_VEC4, buildSources, WAVE_VS } from '../src/v2/glsl';
 import { SUPERSCOPE_SCHEMA } from '../src/v2/genes/superscope';
 import { CELLS_SCHEMA } from '../src/v2/genes/cells';
@@ -1974,6 +1975,51 @@ await lyricsTests(check);
   }
   check('op.centre-range-random-tame', sampledGen > 50 && overGen === 0 && sampledJit > 50 && overJit === 0,
     `${overGen}/${sampledGen} random centres beyond +-0.4, ${overJit}/${sampledJit} after repeated mutation from centre 0 (both expected 0)`);
+}
+
+// Editor availability must agree with the actual structural editor and update
+// when parent effect values change without throwing away dormant values.
+{
+  const bad: string[] = [];
+  for (const s of SEEDS) {
+    for (const [bi, b] of s.genome.bodies.entries()) {
+      for (const locus of LOCI) {
+        const t: Target = { t: 'locus', b: bi, locus };
+        if (kindUnavailableReason(s.genome, t, b[locus].kind)) bad.push(`${s.origin}/${bi}/${locus}: selected kind disabled`);
+        for (const kind of LOCUS_KINDS[locus]) {
+          const reason = kindUnavailableReason(s.genome, t, kind);
+          if (reason && switchKind(s.genome, t, kind).ok) bad.push(`${s.origin}/${bi}/${locus}/${kind}: ${reason}`);
+        }
+      }
+      if (b.fuse) {
+        const t: Target = { t: 'fuseShape', b: bi };
+        if (kindUnavailableReason(s.genome, t, b.fuse.shape.kind)) bad.push(`${s.origin}/${bi}/fuse: selected kind disabled`);
+        for (const kind of SHAPE_KINDS) {
+          const reason = kindUnavailableReason(s.genome, t, kind);
+          if (reason && switchKind(s.genome, t, kind).ok) bad.push(`${s.origin}/${bi}/fuse/${kind}: ${reason}`);
+        }
+      }
+    }
+  }
+  check('editor.kind-availability', !bad.length, bad.slice(0, 8).join(' | ') || 'selected kinds stay enabled and blocked kinds agree with switchKind');
+  const g = freshGenome();
+  const carrier: Target = { t: 'carrier' };
+  const tone: Target = { t: 'tone' };
+  const material: Target = { t: 'locus', b: 0, locus: 'material' };
+  const states = [
+    !!paramInactiveReason(g, carrier, 'famt'),
+    !paramInactiveReason(g, carrier, 'halfLife'),
+    !!paramInactiveReason(g, tone, 'reflectY'),
+    !!paramInactiveReason(g, tone, 'bump'),
+    !!paramInactiveReason(g, tone, 'bands'),
+    !paramInactiveReason(g, tone, 'solar'),
+    !!paramInactiveReason(g, material, 'rgap'),
+    !!reactionTargetInactiveReason(g, { g: 'col', i: 0, k: 'bump' }),
+    !!reactionTargetInactiveReason(g, { g: 'ma', i: 0, k: 'rgap' }),
+  ];
+  g.carrier.kind = 'flow'; g.tone.p.reflect = 1; g.tone.p.relief = 0.5; g.tone.p.huemap = 0.5; g.bodies[0].material.p.rings = 2;
+  states.push(!paramInactiveReason(g, carrier, 'famt'), !paramInactiveReason(g, tone, 'reflectY'), !paramInactiveReason(g, tone, 'bump'), !paramInactiveReason(g, tone, 'bands'), !paramInactiveReason(g, material, 'rgap'), !reactionTargetInactiveReason(g, { g: 'col', i: 0, k: 'bump' }), !reactionTargetInactiveReason(g, { g: 'ma', i: 0, k: 'rgap' }));
+  check('editor.live-availability', states.every(Boolean), states.join(','));
 }
 
 void (repairBody as unknown);

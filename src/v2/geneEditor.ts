@@ -17,6 +17,7 @@ import type { Member } from './population';
 import { loadSetting, saveSetting } from '../ui/storage';
 import { icon, type IconName } from '../ui/icons';
 import { kindHelp, paramHelp, reactionHelp, reactionTargetHelp, sectionHelp, SIGNAL_HELP } from './geneHelp';
+import { kindUnavailableReason, paramInactiveReason, reactionTargetInactiveReason } from './geneAvailability';
 
 export interface GeneEditorDeps {
   eng: Engine;
@@ -66,6 +67,7 @@ export class GeneEditor {
   private msgText = '';
   private errors = new Map<string, string>();
   private bound: Bound[] = [];
+  private availability: (() => void)[] = [];
   private meters: { src: HTMLElement; resp: HTMLElement; val: HTMLElement }[] = [];
   private meterClock = 0;
   private confirmAction: (() => void) | null = null;
@@ -382,6 +384,7 @@ export class GeneEditor {
     const res = E.editParam(this.scratch, t, key, v);
     this.scratch = res.genome;
     if (res.repaired) this.syncAll();
+    for (const update of this.availability) update();
     this.errors.delete(anchor);
     this.push(drag, anchor);
     this.afterChange();
@@ -553,8 +556,10 @@ export class GeneEditor {
     const scroll = this.body.scrollTop;
     this.body.textContent = '';
     this.bound = [];
+    this.availability = [];
     this.meters = [];
     if (!g) return;
+    this.body.append(h('p', { class: 'dim vg-hint', text: 'Grey controls are inactive with the current combination. Hover or focus ? to see what enables them.' }));
     let group = -2;
     const groups: { id: number; label: string }[] = [];
     for (const sec of E.buildModel(g)) {
@@ -602,7 +607,7 @@ export class GeneEditor {
     if (sec.kind && sec.target) {
       const t = sec.target;
       const group = t.t === 'locus' ? t.locus : t.t === 'fuseShape' ? 'shape' : t.t === 'drawOp' ? 'op' : t.t === 'gene' ? 'gene' : t.t;
-      const sel = this.select(sec.kind.options.map((o) => ({ value: o, label: o })), sec.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id), `${title} kind`, (v) => kindHelp(group, v));
+      const sel = this.select(sec.kind.options.map((o) => ({ value: o, label: o, unavailable: kindUnavailableReason(this.scratch!, t, o) })), sec.kind.value, (v) => this.structural((g) => E.switchKind(g, t, v), sec.id), `${title} kind`, (v) => kindHelp(group, v));
       sel.classList.add('vg-kind');
       // The dropdown lives in the summary: keep clicks and keys from folding the section.
       for (const ev of ['click', 'keydown', 'keyup']) sel.addEventListener(ev, (e) => e.stopPropagation());
@@ -723,6 +728,7 @@ export class GeneEditor {
     const tsel = h('select', { class: 'dd', 'aria-label': 'Target parameter' });
     const used = new Set(g.reactions.filter((_x, i) => i !== j).map(E.reactKey));
     const groups = new Map<string, HTMLOptGroupElement>();
+    const targetOptions: { target: E.ReactTarget; option: HTMLOptionElement; help: string }[] = [];
     for (const t of E.reactionTargets(g)) {
       let og = groups.get(t.group);
       if (!og) {
@@ -732,12 +738,30 @@ export class GeneEditor {
       }
       const key = E.reactKey(t);
       const help = reactionTargetHelp(t, r.src);
-      og.append(h('option', { value: key, disabled: used.has(key), selected: key === E.reactKey(r), text: E.labelFor(t.k) + (used.has(key) ? ' (driven)' : ''), title: help }));
-      if (key === E.reactKey(r)) {
-        tsel.title = help;
-        tsel.setAttribute('aria-description', help);
-      }
+      const option = h('option', { value: key, selected: key === E.reactKey(r), text: E.labelFor(t.k), title: help });
+      og.append(option);
+      targetOptions.push({ target: t, option, help });
     }
+    const inactiveNote = h('span', { class: 'dim vg-hint', hidden: true });
+    const updateTargets = () => {
+      const now = this.scratch;
+      if (!now) return;
+      for (const { target, option, help } of targetOptions) {
+        const key = E.reactKey(target);
+        const reason = used.has(key) ? 'Already driven by another reaction.' : reactionTargetInactiveReason(now, target);
+        option.disabled = !!reason && key !== E.reactKey(r);
+        option.textContent = E.labelFor(target.k) + (reason ? ` — ${reason}` : '');
+        option.title = reason ?? help;
+        if (key === E.reactKey(r)) {
+          tsel.title = reason ? `${reason} ${help}` : help;
+          tsel.setAttribute('aria-description', tsel.title);
+          inactiveNote.hidden = !reason;
+          inactiveNote.textContent = reason ? `Target inactive: ${reason}` : '';
+        }
+      }
+    };
+    updateTargets();
+    this.availability.push(updateTargets);
     tsel.addEventListener('change', () => {
       const [gg, i, k] = tsel.value.split('|');
       this.structural((x) => E.setReactionTarget(x, j, { g: gg as typeof r.g, i: Number(i), k }), anchor);
@@ -751,6 +775,7 @@ export class GeneEditor {
     const rm = this.iconButton('x', () => this.structural((x) => E.removeReaction(x, j), anchor), 'Remove reaction');
     return h('div', { class: 'rx', title: reactionHelp(g, j) },
       h('div', { class: 'row' }, src, arrow, tsel, rm),
+      inactiveNote,
       h('div', { class: 'mm', title: 'Live: source signal (in), response after the curve (out), driven value' },
         h('span', { text: 'in' }), h('div', { class: 'meter h3' }, srcBar), h('span', { text: 'out' }), h('div', { class: 'meter h3', style: '--c:var(--ok)' }, respBar), val));
   }
@@ -772,10 +797,10 @@ export class GeneEditor {
     return b;
   }
 
-  private select(options: { value: string; label: string }[], value: string, fn: (v: string) => void, label: string, describe?: (value: string) => string): HTMLSelectElement {
+  private select(options: { value: string; label: string; unavailable?: string | null }[], value: string, fn: (v: string) => void, label: string, describe?: (value: string) => string): HTMLSelectElement {
     const help = describe?.(value);
     const s = h('select', { class: 'dd', 'aria-label': label, title: help, 'aria-description': help });
-    for (const o of options) s.append(h('option', { value: o.value, selected: o.value === value, text: o.label, title: describe?.(o.value) }));
+    for (const o of options) s.append(h('option', { value: o.value, selected: o.value === value, disabled: !!o.unavailable, text: o.unavailable ? `${o.label} — ${o.unavailable}` : o.label, title: o.unavailable ?? describe?.(o.value) }));
     s.addEventListener('change', () => {
       if (describe) {
         s.title = describe(s.value);
@@ -801,6 +826,17 @@ export class GeneEditor {
     const title = paramHelp(this.scratch!, t, c);
     const row = h('div', { class: 'prow', title, 'data-path': `${E.targetId(t)}.${c.key}` });
     row.append(h('span', { class: 'pl', text: c.label, title }));
+    const why = h('span', { class: 'vg-why', text: '?', tabindex: 0, hidden: true });
+    const updateAvailability = () => {
+      const reason = this.scratch ? paramInactiveReason(this.scratch, t, c.key) : null;
+      row.classList.toggle('is-inactive', !!reason);
+      row.title = reason ? `${reason} ${title}` : title;
+      row.setAttribute('aria-disabled', String(!!reason));
+      why.hidden = !reason;
+      why.title = reason ?? '';
+      why.setAttribute('aria-label', reason ?? '');
+      for (const control of row.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input, select, button')) control.disabled = !!reason;
+    };
     const current = () => {
       const g = this.scratch;
       return g && E.schemaAt(g, t)?.[c.key] ? E.getParam(g, t, c.key) : NaN;
@@ -859,11 +895,15 @@ export class GeneEditor {
           build(current());
         };
         holder.append(c.widget === 'segmented' ? this.segmented(opts, String(v), pick, title) : this.select(opts, String(v), pick, c.label, () => title));
+        updateAvailability();
       };
       build(c.value);
       row.append(holder);
       this.bound.push({ el: holder, sync: () => build(current()) });
     }
+    row.append(why);
+    updateAvailability();
+    this.availability.push(updateAvailability);
     return row;
   }
 }

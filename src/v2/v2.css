@@ -411,6 +411,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.prow.is-inactive > .pl,
+.prow.is-inactive > .rng,
+.prow.is-inactive > .val,
+.prow.is-inactive > .vg-ctl {
+  opacity: 0.42;
+}
+.prow .vg-why {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--tx2);
+  border-radius: 50%;
+  color: var(--tx2);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  cursor: help;
+}
+.prow .vg-why[hidden] { display: none; }
+.prow .vg-why:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .prow .val {
   font: 400 10.5px/20px var(--mono);
   width: 52px;
