@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 163;
+export const SEED_VERSION = 164;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4021,7 +4021,81 @@ const SURFACE_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES];
+// Every new capability ships with three compositions demonstrating different uses.
+const SHELL_STUDIES: Def[] = [
+  {
+    origin: 'X60', name: 'Porcelain Nautilus', energy: [0.05, 0.85], scheme: 'analogous', hue: 0.085,
+    pal: { key: 0, spread: 0.55 },
+    color: { exposure: 1, sat: 0.5, bloom: 0.45, adapt: 0.12, vignette: 0.5, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['shell', { size: 0.34, turns: 3.1, growth: 0.17, width: 0.24, ribs: 34, relief: 0.7, aperture: 0.4 }],
+        place: ['point', { x: -0.06, y: 0.02, angle: -0.09 }],
+        motion: ['sway', { amp: 0.008, period: 8, tilt: 0.07 }],
+        material: ['fill', { gain: 1.75, soft: 0.01, core: 0.12 }], emit: ['none'],
+        color: ['fixed', { hue: 0.05, detail: 0.75 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.003 }], place: ['grid', { scale: 3, density: 0.14, jitter: 0.5, lit: 1, twinkle: 0 }],
+        material: ['glow', { gain: 0.2, width: 0.012, base: 0.3 }], emit: ['none'],
+        color: ['fixed', { hue: 0.7, detail: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('held', 'sh', 0, 'aperture', 0.65, { atk: 0.25, rel: 0.8 }),
+      rx('register', 'sh', 0, 'growth', 0.22, { atk: 0.2, rel: 0.5 }),
+      rx('bright', 'sh', 0, 'relief', 0.35, { atk: 0.2, rel: 0.6 }),
+      rx('bass', 'sh', 0, 'width', 0.12, { atk: 0.12, rel: 0.45 }),
+      rx('noteon', 'ma', 1, 'gain', 0.2, { atk: 0.02, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.04, section: 0.1 },
+  },
+  {
+    origin: 'X61', name: 'Malachite Tesserae', energy: [0.1, 0.9], scheme: 'free', hue: 0.38,
+    pal: { key: 0, s1: 0.12, s2: 0.7 },
+    color: { exposure: 0.9, sat: 0.75, bloom: 0.4, adapt: 0.15, vignette: 0.22, ca: 0,
+      relief: 0.25, bump: 0.5, gloss: 0.55, metal: 0.15 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['shell', { size: 0.16, turns: 2.4, growth: 0.16, width: 0.3, ribs: 22, relief: 0.5, aperture: 0.1 }],
+        place: ['grid', { lattice: 1, scale: 3.4, jitter: 0, density: 1, lit: 1, twinkle: 0, angle: 0.07 }],
+        material: ['fill', { gain: 1.3, soft: 0.015 }], emit: ['none'],
+        color: ['height', { hue: 0, amount: 0.25, detail: 0.8 }],
+      }),
+    ],
+    reactions: [
+      rx('tension', 'sh', 0, 'growth', 0.28, { atk: 0.3, rel: 0.8 }),
+      rx('held', 'sh', 0, 'width', 0.18, { atk: 0.2, rel: 0.65 }),
+      rx('rough', 'sh', 0, 'relief', 0.65, { atk: 0.2, rel: 0.6 }),
+      rx('hit', 'ma', 0, 'gain', 0.18, { atk: 0.03, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.05, section: 0.15 },
+  },
+  {
+    origin: 'X62', name: 'Conch Lanterns', energy: [0.05, 0.85], scheme: 'free', hue: 0.59,
+    pal: { key: 0, s1: 0.12, s2: 0.5 },
+    color: { exposure: 0.9, sat: 0.75, bloom: 0.65, adapt: 0.15, vignette: 0.4, contrast: 0.01, ca: 0 },
+    carrier: 'warp', car: { halfLife: 0.45, floor: 0.25, blur: 0.015 },
+    chain: [op('translate', { vx: -0.025, vy: 0.015 })],
+    bodies: [body({
+      shape: ['shell', { size: 0.13, turns: 1.8, growth: 0.3, width: 0.18, ribs: 40, relief: 0.75, aperture: 0.75 }],
+      place: ['float', { count: 4, spread: 0.6, speed: 0.07, fuse: 0 }],
+      motion: ['spin', { rate: -0.0625 }],
+      material: ['fill', { gain: 1.1, soft: 0.025, halo: 0.04 }], emit: ['cover', { amt: 0.85, tip: 0 }],
+      color: ['instrument', { hue: 0, amount: 0.45, detail: 0.75 }],
+    })],
+    reactions: [
+      rx('vocals', 'sh', 0, 'aperture', 0.35, { atk: 0.2, rel: 0.7 }),
+      rx('rising', 'sh', 0, 'growth', 0.3, { atk: 0.15, rel: 0.5 }),
+      rx('bass', 'sh', 0, 'width', 0.25, { atk: 0.12, rel: 0.5 }),
+      rx('noteon', 'ma', 0, 'gain', 0.25, { atk: 0.03, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.04, section: 0.15 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

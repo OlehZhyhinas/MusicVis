@@ -65,6 +65,12 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'shape.shell.turns': 'Number of windings in the coil.',
+  'shape.shell.growth': 'How quickly the coil grows outward; higher values separate the outer windings.',
+  'shape.shell.width': 'Thickness of the coiled tube relative to its radius.',
+  'shape.shell.ribs': 'Number of surface ribs per turn.',
+  'shape.shell.relief': 'Strength of the rib shading on the shell surface.',
+  'shape.shell.aperture': 'How wide the outer opening flares.',
   'shape.linkage.joints': 'Number of connected limbs in the chain.',
   'shape.linkage.width': 'Thickness of the first limb.',
   'shape.linkage.curl': 'Resting bend added at each joint, in radians.',

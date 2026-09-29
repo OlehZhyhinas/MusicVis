@@ -16,7 +16,7 @@ try {
     const st = new Stage(eng, { offscreen: true }); st.resize(320, 180);
     const pixels = new Uint8Array(320 * 180 * 4);
     const errors = []; let compiled = 0;
-    for (const kind of ['branch', 'fabric', 'linkage']) {
+    for (const kind of ['branch', 'fabric', 'linkage', 'shell']) {
       const seed = SEEDS.find(s => s.genome.bodies[0].shape.kind === kind);
       for (const material of MATERIAL_KINDS) for (const mode of ['body', 'pair', 'fused']) {
         const raw = cloneGenome(seed.genome);

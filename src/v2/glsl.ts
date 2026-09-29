@@ -12,6 +12,7 @@ import { HUEMAP_GLSL } from './genes/huemap';
 import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
+import { SHELL_GLSL } from './genes/shell';
 import { LINKAGE_GLSL } from './genes/linkage';
 import { FABRIC_GLSL } from './genes/fabric';
 import { BRANCH_GLSL } from './genes/branch';
@@ -276,6 +277,7 @@ const SHAPE_SDF: Partial<Record<ShapeKind, string>> = {
   branch: BRANCH_GLSL,
   fabric: FABRIC_GLSL,
   linkage: LINKAGE_GLSL,
+  shell: SHELL_GLSL,
   dot: `vec3 SHP(vec2 q) { return vec3(length(q) - SA.x, 0.0, 1.0); }`,
   polygon: `vec3 SHP(vec2 q) { float r = SA.y; float rd = SA.z * 0.35 * r; return vec3(sdPoly(q, r - rd, SA.x) - rd, 0.0, 1.0); }`,
   star: `vec3 SHP(vec2 q) { return vec3(sdStar(q, SA.y, SA.x, 2.0 + (SA.x - 2.0) * SA.z), 0.0, 1.0); }`,

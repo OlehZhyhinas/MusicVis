@@ -28,6 +28,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
 - Composable body families include branching coral/root structures, pleated fabric,
   and articulated chains of joints. Starter presets X46–X51 introduce these shapes
   as parents; they can inherit the existing materials, placements and reactions.
+- New capabilities ship with three distinct starter presets. The ribbed spiral shell
+  body comes with Porcelain Nautilus (X60), Malachite Tesserae (X61), and Conch
+  Lanterns (X62): a single shaded form, a repeating surface, and drifting copies.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

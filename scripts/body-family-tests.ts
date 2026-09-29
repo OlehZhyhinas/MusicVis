@@ -3,16 +3,17 @@ import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
+import { packShell } from '../src/v2/genes/shell';
 import { packLinkage } from '../src/v2/genes/linkage';
 import { packFabric } from '../src/v2/genes/fabric';
 import { packBranch } from '../src/v2/genes/branch';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
-export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage'];
+export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage', 'shell'];
 export function bodyFamilyTests(check: Check): void {
   for (const kind of BODY_FAMILIES) {
     const seeds = SEEDS.filter(s => s.genome.bodies.some(b => b.shape.kind === kind));
-    check(`${kind}.parents`, seeds.length >= 2 && seeds.every(s => !validate(s.genome).length && estimateCost(s.genome) < COST_BUDGET_MS), 'two distinct, valid starter parents within the rendering budget');
+    check(`${kind}.parents`, seeds.length >= 3 && seeds.every(s => !validate(s.genome).length && estimateCost(s.genome) < COST_BUDGET_MS), 'three distinct, valid starter parents within the rendering budget');
     const base = cloneGenome(seeds[0].genome);
     const rng = mulberry32(1841);
     let inherited = 0;
@@ -32,6 +33,12 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const shell = new Float32Array(16).fill(-77);
+  const sp = defaultParams(SHAPE_SCHEMAS.shell);
+  const radius = packShell(shell, 4, k => k === 'aperture' ? 0.9 : sp[k]);
+  check('shell.packing', shell.slice(0,4).every(x=>x===-77) && shell.slice(12).every(x=>x===-77)
+    && Math.abs(shell[10]-0.9)<1e-6 && shell[11]===0 && radius > sp.size,
+    'aperture reactions reach both shape slots and bounds without overwriting adjacent genes');
   const links = new Float32Array(16).fill(-77);
   const lp = defaultParams(SHAPE_SCHEMAS.linkage);
   packLinkage(links, 4, k => k === 'flex' ? 0.91 : lp[k], 3.5);

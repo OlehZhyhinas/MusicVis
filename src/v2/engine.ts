@@ -43,6 +43,7 @@ import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids'
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
+import { packShell } from './genes/shell';
 import { packLinkage } from './genes/linkage';
 import { packFabric } from './genes/fabric';
 import { packBranch } from './genes/branch';
@@ -1986,6 +1987,7 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'shell': return packShell(E, o, P);
       case 'linkage': return packLinkage(E, o, P, this.clk.spin * 0.25);
       case 'fabric': return packFabric(E, o, P, this.clk.spin * 0.125);
       case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);
