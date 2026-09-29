@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 156;
+export const SEED_VERSION = 157;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3499,7 +3499,166 @@ const FLOWERS: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS];
+// Four composed studies using only the existing gene vocabulary (X42..X45).
+const STUDIES: Def[] = [
+  {
+    // A brass instrument suspended in darkness: engraved concentric dials, twelve rotating teeth,
+    // and three enamel satellites. Bass opens the dial spacing; melody lights the satellites;
+    // percussion lifts the teeth without moving the whole camera.
+    origin: 'X42', name: 'Amber Orrery', energy: [0.1, 0.85], scheme: 'free', hue: 0.1,
+    pal: { key: 0, s1: 0.43, s2: 0.94 },
+    color: { exposure: 0.9, adapt: 0.2, bloom: 0.75, vignette: 0.55, sat: 0.8 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['dot', { r: 0.085 }],
+        material: ['line', { gain: 0.85, width: 1.6, halo: 0.08, rings: 5, rgap: 0.047, rfade: 0.86 }],
+        emit: ['none'], color: ['fixed', { hue: 0, detail: 0 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.035 }],
+        parts: [
+          part('box', 'union', { sx: 0.28, sy: 0.9, m: 0.2 }),
+          part('ellipse', 'union', { y: 1.4, sx: 0.35, sy: 0.35, hue: 1 / 3 }),
+        ],
+        place: ['ring', { n: 12, radius: 0.29 }], motion: ['spin', { rate: -0.0625 }],
+        material: ['fill', { gain: 1.2, soft: 0.04, core: 0.5 }],
+        emit: ['none'], color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.024 }],
+        place: ['orbit', { count: 3, radius: 0.225, rate: 0.125 }],
+        material: ['chrome', { gain: 1.2, chrome: 0.7 }],
+        emit: ['none'], color: ['instrument', { hue: 1 / 3, amount: 0.25, detail: 0.25 }],
+        feel: ['flow', { atk: 0.03, rel: 0.35 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'ma', 0, 'rgap', 0.09, { atk: 0.08, rel: 0.5 }),
+      rx('hit', 'ma', 1, 'gain', 0.45, { atk: 0.01, rel: 0.35 }),
+      rx('noteon', 'sh', 2, 'r', 0.035, { atk: 0.02, rel: 0.4 }),
+      rx('held', 'ma', 2, 'gain', 0.4, { atk: 0.12, rel: 0.5 }),
+    ],
+    accent: { hook: 0.15, kick: 0, drop: 0.1, hue: 0, section: 0.25 },
+  },
+  {
+    // Two counter-rotating lattices of rounded diamond loops make moving interference patterns.
+    // A sparse third layer of warm pinheads marks the crossings; bass bends one set of threads,
+    // the sung line bends the other and percussion catches the pins.
+    origin: 'X43', name: 'Prism Loom', energy: [0.2, 0.95], scheme: 'free', hue: 0.53,
+    pal: { key: 0, s1: 0.35, s2: 0.56 },
+    color: { exposure: 0.85, adapt: 0.2, bloom: 0.65, vignette: 0.4, sat: 0.85 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['polygon', { n: 4, r: 0.075, round: 0.25 }],
+        place: ['grid', { lattice: 0, scale: 4.5, jitter: 0, density: 1, lit: 1, twinkle: 0, angle: 0.12, lock: 0.0625 }],
+        deform: ['twist', { amt: 0.7 }],
+        material: ['line', { gain: 0.85, width: 1.3, halo: 0.04, rings: 2, rgap: 0.014, rfade: 0.8 }],
+        emit: ['none'], color: ['fixed', { hue: 0, detail: 0 }],
+      }),
+      body({
+        shape: ['polygon', { n: 4, r: 0.075, round: 0.25 }],
+        place: ['grid', { lattice: 0, scale: 4.8, jitter: 0, density: 1, lit: 1, twinkle: 0, angle: -0.12, lock: -0.0625 }],
+        deform: ['twist', { amt: -0.7 }],
+        material: ['line', { gain: 0.75, width: 1.3, halo: 0.04, rings: 2, rgap: 0.014, rfade: 0.8 }],
+        emit: ['none'], color: ['fixed', { hue: 1 / 3, detail: 0 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.003 }],
+        place: ['grid', { lattice: 0, scale: 4.5, jitter: 0, density: 0.3, lit: 1, twinkle: 0, angle: 0.12, lock: 0.0625 }],
+        material: ['glow', { gain: 0.45, width: 0.006, base: 0.25 }],
+        emit: ['none'], color: ['fixed', { hue: 2 / 3, detail: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'de', 0, 'amt', 0.1, { atk: 0.1, rel: 0.5 }),
+      rx('held', 'de', 1, 'amt', -0.12, { atk: 0.15, rel: 0.65 }),
+      rx('hit', 'ma', 2, 'gain', 0.65, { atk: 0.01, rel: 0.25 }),
+      rx('hook', 'ma', 1, 'gain', 0.25, { atk: 0.04, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, drop: 0.1, hue: 0, section: 0.25 },
+  },
+  {
+    // A luminous Art Deco arcade above a black reflecting pool. Each arch is an ellipse joined
+    // to a rectangle with its doorway cut out; offset ring halos extend the architectural ribs.
+    // Instrument copies light independently, melody widens the ribs and bass swells the central sun.
+    origin: 'X44', name: 'Echo Arcade', energy: [0.1, 0.85], scheme: 'free', hue: 0.57,
+    pal: { key: 0, s1: 0.48, s2: 0.36 },
+    color: { exposure: 0.85, adapt: 0.2, bloom: 0.85, vignette: 0.45, reflect: 1, reflectY: -0.27 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.11 }],
+        parts: [
+          part('ellipse', 'union', { y: 0.55, sx: 0.75, sy: 0.8 }),
+          part('box', 'union', { y: -0.2, sx: 0.75, sy: 0.75 }),
+          part('ellipse', 'subtract', { y: 0.55, sx: 0.6, sy: 0.65, k: 0 }),
+          part('box', 'subtract', { y: -0.35, sx: 0.6, sy: 0.9, k: 0 }),
+        ],
+        place: ['row', { count: 4, y: -0.08, wander: 0 }],
+        material: ['line', { gain: 0.7, width: 1.7, halo: 0.05, rings: 3, rgap: 0.014, rfade: 0.8 }],
+        emit: ['none'], color: ['instrument', { amount: 0.75, detail: 0 }],
+        feel: ['flow', { atk: 0.05, rel: 0.45 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.065 }], place: ['point', { y: 0.25 }],
+        material: ['textured', { tex: 1, gain: 0.9, halo: 0.3 }],
+        emit: ['none'], color: ['fixed', { hue: 1 / 3, detail: 0.25 }],
+      }),
+      body({
+        shape: ['segment', { len: 0.8, w: 0.003 }], place: ['point', { y: -0.265 }],
+        material: ['line', { gain: 0.5, width: 1.2, halo: 0.06 }],
+        emit: ['none'], color: ['fixed', { hue: 0, detail: 0 }],
+      }),
+    ],
+    reactions: [
+      rx('held', 'ma', 0, 'rgap', 0.06, { atk: 0.2, rel: 0.7 }),
+      rx('noteon', 'ma', 0, 'gain', 0.35, { atk: 0.02, rel: 0.35 }),
+      rx('bass', 'sh', 1, 'r', 0.1, { atk: 0.08, rel: 0.45 }),
+      rx('hit', 'ma', 2, 'gain', 0.45, { atk: 0.01, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, drop: 0.1, hue: 0, section: 0.3 },
+  },
+  {
+    // Three enamel ribbons weave a figure-eight through slow sideways feedback. The fresh strokes
+    // paint over the old ones instead of adding to white; the outer outlines stay like gold leaf.
+    // Bass thickens the ribbons, vocal sustain curls them and note starts illuminate the edging.
+    origin: 'X45', name: 'Lacquer Current', energy: [0.15, 0.9], scheme: 'free', hue: 0.97,
+    pal: { key: 0, s1: 0.53, s2: 0.13 },
+    color: { exposure: 0.85, adapt: 0.2, bloom: 0.6, vignette: 0.35, relief: 0.35, sat: 0.85 },
+    carrier: 'warp', car: { halfLife: 3.5, floor: 0.5, blur: 0.03 },
+    chain: [op('translate', { vx: 0.09 }), op('swirl', { amt: 0.0035, k: 3, cx: -0.2 })],
+    bodies: [
+      body({
+        shape: ['segment', { len: 0.28, w: 0.023 }],
+        place: ['outline', { count: 3, path: 2, radius: 0.3, rate: 0.125 }],
+        motion: ['spin', { rate: -0.125 }], deform: ['twist', { amt: 3 }],
+        material: ['fill', { gain: 1.1, soft: 0.12, core: 0.6 }],
+        emit: ['cover', { amt: 1, tip: 0 }], color: ['instrument', { amount: 0.8, detail: 0.1 }],
+        feel: ['flow', { atk: 0.04, rel: 0.4 }],
+      }),
+      body({
+        shape: ['segment', { len: 0.28, w: 0.023 }],
+        place: ['outline', { count: 3, path: 2, radius: 0.3, rate: 0.125 }],
+        motion: ['spin', { rate: -0.125 }], deform: ['twist', { amt: 3 }],
+        material: ['line', { gain: 0.4, width: 1.3, halo: 0.02 }],
+        emit: ['trail'], color: ['fixed', { hue: 2 / 3, detail: 0 }],
+        feel: ['flow', { atk: 0.04, rel: 0.4 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'sh', 0, 'w', 0.16, { atk: 0.05, rel: 0.4 }),
+      rx('bass', 'sh', 1, 'w', 0.16, { atk: 0.05, rel: 0.4 }),
+      rx('held', 'de', 0, 'amt', 0.16, { atk: 0.15, rel: 0.6 }),
+      rx('held', 'de', 1, 'amt', 0.16, { atk: 0.15, rel: 0.6 }),
+      rx('noteon', 'ma', 1, 'gain', 0.4, { atk: 0.01, rel: 0.35 }),
+    ],
+    accent: { hook: 0.15, kick: 0, drop: 0.1, hue: 0, section: 0.3 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
