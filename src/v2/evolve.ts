@@ -322,12 +322,25 @@ export class Evolution {
     return p.size;
   }
 
-  async reset(): Promise<void> {
-    this.pop = Population.seeded();
+  /** Remove non-seed presets outside the pen, preserving every pen member and restoring missing seeds. */
+  async reset(): Promise<string[]> {
+    const previous = this.pop;
+    const next = Population.seeded();
+    for (const m of previous.members.values()) {
+      if (m.breeding || next.get(m.id)) {
+        // Fresh identities invalidate any breeding batch still screening during reset.
+        next.members.set(m.id, structuredClone(m));
+      }
+    }
+    // Never reuse a removed child's ID: surviving descendants may still refer to it.
+    next.counter = previous.counter;
+    const removed = previous.list().filter((m) => !next.get(m.id)).map((m) => m.id);
+    this.pop = next;
     this.history = [];
     this.view = null;
     await this.store.clearThumbs();
     this.changed();
+    return removed;
   }
 
   /** Remove selected presets and their cached thumbnails. */

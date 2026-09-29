@@ -123,11 +123,11 @@
               <div class="col grow" style="gap: 0"><h2>Presets</h2><span class="dim ell" id="v2b-count"></span></div>
               <button id="v2b-export" class="btn sm" title="Export the population as JSON" data-icon="download" data-icon-size="14"><span class="lbl">Export</span></button>
               <button id="v2b-import" class="btn sm" title="Import a population JSON (replaces the population)" data-icon="upload" data-icon-size="14"><span class="lbl">Import</span></button>
-              <button id="v2b-reset" class="btn sm ghost" title="Reset to the seed presets" aria-expanded="false" data-icon="reset" data-icon-size="14"><span class="lbl">Reset</span></button>
+              <button id="v2b-reset" class="btn sm ghost" title="Remove presets outside the breeding pen, keeping the seeds" aria-expanded="false" data-icon="reset" data-icon-size="14"><span class="lbl">Reset</span></button>
             </div>
             <div id="v2b-confirm" class="confirm" role="alertdialog" aria-labelledby="v2b-confirm-q" hidden>
               <b id="v2b-confirm-q"></b>
-              <span class="muted">All bred presets, votes, hidden flags and breeding memberships are discarded. Export first if you want to keep them.</span>
+              <span class="muted">Only non-seed presets outside the breeding pen are deleted. Pen members and existing seeds keep their votes, hidden flags and breeding memberships. Missing seeds are restored. Export first if you want a backup.</span>
               <div class="row"><button id="v2b-reset-yes" class="btn danger sm">Reset population</button><button id="v2b-reset-no" class="btn ghost sm">Cancel</button></div>
             </div>
             <div class="v2b-poolbar">

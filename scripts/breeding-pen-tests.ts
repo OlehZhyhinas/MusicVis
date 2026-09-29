@@ -3,7 +3,7 @@ import { Evolution } from '../src/v2/evolve';
 import { mulberry32 } from '../src/v2/ops';
 import { cloneGenome } from '../src/v2/genome';
 import type { Screener } from '../src/v2/screen';
-import type { Store } from '../src/v2/store';
+import { Store } from '../src/v2/store';
 import type { ExploreMode } from '../src/v2/novelty';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -90,4 +90,57 @@ export async function breedingPenTests(check: Check): Promise<void> {
   const replaced = await evo.breed([p, q], 1, 'cross');
   check('pen.replaced-population', !replaced.length && evo.breeding === 0,
     'importing or resetting during screening cannot add an old batch to the new population');
+
+  const store = new Store();
+  const resetEvo = new Evolution(store, evo.screener);
+  resetEvo.changed = () => { void store.set('population', resetEvo.pop.toJSON()); };
+  const original = resetEvo.pop;
+  const seed = original.get(a.id)!;
+  const removedParent = original.addChild(cloneGenome(seed.genome), [seed]);
+  const kept = original.addChild(cloneGenome(b.genome), [removedParent]);
+  const hiddenKept = original.addChild(cloneGenome(b.genome), [seed]);
+  const removedChild = original.addChild(cloneGenome(seed.genome), [kept]);
+  original.setBreeding([seed.id, kept.id, hiddenKept.id], true);
+  kept.name = 'My breeding parent'; kept.likes = 7; kept.views = 12;
+  hiddenKept.hidden = true;
+  seed.dislikes = 3; seed.hidden = true;
+  original.get(b.id)!.likes = 4;
+  removedChild.hidden = true;
+  original.remove(outsider.id);
+  const preserved = [seed, kept, hiddenKept, original.get(b.id)!].map((m) => JSON.stringify(m));
+  const counter = original.counter;
+  original.votesSinceBreed = 4;
+  const removed = await resetEvo.reset();
+  check('pen.reset-removes-only-outsiders', removed.length === 2 && removed.includes(removedParent.id)
+    && removed.includes(removedChild.id) && resetEvo.pop.size === Population.seeded().size + 2,
+    'visible and hidden non-seed outsiders are removed; both pen children survive');
+  check('pen.reset-preserves-members', [seed, kept, hiddenKept, original.get(b.id)!]
+    .every((m, i) => JSON.stringify(resetEvo.pop.get(m.id)) === preserved[i]),
+    'pen members and seeds keep genomes, names, votes, visibility, membership and lineage');
+  check('pen.reset-restores-seeds', !!resetEvo.pop.get(outsider.id) && !resetEvo.pop.deletedSeeds.size,
+    'deleted built-in seeds return to the general pool');
+  const persisted = Population.fromJSON(await store.get('population'));
+  check('pen.reset-persists', persisted.size === resetEvo.pop.size && persisted.get(kept.id)!.breeding
+    && persisted.get(hiddenKept.id)!.hidden && !persisted.get(removedChild.id),
+    'the saved population contains the surviving pen and seeds only');
+  const afterReset = resetEvo.pop.addChild(cloneGenome(seed.genome), [resetEvo.pop.get(kept.id)!]);
+  check('pen.reset-ids', resetEvo.pop.counter === counter + 1 && afterReset.id !== removedChild.id
+    && resetEvo.pop.get(kept.id)!.parents[0] === removedParent.id && resetEvo.pop.votesSinceBreed === 0,
+    'child numbering continues without reusing removed ancestors; automatic vote cadence restarts');
+
+  // Even surviving parents must not finish a pre-reset breeding batch afterwards.
+  const resetParents = [resetEvo.pop.get(kept.id)!, resetEvo.pop.get(hiddenKept.id)!];
+  resetParents[1].hidden = false;
+  resetEvo.rng = mulberry32(813);
+  let resetDuringScreen: Promise<string[]> | undefined;
+  duringScreen = () => { resetDuringScreen = resetEvo.reset(); };
+  const staleChildren = await resetEvo.breed(resetParents, 1, 'cross');
+  await resetDuringScreen;
+  check('pen.reset-cancels-old-batch', !!resetDuringScreen && staleChildren.length === 0
+    && resetParents.every((m) => resetEvo.pop.get(m.id)?.breeding) && resetEvo.breeding === 0,
+    'reset preserves the breeding parents while discarding their in-flight batch');
+  const stable = JSON.stringify(resetEvo.pop.toJSON());
+  const removedAgain = await resetEvo.reset();
+  check('pen.reset-repeat', !removedAgain.length && JSON.stringify(resetEvo.pop.toJSON()) === stable,
+    'repeating reset leaves the survivors unchanged');
 }

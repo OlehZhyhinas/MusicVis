@@ -164,14 +164,18 @@ export class PresetBrowser {
       if (f) void this.importFile(f);
     });
     // Reset asks inline (no browser dialog).
-    $('v2b-confirm-q').textContent = `Reset the population to the ${SEEDS.length} seed presets?`;
+    $('v2b-confirm-q').textContent = `Reset the population, keeping the breeding pen and ${SEEDS.length} seed presets?`;
     this.resetBtn.addEventListener('click', () => this.setConfirm(this.confirmBox.hidden === true));
     $('v2b-reset-no').addEventListener('click', () => this.setConfirm(false));
     $('v2b-reset-yes').addEventListener('click', () => {
       this.setConfirm(false);
-      void this.evo.reset().then(() => {
+      void this.evo.reset().then((removed) => {
         this.selected.clear();
-        this.cb.toast('Population reset to the seed presets.', 'ok');
+        this.setDeleteConfirm(false);
+        this.results.hidden = true;
+        this.cb.onDelete?.(removed);
+        this.render();
+        this.cb.toast(`Removed ${removed.length} preset${removed.length === 1 ? '' : 's'}. Breeding pen and seeds kept.`, 'ok');
       });
     });
     this.confirmBox.addEventListener('keydown', (ev) => {

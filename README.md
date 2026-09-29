@@ -30,6 +30,8 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   members can breed or mutate, including automatic breeding. The pen starts
   empty; offspring join the general pool until you add them yourself. Membership
   survives reloads and population exports/imports.
+  **Reset population** removes non-seed presets outside the pen, keeps every pen
+  member and existing seed with their votes and settings, and restores missing seeds.
 - Composable body families include branching coral/root structures, pleated fabric,
   and articulated chains of joints. Starter presets X46–X51 introduce these shapes
   as parents; they can inherit the existing materials, placements and reactions.
