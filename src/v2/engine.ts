@@ -43,6 +43,7 @@ import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids'
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
+import { packUndulate } from './genes/undulate';
 import { recoilImpulse, stepRecoil } from './genes/recoil';
 import { packShell } from './genes/shell';
 import { packLinkage } from './genes/linkage';
@@ -2213,6 +2214,9 @@ export class Stage {
         E[o + 2] = ph;
         break;
       }
+      case 'undulate':
+        packUndulate(E, o, P, this.clk.bars);
+        break;
       case 'twist':
         E[o] = P('amt') * (0.6 + 0.6 * this.resp('loud', F.loud));
         break;
@@ -2397,7 +2401,7 @@ export class Stage {
     } else for (const c of copies) list.push([c.x, c.y, c.a, c.s * (copies.length > 1 ? 0.35 + 0.65 * Math.min(1, c.level + 0.3) : 1), 1, 1]);
     const d = b.deform;
     const o = bi * BODY_VEC4 * 4;
-    const dk = { none: 0, arms: 1, wobble: 2, noise: 3, twist: 4 }[d.kind];
+    const dk = { none: 0, arms: 1, wobble: 2, noise: 3, twist: 4, undulate: 5 }[d.kind];
     s.curves.push({
       body: bi,
       top: b.emit.kind === 'none',

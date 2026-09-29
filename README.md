@@ -34,6 +34,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   Recoil movement springs back after musical onsets, with selectable drum, note,
   or instrument triggers. Pearl Bounce (X63), Kinetic Iris (X64), and Afterimage
   Etude (X65) show soft translation, angular kicks, and melody-driven light trails.
+  Travelling bends reshape bodies and curves in Silk Currents (X66), Tidal
+  Filigree (X67), and Violet Undertow (X68). Vocals deepen the ribbons, tension
+  tightens the branching waves, and melody register changes the curve wavelength.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

@@ -127,6 +127,7 @@ export const ENTRIES: Record<string, string> = {
   'deform.arms': 'tapered curling arms reaching per instrument+loudness; curl=amount; turn=bars/direction change.',
   'deform.wobble': 'wobbling outline lobes; rate=turns/bar, swells w/bass.',
   'deform.noise': 'organic outline jitter.',
+  'deform.undulate': 'travelling sine bend shared by bodies and curves. amp=sideways travel; span=wavelength in scene units; rate=cycles/bar (negative reverses); angle=wave axis in turns; pin=keep the local centre fixed at 1, drift with the wave at 0. React amp to vocal/held, span to register for musical phrasing.',
   'deform.twist': 'rotation grows w/distance from centre, breathes w/loudness.',
 
   // ------------------------------------------------------------ material

@@ -5,6 +5,7 @@
 // structure changes the source, so compiled programs are cached by
 // structuralKey().
 
+import { UNDULATE_GLSL } from './genes/undulate';
 import { timbreGlsl, timbreWrap } from './genes/timbre';
 import { MOSAIC_GLSL } from './genes/mosaic';
 import { TUNNEL_GLSL } from './genes/tunnel';
@@ -71,6 +72,7 @@ vec2 curlNoise(vec2 p, float t) {
   return vec2(n1 - n2, -(n3 - n4)) / (2.0 * e);
 }
 mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
+${UNDULATE_GLSL}
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 hsv2rgb(vec3 c) {
   vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
@@ -570,6 +572,13 @@ vec2 DFM(vec2 q, out float k) {
   vec4 D = BD(7);
   k = 0.8;
   return q + curlNoise(q * D.y + 4.0, D.z) * D.x;
+}`,
+  undulate: `vec2 DFM(vec2 q, out float k) {
+  vec4 D = BD(7);
+  // Global bound on the inverse shear's Jacobian, including steep waves.
+  float slope = abs(D.x * TAU / D.y);
+  k = 2.0 / (sqrt(slope * slope + 4.0) + slope);
+  return undulateMap(q, D, BD(8).x, -1.0);
 }`,
   // D = (amount now, -, -, -)
   twist: `vec2 DFM(vec2 q, out float k) {
@@ -1233,6 +1242,7 @@ vec2 deformFwd(vec2 q) {
   if (uDk == 2) return q * (1.0 + uDp.y * sin(uDp.x * atan(q.y, q.x) + uDp.z));
   if (uDk == 3) return q + curlNoise(q * uDp.y + 4.0, uDp.z) * uDp.x;
   if (uDk == 4) return rot2(-uDp.x * length(q)) * q;
+  if (uDk == 5) return undulateMap(q, uDp, uArmA0.x, 1.0);
   return q;
 }
 ${SUPERSCOPE_GLSL}

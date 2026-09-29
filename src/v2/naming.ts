@@ -309,6 +309,7 @@ function traits(g: Genome): Trait[] {
     const dp = b.deform.p;
     switch (b.deform.kind) {
       case 'arms': add('reaching', REACHING, k * clamp01(0.5 + dp.reach * 0.6)); break;
+      case 'undulate': add('rippling', RIPPLING, k * clamp01(0.3 + dp.amp * 4)); break;
       case 'wobble': add('rippling', RIPPLING, k * clamp01(0.4 + dp.amp * 2)); break;
       case 'noise': add('wandering', WANDERING, k * clamp01(0.4 + dp.amp * 10)); break;
       case 'twist': add('spiral', SPIRAL, k * clamp01(0.4 + Math.abs(dp.amt) * 0.12)); break;

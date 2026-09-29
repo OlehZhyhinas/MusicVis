@@ -65,6 +65,11 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'deform.undulate.amp': 'Sideways bend in scene units; zero restores the original silhouette.',
+  'deform.undulate.span': 'Distance between wave crests. Small values make tighter ripples.',
+  'deform.undulate.rate': 'Wave cycles per musical bar. Negative reverses travel; zero holds a static bend.',
+  'deform.undulate.angle': 'Wave axis in turns. Zero sends waves vertically; a quarter turn sends them horizontally.',
+  'deform.undulate.pin': 'At 1 the local centre stays fixed while the body bends around it; at 0 the entire wave travels.',
   'motion.recoil.source': 'Trigger: 0 drum hits, 1 melody note starts, 2 bass onsets, 3 vocal onsets, 4 other instrument onsets.',
   'motion.recoil.distance': 'Maximum travel away from the body’s resting position.',
   'motion.recoil.direction': 'Direction of the kick in turns: 0 right, 0.25 up, -0.25 down.',

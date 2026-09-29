@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 165;
+export const SEED_VERSION = 166;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4171,7 +4171,80 @@ const RECOIL_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES];
+// One deformation, three compositions: shaded ribbons, branching fans, and curve trails.
+const UNDULATE_STUDIES: Def[] = [
+  {
+    origin: 'X66', name: 'Silk Currents', energy: [0.05, 0.85], scheme: 'free', hue: 0.47,
+    pal: { key: 0, s1: 0.13, s2: 0.45 },
+    color: { exposure: 0.95, sat: 0.72, bloom: 0.4, adapt: 0.12, vignette: 0.45, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['cells', { mode: 2, scale: 1.4, warp: 0.45, fill: 0.5, wall: 0, speed: 0.05, var: 0.1, pulse: 0 }],
+        material: ['fill', { gain: 0.09 }], emit: ['none'], color: ['fixed', { hue: 0.18 }],
+      }),
+      body({
+        shape: ['fabric', { size: 0.38, aspect: 0.34, folds: 5, depth: 0.9, drape: 0.12, weave: 0.2, flutter: 0.03 }],
+        place: ['row', { count: 3, y: 0, wander: 0 }],
+        deform: ['undulate', { amp: 0.055, span: 0.66, rate: 0.25, angle: 0.04, pin: 0.5 }],
+        material: ['fill', { gain: 1.4, soft: 0.01, core: 0.15 }], emit: ['none'],
+        color: ['height', { hue: 0, amount: 0.35, detail: 0.7 }],
+      }),
+    ],
+    reactions: [
+      rx('vocals', 'de', 1, 'amp', 0.65, { atk: 0.25, rel: 0.8 }),
+      rx('register', 'de', 1, 'span', -0.45, { atk: 0.4, rel: 0.7 }),
+      rx('bright', 'sh', 1, 'depth', 0.2, { atk: 0.2, rel: 0.6 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.03, section: 0.1 },
+  },
+  {
+    origin: 'X67', name: 'Tidal Filigree', energy: [0.1, 0.95], scheme: 'free', hue: 0.085,
+    pal: { key: 0, s1: 0.12, s2: 0.52 },
+    color: { exposure: 1, sat: 0.75, bloom: 0.5, adapt: 0.12, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['aurora', { fall: 4, rays: 18, wav: 0.75 }],
+      place: ['point', { y: -0.4 }],
+      material: ['fill', { gain: 0.25 }], emit: ['none'], color: ['fixed', { hue: 0.48 }],
+    }), body({
+      shape: ['branch', { size: 0.35, width: 0.018, spread: 0.85, ratio: 0.68, levels: 6, grow: 1, bend: 0.025 }],
+      place: ['row', { count: 3, y: -0.08, wander: 0 }],
+      deform: ['undulate', { amp: 0.03, span: 0.72, rate: -0.25, angle: 0, pin: 1 }],
+      material: ['fill', { gain: 1.8, soft: 0, core: 0, halo: 0.005 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.35, detail: 0.65 }],
+    })],
+    reactions: [
+      rx('bass', 'de', 1, 'amp', 0.4, { atk: 0.2, rel: 0.65 }),
+      rx('held', 'sh', 1, 'spread', 0.15, { atk: 0.35, rel: 0.8 }),
+      rx('tension', 'de', 1, 'span', -0.4, { atk: 0.4, rel: 0.9 }),
+      rx('hook', 'ma', 1, 'gain', 0.15, { atk: 0.08, rel: 0.5 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.03, section: 0.1 },
+  },
+  {
+    origin: 'X68', name: 'Violet Undertow', energy: [0.05, 0.9], scheme: 'free', hue: 0.72,
+    pal: { key: 0, s1: 0.2, s2: 0.48 },
+    color: { exposure: 0.95, sat: 0.7, bloom: 0.25, adapt: 0.1, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'warp', car: { halfLife: 0.6, floor: 0.1, blur: 0 },
+    chain: [op('zoom', { rate: 0.001 }), op('rotate', { lock: 0, rate: -0.0006 })],
+    bodies: [body({
+      shape: ['superscope', { family: 1, p: 8, q: 2, size: 0.3, audio: 0.04, spinX: 0.0625, spinY: 0, persp: 0.3, n: 2048 }],
+      deform: ['undulate', { amp: 0.055, span: 0.56, rate: 0.5, angle: 0.22, pin: 1 }],
+      material: ['line', { gain: 0.28, width: 0.85, halo: 0 }], emit: ['trail'],
+      color: ['height', { hue: 0, amount: 0.45, detail: 0.85 }],
+    })],
+    reactions: [
+      rx('held', 'de', 0, 'amp', 0.55, { atk: 0.3, rel: 0.7 }),
+      rx('register', 'de', 0, 'span', -0.3, { atk: 0.4, rel: 0.8 }),
+      rx('legato', 'de', 0, 'pin', -0.4, { atk: 0.4, rel: 0.7 }),
+      rx('noteon', 'ma', 0, 'gain', 0.04, { atk: 0.04, rel: 0.45 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.1 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

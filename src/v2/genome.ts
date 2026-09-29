@@ -36,6 +36,7 @@ import { FLOCK_SCHEMA, flockCost } from './genes/boids';
 import { MOSAIC_SCHEMA } from './genes/mosaic';
 import { TUNNEL_SCHEMA } from './genes/tunnel';
 import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
+import { UNDULATE_SCHEMA } from './genes/undulate';
 import { RECOIL_SCHEMA } from './genes/recoil';
 import { SHELL_SCHEMA } from './genes/shell';
 import { LINKAGE_SCHEMA } from './genes/linkage';
@@ -328,7 +329,7 @@ export const MOTION_SCHEMAS: Record<MotionKind, Schema> = {
 
 // ---------------------------------------------------------------- deform
 
-export const DEFORM_KINDS = ['none', 'arms', 'wobble', 'noise', 'twist'] as const;
+export const DEFORM_KINDS = ['none', 'arms', 'wobble', 'noise', 'twist', 'undulate'] as const;
 export type DeformKind = (typeof DEFORM_KINDS)[number];
 export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
   none: {},
@@ -340,6 +341,7 @@ export const DEFORM_SCHEMAS: Record<DeformKind, Schema> = {
   noise: { amp: P(0, 0.08, 0.02), scale: P(1, 8, 3), speed: P(0.05, 1, 0.3) },
   // Rotation growing with the distance from the centre (radians per unit), breathing with loudness.
   twist: { amt: P(-8, 8, 3) },
+  undulate: UNDULATE_SCHEMA,
 };
 
 // -------------------------------------------------------------- material
@@ -1577,6 +1579,7 @@ function deformCost(b: BodyGene): number {
     case 'wobble': ms += 0.1; break;
     case 'noise': ms += 1.5; break;
     case 'twist': ms += 0.05; break;
+    case 'undulate': ms += 0.15; break;
   }
   for (const o of b.deform.ops ?? []) ms += o.op === 'noise' ? 1.2 : isVarOp(o.op) ? 0.2 : 0.1;
   return ms;
