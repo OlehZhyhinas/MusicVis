@@ -3,11 +3,12 @@ import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
+import { packLinkage } from '../src/v2/genes/linkage';
 import { packFabric } from '../src/v2/genes/fabric';
 import { packBranch } from '../src/v2/genes/branch';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
-export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric'];
+export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage'];
 export function bodyFamilyTests(check: Check): void {
   for (const kind of BODY_FAMILIES) {
     const seeds = SEEDS.filter(s => s.genome.bodies.some(b => b.shape.kind === kind));
@@ -31,6 +32,10 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const links = new Float32Array(16).fill(-77);
+  const lp = defaultParams(SHAPE_SCHEMAS.linkage);
+  packLinkage(links, 4, k => k === 'flex' ? 0.91 : lp[k], 3.5);
+  check('linkage.packing', links.slice(0,4).every(x=>x===-77) && links.slice(12).every(x=>x===-77) && Math.abs(links[8]-0.91)<1e-6 && links[11]===3.5, 'joint reactions and phase reach the shape and fusion uniforms');
   const cloth = new Float32Array(16).fill(-77);
   const cp = defaultParams(SHAPE_SCHEMAS.fabric);
   packFabric(cloth, 4, k => k === 'depth' ? 0.83 : cp[k], 2.5);

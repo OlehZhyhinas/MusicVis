@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 159;
+export const SEED_VERSION = 160;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3660,6 +3660,43 @@ const STUDIES: Def[] = [
 
 // New body families: starter parents whose structure survives crossover and mutation.
 const BODY_STUDIES: Def[] = [
+  {
+    origin: 'X50', name: 'Clockwork Anemone', energy: [0.2, 0.95], scheme: 'free', hue: 0.09,
+    pal: { key: 0, s1: 0.46, s2: 0.8 },
+    color: { exposure: 0.95, bloom: 0.8, adapt: 0.15, vignette: 0.45 }, carrier: 'none',
+    bodies: [body({
+      shape: ['linkage', { size: 0.25, joints: 6, width: 0.045, curl: 0, flex: 0.3, taper: 0.95, knuckle: 0.8 }],
+      place: ['ring', { n: 5, radius: 0.25 }],
+      material: ['line', { gain: 1.1, width: 1.6, halo: 0.08 }], emit: ['none'],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'curl', 0.08, { atk: 0.08, rel: 0.45 }),
+      rx('held', 'sh', 0, 'flex', 0.15, { atk: 0.18, rel: 0.65 }),
+      rx('hit', 'sh', 0, 'knuckle', 0.25, { atk: 0.02, rel: 0.3 }),
+      rx('noteon', 'ma', 0, 'gain', 0.3, { atk: 0.02, rel: 0.35 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.25 },
+  },
+  {
+    origin: 'X51', name: 'Marionette March', energy: [0.15, 0.9], scheme: 'free', hue: 0.55,
+    pal: { key: 0, s1: 0.43, s2: 0.31 },
+    color: { exposure: 1, bloom: 0.65, adapt: 0.2, vignette: 0.3, reflect: 1, reflectY: -0.26 }, carrier: 'none',
+    bodies: [body({
+      shape: ['linkage', { size: 0.23, joints: 5, width: 0.075, curl: -0.15, flex: 0.55, taper: 1, knuckle: 0.75 }],
+      place: ['row', { count: 4, y: -0.015, wander: 0 }],
+      material: ['fill', { gain: 1.5, soft: 0.015, core: 0.1, halo: 0.08 }], emit: ['none'],
+      color: ['instrument', { amount: 0.85, detail: 0.65 }],
+      feel: ['flow', { atk: 0.04, rel: 0.3, div: 8 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'flex', 0.45, { atk: 0.08, rel: 0.45 }),
+      rx('held', 'sh', 0, 'curl', 0.3, { atk: 0.2, rel: 0.7 }),
+      rx('hit', 'ma', 0, 'gain', 0.4, { atk: 0.02, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.25 },
+  },
+
   {
     origin: 'X48', name: 'Iridescent Sail', energy: [0.05, 0.85], scheme: 'free', hue: 0.57,
     pal: { key: 0, s1: 0.3, s2: 0.94 },

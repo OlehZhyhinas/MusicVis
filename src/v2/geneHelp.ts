@@ -62,6 +62,12 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'shape.linkage.joints': 'Number of connected limbs in the chain.',
+  'shape.linkage.width': 'Thickness of the first limb.',
+  'shape.linkage.curl': 'Resting bend added at each joint, in radians.',
+  'shape.linkage.flex': 'Amplitude of the musical wave passing through the joints.',
+  'shape.linkage.taper': 'Length and thickness of each limb relative to the previous one.',
+  'shape.linkage.knuckle': 'Size of the rounded joints relative to the limbs.',
   'shape.fabric.aspect': 'Width of the sheet relative to its height.',
   'shape.fabric.depth': 'Strength of the pleat lighting and scalloped edges.',
   'shape.branch.spread': 'Angle between each branch and its parent, in radians.',
