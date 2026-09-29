@@ -14,7 +14,7 @@ import { groupTerms } from '../src/v2/fingerprint';
 import { EMB_DIM, EMB_MODEL, EmbeddingStore, cosineDistance, normalize, poolFrames } from '../src/v2/embedding';
 import { Phenotype } from '../src/v2/phenotype';
 import {
-  EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, parseExploreMode,
+  EXPLORE_ACCEPT, EXPLORE_MODES, EXPLORE_WEIGHT, NoveltyArchive, exploreScore, knnNovelty, noveltyTable, noveltyWeight, noveltyAcceptFloor, parseExploreMode,
   relNovelty, voteCount,
 } from '../src/v2/novelty';
 
@@ -173,8 +173,12 @@ export async function noveltyTestsAsync(check: Check): Promise<void> {
     // Between two unvoted presets, the novel one wins in every mode but off.
     for (const m of EXPLORE_MODES.slice(1)) if (!(exploreScore(0.2, 0.9, m, 0) > exploreScore(0.2, 0.1, m, 0))) bad.push(`${m} ignores novelty`);
     if (!(EXPLORE_ACCEPT.off === 0 && EXPLORE_ACCEPT.gentle === 0 && EXPLORE_ACCEPT.wild > EXPLORE_ACCEPT.explore)) bad.push('accept floors');
+    const small = noveltyAcceptFloor('wild', 100);
+    const medium = noveltyAcceptFloor('wild', 400);
+    const large = noveltyAcceptFloor('wild', 1700);
+    if (!(small === EXPLORE_ACCEPT.wild && medium < small && large < medium && large > 0 && noveltyAcceptFloor('explore', 1700) < EXPLORE_ACCEPT.explore && noveltyAcceptFloor('gentle', 1700) === 0)) bad.push('population scaling');
     if (parseExploreMode('wild') !== 'wild' || parseExploreMode('bogus') !== 'gentle') bad.push('parse');
-    check('novelty.explore-score', !bad.length, bad.join(', ') || `weights ${ws.join(' / ')}; halves after 3 votes; explore: a liked preset (12:1) outranks an unvoted maximally novel one (${likedScore.toFixed(2)} > ${novelScore.toFixed(2)}); wild: the novel one first, until 3 dislikes`);
+    check('novelty.explore-score', !bad.length, bad.join(', ') || `weights ${ws.join(' / ')}; halves after 3 votes; wild breeding cutoff ${small.toFixed(2)} at 100 members and ${large.toFixed(2)} at 1700; explore: a liked preset (12:1) outranks an unvoted maximally novel one (${likedScore.toFixed(2)} > ${novelScore.toFixed(2)}); wild: the novel one first, until 3 dislikes`);
   }
   {
     // Phenotype: score / acceptance use the mode; unfingerprinted members count as average.
@@ -199,6 +203,23 @@ export async function noveltyTestsAsync(check: Check): Promise<void> {
     const gentleNear = ph.acceptNovelty(near);
     check('novelty.phenotype', offBonus === 0 && Math.abs(unknown - EXPLORE_WEIGHT.wild * 0.5) < 1e-9 && accFar.ok && !accNear.ok && gentleNear.ok,
       `off adds nothing; an unmeasured member counts as rel 0.5; wild keeps a far-away child (rel ${accFar.rel.toFixed(2)}) and turns away a near copy (rel ${accNear.rel.toFixed(2)}); gentle turns nothing away`);
+  }
+  {
+    // One new fingerprint is scored without rebuilding every existing member's
+    // novelty table. The costly full refresh waits for a metric refit.
+    const pop = Population.seeded(11);
+    const ms = pop.list();
+    const fps = cloud(ms.length, 44, 0, 1);
+    ms.forEach((m, i) => { m.fp = fps[i]; m.fpv = FP_VERSION; });
+    const ph = new Phenotype(null, () => pop);
+    ph.syncArchive();
+    const old = ph.novelty(ms[0]);
+    const table = (ph as unknown as { table: Map<string, unknown> }).table;
+    const child = pop.addChild(ms[0].genome, [ms[0]]);
+    ph.adopt(child, cloud(1, 45, 3, 1)[0]);
+    const fresh = ph.novelty(child);
+    check('novelty.incremental-cache', !!old && !!fresh && table === (ph as unknown as { table: Map<string, unknown> }).table && ph.novelty(ms[0]) === old,
+      'a new fingerprint gets a score while existing member scores remain cached');
   }
 }
 

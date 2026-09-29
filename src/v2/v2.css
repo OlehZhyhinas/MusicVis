@@ -101,8 +101,9 @@
 #v2b-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  --preset-row-height: 82px;
 }
+#app.phone #v2b-list { --preset-row-height: 72px; }
 .v2b-none {
   text-align: center;
   padding: 24px;
@@ -177,6 +178,9 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  height: var(--preset-row-height);
+  box-sizing: border-box;
+  margin-bottom: 2px;
   padding: 10px 12px;
   border-radius: 12px;
   flex: none;
@@ -234,6 +238,8 @@
   font-size: 11px;
   color: var(--tx3);
   min-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .prs .lin button {
   background: none;

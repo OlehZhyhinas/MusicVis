@@ -10,7 +10,7 @@ import type { Member, Population } from './population';
 import { DUP_FP_DIST, FP_VERSION, FeatureNorm, validFingerprint, zDistance, type GroupWeights, EQUAL_WEIGHTS } from './fingerprint';
 import type { Fingerprinter } from './fingerprintRender';
 import {
-  NoveltyArchive, exploreScore, knnNovelty, noveltyTable, relNovelty, voteCount, EXPLORE_ACCEPT,
+  NoveltyArchive, exploreScore, knnNovelty, noveltyTable, relNovelty, voteCount, noveltyAcceptFloor,
   type ExploreMode,
 } from './novelty';
 import { fitness } from './population';
@@ -49,7 +49,9 @@ export class Phenotype {
   private store: KV | null = null;
   private saveTimer = 0;
   private table: Map<string, { nov: number; rel: number }> = new Map();
+  private tableFp = new Map<string, number[]>();
   private tableKey = '';
+  private tablePopSize = 0;
   private typical: number[] = [];
   /** Similarity judgements and the current fit of the group weights to them. */
   answers: SimilarityAnswer[] = [];
@@ -233,18 +235,39 @@ export class Phenotype {
   // ------------------------------------------------------------ novelty
 
   private ensureTable(): void {
-    const key = `${this.archive.version}:${this.fitN}:${this.pop.size}:${JSON.stringify(this.weights)}:${this.embOn ? this.embWeight : 0}`;
-    if (key === this.tableKey) return;
+    // A new fingerprint changes only a small part of the neighbourhood. Keep
+    // existing scores until the metric is refitted; score the new member on
+    // demand instead of rebuilding every member against the entire archive.
+    const key = `${this.fitN}:${JSON.stringify(this.weights)}:${this.embOn ? this.embWeight : 0}`;
+    if (key === this.tableKey) {
+      if (this.tablePopSize !== this.pop.size) {
+        const live = new Set(this.pop.list().map((m) => m.id));
+        for (const id of this.table.keys()) if (!live.has(id)) {
+          this.table.delete(id);
+          this.tableFp.delete(id);
+        }
+        this.tablePopSize = this.pop.size;
+      }
+      return;
+    }
     this.tableKey = key;
     const t = noveltyTable(this.pop.list(), this.archive, this.norm, this.weights, undefined, this.blend());
     this.table = t.table;
     this.typical = t.typical;
+    this.tableFp = new Map(this.pop.list().filter((m) => this.table.has(m.id) && m.fp).map((m) => [m.id, m.fp!]));
+    this.tablePopSize = this.pop.size;
   }
 
   /** A member's novelty (mean distance to its k nearest archived looks) and its relative value 0..1; null without a fingerprint. */
   novelty(m: Member): { nov: number; rel: number } | null {
     if (!validFingerprint(m.fp)) return null;
     this.ensureTable();
+    if (this.tableFp.get(m.id) !== m.fp) {
+      const az = this.archive.entries.map((e) => ({ id: e.id, z: this.z(e.fp) }));
+      const nov = knnNovelty(this.z(m.fp), az, undefined, m.id, this.weights, this.blend());
+      this.table.set(m.id, { nov, rel: relNovelty(nov, this.typical) });
+      this.tableFp.set(m.id, m.fp);
+    }
     return this.table.get(m.id) ?? null;
   }
 
@@ -267,11 +290,11 @@ export class Phenotype {
   }
 
   /** In explore / wild mode, a child less novel than the mode's floor is turned away. */
-  acceptNovelty(fp: number[]): { ok: boolean; rel: number } {
-    const floor = EXPLORE_ACCEPT[this.mode];
-    if (!floor || this.archive.size < 8) return { ok: true, rel: floor ? this.noveltyOf(fp).rel : 0 };
+  acceptNovelty(fp: number[]): { ok: boolean; rel: number; floor: number } {
+    const floor = noveltyAcceptFloor(this.mode, this.pop.size);
+    if (!floor || this.archive.size < 8) return { ok: true, rel: floor ? this.noveltyOf(fp).rel : 0, floor };
     const { rel } = this.noveltyOf(fp);
-    return { ok: rel >= floor, rel };
+    return { ok: rel >= floor, rel, floor };
   }
 
   /** Refit the robust z-score normalisation when the corpus has grown by 10% (or on force). */
@@ -281,6 +304,7 @@ export class Phenotype {
     this.norm = FeatureNorm.fit(c);
     this.fitN = c.length;
     this.zCache = new WeakMap();
+    this.tableKey = '';
     if (this.answers.length) this.refitWeights();
   }
 

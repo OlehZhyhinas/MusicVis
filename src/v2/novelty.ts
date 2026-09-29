@@ -76,17 +76,23 @@ export interface Blend {
 
 /** Mean distance to the k nearest z-scored fingerprints (excluding `selfId`; `blend` needs `selfId`). */
 export function knnNovelty(z: Float32Array, others: { id: string; z: Float32Array }[], k = NOVELTY_K, selfId?: string, w: GroupWeights = EQUAL_WEIGHTS, blend?: Blend): number {
-  const d: number[] = [];
+  if (k <= 0) return 0;
+  // Keep only the nearest k values. Sorting all archived distances for every
+  // member made a large population's novelty table much slower than needed.
+  const nearest: number[] = [];
   for (const o of others) {
     if (o.id === selfId) continue;
-    d.push(zDistance(z, o.z, w, blend && selfId ? { w: blend.w, t: blend.term(selfId, o.id) } : undefined));
+    const d = zDistance(z, o.z, w, blend && selfId ? { w: blend.w, t: blend.term(selfId, o.id) } : undefined);
+    if (nearest.length === k && d >= nearest[nearest.length - 1]) continue;
+    let at = nearest.length;
+    while (at > 0 && d < nearest[at - 1]) at--;
+    nearest.splice(at, 0, d);
+    if (nearest.length > k) nearest.pop();
   }
-  if (!d.length) return 0;
-  d.sort((a, b) => a - b);
-  const n = Math.min(k, d.length);
+  if (!nearest.length) return 0;
   let s = 0;
-  for (let i = 0; i < n; i++) s += d[i];
-  return s / n;
+  for (const d of nearest) s += d;
+  return s / nearest.length;
 }
 
 /**
@@ -140,6 +146,14 @@ export const EXPLORE_WEIGHT: Record<ExploreMode, number> = { off: 0, gentle: 0.0
 
 /** Children less novel than this (relative) are turned away in breeding, per mode. */
 export const EXPLORE_ACCEPT: Record<ExploreMode, number> = { off: 0, gentle: 0, explore: 0.18, wild: 0.3 };
+
+/** Ease the breeding cutoff as the population fills the available visual space. */
+export function noveltyAcceptFloor(mode: ExploreMode, populationSize: number): number {
+  const base = EXPLORE_ACCEPT[mode];
+  if (!base) return 0;
+  const doublings = Math.max(0, Math.log2(Math.max(1, populationSize) / 100));
+  return base / (1 + doublings / 2);
+}
 
 /** Votes (likes + dislikes, implicit signals at 0.3) after which a member's novelty weight has halved. */
 export const VOTE_HALF = 3;

@@ -222,7 +222,7 @@ export class Evolution {
         if (fp && tried <= (n * MAX_TRIES_PER_CHILD) / 2) {
           const acc = this.pheno!.acceptNovelty(fp);
           if (!acc.ok) {
-            const reason = `too familiar for ${this.pheno!.mode} mode (novelty ${acc.rel.toFixed(2)})`;
+            const reason = `too familiar for ${this.pheno!.mode} mode (novelty ${acc.rel.toFixed(2)} < ${acc.floor.toFixed(2)})`;
             this.lastRejects.push(reason);
             onEvent?.({ kind: 'reject', reason, tried });
             continue;

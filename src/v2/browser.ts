@@ -58,8 +58,18 @@ export class PresetBrowser {
   private renderQueued = false;
   private highlight: string | null = null;
   private shown = false;
+  private rows: Member[] = [];
+  private windowStart = -1;
+  private windowEnd = -1;
+  private topPad = document.createElement('div');
+  private bottomPad = document.createElement('div');
 
   constructor(private evo: Evolution, private cb: BrowserCallbacks) {
+    this.topPad.setAttribute('aria-hidden', 'true');
+    this.bottomPad.setAttribute('aria-hidden', 'true');
+    this.topPad.style.flex = this.bottomPad.style.flex = 'none';
+    this.scroller.addEventListener('scroll', () => this.renderWindow());
+    window.addEventListener('resize', () => { if (this.open) this.renderWindow(true); });
     this.typeSel.innerHTML = `<option value="">All types</option>` + SPECIES.map((s) => `<option value="${s}">${SPECIES_LABEL[s]}</option>`).join('');
     if (cb.novelty) this.sortSel.insertAdjacentHTML('beforeend', '<option value="novel">Most novel</option>');
     for (const el of [this.typeSel, this.sortSel]) el.addEventListener('change', () => this.render());
@@ -156,9 +166,18 @@ export class PresetBrowser {
     });
     this.list.addEventListener('keydown', (ev) => {
       const t = ev.target as HTMLElement;
-      if ((ev.key === 'Enter' || ev.key === ' ') && t.classList.contains('prs')) {
+      if (!t.classList.contains('prs')) return;
+      if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
         this.cb.play(t.dataset.id!);
+      } else if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp'].includes(ev.key)) {
+        ev.preventDefault();
+        const at = this.rows.findIndex((m) => m.id === t.dataset.id);
+        if (at < 0) return;
+        const page = Math.max(1, Math.floor(this.scroller.clientHeight / this.rowStride()));
+        const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? this.rows.length - 1 :
+          ev.key === 'PageDown' ? at + page : ev.key === 'PageUp' ? at - page : at + (ev.key === 'ArrowDown' ? 1 : -1);
+        this.focusRow(Math.max(0, Math.min(this.rows.length - 1, next)));
       }
     });
 
@@ -244,6 +263,12 @@ export class PresetBrowser {
     if (m.hidden) this.setShowHidden(true);
     this.highlight = id;
     this.render();
+    const at = this.rows.findIndex((x) => x.id === id);
+    if (at >= 0) {
+      const listTop = this.listTop();
+      this.scroller.scrollTop = listTop + at * this.rowStride() - (this.scroller.clientHeight - this.rowStride()) / 2;
+      this.renderWindow(true);
+    }
     const row = this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(id)}"]`);
     row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
@@ -274,24 +299,73 @@ export class PresetBrowser {
     const classics = SEEDS.filter((s) => s.origin.startsWith('M')).length;
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
     const cur = this.cb.currentId();
-    const focused = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('.prs')?.dataset.id;
     const keepScroll = this.scroller.scrollTop;
+    this.rows = ms;
     if (ms.length) {
-      const frag = document.createDocumentFragment();
-      for (const m of ms) frag.appendChild(this.row(m, m.id === cur));
-      this.list.replaceChildren(frag);
+      this.renderWindow(true);
       // Re-rendering (thumbnails, votes, views arriving) must never move the list under the user.
       this.scroller.scrollTop = keepScroll;
+      this.renderWindow();
     } else {
+      this.windowStart = this.windowEnd = -1;
       this.list.innerHTML = '<p class="dim v2b-none">No presets match these filters.</p>';
     }
+    this.updateSelection();
+  }
+
+  private rowStride(): number {
+    return (Number.parseFloat(getComputedStyle(this.list).getPropertyValue('--preset-row-height')) || 82) + 2;
+  }
+
+  private focusRow(index: number): void {
+    const y = this.listTop() + index * this.rowStride();
+    if (y < this.scroller.scrollTop) this.scroller.scrollTop = y;
+    else if (y + this.rowStride() > this.scroller.scrollTop + this.scroller.clientHeight) {
+      this.scroller.scrollTop = y + this.rowStride() - this.scroller.clientHeight;
+    }
+    this.renderWindow();
+    this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(this.rows[index].id)}"]`)?.focus({ preventScroll: true });
+  }
+
+  /** Distance from the scroll area's origin to the list, including the results panel above it. */
+  private listTop(): number {
+    if (this.list.hidden) return 0;
+    return this.list.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top + this.scroller.scrollTop;
+  }
+
+  /** Keep only the rows near the viewport in the DOM, with spacers preserving scroll position. */
+  private renderWindow(force = false): void {
+    if (!this.rows.length) return;
+    const stride = this.rowStride();
+    const visible = Math.ceil(this.scroller.clientHeight / stride);
+    const first = Math.max(0, Math.min(this.rows.length - 1, Math.floor((this.scroller.scrollTop - this.listTop()) / stride)));
+    const start = Math.max(0, first - 8);
+    const end = Math.min(this.rows.length, first + visible + 8);
+    if (!force && start === this.windowStart && end === this.windowEnd) return;
+    const focused = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('.prs')?.dataset.id;
+    for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.unobserve(img);
+    this.windowStart = start;
+    this.windowEnd = end;
+    this.topPad.style.height = `${start * stride}px`;
+    this.bottomPad.style.height = `${(this.rows.length - end) * stride}px`;
+    const frag = document.createDocumentFragment();
+    frag.append(this.topPad);
+    const cur = this.cb.currentId();
+    for (let i = start; i < end; i++) {
+      const m = this.rows[i];
+      const row = this.row(m, m.id === cur);
+      row.setAttribute('aria-posinset', String(i + 1));
+      row.setAttribute('aria-setsize', String(this.rows.length));
+      if (m.id === this.highlight) {
+        row.classList.add('flash');
+        this.highlight = null;
+      }
+      frag.append(row);
+    }
+    frag.append(this.bottomPad);
+    this.list.replaceChildren(frag);
     for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.observe(img);
     if (focused) this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
-    this.updateSelection();
-    if (this.highlight) {
-      this.list.querySelector(`.prs[data-id="${CSS.escape(this.highlight)}"]`)?.classList.add('flash');
-      this.highlight = null;
-    }
   }
 
   private row(m: Member, current: boolean): HTMLElement {
