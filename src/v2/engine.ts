@@ -957,8 +957,21 @@ export class Stage {
     }
     F.speed = speed0;
 
-    // Fluid, particles, flame: owned by the heaviest slot that uses them.
-    const fluidSlot = slots.filter((s) => s.genome.carrier.kind === 'fluid').sort((a, b) => b.weight - a.weight)[0];
+    // Each simulation belongs to its heaviest eligible slot. Preserve the first
+    // slot on equal weights, matching the previous stable sort without allocating.
+    let fluidSlot: Slot | null = null, waterSlot: Slot | null = null;
+    let partSlot: Slot | null = null, flameSlot: Slot | null = null;
+    let slimeSlot: Slot | null = null, ecoSlot: Slot | null = null, flockSlot: Slot | null = null;
+    for (const s of slots) {
+      const car = s.genome.carrier;
+      if (car.kind === 'fluid' && (!fluidSlot || s.weight > fluidSlot.weight)) fluidSlot = s;
+      if (car.kind !== 'none' && car.p.water > 0.001 && (!waterSlot || s.weight > waterSlot.weight)) waterSlot = s;
+      if (s.sparks >= 0 && (!partSlot || s.weight > partSlot.weight)) partSlot = s;
+      if (s.flameSpec && (!flameSlot || s.weight > flameSlot.weight)) flameSlot = s;
+      if (s.slime >= 0 && (!slimeSlot || s.weight > slimeSlot.weight)) slimeSlot = s;
+      if (s.eco >= 0 && (!ecoSlot || s.weight > ecoSlot.weight)) ecoSlot = s;
+      if (s.flock >= 0 && (!flockSlot || s.weight > flockSlot.weight)) flockSlot = s;
+    }
     if (fluidSlot && eng.hq) {
       if (!this.fluid) {
         this.fluid = new Fluid(gl, eng.fs);
@@ -969,7 +982,6 @@ export class Stage {
       this.fluid.step(sdt, this.sig.clock, cp.fnoise * (0.3 + 0.7 * F.act) * (0.3 + 0.7 * F.stem[3]) * 0.5 * sdt * 60, cp.vort, F.aspect);
     }
     // Water ripples (AVS Water Bump): drops on the beats, a big one on each drop, damped by the trail length.
-    const waterSlot = slots.filter((s) => s.genome.carrier.kind !== 'none' && s.genome.carrier.p.water > 0.001).sort((a, b) => b.weight - a.weight)[0];
     if (waterSlot && eng.hq) {
       if (!this.water) {
         this.water = new Water(gl, eng.fs);
@@ -986,9 +998,7 @@ export class Stage {
       if (F.dropStart) this.water.drop(0.5, 0.5, r * 3, 2.5);
       this.water.step(Math.min(0.994, 0.972 + 0.006 * Math.log2(1 + cp.halfLife * 4)), F.aspect);
     }
-    const partSlot = slots.filter((s) => s.sparks >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (partSlot && eng.hq) this.updateParticles(partSlot, sdt, !!fluidSlot);
-    const flameSlot = slots.filter((s) => s.flameSpec).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flameSlot && eng.hq) {
       if (!this.flame) this.flame = new Flame(gl, eng.fs);
       const spec = flameSlot.flameSpec!;
@@ -999,13 +1009,10 @@ export class Stage {
       });
     }
 
-    const slimeSlot = slots.filter((s) => s.slime >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
-    const ecoSlot = slots.filter((s) => s.eco >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
-    const flockSlot = slots.filter((s) => s.flock >= 0).sort((a, b) => b.weight - a.weight)[0] ?? null;
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
     for (const s of slots) if (s.progs.land) this.landPass(s, sdt);

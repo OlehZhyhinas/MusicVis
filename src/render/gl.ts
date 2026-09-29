@@ -39,9 +39,19 @@ function compile(gl: GL, type: number, src: string, name: string): WebGLShader {
   return sh;
 }
 
+interface UniformState {
+  loc: WebGLUniformLocation | null;
+  cacheable: boolean;
+  kind: number;
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
 export class Program {
   readonly prog: WebGLProgram;
-  private locs = new Map<string, WebGLUniformLocation | null>();
+  private uniforms = new Map<string, UniformState>();
   private texUnit = 0;
 
   constructor(
@@ -77,39 +87,58 @@ export class Program {
     return this;
   }
 
-  loc(name: string): WebGLUniformLocation | null {
-    let l = this.locs.get(name);
-    if (l === undefined) {
-      l = this.gl.getUniformLocation(this.prog, name);
-      this.locs.set(name, l);
+  private uniform(name: string): UniformState {
+    // WebGL accepts both spellings for an array's first element. Other indexed
+    // elements are uncached so bulk uploads cannot leave stale element values.
+    const key = name.endsWith('[0]') ? name.slice(0, -3) : name;
+    let u = this.uniforms.get(key);
+    if (!u) {
+      u = { loc: this.gl.getUniformLocation(this.prog, name), cacheable: !key.includes('['), kind: 0, x: 0, y: 0, z: 0, w: 0 };
+      this.uniforms.set(key, u);
     }
-    return l;
+    return u;
+  }
+
+  /** Expose a raw location; callers may retain it, so its value cannot be cached. */
+  loc(name: string): WebGLUniformLocation | null {
+    const u = this.uniform(name);
+    u.cacheable = false;
+    u.kind = 0;
+    return u.loc;
+  }
+
+  /** Uniform state belongs to the program, including when stages share it. */
+  private changed(n: string, kind: number, x: number, y = 0, z = 0, w = 0): WebGLUniformLocation | null {
+    const u = this.uniform(n);
+    if (!u.loc) return null;
+    if (u.cacheable && u.kind === kind && Object.is(u.x, x) && Object.is(u.y, y) && Object.is(u.z, z) && Object.is(u.w, w)) return null;
+    u.kind = kind;
+    u.x = x; u.y = y; u.z = z; u.w = w;
+    return u.loc;
   }
 
   f1(n: string, x: number): this {
-    const l = this.loc(n);
+    const l = this.changed(n, 1, x);
     if (l) this.gl.uniform1f(l, x);
     return this;
   }
   f2(n: string, x: number, y: number): this {
-    const l = this.loc(n);
+    const l = this.changed(n, 2, x, y);
     if (l) this.gl.uniform2f(l, x, y);
     return this;
   }
   f3(n: string, x: number, y: number, z: number): this {
-    const l = this.loc(n);
+    const l = this.changed(n, 3, x, y, z);
     if (l) this.gl.uniform3f(l, x, y, z);
     return this;
   }
   f4(n: string, x: number, y: number, z: number, w: number): this {
-    const l = this.loc(n);
+    const l = this.changed(n, 4, x, y, z, w);
     if (l) this.gl.uniform4f(l, x, y, z, w);
     return this;
   }
   v3(n: string, v: ArrayLike<number>): this {
-    const l = this.loc(n);
-    if (l) this.gl.uniform3f(l, v[0], v[1], v[2]);
-    return this;
+    return this.f3(n, v[0], v[1], v[2]);
   }
   f1v(n: string, v: Float32Array): this {
     const l = this.loc(n);
@@ -122,20 +151,18 @@ export class Program {
     return this;
   }
   i1(n: string, x: number): this {
-    const l = this.loc(n);
+    const l = this.changed(n, 5, x);
     if (l) this.gl.uniform1i(l, x);
     return this;
   }
   /** Bind a texture to the next free unit and point the sampler at it. */
   tex(n: string, t: WebGLTexture | null): this {
     // Shared uniform setup includes samplers that this shader may have optimized out.
-    const l = this.loc(n);
-    if (l === null) return this;
+    if (this.uniform(n).loc === null) return this;
     const unit = this.texUnit++;
     this.gl.activeTexture(this.gl.TEXTURE0 + unit);
     this.gl.bindTexture(this.gl.TEXTURE_2D, t);
-    this.gl.uniform1i(l, unit);
-    return this;
+    return this.i1(n, unit);
   }
 
   dispose(): void {
