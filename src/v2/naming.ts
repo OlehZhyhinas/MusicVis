@@ -304,6 +304,7 @@ function traits(g: Genome): Trait[] {
       case 'bob': add('breathing', BREATHING, k * clamp01(0.3 + mp.amp * 0.3)); break;
       case 'drift': add('drift', DRIFT, k * clamp01(0.3 + (Math.abs(mp.vx) + Math.abs(mp.vy)) * 20)); break;
       case 'circle': add('orbital', ORBITAL, k * clamp01(0.4 + mp.radius * 8)); break;
+      case 'weave': add('orbital', ORBITAL, k * clamp01(0.4 + mp.radius * 3 + mp.height * 3)); break;
       case 'recoil': add('surging', SURGING, k * clamp01(0.3 + mp.distance * 4 + Math.abs(mp.tilt))); break;
       case 'hits': add('darting', DARTING, k * clamp01(0.4 + mp.amt * 0.4)); break;
       case 'pulse': add('surging', SURGING, k * clamp01(0.4 + mp.amp * 2)); break;

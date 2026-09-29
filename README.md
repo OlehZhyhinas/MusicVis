@@ -39,6 +39,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   tightens the branching waves, and melody register changes the curve wavelength.
   Feather bodies add curved vanes, fine barbs, and surface sheen in Peacock Quill
   (X69), Gilded Plumage (X70), and Kingfisher Brocade (X71).
+  Figure-eight weave motion adds phased flight and banking turns in Swallow Waltz
+  (X72), Loom of Light (X73), and Porcelain Procession (X74). Swing, held notes,
+  and harmonic tension reshape their paths.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

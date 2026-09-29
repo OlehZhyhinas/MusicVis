@@ -120,6 +120,7 @@ export const ENTRIES: Record<string, string> = {
   'motion.drift': 'constant slow velocity, wraps at edges.',
   'motion.circle': 'small loop, period=bars.',
   'motion.hits': 'jolts/turns on drum hits.',
+  'motion.weave': 'figure-eight flight around each resting position, locked to musical bars. radius=horizontal excursion; height=vertical excursion; period=bars/loop; angle=rotate the path in turns; stagger=phase gap per copy in turns; bank=periodic tilt in radians; counter=1 reverses odd copies. Bass can widen the loop; swing can open its height.',
   'motion.recoil': 'an onset kicks a damped spring, then the body overshoots and settles. source 0 drums,1 melody note starts,2 bass onsets,3 vocal onsets,4 other onsets; distance=travel; direction=travel angle in turns; tilt=turn in radians; frequency=oscillations/second; damping=settling strength(1 no overshoot); fan=spread of directions across copies.',
   'motion.pulse': 'size kick on beat.',
 

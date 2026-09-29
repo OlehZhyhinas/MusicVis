@@ -44,6 +44,7 @@ import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
 import { packUndulate } from './genes/undulate';
+import { weaveOffset } from './genes/weave';
 import { recoilImpulse, stepRecoil } from './genes/recoil';
 import { packPlume } from './genes/plume';
 import { packShell } from './genes/shell';
@@ -1898,6 +1899,11 @@ export class Stage {
             set('hs', approach(mm('hs'), mm('ha'), 1 / Math.max(0.02, P('glide')), sdt));
           }
           c.a += mm('hs');
+          break;
+        }
+        case 'weave': {
+          const offset = weaveOffset(P, this.clk.bars, i);
+          c.x += offset.x; c.y += offset.y; c.a += offset.tilt;
           break;
         }
         case 'recoil': {

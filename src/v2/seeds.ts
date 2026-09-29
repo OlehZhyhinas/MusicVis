@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 167;
+export const SEED_VERSION = 168;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4305,7 +4305,77 @@ const PLUME_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES];
+const WEAVE_STUDIES: Def[] = [
+  {
+    origin: 'X72', name: 'Swallow Waltz', energy: [0.05, 0.85], scheme: 'free', hue: 0.48,
+    pal: { key: 0, s1: 0.16, s2: 0.5 },
+    color: { exposure: 1, sat: 0.7, bloom: 0.3, adapt: 0.12, vignette: 0.4, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['aurora', { fall: 4, rays: 14, wav: 0.7 }], place: ['point', { y: -0.42 }],
+      material: ['fill', { gain: 0.35 }], emit: ['none'], color: ['fixed', { hue: 0.25 }],
+    }), body({
+      shape: ['plume', { size: 0.2, width: 0.3, bend: 0.4, taper: 0.9, barbs: 26, split: 0.35, sheen: 0.7 }],
+      place: ['row', { count: 3, y: 0.03, wander: 0, angle: -0.08 }],
+      motion: ['weave', { radius: 0.14, height: 0.08, period: 4, stagger: 0.22, bank: 0.65, counter: 1 }],
+      material: ['fill', { gain: 1.4, soft: 0.005 }], emit: ['none'],
+      color: ['instrument', { hue: 0, amount: 0.3, detail: 0.8 }],
+    })],
+    reactions: [
+      rx('swing', 'mo', 1, 'height', 0.5, { atk: 0.3, rel: 0.8 }),
+      rx('bass', 'mo', 1, 'radius', 0.35, { atk: 0.2, rel: 0.6 }),
+      rx('legato', 'mo', 1, 'bank', -0.25, { atk: 0.35, rel: 0.8 }),
+      rx('rising', 'sh', 1, 'bend', 0.3, { atk: 0.2, rel: 0.6 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.1 },
+  },
+  {
+    origin: 'X73', name: 'Loom of Light', energy: [0.1, 0.95], scheme: 'free', hue: 0.57,
+    pal: { key: 0, s1: 0.23, s2: 0.48 },
+    color: { exposure: 0.95, sat: 0.75, bloom: 0.4, adapt: 0.1, vignette: 0.25, contrast: 0.01, ca: 0 },
+    carrier: 'warp', car: { halfLife: 0.7, floor: 0.1, blur: 0 },
+    chain: [op('zoom', { rate: 0.001 })],
+    bodies: [body({
+      shape: ['superscope', { family: 0, p: 2, q: 5, size: 0.16, audio: 0.04, spinX: 0.0625, spinY: -0.0625, persp: 0.25, n: 2048 }],
+      place: ['orbit', { count: 3, radius: 0.05, rate: 0, follow: 0 }],
+      motion: ['weave', { radius: 0.26, height: 0.14, period: 4, stagger: 0.33, bank: 0.3, counter: 1 }],
+      material: ['line', { gain: 0.6, width: 0.9, halo: 0 }], emit: ['trail'],
+      color: ['height', { hue: 0, amount: 0.5, detail: 0.9 }],
+    })],
+    reactions: [
+      rx('held', 'mo', 0, 'height', 0.35, { atk: 0.3, rel: 0.7 }),
+      rx('synco', 'mo', 0, 'bank', 0.4, { atk: 0.25, rel: 0.8 }),
+      rx('register', 'sh', 0, 'size', 0.18, { atk: 0.35, rel: 0.7 }),
+      rx('hook', 'ma', 0, 'gain', 0.08, { atk: 0.08, rel: 0.45 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.1 },
+  },
+  {
+    origin: 'X74', name: 'Porcelain Procession', energy: [0.05, 0.9], scheme: 'free', hue: 0.08,
+    pal: { key: 0, s1: 0.12, s2: 0.48 },
+    color: { exposure: 1, sat: 0.5, bloom: 0.3, adapt: 0.1, vignette: 0.35, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['cells', { mode: 2, scale: 1.6, warp: 0.5, fill: 0.5, wall: 0, speed: 0.05, var: 0.1, pulse: 0 }],
+      material: ['fill', { gain: 0.1 }], emit: ['none'], color: ['fixed', { hue: 0.5 }],
+    }), body({
+      shape: ['shell', { size: 0.1, turns: 2.2, growth: 0.24, width: 0.25, ribs: 32, relief: 0.6, aperture: 0.5 }],
+      place: ['orbit', { count: 4, radius: 0.13, rate: 0, follow: 0 }],
+      motion: ['weave', { radius: 0.24, height: 0.12, period: 8, angle: 0.08, stagger: 0.25, bank: 0.45, counter: 0 }],
+      material: ['fill', { gain: 1.6, soft: 0.005 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.25, detail: 0.7 }],
+    })],
+    reactions: [
+      rx('tension', 'mo', 1, 'radius', -0.5, { atk: 0.4, rel: 0.9 }),
+      rx('resolve', 'mo', 1, 'height', 0.4, { atk: 0.25, rel: 0.8 }),
+      rx('bright', 'sh', 1, 'relief', 0.35, { atk: 0.2, rel: 0.6 }),
+      rx('noteon', 'ma', 1, 'gain', 0.1, { atk: 0.05, rel: 0.45 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.1 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
