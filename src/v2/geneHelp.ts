@@ -62,6 +62,14 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'shape.fabric.aspect': 'Width of the sheet relative to its height.',
+  'shape.fabric.depth': 'Strength of the pleat lighting and scalloped edges.',
+  'shape.branch.spread': 'Angle between each branch and its parent, in radians.',
+  'shape.branch.width': 'Thickness of the first limb; later branches taper.',
+  'shape.folds': 'Number of pleats across the fabric.',
+  'shape.drape': 'How much the middle of the sheet sags.',
+  'shape.weave': 'Visibility of the fine woven threads.',
+  'shape.flutter': 'Amount of rippling along the fabric and its hem.',
   'shape.levels': 'Number of branching generations.',
   'shape.grow': 'How far the branches have grown; reveals successive generations.',
   'shape.ratio': 'Length of each child branch relative to its parent.',

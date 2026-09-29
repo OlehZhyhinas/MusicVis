@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 158;
+export const SEED_VERSION = 159;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3660,6 +3660,42 @@ const STUDIES: Def[] = [
 
 // New body families: starter parents whose structure survives crossover and mutation.
 const BODY_STUDIES: Def[] = [
+  {
+    origin: 'X48', name: 'Iridescent Sail', energy: [0.05, 0.85], scheme: 'free', hue: 0.57,
+    pal: { key: 0, s1: 0.3, s2: 0.94 },
+    color: { exposure: 1, bloom: 0.45, adapt: 0.15, vignette: 0.35 }, carrier: 'none',
+    bodies: [body({
+      shape: ['fabric', { size: 0.3, aspect: 1.55, folds: 9, depth: 0.85, drape: 0.55, weave: 0.3, flutter: 0.4 }],
+      place: ['point', { y: 0.1, angle: -0.06 }], motion: ['sway', { amp: 0.025, period: 8, tilt: 0.15 }],
+      material: ['fill', { gain: 1.3, soft: 0.01 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.65, detail: 1 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'depth', 0.25, { atk: 0.1, rel: 0.55 }),
+      rx('held', 'sh', 0, 'drape', 0.4, { atk: 0.2, rel: 0.7 }),
+      rx('hit', 'sh', 0, 'flutter', 0.3, { atk: 0.04, rel: 0.45 }),
+      rx('noteon', 'ma', 0, 'gain', 0.25, { atk: 0.03, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.2 },
+  },
+  {
+    origin: 'X49', name: 'Ribbon Assembly', energy: [0.2, 0.95], scheme: 'free', hue: 0.08,
+    pal: { key: 0, s1: 0.46, s2: 0.79 },
+    color: { exposure: 0.9, bloom: 0.6, adapt: 0.15, vignette: 0.4 }, carrier: 'none',
+    bodies: [body({
+      shape: ['fabric', { size: 0.19, aspect: 0.28, folds: 4, depth: 0.75, drape: 0.25, weave: 0.1, flutter: 0.65 }],
+      place: ['ring', { n: 9, radius: 0.25 }], motion: ['spin', { rate: -0.0625 }],
+      material: ['fill', { gain: 1.15, soft: 0.02, halo: 0.05 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 1, detail: 0.75 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'aspect', 0.12, { atk: 0.05, rel: 0.4 }),
+      rx('held', 'sh', 0, 'flutter', 0.3, { atk: 0.15, rel: 0.6 }),
+      rx('hit', 'ma', 0, 'gain', 0.35, { atk: 0.02, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.25 },
+  },
+
   {
     origin: 'X46', name: 'Coral Cathedral', energy: [0.1, 0.85], scheme: 'free', hue: 0.52,
     pal: { key: 0, s1: 0.38, s2: 0.55 },

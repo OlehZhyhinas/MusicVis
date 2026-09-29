@@ -3,10 +3,11 @@ import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
+import { packFabric } from '../src/v2/genes/fabric';
 import { packBranch } from '../src/v2/genes/branch';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
-export const BODY_FAMILIES: ShapeKind[] = ['branch'];
+export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric'];
 export function bodyFamilyTests(check: Check): void {
   for (const kind of BODY_FAMILIES) {
     const seeds = SEEDS.filter(s => s.genome.bodies.some(b => b.shape.kind === kind));
@@ -30,6 +31,10 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const cloth = new Float32Array(16).fill(-77);
+  const cp = defaultParams(SHAPE_SCHEMAS.fabric);
+  packFabric(cloth, 4, k => k === 'depth' ? 0.83 : cp[k], 2.5);
+  check('fabric.packing', cloth.slice(0,4).every(x=>x===-77) && cloth.slice(12).every(x=>x===-77) && Math.abs(cloth[7]-0.83)<1e-6 && cloth[11]===2.5, 'live pleat depth and musical phase pack without overwriting neighbouring uniforms');
   // Packing must respect the destination offset, and use live reaction values, including on fused shapes.
   const E = new Float32Array(24).fill(-77);
   const p = defaultParams(SHAPE_SCHEMAS.branch);

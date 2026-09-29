@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch' | 'fabric';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -66,7 +66,8 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   flock: ['Murmuration', 'Flock', 'Starlings', 'Shoal', 'Swallows', 'Rookery', 'Covey', 'Wheel', 'Gyre', 'Volery', 'Squadron', 'Exaltation'],
   habitat: ['Ecosystem', 'Tidepool', 'Menagerie', 'Habitat', 'Reef', 'Biome', 'Savanna', 'Terrarium', 'Aviary', 'Wetland', 'Lagoon', 'Wilderness'],
   network: ['Mycelium', 'Plexus', 'Rhizome', 'Veins', 'Capillaries', 'Delta', 'Tracery', 'Filigree', 'Roots', 'Mould', 'Hyphae', 'Reticulum'],
-  branch: ['Coral', 'Roots', 'Antlers', 'Canopy', 'Dendrite', 'Boughs', 'Fronds', 'Sapling'],
+  fabric: ['Satin', 'Silk', 'Drapery', 'Sail', 'Tapestry', 'Pleats', 'Organza', 'Veil'],
+  branch: ['Reef', 'Roots', 'Antlers', 'Canopy', 'Dendrite', 'Boughs', 'Fronds', 'Sapling'],
   cells: ['Cells', 'Foam', 'Membrane', 'Froth', 'Tissue', 'Colony', 'Crackle', 'Scales', 'Vesicles', 'Cytoplasm', 'Lacework', 'Hive'],
   cymatics: ['Chladni', 'Resonance', 'Nodes', 'Overtone', 'Harmonic', 'Sandplate', 'Standing Wave', 'Figure', 'Vibration', 'Drumhead', 'Soundplate', 'Mandorla'],
   melody: ['Melody', 'Refrain', 'Phrase', 'Cadenza', 'Legato', 'Arpeggio', 'Motif', 'Aria', 'Descant', 'Trill', 'Staff', 'Tune'],
@@ -106,6 +107,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'notes': return 'melody';
     case 'curve': return 'wave';
     case 'superscope': return 'scope';
+    case 'fabric': return 'fabric';
     case 'branch': return 'branch';
     case 'compound': return 'figure';
     case 'bars': return 'spectrum';

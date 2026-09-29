@@ -42,6 +42,7 @@ import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids'
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
+import { packFabric } from './genes/fabric';
 import { packBranch } from './genes/branch';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
@@ -201,6 +202,14 @@ export class Signals {
   private wave = new Float32Array(WAVE_N);
   private waveTmp = new Float32Array(WAVE_N);
   readonly spec = new Float32Array(SPEC_N);
+  private spectrumLength = 0;
+  private readonly specStarts = new Uint32Array(SPEC_N);
+  private readonly specEnds = new Uint32Array(SPEC_N);
+  private pitchLogs = new Float64Array(0);
+  private pitchLo = 0;
+  private pitchHi = 0;
+  private pitchLogLo = 0;
+  private pitchLogSpan = 0;
   private rms = 0.1;
   private prevBarPhase = 0;
   private prevDrumOnset = 0;
@@ -356,6 +365,24 @@ export class Signals {
     }
   }
 
+  /** Frequency-bin geometry depends only on input length, not the current audio. */
+  private configureSpectrum(n: number): void {
+    const top = Math.min(n - 1, Math.round(n * 0.78));
+    for (let k = 0; k < SPEC_N; k++) {
+      const a = Math.floor(Math.pow(top, k / SPEC_N));
+      this.specStarts[k] = a;
+      this.specEnds[k] = Math.max(a + 1, Math.floor(Math.pow(top, (k + 1) / SPEC_N)));
+    }
+    this.pitchLo = Math.max(2, Math.round(n * 0.006));
+    this.pitchHi = Math.max(this.pitchLo + 4, Math.round(n * 0.12));
+    // Keep JavaScript's double precision and the original arithmetic order.
+    this.pitchLogs = new Float64Array(this.pitchHi);
+    for (let i = this.pitchLo; i < this.pitchHi; i++) this.pitchLogs[i] = Math.log2(i);
+    this.pitchLogLo = Math.log2(this.pitchLo);
+    this.pitchLogSpan = Math.log2(this.pitchHi) - this.pitchLogLo;
+    this.spectrumLength = n;
+  }
+
   private processAudio(state: MusicState, dt: number): void {
     const gl = this.gl;
     const wf = state.waveform;
@@ -389,28 +416,28 @@ export class Signals {
     const sp = state.spectrum;
     if (sp && sp.length >= 64) {
       const n = sp.length;
-      const top = Math.min(n - 1, Math.round(n * 0.78));
+      if (n !== this.spectrumLength) this.configureSpectrum(n);
       for (let k = 0; k < SPEC_N; k++) {
-        const a = Math.floor(Math.pow(top, k / SPEC_N));
-        const b = Math.max(a + 1, Math.floor(Math.pow(top, (k + 1) / SPEC_N)));
+        const a = this.specStarts[k];
+        const b = this.specEnds[k];
         let s = 0;
         for (let i = a; i < b; i++) s += sp[i];
         const v = clamp01((s / (b - a) - 0.28) / 0.6);
         const cur = this.spec[k];
         this.spec[k] = cur + (v - cur) * (v > cur ? 0.5 : 0.12);
       }
-      const lo = Math.max(2, Math.round(n * 0.006));
-      const hi = Math.max(lo + 4, Math.round(n * 0.12));
+      const lo = this.pitchLo;
+      const hi = this.pitchHi;
       let wsum = 0;
       let lsum = 0;
       for (let i = lo; i < hi; i++) {
         const w = Math.max(0, sp[i] - 0.3);
         const w3 = w * w * w;
         wsum += w3;
-        lsum += w3 * Math.log2(i);
+        lsum += w3 * this.pitchLogs[i];
       }
       if (wsum > 1e-5) {
-        const m = (lsum / wsum - Math.log2(lo)) / (Math.log2(hi) - Math.log2(lo));
+        const m = (lsum / wsum - this.pitchLogLo) / this.pitchLogSpan;
         this.F.melody += (clamp01(m) - this.F.melody) * (1 - Math.exp(-dt * 5));
       }
     }
@@ -1954,6 +1981,7 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'fabric': return packFabric(E, o, P, this.clk.spin * 0.125);
       case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);
       case 'compound': {
         // Several primitives in one field: the size scales the figure; the parts go to the body's extra array.
