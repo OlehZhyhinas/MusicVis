@@ -4,6 +4,7 @@
 import { SIGNALS, COST_BUDGET_MS, estimateCost, repair } from '../src/v2/genome';
 import { NOTE_MARKS, NOTE_SEC, NOTE_W, NoteHistory, packNotes } from '../src/v2/genes/notes';
 import { seedChecks, shapeGeneChecks } from './v2-physics';
+import { melodySignal } from '../src/v2/melodySignals';
 import type { NoteStats } from '../src/types';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
@@ -15,6 +16,29 @@ export function notesGeneTests(check: Check): void {
 
   shapeGeneChecks(check, 'notes', 'vec4 ntAt(', 'melody', null);
   for (const id of ['N01', 'N02', 'N03', 'N04', 'N05']) seedChecks(check, id, 'notes');
+
+  // Pitch position is independent of loudness; direction discards vibrato, not its sign.
+  {
+    const rising = stats({ height: 0.8, held: 0.4, glide: 6, vibrato: 0.5 });
+    const falling = stats({ ...rising, glide: -18 });
+    check('notes.direction', melodySignal('rising', rising) === 0.5 && melodySignal('falling', rising) === 0
+      && melodySignal('rising', falling) === 0 && melodySignal('falling', falling) === 1,
+      'opposite directions remain separate, saturating at an octave/second');
+    check('notes.register', melodySignal('register', rising) === 0.8
+      && melodySignal('register', stats({ ...rising, held: 0 })) === 0.8,
+      'height retains its position through note gaps');
+    check('notes.direction-gaps', melodySignal('rising', stats({ ...rising, held: 0 })) === 0
+      && melodySignal('falling', stats({ ...falling, held: 0 })) === 0,
+      'stale slopes cannot animate a silent note');
+    check('notes.missing-analysis', melodySignal('register') === 0.5 && melodySignal('rising') === 0
+      && melodySignal('falling') === 0, 'neutral position, no directional gesture');
+    check('notes.invalid-analysis', melodySignal('register', stats({ height: NaN })) === 0.5
+      && melodySignal('register', stats({ height: 2 })) === 1
+      && melodySignal('register', stats({ height: -1 })) === 0
+      && melodySignal('rising', stats({ held: 1, glide: Infinity })) === 0
+      && melodySignal('rising', stats({ held: NaN, glide: 12 })) === 0,
+      'malformed analysis stays finite and bounded');
+  }
 
   // History: samples every NOTE_SEC / NOTE_W s, newest first; gaps drop the held strength; marks
   // carry age, length, height and a negative strength once ended.

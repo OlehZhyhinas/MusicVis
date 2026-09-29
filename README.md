@@ -33,6 +33,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   do so more often. Rare families get equal chances before fitness chooses an
   individual. Explore/Wild keep rejecting familiar children through every retry,
   so a breeding batch can be smaller when no novel child passes.
+- Melodic gestures: `register` follows tracked note height; `rising` and `falling`
+  separate upward and downward slides, with vibrato removed. Songbird Mobile (X52)
+  and Portamento Loom (X53) connect those gestures to position, articulation and pleats.
 - Gene editor: change any gene of the playing preset and see it immediately.
 - Gene chat (desktop, WebGPU): describe a change in words ("calmer", "more
   blue", "fill the screen") and a language model running on your GPU edits

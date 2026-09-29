@@ -5,6 +5,7 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { melodySignal } from './melodySignals';
 import { packSuperscope } from './genes/superscope';
 import { resetCurveBlend, setCurveBlend } from './genes/blend';
 import { Water } from './genes/waterSim';
@@ -480,6 +481,9 @@ export class Signals {
       case 'noisy': return num(F.timbre?.mix.noise, 0);
       case 'rough': return num(F.timbre?.mix.rough, 0);
       case 'attack': return num(F.timbre?.mix.attack, 0);
+      case 'register':
+      case 'rising':
+      case 'falling': return melodySignal(s, F.notes);
       case 'noteon': return num(F.notes?.on, 0);
       case 'held': return num(F.notes?.held, 0);
       case 'legato': return num(F.notes?.legato, 0.5);

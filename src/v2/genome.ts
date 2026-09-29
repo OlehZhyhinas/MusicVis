@@ -589,7 +589,7 @@ export interface CarrierGene {
 // Hooks (src/analysis/hooks.ts, the song's repeated riff or sung motif): hook = a pulse at the start of
 // each repeat and at each note of the motif (the same rhythm every repeat); hookphase = 0..1 through the
 // repeat; hookon = 1 while a repeat plays.
-export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal', 'bright', 'noisy', 'rough', 'attack', 'noteon', 'held', 'legato', 'glide', 'vibrato', 'voice', 'hook', 'hookphase', 'hookon'] as const;
+export const SIGNALS = ['drums', 'bass', 'vocals', 'other', 'hit', 'beat', 'bar', 'complexity', 'drop', 'loud', 'melody', 'build', 'surge', 'barpulse', 'section', 'tension', 'resolve', 'chordchange', 'modulation', 'swing', 'push', 'humanity', 'synco', 'line', 'valence', 'arousal', 'bright', 'noisy', 'rough', 'attack', 'noteon', 'held', 'legato', 'glide', 'vibrato', 'voice', 'hook', 'hookphase', 'hookon', 'register', 'rising', 'falling'] as const;
 export type Signal = (typeof SIGNALS)[number];
 /**
  * Reaction targets. op: chain[i]; car / col / pal: the carrier / tone / palette (i = 0); body loci,

@@ -49,15 +49,16 @@ REACTIONS(signal->1 parameter+gain; up to 6; 1 reaction/parameter): drums/bass/v
 instrument level. hit=drum trigger. beat=pulse/beat. bar=slow wave/bar. complexity=mix busyness.
 drop=structural drop. loud=overall loudness. melody=melody activity. build=tension pre-drop.
 surge=beat envelope, cruises w/loudness, jumps on drops. barpulse=pulse/downbeat. section=pulse on
-section change. tension=harmonic tension 0..1(chord far from home key/dissonant). resolve=pulse when
-harmony resolves to the tonic(V-I etc, sized by tension released). chordchange=pulse per chord change.
-modulation=pulse on a key change. swing=how swung the playing is(0 straight..1 triplet). push=how far
-the backbeat leans off the grid(laid back or pushed). humanity=how loose/human the timing is. synco=
-syncopation density(hits on weak off-beats). bright=how bright the sound is. noisy=how noisy(breath,
+section change. tension=harmonic distance/dissonance. resolve=tonic resolution pulse, sized by released
+tension. chordchange=pulse per chord change.
+modulation=key-change pulse. swing=0 straight..1 triplet. push=backbeat offset from grid.
+humanity=timing looseness. synco=offbeat accent density. bright=how bright the sound is. noisy=how noisy(breath,
 distortion,cymbals). rough=how rough/buzzy/beating. attack=how sharp the onsets are(plucks, hits).
 noteon=pulse at each melody note start. held=strength of the held melody note(0 between notes).
 legato=0 staccato(short detached notes)..1 legato(held,tied,gliding). glide=how fast the pitch
-slides. vibrato=vibrato depth. voice=how sung the melody sounds(0 steady synth lead..1 voice).
+slides. register=note height 0 low..1 high, holds last between notes(.5 if unavailable).
+rising/falling=up/down pitch slides, 1 at 12 semitones/s, 0 between notes; no vibrato.
+vibrato=vibrato depth. voice=how sung the melody sounds(0 steady synth lead..1 voice).
 hook=pulse per note of the song's riff/hook(same each repeat). hookphase=0..1 through a repeat.
 hookon=1 during one.
 line=pulse per sung line. valence=words' mood 0 sad..1 happy. arousal=words' intensity(music's

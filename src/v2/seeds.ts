@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 160;
+export const SEED_VERSION = 161;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3769,7 +3769,67 @@ const BODY_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES];
+// Musical gestures composed from existing bodies, with pitch direction kept distinct.
+const MUSIC_STUDIES: Def[] = [
+  {
+    origin: 'X52', name: 'Songbird Mobile', energy: [0.05, 0.85], scheme: 'free', hue: 0.08,
+    pal: { key: 0, s1: 0.48, s2: 0.83 },
+    color: { exposure: 1, bloom: 0.55, adapt: 0.12, vignette: 0.25 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['linkage', { size: 0.34, joints: 7, width: 0.065, curl: -0.24, flex: 0.08, taper: 0.91, knuckle: 0.95 }],
+        place: ['point', { x: -0.26, y: -0.2, angle: -0.16 }],
+        material: ['line', { gain: 1.3, width: 2, halo: 0.05 }], emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 0.5 }],
+      }),
+      body({
+        shape: ['linkage', { size: 0.29, joints: 6, width: 0.1, curl: 0.3, flex: 0.08, taper: 0.93, knuckle: 0.75 }],
+        place: ['point', { x: 0.28, y: 0.12, angle: 0.34 }],
+        material: ['fill', { gain: 1.4, soft: 0.02, halo: 0.03 }], emit: ['none'],
+        color: ['fixed', { hue: 0.48, detail: 0.8 }],
+      }),
+    ],
+    reactions: [
+      rx('register', 'pl', 0, 'y', 0.85, { atk: 0.15, rel: 0.25 }),
+      rx('register', 'pl', 1, 'y', -0.65, { atk: 0.15, rel: 0.25 }),
+      rx('rising', 'sh', 0, 'flex', 1, { atk: 0.06, rel: 0.4 }),
+      rx('falling', 'sh', 1, 'flex', 1, { atk: 0.06, rel: 0.4 }),
+      rx('hit', 'sh', 0, 'knuckle', -0.6, { atk: 0.02, rel: 0.25 }),
+      rx('noteon', 'ma', 1, 'gain', 0.25, { atk: 0.02, rel: 0.25 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.2 },
+  },
+  {
+    origin: 'X53', name: 'Portamento Loom', energy: [0.05, 0.9], scheme: 'free', hue: 0.57,
+    pal: { key: 0, s1: 0.38, s2: 0.91 },
+    color: { exposure: 0.95, bloom: 0.35, adapt: 0.12, vignette: 0.3 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['fabric', { size: 0.29, aspect: 0.72, folds: 7, depth: 0.8, drape: 0.2, weave: 0.65, flutter: 0.08 }],
+        place: ['point', { x: -0.25, y: 0.08, angle: -0.12 }],
+        material: ['fill', { gain: 1.4, soft: 0.008 }], emit: ['none'],
+        color: ['height', { hue: 0, amount: 0.55, detail: 1 }],
+      }),
+      body({
+        shape: ['fabric', { size: 0.24, aspect: 0.62, folds: 5, depth: 0.85, drape: 0.2, weave: 0.2, flutter: 0.08 }],
+        place: ['point', { x: 0.29, y: -0.08, angle: 0.15 }],
+        material: ['line', { gain: 1.5, width: 1.8, halo: 0.08 }], emit: ['none'],
+        color: ['height', { hue: 0.4, amount: 0.6, detail: 1 }],
+      }),
+    ],
+    reactions: [
+      rx('rising', 'sh', 0, 'drape', 1, { atk: 0.08, rel: 0.4 }),
+      rx('falling', 'sh', 1, 'drape', 1, { atk: 0.08, rel: 0.4 }),
+      rx('register', 'sh', 0, 'folds', 0.8, { atk: 0.15, rel: 0.3 }),
+      rx('vibrato', 'sh', 1, 'flutter', 0.9, { atk: 0.1, rel: 0.4 }),
+      rx('held', 'sh', 0, 'aspect', 0.35, { atk: 0.2, rel: 0.5 }),
+      rx('noteon', 'ma', 1, 'gain', 0.3, { atk: 0.02, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.2 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
