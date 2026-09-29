@@ -1,4 +1,4 @@
-// Controlled pitch gestures through the real Signals -> reactions -> WebGL path.
+// Controlled musical gestures through the real Signals -> reactions -> WebGL path.
 // The standard ReferenceClip has no note analysis, so supply it explicitly here.
 // Run: node --import ./scripts/analysis-test.hooks.mjs scripts/avq/musicGestures.ts
 import { ensureServers, Tab } from './cdp';
@@ -11,12 +11,29 @@ try {
     const { SEEDS } = await import('/src/v2/seeds.ts');
     const { ReferenceClip } = await import('/src/v2/fingerprint.ts');
     const eng = new Engine(document.createElement('canvas'));
-    const ids = ['X52', 'X53'];
+    const ids = ['X52', 'X53', 'X54', 'X55', 'X56'];
     const gestures = [
       { label: 'low / falling', height: 0.15, glide: -9 },
       { label: 'middle / steady', height: 0.5, glide: 0 },
       { label: 'high / rising', height: 0.85, glide: 9 },
     ];
+    const extraGestures = {
+      X54: [
+        { label: 'home chord', height: 0.5, glide: 0, state: { chord: 0, tension: 0, resolvePulse: 0 } },
+        { label: 'harmonic tension', height: 0.5, glide: 0, state: { chord: 7, tension: 0.9, resolvePulse: 0 } },
+        { label: 'resolution', height: 0.5, glide: 0, state: { chord: 0, tension: 0, resolvePulse: 0.9 } },
+      ],
+      X55: [
+        { label: 'straight', height: 0.5, glide: 0, state: { groove: { swing: 0, push: 0, humanity: 0, synco: 0 } } },
+        { label: 'swung', height: 0.5, glide: 0, state: { groove: { swing: 0.7, push: 0.3, humanity: 0.3, synco: 0.3 } } },
+        { label: 'syncopated', height: 0.5, glide: 0, state: { groove: { swing: 0.2, push: -0.2, humanity: 0.5, synco: 0.9 } } },
+      ],
+      X56: [
+        { label: 'refrain start', height: 0.3, glide: 0, state: { hookPhase: 0.1, hookOn: 1, hookId: 0 } },
+        { label: 'refrain middle', height: 0.6, glide: 0, state: { hookPhase: 0.5, hookOn: 1, hookId: 0 } },
+        { label: 'refrain end', height: 0.45, glide: 0, state: { hookPhase: 0.9, hookOn: 1, hookId: 0 } },
+      ],
+    };
     const sheet = document.createElement('canvas'); sheet.width = 1920; sheet.height = ids.length * 394;
     const ctx = sheet.getContext('2d'); ctx.fillStyle = '#111'; ctx.fillRect(0, 0, sheet.width, sheet.height);
     const errors = [], checked = [];
@@ -25,12 +42,12 @@ try {
       const programs = eng.cache.get(g, true);
       if (!programs) { errors.push(id + ': compile failed'); continue; }
       const shots = [];
-      for (const [col, gesture] of gestures.entries()) {
+      for (const [col, gesture] of (extraGestures[id] ?? gestures).entries()) {
         const st = new Stage(eng, { offscreen: true }); st.resize(640, 360);
         const slot = st.makeSlot(g, programs); st.slots = [slot];
         const clip = new ReferenceClip(); clip.seek(8);
         for (let f = 0; f < 90; f++) {
-          const state = clip.next();
+          const state = Object.assign(clip.next(), gesture.state ?? {});
           state.notes = { on: 0, held: 0.8, legato: 0.7, glide: gesture.glide, vibrato: 0.1,
             pitch: 48 + gesture.height * 24, height: gesture.height, voice: 0.7, recent: [] };
           st.render(state, 1 / 60, 'out');

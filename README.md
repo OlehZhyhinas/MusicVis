@@ -36,6 +36,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
 - Melodic gestures: `register` follows tracked note height; `rising` and `falling`
   separate upward and downward slides, with vibrato removed. Songbird Mobile (X52)
   and Portamento Loom (X53) connect those gestures to position, articulation and pleats.
+  Cadence Conservatory (X54) opens with harmonic tension and resolution; Offbeat
+  Letterpress (X55) follows swing and syncopation; Refrain Lantern (X56) travels
+  through each detected hook while note height traces its vertical path.
 - Gene editor: change any gene of the playing preset and see it immediately.
 - Gene chat (desktop, WebGPU): describe a change in words ("calmer", "more
   blue", "fill the screen") and a language model running on your GPU edits

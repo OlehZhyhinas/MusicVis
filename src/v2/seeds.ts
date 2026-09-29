@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 161;
+export const SEED_VERSION = 162;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3784,7 +3784,7 @@ const MUSIC_STUDIES: Def[] = [
       }),
       body({
         shape: ['linkage', { size: 0.29, joints: 6, width: 0.1, curl: 0.3, flex: 0.08, taper: 0.93, knuckle: 0.75 }],
-        place: ['point', { x: 0.28, y: 0.12, angle: 0.34 }],
+        place: ['point', { x: 0.28, y: -0.05, angle: 0.34 }],
         material: ['fill', { gain: 1.4, soft: 0.02, halo: 0.03 }], emit: ['none'],
         color: ['fixed', { hue: 0.48, detail: 0.8 }],
       }),
@@ -3826,6 +3826,113 @@ const MUSIC_STUDIES: Def[] = [
       rx('noteon', 'ma', 1, 'gain', 0.3, { atk: 0.02, rel: 0.3 }),
     ],
     accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.2 },
+  },
+  {
+    origin: 'X54', name: 'Cadence Conservatory', energy: [0.05, 0.9], scheme: 'free', hue: 0.1,
+    pal: { key: 0, s1: 0.45, s2: 0.77 },
+    color: { exposure: 1, bloom: 0.6, adapt: 0.15, vignette: 0.4 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.29 }],
+        parts: [
+          part('box', 'union', { sx: 0.85, sy: 1.3, m: 0.65 }),
+          part('box', 'subtract', { sx: 0.7, sy: 1.15, m: 0.65, k: 0 }),
+          part('capsule', 'union', { y: -1.32, sx: 0.025, sy: 1.02, rot: 0.25, hue: 0.33 }),
+        ],
+        place: ['mirror', { axis: 0, x: 0.31, y: 0 }],
+        material: ['line', { gain: 1.2, width: 1.3, halo: 0.04 }], emit: ['none'],
+        color: ['fixed', { detail: 0.9 }],
+      }),
+      body({
+        shape: ['branch', { size: 0.35, width: 0.045, levels: 6, ratio: 0.66, spread: 0.5, grow: 0.83, bend: 0.01 }],
+        place: ['mirror', { axis: 0, x: 0.31, y: -0.03 }],
+        material: ['line', { gain: 1.6, width: 1.7, halo: 0.08 }], emit: ['none'],
+        color: ['height', { hue: 0.42, amount: 0.6, detail: 0.9 }],
+      }),
+    ],
+    reactions: [
+      rx('tension', 'sh', 1, 'spread', 0.65, { atk: 0.3, rel: 0.65 }),
+      rx('resolve', 'sh', 1, 'grow', 0.4, { atk: 0.12, rel: 1.8 }),
+      rx('register', 'pl', 1, 'y', 0.16, { atk: 0.15, rel: 0.3 }),
+      rx('chordchange', 'ma', 0, 'gain', 0.3, { atk: 0.05, rel: 0.6 }),
+      rx('bass', 'sh', 1, 'width', 0.15, { atk: 0.08, rel: 0.4 }),
+    ],
+    harmony: { brk: 0.4, warp: 0.22, style: 0, snap: 0.2, walk: 0.045, kick: 0.1, modTurn: 0, calm: 0.2 },
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.1, section: 0.1 },
+  },
+  {
+    origin: 'X55', name: 'Offbeat Letterpress', energy: [0.15, 0.95], scheme: 'free', hue: 0.075,
+    pal: { key: 0, s1: 0.54, s2: 0.88 },
+    color: { exposure: 0.85, bloom: 0.05, adapt: 0.1, vignette: 0.12, contrast: 0, sat: 0.8 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.6 }],
+        parts: [part('box', 'union', { sx: 2, sy: 1.2, hue: 0.72 })],
+        material: ['fill', { gain: 1.5, soft: 0 }], emit: ['none'], color: ['fixed', { detail: 1 }],
+      }),
+      body({
+        shape: ['compound', { size: 0.15 }],
+        parts: [
+          part('ellipse', 'union', { sx: 0.9, sy: 1.2 }),
+          part('box', 'subtract', { x: 0.4, y: 0.25, sx: 0.8, sy: 0.36, rot: 0.04, k: 0 }),
+          part('box', 'union', { x: -0.45, y: -0.75, sx: 0.28, sy: 0.9, rot: -0.04, hue: 0.08 }),
+        ],
+        place: ['row', { count: 4, y: 0.08, wander: 0 }],
+        motion: ['sway', { amp: 0.008, period: 1, tilt: 0.06 }],
+        material: ['fill', { gain: 2.1, soft: 0.01, blend: 2 }], emit: ['none'],
+        color: ['instrument', { hue: 0.02, amount: 0.25, detail: 0.5 }],
+      }),
+      body({
+        shape: ['segment', { len: 0.65, w: 0.009 }], place: ['point', { y: -0.29, angle: -0.015 }],
+        material: ['fill', { gain: 1.8, soft: 0.005, blend: 2 }], emit: ['none'],
+        color: ['fixed', { hue: 0.54 }],
+      }),
+    ],
+    reactions: [
+      rx('synco', 'pl', 1, 'angle', 0.22, { atk: 0.06, rel: 0.4 }),
+      rx('swing', 'mo', 1, 'amp', 0.8, { atk: 0.2, rel: 0.7 }),
+      rx('hit', 'pl', 1, 'y', 0.18, { atk: 0.015, rel: 0.3 }),
+      rx('attack', 'ma', 1, 'soft', 0.18, { atk: 0.025, rel: 0.25 }),
+      rx('bass', 'sh', 2, 'w', 0.5, { atk: 0.06, rel: 0.4 }),
+    ],
+    groove: { swing: 1.2, sway: 0.025, off: 0.18, lean: 0.7, crisp: 0.2, jitter: 0.2, accent: 0.55 },
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0, section: 0.1 },
+  },
+  {
+    origin: 'X56', name: 'Refrain Lantern', energy: [0.05, 0.85], scheme: 'free', hue: 0.07,
+    pal: { key: 0, s1: 0.49, s2: 0.8 },
+    color: { exposure: 0.85, bloom: 0.5, adapt: 0.15, vignette: 0.4 },
+    carrier: 'warp', car: { halfLife: 0.65, floor: 0.18, blur: 0.025 },
+    chain: [op('translate', { vx: -0.09, vy: 0.015 }), op('ripple', { amp: 0.00025, freq: 12, speed: 0.4 })],
+    bodies: [
+      body({
+        shape: ['compound', { size: 0.14 }],
+        parts: [
+          part('ellipse', 'union', { sx: 0.65, sy: 1.1 }),
+          part('ellipse', 'subtract', { sx: 0.47, sy: 0.92, k: 0 }),
+          part('capsule', 'union', { sx: 0.028, sy: 1.08, hue: 0.2 }),
+          part('box', 'union', { y: 1.05, sx: 0.32, sy: 0.07, hue: 0.45 }),
+          part('capsule', 'union', { y: -1.45, sx: 0.025, sy: 0.35, hue: 0.45 }),
+        ],
+        place: ['point', { x: -0.3, y: -0.12 }],
+        material: ['line', { gain: 0.9, width: 1.4, halo: 0.03 }], emit: ['trail'],
+        color: ['height', { hue: 0, amount: 0.5, detail: 1 }],
+      }),
+      body({
+        shape: ['curve', { form: 0, amp: 0.06, radius: 0.35 }],
+        place: ['point', { y: -0.33 }], material: ['line', { gain: 0.35, width: 0.9, halo: 0 }], emit: ['none'],
+        color: ['fixed', { hue: 0.49 }],
+      }),
+    ],
+    reactions: [
+      rx('hookphase', 'pl', 0, 'x', 1, { atk: 0.05, rel: 0.08 }),
+      rx('register', 'pl', 0, 'y', 0.65, { atk: 0.12, rel: 0.25 }),
+      rx('hook', 'ma', 0, 'gain', 0.35, { atk: 0.02, rel: 0.3 }),
+      rx('legato', 'car', 0, 'blur', 0.15, { atk: 0.2, rel: 0.5 }),
+      rx('noteon', 'pl', 0, 'angle', 0.09, { atk: 0.025, rel: 0.35 }),
+      rx('bass', 'sh', 1, 'amp', 0.2, { atk: 0.07, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.05, section: 0.15 },
   },
 ];
 
