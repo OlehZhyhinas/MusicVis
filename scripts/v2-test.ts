@@ -49,6 +49,7 @@ import { ecosystemTests } from './ecosystem-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { landscapeChecks } from './landscape-checks';
+import { bodyFamilyTests } from './body-family-tests';
 import { compoundChecks } from './compound-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
 import { lyricsTests } from './lyrics-tests';
@@ -1586,6 +1587,7 @@ function toV3(g: Genome): Record<string, unknown> & { bodies: Record<string, unk
 raymarchChecks(check);
 landscapeChecks(check);
 compoundChecks(check);
+bodyFamilyTests(check);
 
 // -------------------------------------------------- AVS genes: blend mode (material.blend)
 

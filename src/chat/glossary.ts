@@ -77,6 +77,7 @@ export const ENTRIES: Record<string, string> = {
   'shape.star': 'inner=inner radius, spikier when low.',
   'shape.segment': 'line stroke.',
   'shape.solid': 'solid(3D,1/preset): solid 0 tetra,1 cube,2 octa,3 icosa,4 polygon(sides),5 by section; tilt=3D tilt; inner=inner faces visible.',
+  'shape.branch': 'branch(a living branching tree, coral or antlers): size=scale; width=limb thickness; spread=fork angle in radians; ratio=child limb length; levels=2..6 generations; grow=reveal successive generations, useful with build or held notes; bend=slow bar-locked branch flex. Works with every material, placement and fusion.',
   'shape.compound': 'compound(one figure from up to 10 primitive parts blended into one distance field, e.g. a tower, a crescent moon, a village): size=scale (parts are in units of it). Each part: prim 0 ellipse,1 capsule(m=taper: top radius sx*(1-m), 1=cone/flame),2 box(m=corner round),3 triangle(m=apex shift, 1=wedge); op 0 union,1 smooth union(k),2 subtract,3 intersect(first part is the base); x/y=offset; sx/sy=size; rot=own turn; hue=palette offset of the part; bright=brightness weight(0 dark silhouette).',
   'shape.bars': 'mode 0 baseline,1 arc,2 ring,3 mirrored; fill=duty cycle.',
   'shape.curve': 'form 0 wave,1 circle,2 spiral,3 lissajous,4 arc,5 harmonograph; turns=spiral wraps; ra/rb=lissajous ratio.',

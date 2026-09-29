@@ -36,6 +36,7 @@ import { FLOCK_SCHEMA, flockCost } from './genes/boids';
 import { MOSAIC_SCHEMA } from './genes/mosaic';
 import { TUNNEL_SCHEMA } from './genes/tunnel';
 import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
+import { BRANCH_SCHEMA } from './genes/branch';
 import { CELLS_SCHEMA, cellsCost } from './genes/cells';
 import { BEAMS_SCHEMA, beamsCost } from './genes/beams';
 import { WATER_COST, WATER_PARAMS } from './genes/water';
@@ -159,7 +160,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound', 'branch'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -180,6 +181,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   tonnetz: 'field',
   notes: 'field',
   compound: 'sdf',
+  branch: 'sdf',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene', 'landscape'];
@@ -222,6 +224,7 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   notes: NOTES_SCHEMA,
   // Several primitives blended into one figure (parts on the gene; see genes/compound.ts).
   compound: COMPOUND_SCHEMA,
+  branch: BRANCH_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -1409,6 +1412,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
         if (pk === 'grid') s.mirror += 2.4 * w * shapeW;
         else s.wire += 1.4 * w * shapeW;
         break;
+      case 'branch': s.ink += 1.8 * w * shapeW; s.wire += 1.2 * w * shapeW; break;
       case 'segment':
         if (pk === 'walker') s.scope += 2 * w * shapeW;
         else s.wire += 1.2 * w * shapeW;
@@ -1538,7 +1542,7 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35, branch: 0.8,
 };
 const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45 };

@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 157;
+export const SEED_VERSION = 158;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3658,7 +3658,45 @@ const STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES];
+// New body families: starter parents whose structure survives crossover and mutation.
+const BODY_STUDIES: Def[] = [
+  {
+    origin: 'X46', name: 'Coral Cathedral', energy: [0.1, 0.85], scheme: 'free', hue: 0.52,
+    pal: { key: 0, s1: 0.38, s2: 0.55 },
+    color: { exposure: 0.95, bloom: 0.85, adapt: 0.2, vignette: 0.4 }, carrier: 'none',
+    bodies: [body({
+      shape: ['branch', { size: 0.37, width: 0.06, levels: 6, spread: 0.72, ratio: 0.67, grow: 0.82, bend: 0.08 }],
+      place: ['point', { y: -0.02 }], material: ['line', { gain: 1.25, width: 2, halo: 0.08 }],
+      emit: ['none'], color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('build', 'sh', 0, 'grow', 0.4, { atk: 0.3, rel: 1.5 }),
+      rx('held', 'sh', 0, 'spread', 0.25, { atk: 0.2, rel: 0.7 }),
+      rx('bass', 'sh', 0, 'width', 0.2, { atk: 0.06, rel: 0.4 }),
+      rx('noteon', 'ma', 0, 'gain', 0.4, { atk: 0.02, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, drop: 0.15, hue: 0, section: 0.3 },
+  },
+  {
+    origin: 'X47', name: 'Copper Nervure', energy: [0.2, 0.95], scheme: 'free', hue: 0.075,
+    pal: { key: 0, s1: 0.49, s2: 0.87 },
+    color: { exposure: 0.9, bloom: 0.7, adapt: 0.15, vignette: 0.45 }, carrier: 'none',
+    bodies: [body({
+      shape: ['branch', { size: 0.12, width: 0.025, levels: 5, spread: 0.9, ratio: 0.63, grow: 0.88, bend: 0.15 }],
+      place: ['ring', { n: 7, radius: 0.15 }], motion: ['spin', { rate: 0.0625 }],
+      material: ['line', { gain: 1.1, width: 1.4, halo: 0.12 }], emit: ['none'],
+      color: ['height', { amount: 0.5, detail: 0.6 }],
+    })],
+    reactions: [
+      rx('bass', 'sh', 0, 'spread', -0.35, { atk: 0.08, rel: 0.45 }),
+      rx('held', 'sh', 0, 'grow', 0.3, { atk: 0.2, rel: 0.6 }),
+      rx('hit', 'ma', 0, 'gain', 0.35, { atk: 0.015, rel: 0.3 }),
+    ],
+    accent: { hook: 0, kick: 0, drop: 0.15, hue: 0, section: 0.3 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

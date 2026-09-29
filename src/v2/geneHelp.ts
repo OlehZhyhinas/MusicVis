@@ -62,6 +62,10 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'shape.levels': 'Number of branching generations.',
+  'shape.grow': 'How far the branches have grown; reveals successive generations.',
+  'shape.ratio': 'Length of each child branch relative to its parent.',
+  'shape.bend': 'Amount of slow flex within the shape.',
   'reaction.gain': 'How strongly the source signal moves the chosen target. Positive raises it; negative lowers it. One unit spans half the target parameter range.',
   'reaction.atk': 'Attack time in seconds: how quickly this reaction rises when its source signal rises.',
   'reaction.rel': 'Release time in seconds: how quickly this reaction falls after its source signal falls.',

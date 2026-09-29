@@ -42,6 +42,7 @@ import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids'
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
+import { packBranch } from './genes/branch';
 import { packCells } from './genes/cells';
 import { packBeams } from './genes/beams';
 import { SCENE_VEC4, packScene } from './genes/raymarch';
@@ -1953,6 +1954,7 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);
       case 'compound': {
         // Several primitives in one field: the size scales the figure; the parts go to the body's extra array.
         const bx = s.bx[bi];
