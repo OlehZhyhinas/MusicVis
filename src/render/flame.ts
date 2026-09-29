@@ -209,6 +209,7 @@ export class Flame {
   private uA = new Float32Array(16);
   private uB = new Float32Array(16);
   private uVar = new Float32Array(48);
+  private transformsDirty = true;
   private n = 1;
   private iters = 4;
   private cam = [1, 0, 0, 0];
@@ -247,6 +248,7 @@ export class Flame {
 
   /** Build this frame's transform uniforms from the spec and the music. */
   configure(spec: FlameSpec, d: FlameDrive): void {
+    this.transformsDirty = true;
     const xs = spec.xforms.slice(0, MAX_XFORMS);
     this.n = xs.length;
     this.iters = spec.iters;
@@ -299,10 +301,12 @@ export class Flame {
       .tex('uS', this.state.read.t)
       .f1('uFrame', (this.frameNo++ % 4096) + 0.5)
       .i1('uN', this.n)
-      .i1('uIters', this.iters)
-      .f4v('uA', this.uA)
-      .f4v('uB', this.uB)
-      .f4v('uVar', this.uVar);
+      .i1('uIters', this.iters);
+    // All rounds between configure() calls use the same transform arrays.
+    if (this.transformsDirty) {
+      this.pUpdate.f4v('uA', this.uA).f4v('uB', this.uB).f4v('uVar', this.uVar);
+      this.transformsDirty = false;
+    }
     this.fs.draw();
     this.state.swap();
   }
