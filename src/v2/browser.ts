@@ -61,9 +61,28 @@ export class PresetBrowser {
   private rows: Member[] = [];
   private windowStart = -1;
   private windowEnd = -1;
+  private mounted = new Map<number, HTMLElement>();
+  private scrollTarget: HTMLElement | null = null;
+  private scrollTimer = 0;
+  private refreshAfterScroll = false;
 
   constructor(private evo: Evolution, private cb: BrowserCallbacks) {
     this.scroller.addEventListener('scroll', () => this.renderWindow());
+    // Trackpads keep sending wheel events to the element where the gesture
+    // began. Keep that row mounted and defer background refreshes until the
+    // gesture ends, or the browser can lose the scroll target mid-gesture.
+    this.scroller.addEventListener('wheel', (ev) => {
+      this.scrollTarget ??= (ev.target as Element).closest<HTMLElement>('.prs');
+      clearTimeout(this.scrollTimer);
+      this.scrollTimer = setTimeout(() => {
+        this.scrollTimer = 0;
+        this.scrollTarget = null;
+        if (this.refreshAfterScroll) {
+          this.refreshAfterScroll = false;
+          this.render(true);
+        } else this.renderWindow();
+      }, 250) as unknown as number;
+    }, { passive: true });
     window.addEventListener('resize', () => { if (this.open) this.renderWindow(true); });
     this.typeSel.innerHTML = `<option value="">All types</option>` + SPECIES.map((s) => `<option value="${s}">${SPECIES_LABEL[s]}</option>`).join('');
     if (cb.novelty) this.sortSel.insertAdjacentHTML('beforeend', '<option value="novel">Most novel</option>');
@@ -236,10 +255,15 @@ export class PresetBrowser {
   /** Re-render soon (coalesces bursts of population changes). */
   refresh(): void {
     if (!this.open || this.renderQueued) return;
+    if (this.scrollTimer) {
+      this.refreshAfterScroll = true;
+      return;
+    }
     this.renderQueued = true;
     requestAnimationFrame(() => {
       this.renderQueued = false;
-      this.render();
+      if (this.scrollTimer) this.refreshAfterScroll = true;
+      else this.render(true);
     });
   }
 
@@ -286,23 +310,36 @@ export class PresetBrowser {
     return ms;
   }
 
-  render(): void {
+  render(preserveVisible = false): void {
     if (!this.open) return;
+    const stride = this.rowStride();
+    const oldListTop = this.listTop();
+    const firstVisible = Math.max(0, Math.floor((this.scroller.scrollTop - oldListTop) / stride));
+    const anchor = preserveVisible ? this.rows[firstVisible]?.id : undefined;
+    const anchorOffset = this.scroller.scrollTop - oldListTop - firstVisible * stride;
     const all = this.evo.pop.list();
     for (const id of [...this.selected]) if (!this.evo.pop.get(id)) this.selected.delete(id);
     const ms = this.filtered();
     const classics = SEEDS.filter((s) => s.origin.startsWith('M')).length;
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
-    const cur = this.cb.currentId();
     const keepScroll = this.scroller.scrollTop;
     this.rows = ms;
     if (ms.length) {
+      this.list.style.height = `${ms.length * stride}px`;
+      let anchored = false;
+      if (anchor) {
+        const at = ms.findIndex((m) => m.id === anchor);
+        if (at >= 0) {
+          this.scroller.scrollTop = this.listTop() + at * stride + anchorOffset;
+          anchored = true;
+        }
+      }
       this.renderWindow(true);
-      // Re-rendering (thumbnails, votes, views arriving) must never move the list under the user.
-      this.scroller.scrollTop = keepScroll;
+      if (!anchored) this.scroller.scrollTop = keepScroll;
       this.renderWindow();
     } else {
       this.windowStart = this.windowEnd = -1;
+      this.mounted.clear();
       this.list.style.height = '';
       this.list.innerHTML = '<p class="dim v2b-none">No presets match these filters.</p>';
     }
@@ -329,7 +366,7 @@ export class PresetBrowser {
     return this.list.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top + this.scroller.scrollTop;
   }
 
-  /** Keep only the rows near the viewport in the DOM, with spacers preserving scroll position. */
+  /** Keep only nearby rows mounted without replacing the wheel gesture's target. */
   private renderWindow(force = false): void {
     if (!this.rows.length) return;
     const stride = this.rowStride();
@@ -341,14 +378,25 @@ export class PresetBrowser {
     const first = Math.max(0, Math.min(this.rows.length - 1, Math.floor((this.scroller.scrollTop - this.listTop()) / stride)));
     const start = Math.max(0, first - 8);
     const end = Math.min(this.rows.length, first + visible + 8);
-    if (!force && start === this.windowStart && end === this.windowEnd) return;
+    if (!force && start === this.windowStart && end === this.windowEnd &&
+      [...this.mounted.keys()].every((i) => (i >= start && i < end) || this.mounted.get(i) === this.scrollTarget)) return;
     const focused = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('.prs')?.dataset.id;
-    for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.unobserve(img);
+    if (force) {
+      for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.unobserve(img);
+      this.list.replaceChildren();
+      this.mounted.clear();
+    } else for (const [i, row] of this.mounted) {
+      if ((i >= start && i < end) || row === this.scrollTarget) continue;
+      const img = row.querySelector<HTMLImageElement>('img[data-thumb]');
+      if (img) this.observer.unobserve(img);
+      row.remove();
+      this.mounted.delete(i);
+    }
     this.windowStart = start;
     this.windowEnd = end;
-    const frag = document.createDocumentFragment();
     const cur = this.cb.currentId();
     for (let i = start; i < end; i++) {
+      if (this.mounted.has(i)) continue;
       const m = this.rows[i];
       const row = this.row(m, m.id === cur);
       row.style.top = `${i * stride}px`;
@@ -358,10 +406,13 @@ export class PresetBrowser {
         row.classList.add('flash');
         this.highlight = null;
       }
-      frag.append(row);
+      let next = Infinity;
+      for (const j of this.mounted.keys()) if (j > i && j < next) next = j;
+      this.list.insertBefore(row, this.mounted.get(next) ?? null);
+      this.mounted.set(i, row);
+      const img = row.querySelector<HTMLImageElement>('img[data-thumb]');
+      if (img) this.observer.observe(img);
     }
-    this.list.replaceChildren(frag);
-    for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.observe(img);
     if (focused) this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
   }
 
