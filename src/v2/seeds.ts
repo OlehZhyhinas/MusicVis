@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 166;
+export const SEED_VERSION = 167;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4244,7 +4244,68 @@ const UNDULATE_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES];
+const PLUME_STUDIES: Def[] = [
+  {
+    origin: 'X69', name: 'Peacock Quill', energy: [0.05, 0.85], scheme: 'free', hue: 0.43,
+    pal: { key: 0, s1: 0.18, s2: 0.46 },
+    color: { exposure: 1, sat: 0.8, bloom: 0.3, adapt: 0.1, vignette: 0.4, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['plume', { size: 0.39, width: 0.48, bend: 0.26, taper: 0.7, barbs: 46, split: 0.45, sheen: 0.85 }],
+      place: ['point', { angle: -0.1 }], motion: ['sway', { amp: 0.025, tilt: 0.15, period: 8 }],
+      material: ['fill', { gain: 1.55, soft: 0.005 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.35, detail: 0.9 }],
+    })],
+    reactions: [
+      rx('rising', 'sh', 0, 'bend', 0.45, { atk: 0.25, rel: 0.7 }),
+      rx('falling', 'sh', 0, 'bend', -0.45, { atk: 0.25, rel: 0.7 }),
+      rx('bright', 'sh', 0, 'sheen', 0.25, { atk: 0.2, rel: 0.6 }),
+      rx('noisy', 'sh', 0, 'split', 0.4, { atk: 0.2, rel: 0.6 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.1 },
+  },
+  {
+    origin: 'X70', name: 'Gilded Plumage', energy: [0.1, 0.9], scheme: 'free', hue: 0.075,
+    pal: { key: 0, s1: 0.16, s2: 0.5 },
+    color: { exposure: 1, sat: 0.75, bloom: 0.35, adapt: 0.1, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['plume', { size: 0.27, width: 0.48, bend: 0.4, taper: 0.65, barbs: 34, split: 0.3, sheen: 0.75 }],
+      place: ['ring', { n: 9, radius: 0.13, angle: 0.1 }], motion: ['spin', { rate: 0.0625 }],
+      material: ['fill', { gain: 1.4, soft: 0.005 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.25, detail: 0.85 }],
+    })],
+    reactions: [
+      rx('held', 'sh', 0, 'width', 0.25, { atk: 0.3, rel: 0.7 }),
+      rx('tension', 'sh', 0, 'bend', -0.4, { atk: 0.4, rel: 0.8 }),
+      rx('bass', 'pl', 0, 'radius', 0.1, { atk: 0.15, rel: 0.5 }),
+      rx('attack', 'sh', 0, 'split', 0.45, { atk: 0.1, rel: 0.5 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.03, section: 0.1 },
+  },
+  {
+    origin: 'X71', name: 'Kingfisher Brocade', energy: [0.1, 0.9], scheme: 'free', hue: 0.52,
+    pal: { key: 0, s1: 0.12, s2: 0.48 },
+    color: { exposure: 0.95, sat: 0.8, bloom: 0.3, adapt: 0.1, vignette: 0.25, contrast: 0.01, ca: 0,
+      relief: 0.18, bump: 0.4, gloss: 0.4, metal: 0.1 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['plume', { size: 0.135, width: 0.65, bend: -0.3, taper: 0.5, barbs: 24, split: 0.2, sheen: 0.8 }],
+      place: ['grid', { lattice: 1, scale: 3.5, jitter: 0, density: 1, lit: 1, twinkle: 0, angle: -0.05 }],
+      material: ['fill', { gain: 1.3, soft: 0.005 }], emit: ['none'],
+      color: ['height', { hue: 0, amount: 0.25, detail: 0.9 }],
+    })],
+    reactions: [
+      rx('register', 'sh', 0, 'taper', 0.5, { atk: 0.4, rel: 0.7 }),
+      rx('rough', 'sh', 0, 'split', 0.55, { atk: 0.2, rel: 0.5 }),
+      rx('vocals', 'sh', 0, 'bend', 0.35, { atk: 0.25, rel: 0.7 }),
+      rx('noteon', 'ma', 0, 'gain', 0.12, { atk: 0.05, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.03, section: 0.1 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

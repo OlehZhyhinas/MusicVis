@@ -37,6 +37,8 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   Travelling bends reshape bodies and curves in Silk Currents (X66), Tidal
   Filigree (X67), and Violet Undertow (X68). Vocals deepen the ribbons, tension
   tightens the branching waves, and melody register changes the curve wavelength.
+  Feather bodies add curved vanes, fine barbs, and surface sheen in Peacock Quill
+  (X69), Gilded Plumage (X70), and Kingfisher Brocade (X71).
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

@@ -13,10 +13,10 @@ try {
     const { cloneGenome, repair, MATERIAL_KINDS, defaultParams, MATERIAL_SCHEMAS, FUSE_SCHEMA } = await import('/src/v2/genome.ts');
     const { ReferenceClip } = await import('/src/v2/fingerprint.ts');
     const eng = new Engine(document.createElement('canvas'));
-    const st = new Stage(eng, { offscreen: true }); st.resize(320, 180);
+    const st = new Stage(eng, { offscreen: true, flameCap: 65536, particleCap: 65536 }); st.resize(320, 180);
     const pixels = new Uint8Array(320 * 180 * 4);
     const errors = []; let compiled = 0;
-    for (const kind of ['branch', 'fabric', 'linkage', 'shell']) {
+    for (const kind of ['branch', 'fabric', 'linkage', 'shell', 'plume']) {
       const seed = SEEDS.find(s => s.genome.bodies[0].shape.kind === kind);
       for (const material of MATERIAL_KINDS) for (const mode of ['body', 'pair', 'fused']) {
         const raw = cloneGenome(seed.genome);

@@ -45,6 +45,7 @@ import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
 import { packUndulate } from './genes/undulate';
 import { recoilImpulse, stepRecoil } from './genes/recoil';
+import { packPlume } from './genes/plume';
 import { packShell } from './genes/shell';
 import { packLinkage } from './genes/linkage';
 import { packFabric } from './genes/fabric';
@@ -2007,6 +2008,7 @@ export class Stage {
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
       case 'shell': return packShell(E, o, P);
+      case 'plume': return packPlume(E, o, P);
       case 'linkage': return packLinkage(E, o, P, this.clk.spin * 0.25);
       case 'fabric': return packFabric(E, o, P, this.clk.spin * 0.125);
       case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);

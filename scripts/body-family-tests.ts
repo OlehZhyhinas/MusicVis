@@ -3,13 +3,14 @@ import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
+import { packPlume } from '../src/v2/genes/plume';
 import { packShell } from '../src/v2/genes/shell';
 import { packLinkage } from '../src/v2/genes/linkage';
 import { packFabric } from '../src/v2/genes/fabric';
 import { packBranch } from '../src/v2/genes/branch';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
-export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage', 'shell'];
+export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage', 'shell', 'plume'];
 export function bodyFamilyTests(check: Check): void {
   for (const kind of BODY_FAMILIES) {
     const seeds = SEEDS.filter(s => s.genome.bodies.some(b => b.shape.kind === kind));
@@ -33,6 +34,12 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const plume = new Float32Array(16).fill(-77);
+  const pp = defaultParams(SHAPE_SCHEMAS.plume);
+  const pr = packPlume(plume, 4, k => k === 'bend' ? -0.6 : pp[k]);
+  check('plume.packing', plume.slice(0,4).every(x=>x===-77) && plume.slice(12).every(x=>x===-77)
+    && Math.abs(plume[6]+0.6)<1e-6 && plume[11]===0 && pr >= pp.size,
+    'live curvature packs in both primary and fused shape slots without touching neighbours');
   const shell = new Float32Array(16).fill(-77);
   const sp = defaultParams(SHAPE_SCHEMAS.shell);
   const radius = packShell(shell, 4, k => k === 'aperture' ? 0.9 : sp[k]);

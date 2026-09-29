@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch' | 'fabric' | 'linkage' | 'shell';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch' | 'fabric' | 'linkage' | 'shell' | 'plume';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -66,6 +66,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   flock: ['Murmuration', 'Flock', 'Starlings', 'Shoal', 'Swallows', 'Rookery', 'Covey', 'Wheel', 'Gyre', 'Volery', 'Squadron', 'Exaltation'],
   habitat: ['Ecosystem', 'Tidepool', 'Menagerie', 'Habitat', 'Reef', 'Biome', 'Savanna', 'Terrarium', 'Aviary', 'Wetland', 'Lagoon', 'Wilderness'],
   network: ['Mycelium', 'Plexus', 'Rhizome', 'Veins', 'Capillaries', 'Delta', 'Tracery', 'Filigree', 'Roots', 'Mould', 'Hyphae', 'Reticulum'],
+  plume: ['Plume', 'Quill', 'Vane', 'Feather', 'Frond', 'Plumage', 'Pinion', 'Crest'],
   shell: ['Nautilus', 'Conch', 'Ammonite', 'Spire', 'Shell', 'Whorl', 'Fossil', 'Coil'],
   linkage: ['Armature', 'Marionette', 'Linkage', 'Skeleton', 'Mechanism', 'Tendril', 'Automaton', 'Joints'],
   fabric: ['Satin', 'Silk', 'Drapery', 'Sail', 'Tapestry', 'Pleats', 'Organza', 'Veil'],
@@ -111,6 +112,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'superscope': return 'scope';
     case 'linkage': return 'linkage';
     case 'shell': return 'shell';
+    case 'plume': return 'plume';
     case 'fabric': return 'fabric';
     case 'branch': return 'branch';
     case 'compound': return 'figure';
