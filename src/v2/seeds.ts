@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 162;
+export const SEED_VERSION = 163;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -3936,7 +3936,92 @@ const MUSIC_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES];
+// Surface-led compositions: broad tonal shapes, finer detail, and restrained musical gestures.
+const SURFACE_STUDIES: Def[] = [
+  {
+    origin: 'X57', name: 'Nacre Bloom', energy: [0.05, 0.85], scheme: 'analogous', hue: 0.66,
+    pal: { key: 0, spread: 0.7 },
+    color: { exposure: 0.9, sat: 0.65, bloom: 0.5, adapt: 0.15, vignette: 0.4, contrast: 0.01, ca: 0,
+      relief: 0.45, bump: 0.8, gloss: 0.65, metal: 0.25 }, carrier: 'none',
+    bodies: [
+      body({
+        shape: ['cells', { mode: 2, scale: 1.5, warp: 0.75, wall: 0, fill: 0.7, speed: 0.08, var: 0.1, pulse: 0 }],
+        material: ['fill', { gain: 0.15 }], emit: ['none'], color: ['fixed', { hue: 0.6 }],
+      }),
+      body({
+        shape: ['fabric', { size: 0.33, aspect: 0.38, folds: 12, depth: 0.8, drape: 0.3, weave: 0.12, flutter: 0.16 }],
+        place: ['ring', { n: 11, radius: 0.13, x: -0.07, y: 0.02 }],
+        motion: ['spin', { rate: 0.0625 }], deform: ['twist', { amt: 1.5 }],
+        material: ['fill', { gain: 1.1, soft: 0.025, core: 0.25 }], emit: ['none'],
+        color: ['height', { hue: 0.04, amount: 0.4, detail: 0.65 }],
+      }),
+      body({
+        shape: ['fabric', { size: 0.19, aspect: 0.48, folds: 7, depth: 0.8, drape: 0.4, weave: 0.08, flutter: 0.12 }],
+        place: ['ring', { n: 7, radius: 0.055, x: -0.07, y: 0.02, angle: 0.035 }],
+        motion: ['spin', { rate: -0.0625 }], deform: ['twist', { amt: -2.4 }],
+        material: ['fill', { gain: 1.3, soft: 0.025, core: 0.3 }], emit: ['none'],
+        color: ['height', { hue: 0.35, amount: 0.3, detail: 0.8 }],
+      }),
+    ],
+    reactions: [
+      rx('held', 'sh', 1, 'drape', 0.45, { atk: 0.25, rel: 0.8 }),
+      rx('register', 'de', 2, 'amt', 0.13, { atk: 0.2, rel: 0.4 }),
+      rx('bass', 'pl', 1, 'radius', 0.15, { atk: 0.15, rel: 0.55 }),
+      rx('vibrato', 'sh', 2, 'flutter', 0.5, { atk: 0.12, rel: 0.45 }),
+      rx('bright', 'col', 0, 'gloss', 0.4, { atk: 0.12, rel: 0.6 }),
+      rx('hit', 'ma', 2, 'gain', 0.16, { atk: 0.03, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.05, section: 0.1 },
+  },
+  {
+    origin: 'X58', name: 'Tidal Agate', energy: [0.05, 0.9], scheme: 'free', hue: 0.1,
+    pal: { key: 0, s1: 0.4, s2: 0.5 },
+    color: { exposure: 1, sat: 0.6, bloom: 0.4, adapt: 0.15, vignette: 0.15, contrast: 0, ca: 0,
+      relief: 0.4, bump: 0.6, gloss: 0.4, metal: 0.05, huemap: 0.85, bands: 5.5, drift: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['cells', { mode: 0, scale: 3.1, warp: 0.8, wall: 0.025, fill: 0.85, speed: 0.12, var: 0.08, pulse: 0.08 }],
+      material: ['fill', { gain: 2.1 }], emit: ['none'], color: ['fixed', { hue: 0, detail: 0.4 }],
+    })],
+    reactions: [
+      rx('vocals', 'sh', 0, 'warp', 0.3, { atk: 0.35, rel: 0.9 }),
+      rx('bass', 'sh', 0, 'wall', 0.07, { atk: 0.15, rel: 0.55 }),
+      rx('bright', 'col', 0, 'gloss', 0.4, { atk: 0.2, rel: 0.7 }),
+      rx('tension', 'col', 0, 'bands', 0.15, { atk: 0.4, rel: 1.2 }),
+      rx('noisy', 'col', 0, 'bump', 0.3, { atk: 0.25, rel: 0.7 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.04, section: 0.1 },
+  },
+  {
+    origin: 'X59', name: 'Gossamer Atlas', energy: [0.05, 0.9], scheme: 'free', hue: 0.58,
+    pal: { key: 0, s1: 0.1, s2: 0.51 },
+    color: { exposure: 1.05, sat: 0.8, bloom: 0.55, adapt: 0.2, vignette: 0.25, contrast: 0.01, ca: 0, tonemap: 1 },
+    carrier: 'warp', car: { halfLife: 0.16, floor: 0.05, blur: 0 },
+    bodies: [body({
+      shape: ['flame', { count: 524288, zoom: 0.42, rounds: 2, flow: 0.25, breathe: 0.025 }, [
+        xf({ aff: [0.68, -0.32, 0.32, 0.68, 0.18, 0.06], weight: 1, color: 0.05,
+          vars: { linear: 0.65, julia: 0.35 }, alt: { linear: 0.65, julia: 0.3, sinusoidal: 0.05 },
+          spin: 0.0625, drift: [0.035, 0.025] }),
+        xf({ aff: [0.44, 0.18, -0.18, 0.44, -0.65, 0.16], weight: 0.55, color: 0.38,
+          vars: { swirl: 0.65, sinusoidal: 0.35 }, alt: { swirl: 0.55, handkerchief: 0.45 },
+          drift: [0.055, 0.035], bass: 0.035 }),
+        xf({ aff: [0.3, -0.36, 0.36, 0.3, 0.5, -0.35], weight: 0.4, color: 0.85,
+          vars: { spherical: 0.3, linear: 0.7 }, alt: { spherical: 0.2, linear: 0.8 },
+          spin: -0.0625, drift: [0.045, 0.06], pulse: 0.02 }),
+      ]],
+      material: ['glow', { gain: 1.1 }], emit: ['trail'],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('held', 'sh', 0, 'zoom', 0.12, { atk: 0.35, rel: 1.1 }),
+      rx('bright', 'col', 0, 'bloom', 0.25, { atk: 0.18, rel: 0.75 }),
+      rx('hook', 'ma', 0, 'gain', 0.12, { atk: 0.05, rel: 0.5 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.08, section: 0.15 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
