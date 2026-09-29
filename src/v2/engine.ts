@@ -2827,7 +2827,10 @@ export class Stage {
     const eng = this.eng;
     const gl = eng.gl;
     const F = this.sig.F;
-    this.bloom.run(this.scene!, 0.9 - F.build * 0.3, 0.5);
+    // Bloom has no temporal history; zero contribution needs no pyramid passes.
+    // Rebuild normally as soon as the blended, reaction-driven amount is nonzero.
+    const bloomOn = pp.bloom !== 0;
+    if (bloomOn) this.bloom.run(this.scene!, 0.9 - F.build * 0.3, 0.5);
     this.avgLum.write.bind();
     eng.pExposure
       .use()
@@ -2848,7 +2851,7 @@ export class Stage {
     eng.pFinal
       .use()
       .tex('uScene', this.scene!.t)
-      .tex('uBloom', this.bloom.output)
+      .tex('uBloom', bloomOn ? this.bloom.output : eng.black)
       .tex('uAvg', this.avgLum.read.t)
       .f1('uKey', 0.12)
       .f1('uAdapt', pp.adapt)

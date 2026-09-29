@@ -135,11 +135,16 @@ export class Fluid {
     this.fs.draw();
     this.pressure.swap();
 
-    this.pPressure.use().f2('uTexel', tx, ty);
+    // Only the pressure texture and destination change during the solve. Keep
+    // the divergence on unit 0 and pressure on unit 1 for every iteration.
+    this.pPressure.use().f2('uTexel', tx, ty).tex('uDivergence', this.divergence.t).i1('uPressure', 1);
+    gl.activeTexture(gl.TEXTURE0 + 1);
+    gl.viewport(0, 0, this.w, this.h);
+    this.fs.bindVao();
     for (let i = 0; i < this.iterations; i++) {
-      this.pressure.write.bind();
-      this.pPressure.use().f2('uTexel', tx, ty).tex('uDivergence', this.divergence.t).tex('uPressure', this.pressure.read.t);
-      this.fs.draw();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.pressure.write.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, this.pressure.read.t);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
       this.pressure.swap();
     }
 
