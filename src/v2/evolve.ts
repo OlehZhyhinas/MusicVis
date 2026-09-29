@@ -179,14 +179,15 @@ export class Evolution {
 
   /**
    * Breed `n` screened children. cross: from two parents; mutate: from one.
+   * Manual selections can use any current member; automatic breeding stays in the pen.
    * Candidates failing screening are retried (up to 6 attempts per child).
    */
-  async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void): Promise<Member[]> {
+  async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void, source: 'manual' | 'automatic' = 'manual'): Promise<Member[]> {
     const out: Member[] = [];
     let tried = 0;
     const eligible = () => parents.length === (mode === 'cross' ? 2 : 1)
       && new Set(parents.map((p) => p.id)).size === parents.length
-      && parents.every((p) => this.pop.canBreed(p));
+      && parents.every((p) => this.pop.get(p.id) === p && (source === 'manual' || this.pop.canAutoBreed(p)));
     if (!eligible()) {
       onEvent?.({ kind: 'done', tried });
       return out;
@@ -266,11 +267,13 @@ export class Evolution {
   /** Background breeding after every few votes: tournament parents within the niche. */
   async autoBreed(niche: Energy): Promise<Member[]> {
     const born: Member[] = [];
+    const population = this.pop;
     for (let i = 0; i < 2; i++) {
+      if (this.pop !== population) break;
       const pair = this.pop.pickParents(niche, this.rng, 3, this.pheno ? (m) => this.pheno!.bonus(m) : undefined, this.pheno?.mode ?? 'gentle');
       if (!pair) break;
       const mode = this.rng() < 0.8 ? 'cross' : 'mutate';
-      born.push(...(await this.breed(mode === 'cross' ? pair : [pair[0]], 1, mode)));
+      born.push(...(await this.breed(mode === 'cross' ? pair : [pair[0]], 1, mode, undefined, 'automatic')));
     }
     if (born.length) console.info(`[v2] auto-bred ${born.map((m) => m.id).join(', ')} in the ${niche} niche`);
     return born;

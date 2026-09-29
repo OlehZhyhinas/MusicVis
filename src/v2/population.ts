@@ -215,12 +215,12 @@ export class Population {
     return this.list().filter((m) => !m.hidden);
   }
 
-  /** All parent selection, including niche/family fallbacks, stays inside this pen. */
+  /** Automatic parent selection, including niche/family fallbacks, stays inside this pen. */
   breedingPool(): Member[] {
     return this.visible().filter((m) => m.breeding);
   }
 
-  canBreed(m: Member): boolean {
+  canAutoBreed(m: Member): boolean {
     return this.get(m.id) === m && m.breeding && !m.hidden;
   }
 

@@ -364,8 +364,8 @@ export class PresetBrowser {
     $('v2b-all-count').textContent = String(all.length);
     $('v2b-pen-count').textContent = String(pen.length);
     $('v2b-pen-hint').textContent = active < 2
-      ? `${active} active in breeding pen · add ${2 - active} more to breed. New offspring join All.`
-      : `${active} active in breeding pen · only these presets can be parents. New offspring join All.`;
+      ? `${active} active in breeding pen · add ${2 - active} more for automatic breeding. Manual selection works with any preset.`
+      : `${active} active in breeding pen · automatic breeding uses only these. Manual selection works with any preset.`;
     const classics = SEEDS.filter((s) => s.origin.startsWith('M')).length;
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
     const keepScroll = this.scroller.scrollTop;
@@ -501,10 +501,9 @@ export class PresetBrowser {
   private updateSelection(): void {
     const n = this.selected.size;
     const members = [...this.selected].map((id) => this.evo.pop.get(id)).filter((m): m is Member => !!m);
-    const eligible = n > 0 && members.length === n && members.every((m) => this.evo.pop.canBreed(m));
+    const eligible = n > 0 && members.length === n;
     const b = (t: string) => `<b style="color:var(--tx)">${t}</b>`;
-    this.selInfo.innerHTML = n === 0 ? 'Select two in Breeding to breed, one to mutate'
-      : !eligible ? `${b(`${n} selected`)} · ${members.some((m) => !m.breeding) ? 'add to breeding to use as parents' : 'unhide to use as parents'}`
+    this.selInfo.innerHTML = n === 0 ? 'Select two to breed, one to mutate'
       : n === 1 ? `${b('1 selected')} · ready to mutate` : n === 2 ? `${b('2 selected')} · ready to breed` : `${b(`${n} selected`)} · pick two to breed`;
     const busy = this.evo.breeding > 0;
     this.breedBtn.disabled = n !== 2 || !eligible || busy;
@@ -520,7 +519,7 @@ export class PresetBrowser {
   private async breed(mode: 'cross' | 'mutate'): Promise<void> {
     const parents = [...this.selected].map((id) => this.evo.pop.get(id)).filter((m): m is Member => !!m);
     if ((mode === 'cross' && parents.length !== 2) || (mode === 'mutate' && parents.length !== 1)) return;
-    if (!parents.every((m) => this.evo.pop.canBreed(m)) || this.evo.breeding > 0) return;
+    if (this.evo.breeding > 0) return;
     this.results.hidden = false;
     this.scroller.scrollTop = 0;
     const label = mode === 'cross' ? `${parents[0].id} × ${parents[1].id}` : parents[0].id;

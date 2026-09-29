@@ -29,7 +29,7 @@ export async function breedingPenTests(check: Check): Promise<void> {
   }
   check('pen.all-selection-paths', confined, 'niche, family, novelty and fitness fallbacks use only the two pen members');
   b.hidden = true;
-  check('pen.hidden', pop.pickParents('calm', rng) === null && !pop.canBreed(b), 'hidden pen members cannot breed');
+  check('pen.hidden', pop.pickParents('calm', rng) === null && !pop.canAutoBreed(b), 'hidden pen members cannot breed automatically');
   b.hidden = false;
   const child = pop.addChild(cloneGenome(a.genome), [a, b], 2);
   check('pen.offspring', !child.breeding && pop.visible().includes(child) && pop.breedingPool().length === 2,
@@ -61,30 +61,51 @@ export async function breedingPenTests(check: Check): Promise<void> {
   evo.rng = mulberry32(813);
   evo.changed = () => {};
   const p = evo.pop.get(a.id)!, q = evo.pop.get(b.id)!;
-  const outside = await evo.breed([p, q], 1, 'cross');
   const noAuto = await evo.autoBreed('calm');
-  const noMutation = await evo.breed([p], 1, 'mutate');
-  check('pen.controller-guard', !outside.length && !noAuto.length && !noMutation.length && screens === 0,
-    'manual, automatic and mutation requests cannot bypass the pen');
-  evo.pop.setBreeding([p.id, q.id], true);
+  const noAutoCross = await evo.breed([p, q], 1, 'cross', undefined, 'automatic');
+  const noAutoMutation = await evo.breed([p], 1, 'mutate', undefined, 'automatic');
+  check('pen.controller-guard', !noAuto.length && !noAutoCross.length && !noAutoMutation.length && screens === 0,
+    'automatic crossover and mutation cannot bypass the pen');
   const invalid = await evo.breed([p, p], 1, 'cross');
   const missing = await evo.breed([], 1, 'mutate');
   check('pen.invalid-parents', !invalid.length && !missing.length && screens === 0, 'invalid parent lists are rejected before screening');
   const born = await evo.breed([p, q], 1, 'cross');
-  check('pen.manual-birth', born.length === 1 && !born[0].breeding && born[0].parents.join() === [p.id, q.id].join(),
-    'screened offspring record only pen parents and enter the general pool');
+  check('pen.manual-outside-birth', born.length === 1 && !born[0].breeding && born[0].parents.join() === [p.id, q.id].join()
+    && !p.breeding && !q.breeding, 'two manually selected outsiders can breed without joining the pen');
+  const outsideMutant = await evo.breed([p], 1, 'mutate');
+  check('pen.manual-outside-mutation', outsideMutant.length === 1 && !outsideMutant[0].breeding
+    && outsideMutant[0].parents.join() === p.id && !p.breeding,
+    'one manually selected outsider can mutate without joining the pen');
+  p.hidden = true;
+  const hiddenMutant = await evo.breed([p], 1, 'mutate');
+  check('pen.manual-hidden-selection', hiddenMutant.length === 1 && !hiddenMutant[0].breeding,
+    'a preset explicitly selected through Show hidden can also mutate');
+  p.hidden = false;
+  evo.pop.setBreeding([p.id, q.id], true);
   const automatic = await evo.autoBreed('energetic');
   check('pen.automatic-birth', automatic.length === 2 && automatic.every((m) => !m.breeding && m.parents.every((id) => id === p.id || id === q.id)),
     'both automatic rounds stay inside the pen, excluding their new offspring');
   evo.pop.setBreeding([q.id], false);
+  const mixed = await evo.breed([p, q], 1, 'cross');
+  check('pen.manual-mixed-selection', mixed.length === 1 && !mixed[0].breeding && !q.breeding,
+    'manual breeding accepts one pen member and one outsider');
   const mutant = await evo.breed([p], 1, 'mutate');
   check('pen.mutation', mutant.length === 1 && !mutant[0].breeding && mutant[0].parents.join() === p.id,
     'one pen member can mutate and its child stays in the general pool');
   evo.pop.setBreeding([q.id], true);
   duringScreen = () => evo.pop.setBreeding([q.id], false);
-  const interrupted = await evo.breed([p, q], 1, 'cross');
+  const continued = await evo.breed([p, q], 1, 'cross');
+  check('pen.manual-membership-change', continued.length === 1 && !q.breeding,
+    'moving a manually selected parent out of the pen does not cancel its batch');
+  evo.pop.setBreeding([q.id], true);
+  const interrupted = await evo.autoBreed('calm');
   check('pen.removed-during-screen', !interrupted.length && evo.breeding === 0,
-    'removing a parent while screening stops the in-flight birth');
+    'removing an automatic parent from the pen while screening stops its birth');
+  duringScreen = () => { evo.pop.remove(q.id); };
+  const deleted = await evo.breed([p, q], 1, 'cross');
+  check('pen.manual-deleted-parent', !deleted.length && evo.breeding === 0,
+    'deleting a manually selected parent while screening still stops the batch');
+  evo.pop.members.set(q.id, q);
   evo.pop.setBreeding([q.id], true);
   duringScreen = () => { evo.pop = Population.fromJSON(evo.pop.toJSON()); };
   const replaced = await evo.breed([p, q], 1, 'cross');

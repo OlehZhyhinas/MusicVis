@@ -26,8 +26,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   music by reaction genes. Like or dislike what you see, let evolve mode breed
   new candidates in the background, or pick two parents yourself.
 - Breeding pen: select presets in **All** and choose **Add to breeding**, then
-  use **Breeding** to view the pen or remove selected members. Only visible pen
-  members can breed or mutate, including automatic breeding. The pen starts
+  use **Breeding** to view the pen or remove selected members. Automatic breeding
+  uses only visible pen members. Manual **Breed** and **Mutate** work with any
+  selected presets, including presets outside the pen. The pen starts
   empty; offspring join the general pool until you add them yourself. Membership
   survives reloads and population exports/imports.
   **Reset population** removes non-seed presets outside the pen, keeps every pen
