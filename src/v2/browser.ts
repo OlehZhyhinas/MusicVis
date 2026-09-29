@@ -61,13 +61,8 @@ export class PresetBrowser {
   private rows: Member[] = [];
   private windowStart = -1;
   private windowEnd = -1;
-  private topPad = document.createElement('div');
-  private bottomPad = document.createElement('div');
 
   constructor(private evo: Evolution, private cb: BrowserCallbacks) {
-    this.topPad.setAttribute('aria-hidden', 'true');
-    this.bottomPad.setAttribute('aria-hidden', 'true');
-    this.topPad.style.flex = this.bottomPad.style.flex = 'none';
     this.scroller.addEventListener('scroll', () => this.renderWindow());
     window.addEventListener('resize', () => { if (this.open) this.renderWindow(true); });
     this.typeSel.innerHTML = `<option value="">All types</option>` + SPECIES.map((s) => `<option value="${s}">${SPECIES_LABEL[s]}</option>`).join('');
@@ -308,6 +303,7 @@ export class PresetBrowser {
       this.renderWindow();
     } else {
       this.windowStart = this.windowEnd = -1;
+      this.list.style.height = '';
       this.list.innerHTML = '<p class="dim v2b-none">No presets match these filters.</p>';
     }
     this.updateSelection();
@@ -337,6 +333,10 @@ export class PresetBrowser {
   private renderWindow(force = false): void {
     if (!this.rows.length) return;
     const stride = this.rowStride();
+    // Keep the list's full height throughout DOM replacement. Moving spacer
+    // elements out of a long list briefly shortened it and clamped scrollTop.
+    const height = `${this.rows.length * stride}px`;
+    if (this.list.style.height !== height) this.list.style.height = height;
     const visible = Math.ceil(this.scroller.clientHeight / stride);
     const first = Math.max(0, Math.min(this.rows.length - 1, Math.floor((this.scroller.scrollTop - this.listTop()) / stride)));
     const start = Math.max(0, first - 8);
@@ -346,14 +346,12 @@ export class PresetBrowser {
     for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.unobserve(img);
     this.windowStart = start;
     this.windowEnd = end;
-    this.topPad.style.height = `${start * stride}px`;
-    this.bottomPad.style.height = `${(this.rows.length - end) * stride}px`;
     const frag = document.createDocumentFragment();
-    frag.append(this.topPad);
     const cur = this.cb.currentId();
     for (let i = start; i < end; i++) {
       const m = this.rows[i];
       const row = this.row(m, m.id === cur);
+      row.style.top = `${i * stride}px`;
       row.setAttribute('aria-posinset', String(i + 1));
       row.setAttribute('aria-setsize', String(this.rows.length));
       if (m.id === this.highlight) {
@@ -362,7 +360,6 @@ export class PresetBrowser {
       }
       frag.append(row);
     }
-    frag.append(this.bottomPad);
     this.list.replaceChildren(frag);
     for (const img of this.list.querySelectorAll<HTMLImageElement>('img[data-thumb]')) this.observer.observe(img);
     if (focused) this.list.querySelector<HTMLElement>(`.prs[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
