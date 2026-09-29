@@ -128,11 +128,13 @@ export class Program {
   }
   /** Bind a texture to the next free unit and point the sampler at it. */
   tex(n: string, t: WebGLTexture | null): this {
+    // Shared uniform setup includes samplers that this shader may have optimized out.
+    const l = this.loc(n);
+    if (l === null) return this;
     const unit = this.texUnit++;
     this.gl.activeTexture(this.gl.TEXTURE0 + unit);
     this.gl.bindTexture(this.gl.TEXTURE_2D, t);
-    const l = this.loc(n);
-    if (l) this.gl.uniform1i(l, unit);
+    this.gl.uniform1i(l, unit);
     return this;
   }
 

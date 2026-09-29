@@ -20,15 +20,15 @@ const SLOW_AVG_TAU = 6; // running average of "typical" band energy
 const ATTACK_TAU = 0.3; // smoothed Att variants
 const SILENCE_ENERGY = 1e-7; // below this, treat the band as silent
 
-function downsampleAverage(src: Float32Array, outLen: number): Float32Array {
-  const out = new Float32Array(outLen);
+function downsampleAverage(src: Float32Array, out: Float32Array): void {
+  const outLen = out.length;
   const ratio = src.length / outLen;
   if (ratio <= 1) {
     // Fewer source samples than requested output: repeat/nearest-fill.
     for (let i = 0; i < outLen; i++) {
       out[i] = src[Math.min(src.length - 1, Math.floor(i * ratio))];
     }
-    return out;
+    return;
   }
   for (let i = 0; i < outLen; i++) {
     const start = Math.floor(i * ratio);
@@ -41,7 +41,6 @@ function downsampleAverage(src: Float32Array, outLen: number): Float32Array {
     }
     out[i] = count > 0 ? sum / count : 0;
   }
-  return out;
 }
 
 function alphaFor(dt: number, tau: number): number {
@@ -54,6 +53,9 @@ export class LiveAnalyser {
   private sampleRate: number;
   private timeData: Float32Array<ArrayBuffer>;
   private freqData: Float32Array<ArrayBuffer>;
+  private readonly waveform = new Float32Array(1024);
+  private readonly spectrumDb = new Float32Array(512);
+  private readonly spectrum = new Float32Array(512);
 
   private bassAvg = 0;
   private midAvg = 0;
@@ -89,14 +91,14 @@ export class LiveAnalyser {
     return count > 0 ? sum / count : 0;
   }
 
+  /** The returned buffers are reused on the next read; consume them in the current frame. */
   read(dt: number): LiveAudioFrame {
     this.analyser.getFloatTimeDomainData(this.timeData);
     this.analyser.getFloatFrequencyData(this.freqData);
 
-    const waveform = downsampleAverage(this.timeData, 1024);
-
-    const spectrumDb = downsampleAverage(this.freqData, 512);
-    const spectrum = new Float32Array(512);
+    const { waveform, spectrumDb, spectrum } = this;
+    downsampleAverage(this.timeData, waveform);
+    downsampleAverage(this.freqData, spectrumDb);
     for (let i = 0; i < 512; i++) {
       const db = spectrumDb[i];
       spectrum[i] = Math.max(0, Math.min(1, (db - MIN_DB) / (MAX_DB - MIN_DB)));

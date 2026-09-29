@@ -572,8 +572,8 @@ export class ProgramCache {
   }
 
   /** Keep entries in use from being evicted. */
-  touch(g: Genome): void {
-    const e = this.entries.get(structuralKey(g));
+  touch(key: string): void {
+    const e = this.entries.get(key);
     if (e) e.used = ++this.tick;
   }
 
@@ -3138,7 +3138,7 @@ export class Engine {
         this.to.weight = 1;
       }
     }
-    for (const s of st.slots) this.cache.touch(s.genome);
+    for (const s of st.slots) this.cache.touch(s.key);
     st.render(state, dt, 'canvas');
     this.endTimer(q);
     this.stats.cpuMs += (performance.now() - t0 - this.stats.cpuMs) * 0.05;
