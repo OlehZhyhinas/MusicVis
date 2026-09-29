@@ -7,6 +7,7 @@ import type { Evolution } from './evolve';
 import { fitness, type Member } from './population';
 import { SEEDS } from './seeds';
 import { icon } from '../ui/icons';
+import { loadSetting, saveSetting } from '../ui/storage';
 
 export interface BrowserCallbacks {
   play(id: string): void;
@@ -17,6 +18,7 @@ export interface BrowserCallbacks {
   onDelete?(ids: string[]): void;
   /** Phenotype novelty (rel 0..1 against the archive), null before the preset is fingerprinted. */
   novelty?(m: Member): { nov: number; rel: number } | null;
+  onFilterChange?(): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -37,6 +39,9 @@ export class PresetBrowser {
   private energySeg = $<HTMLElement>('v2b-energy');
   private sortSel = $<HTMLSelectElement>('v2b-sort');
   private hiddenTog = $<HTMLButtonElement>('v2b-hidden');
+  private poolSeg = $<HTMLElement>('v2b-pool');
+  private moveBtn = $<HTMLButtonElement>('v2b-move');
+  private pool: 'all' | 'breeding' = loadSetting<string>('v2.presetPool', 'all') === 'breeding' ? 'breeding' : 'all';
   private selInfo = $<HTMLElement>('v2b-selected');
   private breedBtn = $<HTMLButtonElement>('v2b-breed');
   private mutateBtn = $<HTMLButtonElement>('v2b-mutate');
@@ -67,6 +72,26 @@ export class PresetBrowser {
   private refreshAfterScroll = false;
 
   constructor(private evo: Evolution, private cb: BrowserCallbacks) {
+    this.setPool(this.pool);
+    this.poolSeg.addEventListener('click', (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-v]');
+      if (!b) return;
+      this.setPool(b.dataset.v === 'breeding' ? 'breeding' : 'all');
+      this.selected.clear();
+      this.setDeleteConfirm(false);
+      this.scroller.scrollTop = 0;
+      this.render();
+    });
+    this.moveBtn.addEventListener('click', () => {
+      const members = [...this.selected].map((id) => this.evo.pop.get(id)).filter((m): m is Member => !!m);
+      if (!members.length) return;
+      const on = !members.every((m) => m.breeding);
+      this.evo.pop.setBreeding(this.selected, on);
+      this.selected.clear();
+      this.evo.changed();
+      this.render();
+      this.cb.toast(on ? 'Added to breeding pen.' : 'Moved to general pool.', 'ok');
+    });
     this.scroller.addEventListener('scroll', () => this.renderWindow());
     // Trackpads keep sending wheel events to the element where the gesture
     // began. Keep that row mounted and defer background refreshes until the
@@ -247,6 +272,14 @@ export class PresetBrowser {
     for (const b of this.energySeg.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String((b.dataset.v ?? '') === v));
   }
 
+  private setPool(pool: 'all' | 'breeding'): void {
+    this.pool = pool;
+    saveSetting('v2.presetPool', pool);
+    for (const b of this.poolSeg.querySelectorAll<HTMLButtonElement>('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.v === pool));
+    }
+  }
+
   private setShowHidden(on: boolean): void {
     this.showHidden = on;
     this.hiddenTog.setAttribute('aria-pressed', String(on));
@@ -278,6 +311,7 @@ export class PresetBrowser {
       return;
     }
     this.typeSel.value = '';
+    if (!m.breeding) this.setPool('all');
     this.setEnergy('');
     if (m.hidden) this.setShowHidden(true);
     this.highlight = id;
@@ -300,7 +334,7 @@ export class PresetBrowser {
   private filtered(): Member[] {
     const type = this.typeSel.value as Species | '';
     const energy = this.energy;
-    let ms = this.evo.pop.list().filter((m) => (this.showHidden || !m.hidden) && (!type || m.species === type || m.species2 === type) && (!energy || m.energy === energy));
+    let ms = this.evo.pop.list().filter((m) => (this.pool === 'all' || m.breeding) && (this.showHidden || !m.hidden) && (!type || m.species === type || m.species2 === type) && (!energy || m.energy === energy));
     const sort = this.sortSel.value;
     if (sort === 'newest') ms = ms.sort((a, b) => b.created - a.created || b.id.localeCompare(a.id));
     else if (sort === 'likes') ms = ms.sort((a, b) => b.likes - a.likes || a.dislikes - b.dislikes || b.created - a.created);
@@ -318,8 +352,16 @@ export class PresetBrowser {
     const anchor = preserveVisible ? this.rows[firstVisible]?.id : undefined;
     const anchorOffset = this.scroller.scrollTop - oldListTop - firstVisible * stride;
     const all = this.evo.pop.list();
-    for (const id of [...this.selected]) if (!this.evo.pop.get(id)) this.selected.delete(id);
     const ms = this.filtered();
+    const shown = new Set(ms.map((m) => m.id));
+    for (const id of this.selected) if (!shown.has(id)) this.selected.delete(id);
+    const pen = all.filter((m) => m.breeding);
+    const active = pen.filter((m) => !m.hidden).length;
+    $('v2b-all-count').textContent = String(all.length);
+    $('v2b-pen-count').textContent = String(pen.length);
+    $('v2b-pen-hint').textContent = active < 2
+      ? `${active} active in breeding pen · add ${2 - active} more to breed. New offspring join All.`
+      : `${active} active in breeding pen · only these presets can be parents. New offspring join All.`;
     const classics = SEEDS.filter((s) => s.origin.startsWith('M')).length;
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
     const keepScroll = this.scroller.scrollTop;
@@ -341,9 +383,12 @@ export class PresetBrowser {
       this.windowStart = this.windowEnd = -1;
       this.mounted.clear();
       this.list.style.height = '';
-      this.list.innerHTML = '<p class="dim v2b-none">No presets match these filters.</p>';
+      this.list.innerHTML = this.pool === 'breeding' && !pen.length
+        ? '<p class="dim v2b-none">Your breeding pen is empty. Select presets in All, then choose Add to breeding.</p>'
+        : '<p class="dim v2b-none">No presets match these filters.</p>';
     }
     this.updateSelection();
+    this.cb.onFilterChange?.();
   }
 
   private rowStride(): number {
@@ -432,6 +477,7 @@ export class PresetBrowser {
       m.cross === 'edited' ? `<span class="tag sm" title="${esc(TAG_TITLE.edited)}">edited</span>` : '',
       current ? '<span class="tag sm" style="--c:var(--acc)">playing</span>' : '',
       m.hidden ? '<span class="tag sm" style="--c:var(--tx3)">hidden</span>' : '',
+      m.breeding ? '<span class="tag sm" style="--c:var(--acc)" title="Member of the breeding pen">breeding</span>' : '',
     ].join('');
     r.innerHTML = `
       <input type="checkbox" class="chk" ${sel ? 'checked' : ''} aria-label="Select ${esc(m.id)}" />
@@ -450,12 +496,18 @@ export class PresetBrowser {
 
   private updateSelection(): void {
     const n = this.selected.size;
+    const members = [...this.selected].map((id) => this.evo.pop.get(id)).filter((m): m is Member => !!m);
+    const eligible = n > 0 && members.length === n && members.every((m) => this.evo.pop.canBreed(m));
     const b = (t: string) => `<b style="color:var(--tx)">${t}</b>`;
-    this.selInfo.innerHTML = n === 0 ? 'Select two to breed, one to mutate' : n === 1 ? `${b('1 selected')} · ready to mutate` : n === 2 ? `${b('2 selected')} · ready to breed` : `${b(`${n} selected`)} · pick two to breed`;
+    this.selInfo.innerHTML = n === 0 ? 'Select two in Breeding to breed, one to mutate'
+      : !eligible ? `${b(`${n} selected`)} · ${members.some((m) => !m.breeding) ? 'add to breeding to use as parents' : 'unhide to use as parents'}`
+      : n === 1 ? `${b('1 selected')} · ready to mutate` : n === 2 ? `${b('2 selected')} · ready to breed` : `${b(`${n} selected`)} · pick two to breed`;
     const busy = this.evo.breeding > 0;
-    this.breedBtn.disabled = n !== 2 || busy;
-    this.breedBtn.classList.toggle('primary', n === 2 && !busy);
-    this.mutateBtn.disabled = n !== 1 || busy;
+    this.breedBtn.disabled = n !== 2 || !eligible || busy;
+    this.breedBtn.classList.toggle('primary', n === 2 && eligible && !busy);
+    this.mutateBtn.disabled = n !== 1 || !eligible || busy;
+    this.moveBtn.disabled = n === 0;
+    this.moveBtn.textContent = n > 0 && members.every((m) => m.breeding) ? 'Remove from breeding' : 'Add to breeding';
     this.hideBtn.disabled = n === 0;
     this.deleteBtn.disabled = n === 0 || busy;
     this.clearBtn.disabled = n === 0;
@@ -464,6 +516,7 @@ export class PresetBrowser {
   private async breed(mode: 'cross' | 'mutate'): Promise<void> {
     const parents = [...this.selected].map((id) => this.evo.pop.get(id)).filter((m): m is Member => !!m);
     if ((mode === 'cross' && parents.length !== 2) || (mode === 'mutate' && parents.length !== 1)) return;
+    if (!parents.every((m) => this.evo.pop.canBreed(m)) || this.evo.breeding > 0) return;
     this.results.hidden = false;
     this.scroller.scrollTop = 0;
     const label = mode === 'cross' ? `${parents[0].id} × ${parents[1].id}` : parents[0].id;
@@ -521,6 +574,7 @@ export class PresetBrowser {
     if (children.length) {
       // Show the new children directly below the results, even if an old filter hid them.
       this.typeSel.value = '';
+      this.setPool('all');
       this.setEnergy('');
       this.setShowHidden(false);
       this.sortSel.value = 'newest';

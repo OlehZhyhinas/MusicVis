@@ -35,6 +35,8 @@ export interface Member {
   views: number;
   watch: number; // seconds watched in total
   hidden: boolean;
+  /** Explicit membership in the breeding pen. New presets always start outside it. */
+  breeding: boolean;
   /** Screening render descriptor: mean rgb, motion, mirror symmetry, radial symmetry, detail, coverage. */
   descriptor?: number[];
   /** How a crossover child combined its parents, or 'edited' (absent for seeds, mutants and older children). */
@@ -142,7 +144,7 @@ function seedMember(s: (typeof SEEDS)[number], now: number): Member {
   const g = cloneGenome(s.genome);
   return {
     id: `G0-${s.origin}`, gen: 0, origin: s.origin, parents: [], created: now, name: s.name, genome: g,
-    ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
+    ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false, breeding: false,
   };
 }
 
@@ -213,6 +215,22 @@ export class Population {
     return this.list().filter((m) => !m.hidden);
   }
 
+  /** All parent selection, including niche/family fallbacks, stays inside this pen. */
+  breedingPool(): Member[] {
+    return this.visible().filter((m) => m.breeding);
+  }
+
+  canBreed(m: Member): boolean {
+    return this.get(m.id) === m && m.breeding && !m.hidden;
+  }
+
+  setBreeding(ids: Iterable<string>, on: boolean): void {
+    for (const id of ids) {
+      const m = this.get(id);
+      if (m) m.breeding = on;
+    }
+  }
+
   get(id: string): Member | undefined {
     return this.members.get(id);
   }
@@ -235,7 +253,7 @@ export class Population {
     const used = new Set(this.list().map((x) => x.name));
     const m: Member = {
       id: `G${gen}-${nnnn}`, gen, parents: parents.map((p) => p.id), created: now, name: uniqueName(used, base), genome: g,
-      ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false,
+      ...describe(g), likes: 0, dislikes: 0, softDislikes: 0, weakLikes: 0, views: 0, watch: 0, hidden: false, breeding: false,
     };
     if (cross) m.cross = cross;
     this.members.set(m.id, m);
@@ -283,7 +301,7 @@ export class Population {
    * candidate's score (the exploration mode's phenotype-novelty bonus).
    */
   pickParents(niche: Energy, rng: Rng, tournament = 3, bonus?: (m: Member) => number, mode: ExploreMode = 'gentle'): [Member, Member] | null {
-    const pool = this.visible();
+    const pool = this.breedingPool();
     if (pool.length < 2) return null;
     const inNiche = pool.filter((m) => m.energy === niche);
     const base = inNiche.length >= 2 ? inNiche : pool;
@@ -376,6 +394,7 @@ export class Population {
         views: Math.floor(n(raw.views)),
         watch: n(raw.watch),
         hidden: !!raw.hidden,
+        breeding: raw.breeding === true,
         descriptor: !old && Array.isArray(raw.descriptor) && raw.descriptor.every((x) => typeof x === 'number') ? raw.descriptor : undefined,
       };
       if (CROSS_TAGS.includes(raw.cross as MemberTag)) m.cross = raw.cross;

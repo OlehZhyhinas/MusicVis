@@ -13,7 +13,7 @@ export async function breedingDiversityTests(check: Check): Promise<void> {
   const seeds = Population.seeded(1);
   const base = seeds.get('G0-E13')!;
   const branch = seeds.get('G0-X46')!, fabric = seeds.get('G0-X48')!, linkage = seeds.get('G0-X50')!;
-  const member = (template: Member, id: string): Member => ({ ...template, id, parents: [], energy: base.energy, species: base.species });
+  const member = (template: Member, id: string): Member => ({ ...template, id, breeding: true, parents: [], energy: base.energy, species: base.species });
   // Deliberately put every member in one legacy species: the test must measure body
   // family selection, not the existing cross-species mating shortcut.
   const crowd = Array.from({length: 2000}, (_, i) => member(base, `G1-${String(i).padStart(4,'0')}`));
@@ -67,6 +67,7 @@ export async function breedingDiversityTests(check: Check): Promise<void> {
     screen: async()=>({ok:true,descriptor:[],metrics:{reactivity:0.8,hitLift:0.4,events:0.4}}),
   } as unknown as Screener);
   evolution.pop=new Population(); evolution.rng=mulberry32(813); evolution.changed=()=>{};
+  for (const m of [base, branch]) { m.breeding = true; evolution.pop.members.set(m.id, m); }
   let checks=0, adopted=0;
   const pheno={
     fingerprint:async()=>[1], duplicateOf:()=>null,

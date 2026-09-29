@@ -127,8 +127,16 @@
             </div>
             <div id="v2b-confirm" class="confirm" role="alertdialog" aria-labelledby="v2b-confirm-q" hidden>
               <b id="v2b-confirm-q"></b>
-              <span class="muted">All bred presets, votes and hidden flags are discarded. Export first if you want to keep them.</span>
+              <span class="muted">All bred presets, votes, hidden flags and breeding memberships are discarded. Export first if you want to keep them.</span>
               <div class="row"><button id="v2b-reset-yes" class="btn danger sm">Reset population</button><button id="v2b-reset-no" class="btn ghost sm">Cancel</button></div>
+            </div>
+            <div class="v2b-poolbar">
+              <div class="seg" id="v2b-pool" role="group" aria-label="Preset group">
+                <button data-v="all" aria-pressed="true">All <span id="v2b-all-count" class="dim">0</span></button>
+                <button data-v="breeding" aria-pressed="false">Breeding <span id="v2b-pen-count" class="dim">0</span></button>
+              </div>
+              <button id="v2b-move" class="btn sm" disabled>Add to breeding</button>
+              <span id="v2b-pen-hint" class="dim">Only Breeding presets can be parents. New offspring join All.</span>
             </div>
             <div class="filters">
               <select id="v2b-type" class="dd" aria-label="Filter by type"></select>

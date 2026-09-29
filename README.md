@@ -25,6 +25,11 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   a chain of space warps including fractal-flame variations, wired to the
   music by reaction genes. Like or dislike what you see, let evolve mode breed
   new candidates in the background, or pick two parents yourself.
+- Breeding pen: select presets in **All** and choose **Add to breeding**, then
+  use **Breeding** to view the pen or remove selected members. Only visible pen
+  members can breed or mutate, including automatic breeding. The pen starts
+  empty; offspring join the general pool until you add them yourself. Membership
+  survives reloads and population exports/imports.
 - Composable body families include branching coral/root structures, pleated fabric,
   and articulated chains of joints. Starter presets X46–X51 introduce these shapes
   as parents; they can inherit the existing materials, placements and reactions.

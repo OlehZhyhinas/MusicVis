@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     evolveOn = on;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding new presets in the background every ${EVOLVE_BREED_SECS} s of music. Vote with L / D.` : 'Presets change on new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding from your pen every ${EVOLVE_BREED_SECS} s of music. Add at least two visible presets to Breeding. Offspring join All.` : 'Presets change on new songs and N.');
     evolveBreedTimer = 0;
   }
 
@@ -236,6 +236,7 @@ async function main(): Promise<void> {
       }
     },
     novelty: (m) => pheno.novelty(m),
+    onFilterChange: () => presetMap.sync(),
   });
   const explore = new ExploreControls(pheno.mode, (m) => {
     pheno.mode = m;

@@ -56,6 +56,17 @@
 #v2-browser {
   gap: 12px;
 }
+.v2b-poolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: none;
+}
+#v2b-pool button { display: flex; align-items: center; gap: 6px; }
+#v2b-pool button .dim { font-size: 11px; }
+#v2b-pen-hint { flex-basis: 100%; font-size: 11px; }
 .filters {
   display: flex;
   align-items: center;

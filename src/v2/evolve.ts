@@ -184,11 +184,19 @@ export class Evolution {
   async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void): Promise<Member[]> {
     const out: Member[] = [];
     let tried = 0;
+    const eligible = () => parents.length === (mode === 'cross' ? 2 : 1)
+      && new Set(parents.map((p) => p.id)).size === parents.length
+      && parents.every((p) => this.pop.canBreed(p));
+    if (!eligible()) {
+      onEvent?.({ kind: 'done', tried });
+      return out;
+    }
     this.breeding++;
     this.lastRejects = [];
     this.onChange?.();
     try {
       while (out.length < n && tried < n * MAX_TRIES_PER_CHILD) {
+        if (!eligible()) break;
         tried++;
         let g: Genome;
         let tag: CrossTag | undefined;
@@ -235,6 +243,8 @@ export class Evolution {
             continue;
           }
         }
+        // Membership may change while screening, or the population may be replaced.
+        if (!eligible()) break;
         const child = this.pop.addChild(cloneGenome(g), parents, Date.now(), tag);
         child.descriptor = res.descriptor;
         child.react = res.metrics.reactivity;
@@ -259,7 +269,8 @@ export class Evolution {
     for (let i = 0; i < 2; i++) {
       const pair = this.pop.pickParents(niche, this.rng, 3, this.pheno ? (m) => this.pheno!.bonus(m) : undefined, this.pheno?.mode ?? 'gentle');
       if (!pair) break;
-      born.push(...(await this.breed(pair, 1, this.rng() < 0.8 ? 'cross' : 'mutate')));
+      const mode = this.rng() < 0.8 ? 'cross' : 'mutate';
+      born.push(...(await this.breed(mode === 'cross' ? pair : [pair[0]], 1, mode)));
     }
     if (born.length) console.info(`[v2] auto-bred ${born.map((m) => m.id).join(', ')} in the ${niche} niche`);
     return born;
