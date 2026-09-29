@@ -75,7 +75,7 @@ export class Fingerprinter {
               resolve([]);
               return true;
             }
-            return false;
+            return 'yield';
           }
           slot = st.makeSlot(g, progs);
           st.slots = [slot];
@@ -103,7 +103,7 @@ export class Fingerprinter {
           return true;
         }
         return false;
-      });
+      }, 'preview');
     });
   }
 
@@ -135,7 +135,7 @@ export class Fingerprinter {
                 done(null);
                 return true;
               }
-              return false;
+              return 'yield';
             }
             slot = st.makeSlot(g, progs);
             st.slots = [slot];

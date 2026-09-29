@@ -12,6 +12,8 @@ import { COST_BUDGET_MS, estimateCost, type Genome } from './genome';
 import type { Engine, Stage } from './engine';
 import { Stage as StageClass } from './engine';
 import { mulberry32 } from './ops';
+import { JobRunner } from './jobRunner';
+export { JobRunner } from './jobRunner';
 
 // --------------------------------------------------------- synthetic music
 
@@ -133,31 +135,6 @@ export class SyntheticMusic {
       section: SECTION, sectionIndex: 1, sectionProgress: 0.3, sectionChanged: false, dropPulse: 0, buildIntensity: 0,
       notes: flat ? (this.flatNotes ??= flatNotesOf(syntheticNotes(t, beatLen, s))) : syntheticNotes(t, beatLen, s),
     };
-  }
-}
-
-// ----------------------------------------------------------- job runner
-
-type Step = () => boolean; // returns true when finished
-
-/** Runs offscreen work a few milliseconds per animation frame. */
-export class JobRunner {
-  private jobs: Step[] = [];
-  enqueue(step: Step): void {
-    this.jobs.push(step);
-  }
-  get busy(): boolean {
-    return this.jobs.length > 0;
-  }
-  get queued(): number {
-    return this.jobs.length;
-  }
-  pump(budgetMs: number): void {
-    const t0 = performance.now();
-    while (this.jobs.length && performance.now() - t0 < budgetMs) {
-      const done = this.jobs[0]();
-      if (done) this.jobs.shift();
-    }
   }
 }
 
@@ -318,7 +295,7 @@ function corr(a: number[], b: number[]): number {
 }
 
 export class Screener {
-  readonly runner = new JobRunner();
+  readonly runner: JobRunner;
   private stage: Stage;
   /** Second stage rendering the metronome counterfactual in lockstep with the music run. */
   private stageB: Stage;
@@ -329,6 +306,7 @@ export class Screener {
   private musicB = new SyntheticMusic();
 
   constructor(private eng: Engine) {
+    this.runner = new JobRunner(eng.gl);
     this.stage = new StageClass(eng, { offscreen: true, particleCap: 16384, flameCap: 32768 });
     this.stage.resize(SCREEN_W, SCREEN_H);
     this.stageB = new StageClass(eng, { offscreen: true, particleCap: 16384, flameCap: 32768 });
@@ -338,7 +316,7 @@ export class Screener {
   }
 
   /** Wait for the genome's programs (parallel compile), resolving null on failure. */
-  private whenCompiled(g: Genome, resolve: (ok: boolean) => void): Step {
+  private whenCompiled(g: Genome, resolve: (ok: boolean) => void): () => boolean {
     let waited = 0;
     return () => {
       const p = this.eng.cache.get(g, waited > 240);
@@ -442,7 +420,7 @@ export class Screener {
 
       this.runner.enqueue(() => {
         if (phase === 'compile') {
-          if (!waitStep()) return false;
+          if (!waitStep()) return 'yield';
           if (!compiled) {
             phase = 'done';
             fail(`compile error: ${(this.eng.cache.failed(g) ?? '').split('\n').find((l) => /ERROR/.test(l)) ?? 'shader failed'}`.slice(0, 160));
@@ -705,7 +683,7 @@ export class Screener {
       let slot: ReturnType<Stage['makeSlot']> | null = null;
       this.runner.enqueue(() => {
         if (!started) {
-          if (!waitStep()) return false;
+          if (!waitStep()) return 'yield';
           if (!compiled) {
             resolve('');
             return true;
@@ -736,7 +714,7 @@ export class Screener {
         ctx.putImageData(img, 0, 0);
         resolve(c.toDataURL('image/jpeg', 0.82));
         return true;
-      });
+      }, 'preview');
     });
   }
 }
