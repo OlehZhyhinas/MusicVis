@@ -31,6 +31,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
 - New capabilities ship with three distinct starter presets. The ribbed spiral shell
   body comes with Porcelain Nautilus (X60), Malachite Tesserae (X61), and Conch
   Lanterns (X62): a single shaded form, a repeating surface, and drifting copies.
+  Recoil movement springs back after musical onsets, with selectable drum, note,
+  or instrument triggers. Pearl Bounce (X63), Kinetic Iris (X64), and Afterimage
+  Etude (X65) show soft translation, angular kicks, and melody-driven light trails.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

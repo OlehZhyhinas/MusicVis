@@ -36,6 +36,7 @@ import { FLOCK_SCHEMA, flockCost } from './genes/boids';
 import { MOSAIC_SCHEMA } from './genes/mosaic';
 import { TUNNEL_SCHEMA } from './genes/tunnel';
 import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
+import { RECOIL_SCHEMA } from './genes/recoil';
 import { SHELL_SCHEMA } from './genes/shell';
 import { LINKAGE_SCHEMA } from './genes/linkage';
 import { FABRIC_SCHEMA } from './genes/fabric';
@@ -303,9 +304,10 @@ export const PLACE_SCHEMAS: Record<PlaceKind, Schema> = {
 
 // ---------------------------------------------------------------- motion
 
-export const MOTION_KINDS = ['none', 'spin', 'sway', 'bob', 'drift', 'circle', 'hits', 'pulse'] as const;
+export const MOTION_KINDS = ['none', 'spin', 'sway', 'bob', 'drift', 'circle', 'hits', 'pulse', 'recoil'] as const;
 export type MotionKind = (typeof MOTION_KINDS)[number];
 export const MOTION_SCHEMAS: Record<MotionKind, Schema> = {
+  recoil: RECOIL_SCHEMA,
   none: {},
   // Bar-locked spin (turns per bar); alt: reverses every other bar. Solids turn in 3D.
   spin: { rate: C(TURNS, 0.25), alt: C([0, 1], 0) },

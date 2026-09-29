@@ -50,6 +50,7 @@ import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { landscapeChecks } from './landscape-checks';
 import { breedingDiversityTests } from './breeding-diversity-tests';
+import { recoilTests } from './recoil-tests';
 import { bodyFamilyTests } from './body-family-tests';
 import { compoundChecks } from './compound-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
@@ -1589,6 +1590,7 @@ raymarchChecks(check);
 landscapeChecks(check);
 compoundChecks(check);
 bodyFamilyTests(check);
+recoilTests(check);
 
 // -------------------------------------------------- AVS genes: blend mode (material.blend)
 

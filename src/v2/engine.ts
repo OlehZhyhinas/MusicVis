@@ -43,6 +43,7 @@ import { FLOCK_GAIN, FLOCK_OVERLAY_GAIN, flockOverlaySize } from './genes/boids'
 import { SLIME_GAIN, slimeDisplayScale } from './genes/physarum';
 import { Ecosystem } from './genes/ecosystemGpu';
 import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
+import { recoilImpulse, stepRecoil } from './genes/recoil';
 import { packShell } from './genes/shell';
 import { packLinkage } from './genes/linkage';
 import { packFabric } from './genes/fabric';
@@ -1895,6 +1896,23 @@ export class Stage {
             set('hs', approach(mm('hs'), mm('ha'), 1 / Math.max(0.02, P('glide')), sdt));
           }
           c.a += mm('hs');
+          break;
+        }
+        case 'recoil': {
+          if (i === 0) {
+            const src = mo.p.source;
+            const level = src === 0 ? (F.hitGate ? Math.min(1, F.hitRel) : 0)
+              : src === 1 ? num(F.notes?.on, 0) : num(F.onset[src - 1], 0);
+            const impulse = recoilImpulse(level, mm('recoil.prev'));
+            set('recoil.prev', level);
+            const next = stepRecoil(mm('recoil.x'), mm('recoil.v'), sdt, P('frequency'), P('damping'), impulse);
+            set('recoil.x', next.x); set('recoil.v', next.v);
+          }
+          const displacement = Math.tanh(mm('recoil.x'));
+          const angle = TAU * P('direction') + ph * P('fan');
+          c.x += P('distance') * displacement * Math.cos(angle);
+          c.y += P('distance') * displacement * Math.sin(angle);
+          c.a += P('tilt') * displacement * Math.cos(ph * P('fan'));
           break;
         }
         case 'pulse':

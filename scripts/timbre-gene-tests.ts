@@ -62,8 +62,11 @@ export function timbreGeneTests(check: Check): void {
   // Cost: counted per distance-field evaluation, plus the emboss.
   {
     const worst = SEEDS.filter((s) => !s.genome.drift && !s.genome.timbre).map((s) => s.genome).sort((a, b) => estimateCost(b) - estimateCost(a))[0];
-    const g = withTimbre(worst, repairTimbre({ p: { emboss: 1 } }));
-    check('timbre.cost', estimateCost(g) > estimateCost(repair(cloneGenome(worst))) && estimateCost(g) <= COST_BUDGET_MS, `costliest seed with timbre ${estimateCost(g).toFixed(2)} ms`);
+    const raw = cloneGenome(worst); raw.timbre = repairTimbre({ p: { emboss: 1 } });
+    const g = repair(raw);
+    // Adding a surface costs more before repair; repair may then reduce copies or layers.
+    check('timbre.cost', estimateCost(raw) > estimateCost(worst) && estimateCost(g) <= COST_BUDGET_MS && !validate(g).length,
+      `costliest seed with timbre ${estimateCost(raw).toFixed(2)} ms before repair, ${estimateCost(g).toFixed(2)} ms after`);
   }
 
   // Crossover across species, mutation, naming.

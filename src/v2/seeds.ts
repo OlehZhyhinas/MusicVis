@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 164;
+export const SEED_VERSION = 165;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4095,7 +4095,83 @@ const SHELL_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES];
+const RECOIL_STUDIES: Def[] = [
+  {
+    origin: 'X63', name: 'Pearl Bounce', energy: [0.1, 0.9], scheme: 'free', hue: 0.56,
+    pal: { key: 0, s1: 0.1, s2: 0.48 },
+    color: { exposure: 0.9, sat: 0.55, bloom: 0.5, adapt: 0.15, vignette: 0.4, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['cells', { mode: 2, scale: 1.5, warp: 0.6, fill: 0.5, wall: 0, speed: 0.06, var: 0.1, pulse: 0 }],
+        material: ['fill', { gain: 0.12 }], emit: ['none'], color: ['fixed', { hue: 0.2 }],
+      }),
+      body({
+        shape: ['dot', { r: 0.13 }], place: ['row', { count: 4, y: -0.02, wander: 0 }],
+        deform: ['wobble', { lobes: 3, amp: 0.025, rate: 0 }],
+        motion: ['recoil', { source: 0, distance: 0.13, direction: 0.25, tilt: 0.18, frequency: 1.2, damping: 0.2, fan: 0.32 }],
+        material: ['chrome', { gain: 0.95, chrome: 0.65 }], emit: ['none'],
+        color: ['instrument', { amount: 0.4, detail: 0.4 }],
+      }),
+    ],
+    reactions: [
+      rx('bass', 'sh', 1, 'r', 0.07, { atk: 0.12, rel: 0.45 }),
+      rx('held', 'mo', 1, 'damping', 0.4, { atk: 0.3, rel: 0.7 }),
+      rx('bright', 'ma', 1, 'chrome', 0.4, { atk: 0.2, rel: 0.65 }),
+      rx('noisy', 'de', 1, 'amp', 0.08, { atk: 0.2, rel: 0.6 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.04, section: 0.1 },
+  },
+  {
+    origin: 'X64', name: 'Kinetic Iris', energy: [0.15, 0.95], scheme: 'free', hue: 0.075,
+    pal: { key: 0, s1: 0.5, s2: 0.08 },
+    color: { exposure: 0.95, sat: 0.8, bloom: 0.5, adapt: 0.15, vignette: 0.4, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['fabric', { size: 0.27, aspect: 0.33, folds: 8, depth: 0.8, drape: 0.25, weave: 0.08, flutter: 0.06 }],
+        place: ['ring', { n: 9, radius: 0.14 }], deform: ['twist', { amt: 1.5 }],
+        motion: ['recoil', { source: 2, distance: 0, tilt: 0.7, frequency: 2.5, damping: 0.22 }],
+        material: ['fill', { gain: 1.3, soft: 0.015, core: 0.2 }], emit: ['none'],
+        color: ['height', { hue: 0, amount: 0.35, detail: 0.55 }],
+      }),
+      body({
+        shape: ['polygon', { n: 8, r: 0.065, round: 0.15 }],
+        motion: ['recoil', { source: 0, distance: 0.02, tilt: -0.6, frequency: 3, damping: 0.35 }],
+        material: ['line', { gain: 0.9, width: 1.1, halo: 0.02 }], emit: ['none'],
+        color: ['fixed', { hue: 0.33, detail: 0.2 }],
+      }),
+    ],
+    reactions: [
+      rx('tension', 'mo', 0, 'damping', 0.55, { atk: 0.25, rel: 0.7 }),
+      rx('held', 'sh', 0, 'drape', 0.35, { atk: 0.2, rel: 0.6 }),
+      rx('hit', 'ma', 1, 'gain', 0.25, { atk: 0.02, rel: 0.35 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.04, section: 0.1 },
+  },
+  {
+    origin: 'X65', name: 'Afterimage Etude', energy: [0.05, 0.9], scheme: 'free', hue: 0.62,
+    pal: { key: 0, s1: 0.28, s2: 0.46 },
+    color: { exposure: 0.95, sat: 0.7, bloom: 0.55, adapt: 0.15, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'warp', car: { halfLife: 1.4, floor: 0.15, blur: 0 },
+    chain: [op('rotate', { lock: 0, rate: 0.0008, cx: 0.05, cy: -0.04 }), op('zoom', { rate: 0.0015 })],
+    bodies: [body({
+      shape: ['superscope', { family: 0, p: 3, q: 5, size: 0.35, audio: 0.08, spinX: 0.0625, spinY: -0.0625, persp: 0.3, n: 2048 }],
+      motion: ['recoil', { source: 1, distance: 0.08, direction: 0.08, tilt: 0.55, frequency: 1.8, damping: 0.18 }],
+      material: ['line', { gain: 0.75, width: 1.15, halo: 0.02 }], emit: ['trail'],
+      color: ['height', { hue: 0, amount: 0.4, detail: 0.8 }],
+    })],
+    reactions: [
+      rx('legato', 'mo', 0, 'damping', 0.5, { atk: 0.25, rel: 0.65 }),
+      rx('vibrato', 'sh', 0, 'audio', 0.3, { atk: 0.15, rel: 0.5 }),
+      rx('bass', 'sh', 0, 'size', 0.1, { atk: 0.1, rel: 0.5 }),
+      rx('hook', 'ma', 0, 'gain', 0.2, { atk: 0.03, rel: 0.4 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.03, section: 0.1 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

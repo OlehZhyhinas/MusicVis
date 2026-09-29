@@ -65,6 +65,13 @@ const SECTION_HELP: Record<string, string> = {
 };
 
 const PARAM_HELP: Record<string, string> = {
+  'motion.recoil.source': 'Trigger: 0 drum hits, 1 melody note starts, 2 bass onsets, 3 vocal onsets, 4 other instrument onsets.',
+  'motion.recoil.distance': 'Maximum travel away from the body’s resting position.',
+  'motion.recoil.direction': 'Direction of the kick in turns: 0 right, 0.25 up, -0.25 down.',
+  'motion.recoil.tilt': 'Rotation coupled to the spring, in radians; negative turns the other way.',
+  'motion.recoil.frequency': 'Spring oscillations per second.',
+  'motion.recoil.damping': 'How quickly the bounce settles; 1 returns without overshooting.',
+  'motion.recoil.fan': 'How far the kick direction fans out across copies.',
   'shape.shell.turns': 'Number of windings in the coil.',
   'shape.shell.growth': 'How quickly the coil grows outward; higher values separate the outer windings.',
   'shape.shell.width': 'Thickness of the coiled tube relative to its radius.',

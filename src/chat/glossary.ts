@@ -119,6 +119,7 @@ export const ENTRIES: Record<string, string> = {
   'motion.drift': 'constant slow velocity, wraps at edges.',
   'motion.circle': 'small loop, period=bars.',
   'motion.hits': 'jolts/turns on drum hits.',
+  'motion.recoil': 'an onset kicks a damped spring, then the body overshoots and settles. source 0 drums,1 melody note starts,2 bass onsets,3 vocal onsets,4 other onsets; distance=travel; direction=travel angle in turns; tilt=turn in radians; frequency=oscillations/second; damping=settling strength(1 no overshoot); fan=spread of directions across copies.',
   'motion.pulse': 'size kick on beat.',
 
   // ------------------------------------------------------------- deform
