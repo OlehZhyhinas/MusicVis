@@ -11,9 +11,9 @@ export const EXPLORE_KEY = 'v2.explore';
 
 const HINT: Record<ExploreMode, string> = {
   off: 'Votes and fitness only',
-  gentle: 'A small nudge toward presets that look unlike anything seen so far',
-  explore: 'Novel-looking presets get real airtime; familiar-looking children are turned away',
-  wild: 'Novelty first until votes come in; only clearly new-looking children are kept',
+  gentle: 'A small novelty nudge, with occasional rare body families chosen as breeding partners',
+  explore: 'Different body families breed more often; familiar-looking children are turned away, even on retries',
+  wild: 'Rare body families get equal chances as partners; only novel children are kept, so batches may be smaller',
 };
 
 export function loadExploreMode(): ExploreMode {

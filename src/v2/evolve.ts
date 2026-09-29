@@ -49,7 +49,13 @@ export class Evolution {
   private history: string[] = [];
   private view: { id: string; start: number } | null = null;
 
-  constructor(private store: Store, readonly screener: Screener) {}
+  private store: Store;
+  readonly screener: Screener;
+
+  constructor(store: Store, screener: Screener) {
+    this.store = store;
+    this.screener = screener;
+  }
 
   async load(): Promise<void> {
     let data: unknown;
@@ -218,8 +224,9 @@ export class Evolution {
           onEvent?.({ kind: 'reject', reason, tried });
           continue;
         }
-        // Explore / wild: turn away children that look too familiar (never in the last half of the attempts).
-        if (fp && tried <= (n * MAX_TRIES_PER_CHILD) / 2) {
+        // Explore / wild: keep the novelty requirement through every retry. A smaller batch
+        // is preferable to quietly admitting familiar-looking children after three failures.
+        if (fp) {
           const acc = this.pheno!.acceptNovelty(fp);
           if (!acc.ok) {
             const reason = `too familiar for ${this.pheno!.mode} mode (novelty ${acc.rel.toFixed(2)} < ${acc.floor.toFixed(2)})`;
@@ -250,7 +257,7 @@ export class Evolution {
   async autoBreed(niche: Energy): Promise<Member[]> {
     const born: Member[] = [];
     for (let i = 0; i < 2; i++) {
-      const pair = this.pop.pickParents(niche, this.rng, 3, this.pheno ? (m) => this.pheno!.bonus(m) : undefined);
+      const pair = this.pop.pickParents(niche, this.rng, 3, this.pheno ? (m) => this.pheno!.bonus(m) : undefined, this.pheno?.mode ?? 'gentle');
       if (!pair) break;
       born.push(...(await this.breed(pair, 1, this.rng() < 0.8 ? 'cross' : 'mutate')));
     }

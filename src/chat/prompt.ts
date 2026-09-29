@@ -103,7 +103,7 @@ export function systemPrompt(): string {
   if (cached) return cached;
   const GAPS = glossaryGaps();
   if (GAPS.length) console.warn(`[chat] genes without a glossary entry: ${GAPS.join(', ')}`);
-  cached = `You edit a live music visualizer preset for the user. The preset is a genome: 1-3 bodies (light sources) plus a space chain, a carrier (how light moves and fades), a palette, a tone and reactions (music signals driving parameters). Each user message shows the preset and a request. Reply with JSON only:
+  cached = `You edit live music visualizer genomes: 1-3 bodies, a space chain, carrier (light movement/fading), palette, tone and reactions (music driving parameters). Each message gives a preset and request. Reply with JSON only:
 {"say": "<one short friendly sentence about what you changed>", "edits": [<edit>, ...]}
 Edits (applied in order):
 {"op":"set","path":"b0.shape.r","value":0.2}  set a parameter; value is a number in the range shown, a choice name, or for any hue a colour name ("blue")

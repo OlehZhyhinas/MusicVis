@@ -25,6 +25,14 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   a chain of space warps including fractal-flame variations, wired to the
   music by reaction genes. Like or dislike what you see, let evolve mode breed
   new candidates in the background, or pick two parents yourself.
+- Composable body families include branching coral/root structures, pleated fabric,
+  and articulated chains of joints. Starter presets X46–X51 introduce these shapes
+  as parents; they can inherit the existing materials, placements and reactions.
+- Exploration controls in the preset browser also guide automatic breeding:
+  Gentle occasionally chooses a different body family, while Explore and Wild
+  do so more often. Rare families get equal chances before fitness chooses an
+  individual. Explore/Wild keep rejecting familiar children through every retry,
+  so a breeding batch can be smaller when no novel child passes.
 - Gene editor: change any gene of the playing preset and see it immediately.
 - Gene chat (desktop, WebGPU): describe a change in words ("calmer", "more
   blue", "fill the screen") and a language model running on your GPU edits

@@ -49,6 +49,7 @@ import { ecosystemTests } from './ecosystem-tests';
 import { physicsChecks } from './v2-physics';
 import { raymarchChecks } from './raymarch-checks';
 import { landscapeChecks } from './landscape-checks';
+import { breedingDiversityTests } from './breeding-diversity-tests';
 import { bodyFamilyTests } from './body-family-tests';
 import { compoundChecks } from './compound-checks';
 import { noveltyTests, noveltyTestsAsync } from './novelty-tests';
@@ -1774,6 +1775,7 @@ physicsChecks(check);
 
 noveltyTests(check);
 await noveltyTestsAsync(check);
+await breedingDiversityTests(check);
 await lyricsTests(check);
 
 // -------------------------------------------------- MilkDrop mining: cells (Voronoi field)

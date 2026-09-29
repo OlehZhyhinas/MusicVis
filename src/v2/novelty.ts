@@ -147,12 +147,12 @@ export const EXPLORE_WEIGHT: Record<ExploreMode, number> = { off: 0, gentle: 0.0
 /** Children less novel than this (relative) are turned away in breeding, per mode. */
 export const EXPLORE_ACCEPT: Record<ExploreMode, number> = { off: 0, gentle: 0, explore: 0.18, wild: 0.3 };
 
-/** Ease the breeding cutoff as the population fills the available visual space. */
+/** Ease the cutoff with population size, retaining at least 60% of the requested novelty. */
 export function noveltyAcceptFloor(mode: ExploreMode, populationSize: number): number {
   const base = EXPLORE_ACCEPT[mode];
   if (!base) return 0;
   const doublings = Math.max(0, Math.log2(Math.max(1, populationSize) / 100));
-  return base / (1 + doublings / 2);
+  return base * (0.6 + 0.4 / (1 + doublings / 2));
 }
 
 /** Votes (likes + dislikes, implicit signals at 0.3) after which a member's novelty weight has halved. */

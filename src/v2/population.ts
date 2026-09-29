@@ -6,6 +6,8 @@ import {
   type Energy, type Genome, type Species,
 } from './genome';
 import { nameFor } from './naming';
+import { FAMILY_EXPLORATION, diverseFamily } from './breedingDiversity';
+import type { ExploreMode } from './novelty';
 import { SEEDS, SEED_VERSION } from './seeds';
 import type { CrossTag, Rng } from './ops';
 import { FP_VERSION, validFingerprint } from './fingerprint';
@@ -280,7 +282,7 @@ export class Population {
    * near-duplicates of the first parent are penalised. `bonus` adds to each
    * candidate's score (the exploration mode's phenotype-novelty bonus).
    */
-  pickParents(niche: Energy, rng: Rng, tournament = 3, bonus?: (m: Member) => number): [Member, Member] | null {
+  pickParents(niche: Energy, rng: Rng, tournament = 3, bonus?: (m: Member) => number, mode: ExploreMode = 'gentle'): [Member, Member] | null {
     const pool = this.visible();
     if (pool.length < 2) return null;
     const inNiche = pool.filter((m) => m.energy === niche);
@@ -305,6 +307,12 @@ export class Population {
       return best!;
     };
     const a = tour(base);
+    if (mode !== 'off' && rng() < FAMILY_EXPLORATION[mode]) {
+      // Prefer a different family in the same energy niche; reach outside it if the niche
+      // has converged. Choose the family first so rare shapes actually enter tournaments.
+      const family = diverseFamily(base, a, rng) ?? diverseFamily(pool, a, rng);
+      if (family) return [a, tour(family, a)];
+    }
     const r = rng();
     let cands = base.filter((m) => m !== a);
     if (r < 0.15) cands = pool.filter((m) => m !== a && m.energy !== niche);
