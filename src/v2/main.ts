@@ -47,6 +47,8 @@ const GITHUB_URL = 'https://github.com/OlehZhyhinas/MusicVis';
 const BUG_URL = 'https://github.com/OlehZhyhinas/MusicVis/issues/new';
 /** Evolve mode breeds a new pair in the background after this many seconds of music. */
 const EVOLVE_BREED_SECS = 60;
+/** Maximum active playback time before automatically choosing another preset. */
+const MAX_PRESET_PLAY_SECS = 3 * 60;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -114,6 +116,7 @@ async function main(): Promise<void> {
   // ------------------------------------------------------------ presets
 
   let currentId: string | null = null;
+  let presetPlayTimer = 0;
   let songCx = 0.5;
 
   function current(): Member | null {
@@ -133,6 +136,7 @@ async function main(): Promise<void> {
     }
     evo.startView(m.id, skipped);
     currentId = m.id;
+    presetPlayTimer = 0;
     eng.show(m.genome, secs);
     browser.markCurrent(m.id);
     presetMap.markCurrent();
@@ -209,7 +213,7 @@ async function main(): Promise<void> {
     evolveOn = on;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding from your pen every ${EVOLVE_BREED_SECS} s of music. Add at least two visible presets to Breeding. Offspring join All.` : 'Presets change on new songs and N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding from your pen every ${EVOLVE_BREED_SECS} s of music. Add at least two visible presets to Breeding. Offspring join All.` : 'Presets change on new songs, after 3 minutes of playback, and with N.');
     evolveBreedTimer = 0;
   }
 
@@ -307,6 +311,7 @@ async function main(): Promise<void> {
       // The saved child is the picture on screen: switch to it in place (no crossfade).
       evo.startView(m.id, false);
       currentId = m.id;
+      presetPlayTimer = 0;
       eng.edit(m.genome);
       browser.markCurrent(m.id);
       editor.load(m);
@@ -871,7 +876,8 @@ async function main(): Promise<void> {
   let statsTimer = 0;
 
   function frame(now: number): void {
-    const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
+    const elapsed = Math.max(0, (now - lastTime) / 1000);
+    const dt = Math.min(0.1, elapsed);
     lastTime = now;
     fps += (1 / Math.max(dt, 1e-6) - fps) * 0.05;
 
@@ -889,16 +895,20 @@ async function main(): Promise<void> {
     }
 
     // Switching policy.
-    // Unsaved gene edits pause automatic switching (new songs).
+    // Unsaved gene edits pause automatic switching and the preset playback timer.
     if (duels.isOpen) {
       // The duel page renders its two presets itself; the main view and switching pause.
       duels.frame(state, dt);
       requestAnimationFrame(frame);
       return;
     }
-    // The preset changes only on a new song (a new file, or a track change the live analyzer detects) or
-    // when the user asks (N); never on drops or a timer. Evolve mode never switches: it only breeds new
-    // presets in the background while music plays, which new songs then pick up (unseen presets get airtime).
+    // New songs and the playback limit use the same automatic selection, independent of Evolve mode.
+    // Count real playback time, not the clamped simulation step, so slow frames don't extend the limit.
+    if (currentId && !editor.dirty && (state.playing || liveMode.active)) {
+      presetPlayTimer += elapsed;
+      if (presetPlayTimer >= MAX_PRESET_PLAY_SECS) choose('new', 1.5);
+    }
+    // Evolve mode only breeds new presets in the background while music plays.
     if (evolveOn && !editor.dirty && evo.breeding === 0 && !screener.runner.busy && (state.playing || liveMode.active)) {
       evolveBreedTimer += dt;
       if (evolveBreedTimer > EVOLVE_BREED_SECS) {

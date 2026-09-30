@@ -102,6 +102,10 @@ score, the Evolve toggle and the preset browser. In the browser you can filter
 and sort the population, select two presets to breed or one to mutate, hide
 presets, and export or import the whole population as JSON.
 
+Presets change on new songs and after a maximum of 3 minutes of playback,
+with or without Evolve mode. Pausing playback, editing unsaved genes, or
+comparing presets in a duel pauses the timer. Press N to change presets sooner.
+
 Your population, votes and settings are stored in the browser (IndexedDB and
 localStorage) for this site only.
 
