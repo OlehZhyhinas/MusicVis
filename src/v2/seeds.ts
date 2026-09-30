@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 177;
+export const SEED_VERSION = 178;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4698,7 +4698,22 @@ const ORIGAMI_STUDIES: Def[] = [
   reactions:[rx('held','sh',0,'fold',-0.2,{atk:0.5,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS, ...FRACTURE_STUDIES, ...ORIGAMI_STUDIES];
+const FERROFLUID_STUDIES: Def[] = [
+ {origin:'X102',name:'Magnetic Ink',energy:[0.05,1],scheme:'free',hue:0.52,pal:{key:0,s1:0.36,s2:0.6},carrier:'none',
+  color:{exposure:1.1,sat:1,bloom:0.45,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['ferrofluid',{size:0.43,form:0,blobs:5,spread:0.55,tension:0.35,spikes:1,frequency:12,magnet:1,viscosity:0.65,drift:0.4,turn:0.012,tilt:0.18,sheen:1,iridescence:0.6}],material:['chrome',{gain:1.4}],emit:['none']})],
+  reactions:[rx('held','sh',0,'tension',0.1,{atk:0.3,rel:0.6})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+ {origin:'X103',name:'Polarity Pearls',energy:[0.05,0.9],scheme:'analogous',hue:0.57,pal:{key:0},carrier:'none',
+  color:{exposure:1.15,sat:1,bloom:0.4,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['ferrofluid',{size:0.46,form:1,blobs:6,spread:0.62,tension:0.35,spikes:0.08,frequency:8,magnet:0.8,viscosity:1.4,drift:0.8,turn:-0.018,tilt:0.1,sheen:1,iridescence:0.4}],material:['iridescent',{gain:1.5}],emit:['none']})],
+  reactions:[rx('register','sh',0,'spread',0.25,{atk:0.4,rel:0.8}),rx('held','sh',0,'tension',0.1,{atk:0.4,rel:0.7})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+ {origin:'X104',name:'Mercury Bridge',energy:[0.05,1],scheme:'free',hue:0.89,pal:{key:0,s1:0.62,s2:0.19},carrier:'none',
+  color:{exposure:1.1,sat:1,bloom:0.45,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['ferrofluid',{size:0.45,form:2,blobs:4,spread:0.53,tension:0.45,spikes:0.2,frequency:9,magnet:0.9,viscosity:0.8,drift:0.9,turn:0.008,tilt:0,sheen:1,iridescence:0.9}],material:['chrome',{gain:1.4}],emit:['none']})],
+  reactions:[rx('legato','sh',0,'tension',0.1,{atk:0.25,rel:0.6}),rx('noteon','sh',0,'spread',0.15,{atk:0.08,rel:0.5})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS, ...FRACTURE_STUDIES, ...ORIGAMI_STUDIES, ...FERROFLUID_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

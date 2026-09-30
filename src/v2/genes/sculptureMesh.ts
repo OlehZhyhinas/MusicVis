@@ -54,7 +54,7 @@ void main(){
  }
  if(uStyle==0)color*=edge;
  if(uStyle==2)color*=1.3;
- if(uStyle==3)color*=smoothstep(0.28,0.18,length(fract(vPosition.xy*55.)-0.5));
+ if(uStyle==3)color*=(1.-smoothstep(0.18,0.28,length(fract(vPosition.xy*55.)-0.5)));
  frag=vec4(color,1.);
 }`;
 export class SculptureMeshRenderer {

@@ -39,6 +39,7 @@ import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
 import { UNDULATE_SCHEMA } from './genes/undulate';
 import { WEAVE_SCHEMA } from './genes/weave';
 import { RECOIL_SCHEMA } from './genes/recoil';
+import { FERROFLUID_SCHEMA } from './genes/ferrofluid';
 import { ORIGAMI_SCHEMA } from './genes/origami';
 import { FRACTURE_SCHEMA } from './genes/fracture';
 import { LIGHTNING_SCHEMA, LIGHTNING_EMIT_SCHEMA } from './genes/lightning';
@@ -172,7 +173,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound', 'branch', 'fabric', 'linkage', 'shell', 'plume', 'lily', 'ribbon', 'lightning', 'fracture', 'origami'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound', 'branch', 'fabric', 'linkage', 'shell', 'plume', 'lily', 'ribbon', 'lightning', 'fracture', 'origami', 'ferrofluid'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -203,6 +204,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   lightning: 'field',
   fracture: 'field',
   origami: 'field',
+  ferrofluid: 'field',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene', 'landscape'];
@@ -255,6 +257,7 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   lightning: LIGHTNING_SCHEMA,
   fracture: FRACTURE_SCHEMA,
   origami: ORIGAMI_SCHEMA,
+  ferrofluid: FERROFLUID_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -1604,9 +1607,9 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35, branch: 0.8, fabric: 0.6, linkage: 1.1, shell: 1.4, plume: 0.8, lily: 1.4, ribbon: 0.4, lightning: 0.4, fracture: 0.4, origami: 0.4,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35, branch: 0.8, fabric: 0.6, linkage: 1.1, shell: 1.4, plume: 0.8, lily: 1.4, ribbon: 0.4, lightning: 0.4, fracture: 0.4, origami: 0.4, ferrofluid: 0.4,
 };
-const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST, ribbon: 1.5, lightning: 1.4, fracture: 1.6, origami: 1.2 };
+const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST, ribbon: 1.5, lightning: 1.4, fracture: 1.6, origami: 1.2, ferrofluid: 4.0 };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45, iridescent: 0.1 };
 /** One evaluation of a shape; a wireframe costs by its segment count (plus the inner solid). */
 function shapeEvalCost(sh: ShapeGene): number {

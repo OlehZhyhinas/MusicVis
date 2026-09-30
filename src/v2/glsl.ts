@@ -803,10 +803,10 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   let pre = '';
   let fieldHelpers = '';
   if (b.shape.kind === 'lightning') pre += `uniform sampler2D uLightning${bi};\n`;
-  if ((b.shape.kind === 'fracture' || b.shape.kind === 'origami')) pre += `uniform sampler2D uSculpture${bi};\n`;
+  if ((b.shape.kind === 'fracture' || b.shape.kind === 'origami' || b.shape.kind === 'ferrofluid')) pre += `uniform sampler2D uSculpture${bi};\n`;
   if (b.shape.kind === 'ribbon') pre += `uniform sampler2D uRibbon${bi};\n`;
   if (cls === 'field') {
-    const [hs, fld] = splitField((b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : (b.shape.kind === 'fracture' || b.shape.kind === 'origami') ? SCULPTURE_FIELD.replace(/SCULPTURE_TEX/g, `uSculpture${bi}`) : b.shape.kind === 'ribbon' ? RIBBON_FIELD.replace(/RIBBON_TEX/g, `uRibbon${bi}`) : b.shape.kind === 'lightning' ? LIGHTNING_FIELD.replace(/LIGHTNING_TEX/g, `uLightning${bi}`) : FIELD_GLSL[b.shape.kind]) ?? '');
+    const [hs, fld] = splitField((b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : (b.shape.kind === 'fracture' || b.shape.kind === 'origami' || b.shape.kind === 'ferrofluid') ? SCULPTURE_FIELD.replace(/SCULPTURE_TEX/g, `uSculpture${bi}`) : b.shape.kind === 'ribbon' ? RIBBON_FIELD.replace(/RIBBON_TEX/g, `uRibbon${bi}`) : b.shape.kind === 'lightning' ? LIGHTNING_FIELD.replace(/LIGHTNING_TEX/g, `uLightning${bi}`) : FIELD_GLSL[b.shape.kind]) ?? '');
     // Helpers that take this body's slots or suffix come out different per body and stay.
     const own = slot(hs, bi, sfx);
     if (!shared.has(own)) { shared.add(own); fieldHelpers = own; }

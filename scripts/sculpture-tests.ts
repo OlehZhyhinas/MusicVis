@@ -1,3 +1,4 @@
+import { FerrofluidSimulation, FERROFLUID_SCHEMA } from '../src/v2/genes/ferrofluid';
 import { OrigamiSimulation, ORIGAMI_SCHEMA } from '../src/v2/genes/origami';
 import { FractureSimulation, FRACTURE_SCHEMA, type SculptureMusic } from '../src/v2/genes/fracture';
 import { MESH_STRIDE } from '../src/v2/genes/meshGeometry';
@@ -28,6 +29,17 @@ export function sculptureTests(check:Check):void {
     }
     check('origami.rigid-panels-'+form,error<1e-6&&vertices.every(Number.isFinite),`all panel edges and diagonals keep their length while hinges move; max error ${error.toExponential(2)}`);
   }
+  for(const form of [0,1,2]) {
+    const liquid=new FerrofluidSimulation(),params={...defaultParams(FERROFLUID_SCHEMA),form};
+    liquid.step(params,quiet,1/60);const rest=Array.from(liquid.drops);
+    for(let i=0;i<180;i++)liquid.step(params,{...quiet,hit:i%30===0,onset:i%30===0?1:0,bass:0.8,pitch:72},1/60);
+    const distance=Math.max(...liquid.drops.map((v,i)=>Math.abs(v-rest[i]))),field=liquid.field;
+    for(let i=0;i<600;i++)liquid.step({...params,drift:0},quiet,i%20===0?0.8:1/60);
+    check('ferrofluid.music-'+form,distance>0.05&&field>0.3,'musical forces move the liquid poles and excite the magnetic field');
+    check('ferrofluid.stable-'+form,liquid.drops.every(Number.isFinite)&&Math.max(...liquid.drops.map(Math.abs))<2&&liquid.velocity.every(v=>Math.abs(v)<0.001)&&liquid.field<0.001,'finite bounded droplets settle after music stops, including slow frames');
+  }
+  const liquidSeeds=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='ferrofluid'));
+  check('ferrofluid.presets',liquidSeeds.length===3&&liquidSeeds.every(s=>!validate(s.genome).length&&JSON.stringify(repair(s.genome))===JSON.stringify(s.genome)&&s.genome.carrier.kind==='none'&&!s.genome.chain.length),'three stable liquid forms with no feedback');
   const paperSeeds=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='origami'));
   check('origami.presets',paperSeeds.length===3&&paperSeeds.every(s=>!validate(s.genome).length&&s.genome.carrier.kind==='none'&&!s.genome.chain.length),'three connected-paper forms without feedback');
   const presets=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='fracture'));

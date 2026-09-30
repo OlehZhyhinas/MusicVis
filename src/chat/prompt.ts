@@ -104,7 +104,7 @@ export function systemPrompt(): string {
   const GAPS = glossaryGaps();
   if (GAPS.length) console.warn(`[chat] genes without a glossary entry: ${GAPS.join(', ')}`);
   cached = `You edit live music visualizer genomes: 1-3 bodies, a space chain, carrier (light movement/fading), palette, tone and reactions (music driving parameters). Given a preset and request, reply with JSON only:
-{"say": "<one short friendly sentence about what you changed>", "edits": [<edit>, ...]}
+{"say": "<brief sentence describing the changes>", "edits": [<edit>, ...]}
 Edits (applied in order):
 {"op":"set","path":"b0.shape.r","value":0.2}  set a parameter; value is a number in the range shown, a choice name, or for any hue a colour name ("blue")
 {"op":"mul","path":"carrier.halfLife","by":2}  multiply a parameter (use for relative requests: bigger, faster, a bit less)

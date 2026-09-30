@@ -264,7 +264,7 @@ export function shapeSize(s: ShapeGene): number {
     case 'bars': return s.p.mode === 1 || s.p.mode === 2 ? s.p.radius + s.p.len * 0.5 : 0.5;
     case 'curve': return s.p.form === 0 ? 0.6 : s.p.radius;
     case 'superscope': return s.p.size;
-    case 'origami': case 'fracture': return s.p.size * 2.15;
+    case 'ferrofluid': case 'origami': case 'fracture': return s.p.size * 2.15;
     case 'lightning': return s.p.size * 1.8;
     case 'ribbon': return s.p.size * ribbonExtent(s.path,s.p.width);
     case 'lily': return s.p.size * Math.max(1.7, s.p.stem);
@@ -290,7 +290,7 @@ function setShapeSize(s: ShapeGene, r: number): void {
     case 'bars': if (s.p.mode === 1 || s.p.mode === 2) { put('radius', r * 0.6); put('len', r * 0.6); } break;
     case 'curve': if (s.p.form !== 0) put('radius', r); break;
     case 'superscope': put('size', r); break;
-    case 'origami': case 'fracture': put('size', r / 2.15); break;
+    case 'ferrofluid': case 'origami': case 'fracture': put('size', r / 2.15); break;
     case 'lightning': put('size', r / 1.8); break;
     case 'ribbon': put('size', r / ribbonExtent(s.path,s.p.width)); break;
     case 'lily': put('size', r / Math.max(1.7, s.p.stem)); break;
