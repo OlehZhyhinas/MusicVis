@@ -19,7 +19,8 @@ export interface BreedEvent {
   tried: number;
 }
 
-const MAX_TRIES_PER_CHILD = 6;
+const SIMILARITY_TRIES = 5;
+const MAX_TRIES_PER_CHILD = SIMILARITY_TRIES + 1;
 /** Bumped when previews rendered before need redrawing (2: the preview music gained a melody). */
 const THUMB_REV = 2;
 function readThumbRev(): number {
@@ -184,7 +185,7 @@ export class Evolution {
    */
   async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void, source: 'manual' | 'automatic' = 'manual'): Promise<Member[]> {
     const out: Member[] = [];
-    let tried = 0;
+    let tried = 0, childTries = 0;
     const eligible = () => parents.length === (mode === 'cross' ? 2 : 1)
       && new Set(parents.map((p) => p.id)).size === parents.length
       && parents.every((p) => this.pop.get(p.id) === p && (source === 'manual' || this.pop.canAutoBreed(p)));
@@ -199,6 +200,7 @@ export class Evolution {
       while (out.length < n && tried < n * MAX_TRIES_PER_CHILD) {
         if (!eligible()) break;
         tried++;
+        const filterSimilarity = ++childTries <= SIMILARITY_TRIES;
         let g: Genome;
         let tag: CrossTag | undefined;
         if (mode === 'cross' && parents.length >= 2) {
@@ -217,7 +219,7 @@ export class Evolution {
           g = mutate(parents[0].genome, this.rng, 1 + Math.min(2, tried * 0.12));
           if (g.bodies.length > n) tag = 'layered';
         }
-        if (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g))) continue;
+        if (filterSimilarity && (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g)))) continue;
         const res: ScreenResult = await this.screener.screen(g);
         if (!res.ok) {
           this.lastRejects.push(res.reason ?? 'rejected');
@@ -227,15 +229,14 @@ export class Evolution {
         // Visual duplicates: a child that looks like an existing member is rejected, whatever its genes say.
         const fp = this.pheno ? await this.pheno.fingerprint(g) : null;
         const dup = fp && this.pheno!.duplicateOf(fp);
-        if (dup) {
+        if (filterSimilarity && dup) {
           const reason = `looks like an existing preset (${dup.id}, distance ${dup.dist.toFixed(2)})`;
           this.lastRejects.push(reason);
           onEvent?.({ kind: 'reject', reason, tried });
           continue;
         }
-        // Explore / wild: keep the novelty requirement through every retry. A smaller batch
-        // is preferable to quietly admitting familiar-looking children after three failures.
-        if (fp) {
+        // Give each requested child five attempts at novelty, then bypass all similarity gates.
+        if (filterSimilarity && fp) {
           const acc = this.pheno!.acceptNovelty(fp);
           if (!acc.ok) {
             const reason = `too familiar for ${this.pheno!.mode} mode (novelty ${acc.rel.toFixed(2)} < ${acc.floor.toFixed(2)})`;
@@ -253,6 +254,7 @@ export class Evolution {
         if (j !== undefined) child.judge = j;
         if (fp) this.pheno!.adopt(child, fp);
         out.push(child);
+        childTries = 0;
         onEvent?.({ kind: 'child', member: child, tried });
         this.changed();
       }
