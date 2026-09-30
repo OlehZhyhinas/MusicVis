@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 171;
+export const SEED_VERSION = 172;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4591,7 +4591,34 @@ const RIBBON_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES];
+const LIGHTNING_STUDIES: Def[] = [
+  {
+    origin:'X84',name:'Chromatic Voltage',energy:[0.1,1],scheme:'free',hue:0.65,
+    pal:{key:0,s1:0.3,s2:0.65},color:{exposure:1,sat:1,bloom:0.85,adapt:0.1,vignette:0.15,contrast:0.02,ca:0},carrier:'none',
+    bodies:[body({shape:['lightning',{size:0.72,channels:5,branches:0.85,jagged:0.85,speed:2.5,decay:0.24,width:0.0035,spread:0.55,fan:0}],
+      material:['glow',{gain:1.15}],emit:['none'],color:['fixed',{hue:0,detail:1}]})],
+    reactions:[rx('drums','sh',0,'width',0.15,{atk:0.02,rel:0.15}),rx('bright','sh',0,'branches',0.3,{atk:0.05,rel:0.25}),rx('tension','sh',0,'jagged',0.2,{atk:0.2,rel:0.5})],
+    accent:{hook:0,kick:0,hue:0,drop:0,section:0},
+  },
+  {
+    origin:'X85',name:'Kickstorm',energy:[0.1,1],scheme:'free',hue:0.8,
+    pal:{key:0,s1:0.3,s2:0.65},color:{exposure:1,sat:1,bloom:0.9,adapt:0.1,vignette:0.2,contrast:0.02,ca:0},carrier:'none',
+    bodies:[body({shape:['lightning',{size:0.38,channels:3,branches:1,jagged:1,speed:3.5,decay:0.16,width:0.006,spread:0.8,fan:0.15}],
+      place:['point',{angle:0.25}],material:['glow',{gain:1.2}],emit:['none'],color:['fixed',{hue:0.14,detail:1}]})],
+    reactions:[rx('bass','sh',0,'width',0.2,{atk:0.025,rel:0.18}),rx('hit','sh',0,'branches',0.2,{atk:0.02,rel:0.2}),rx('bright','sh',0,'spread',0.3,{atk:0.06,rel:0.3})],
+    accent:{hook:0,kick:0,hue:0,drop:0,section:0},
+  },
+  {
+    origin:'X86',name:'Fractal Crossfire',energy:[0.1,1],scheme:'free',hue:0.7,
+    pal:{key:0,s1:0.3,s2:0.65},color:{exposure:0.95,sat:1,bloom:0.8,adapt:0.1,vignette:0.2,contrast:0.02,ca:0},carrier:'none',
+    bodies:[body({shape:['lightning',{size:0.39,channels:6,branches:0.9,jagged:0.9,speed:3,decay:0.32,width:0.0035,spread:0.9,fan:1}],
+      material:['glow',{gain:1.1}],emit:['none'],color:['fixed',{hue:0.32,detail:1}]})],
+    reactions:[rx('complexity','sh',0,'branches',0.25,{atk:0.1,rel:0.4}),rx('register','sh',0,'spread',0.25,{atk:0.15,rel:0.35}),rx('drums','sh',0,'width',0.12,{atk:0.025,rel:0.15})],
+    accent:{hook:0,kick:0,hue:0,drop:0,section:0},
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

@@ -5,6 +5,7 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { LightningRenderer } from './genes/lightningRender';
 import { RibbonRenderer } from './genes/ribbonRender';
 import { ribbonExtent } from './genes/ribbon';
 import { LilyAtlas } from './lilyAtlas';
@@ -671,6 +672,7 @@ export class Slot {
   readonly segZ = new Float32Array(48);
   segN = 0;
   curves: CurveDraw[] = [];
+  readonly lightning = new Map<number, LightningRenderer>();
   readonly ribbons = new Map<number, RibbonRenderer>();
   rem: number[] = [];
   shift = [0, 0];
@@ -936,6 +938,8 @@ export class Stage {
     this.dejavu.drop(s);
     for (const ribbon of s.ribbons.values()) ribbon.dispose();
     s.ribbons.clear();
+    for (const bolts of s.lightning.values()) bolts.dispose();
+    s.lightning.clear();
     s.fb.dispose();
     s.sceneT?.dispose();
     s.sceneT = null;
@@ -1058,6 +1062,7 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
+    for (const s of slots) for (const bolts of s.lightning.values()) bolts.render(this.h * 2);
     for (const s of slots) for (const ribbon of s.ribbons.values()) ribbon.render(this.h * 2, s.cols);
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
@@ -2023,6 +2028,14 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'lightning': {
+        let bolts=s.lightning.get(bi);
+        if(!bolts) {bolts=new LightningRenderer(this.eng.gl,this.eng.hdr);s.lightning.set(bi,bolts);}
+        bolts.params={channels:P('channels'),branches:P('branches'),jagged:P('jagged'),speed:P('speed'),decay:P('decay'),width:P('width'),spread:P('spread'),fan:P('fan')};
+        bolts.hue=this.bodyHue;
+        bolts.simulation.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??F.keyTonic,tonic:F.keyTonic},bolts.params,sdt);
+        E[o]=P('size');return P('size')*1.8;
+      }
       case 'ribbon': {
         let ribbon=s.ribbons.get(bi);
         if(!ribbon) { ribbon=new RibbonRenderer(this.eng.gl,this.eng.hdr);s.ribbons.set(bi,ribbon); }
@@ -2830,6 +2843,7 @@ export class Stage {
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex)
       .tex('uNote', this.sig.noteTex);
+    s.lightning.forEach((bolts, i) => p.tex(`uLightning${i}`, bolts.texture ?? this.eng.black));
     s.ribbons.forEach((ribbon, i) => p.tex(`uRibbon${i}`, ribbon.texture ?? this.eng.black));
     s.bx.forEach((a, i) => { if (a) p.f4v(`uBx${i}`, a); });
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);

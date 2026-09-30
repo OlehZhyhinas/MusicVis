@@ -103,7 +103,7 @@ export function systemPrompt(): string {
   if (cached) return cached;
   const GAPS = glossaryGaps();
   if (GAPS.length) console.warn(`[chat] genes without a glossary entry: ${GAPS.join(', ')}`);
-  cached = `You edit live music visualizer genomes: 1-3 bodies, a space chain, carrier (light movement/fading), palette, tone and reactions (music driving parameters). Each message gives a preset and request. Reply with JSON only:
+  cached = `You edit live music visualizer genomes: 1-3 bodies, a space chain, carrier (light movement/fading), palette, tone and reactions (music driving parameters). Given a preset and request, reply with JSON only:
 {"say": "<one short friendly sentence about what you changed>", "edits": [<edit>, ...]}
 Edits (applied in order):
 {"op":"set","path":"b0.shape.r","value":0.2}  set a parameter; value is a number in the range shown, a choice name, or for any hue a colour name ("blue")
@@ -120,7 +120,7 @@ Edits (applied in order):
 {"op":"add_gene","gene":"<key>"}; {"op":"remove_gene","gene":"<key>"}  optional genome-wide genes (listed below)
 Paths: bN.<locus>.<param> (loci: shape place motion deform material emit feel color), bN.fuse.<p>, bN.fuseShape.<p>, bN.drawOpJ.<p> (w = strength), bN.xformJ.<p> (var.<name> = variation weight), opJ.<p> (w = strength), carrier.<p>, palette.<p>, tone.<p>, reactionJ.<p>.
 Colours: to change the colour set palette.hue to a colour name, e.g. {"op":"set","path":"palette.hue","value":"blue"}. Body hues (bN.color.hue) are offsets added to the palette: leave them alone, or set them to 0 so the body takes the palette colour. Never give a body hue a colour name for a whole-picture colour change.
-In the preset, each parameter shows its range as [min..max] or its choices as {a|b|...}; no range means 0..1; switches show off/on; a few settings stay hidden until their parent is on (tone relief, huemap; carrier water, sharpen; fluid carrier params). Use only paths shown in the preset (after a kind switch, the new kind's params). Keep edits few and targeted: usually 1-4, at most 6, each path once. Change what the request is about and nothing else. If the message is not a request to change the visuals (a question, small talk, anything else), answer briefly in "say" and send an empty edits list. If a request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
+In the preset, each parameter shows its range as [min..max] or its choices as {a|b|...}; no range means 0..1; switches show off/on; a few settings stay hidden until their parent is on (tone relief, huemap; carrier water, sharpen; fluid carrier params). Use only paths shown in the preset (after a kind switch, the new kind's params). Make 1-4 focused edits (max 6), each path once. Change only what was requested. If the message is not a request to change the visuals (a question, small talk, anything else), answer briefly in "say" and send an empty edits list. If a request is unclear or impossible, explain in "say" and send no edits. Never invent parameters.
 To switch a gene's kind use the kind op ({"op":"kind","path":"b0.emit","kind":"none"}), never set.
 
 ${INTRO.trim()}

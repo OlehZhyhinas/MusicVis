@@ -63,6 +63,10 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   ribbon mesh with depth testing and a damped spring chain. Edit 2–64 path points
   in Genes → Shape (x, y, z, width, twist) to trace your own shape; paths breed and
   mutate, and musical forces bend the mesh while neon colours travel along it.
+  Chromatic Voltage (X84), Kickstorm (X85), and Fractal Crossfire (X86) shoot jagged,
+  recursively branching lightning across independent musical channels. Drum hits
+  fire the main bolt, note starts select pitch-class colours, and bass, vocal and
+  other onsets add separate strikes. Bolts propagate quickly and decay in silence.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an
