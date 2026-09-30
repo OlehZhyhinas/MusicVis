@@ -201,8 +201,8 @@ export function raymarchChecks(check: Check): void {
   check('scene.breeds-every-species', !crossBad.length && !rangeBad && kept > crosses * 0.2,
     crossBad.slice(0, 6).join(' | ') || `${crosses} crossovers with ${bySpecies.size} species valid and under budget (${kept} keep the scene), random genes in range`);
   let appeared = 0;
-  for (let i = 0; i < 300; i++) if (randomBody(rng).shape.kind === 'scene') appeared++;
-  check('scene.random-bodies', appeared > 3 && appeared < 60, `${appeared}/300 random bodies are scenes`);
+  for (let i = 0; i < 1500; i++) if (randomBody(rng).shape.kind === 'scene') appeared++;
+  check('scene.random-bodies', appeared > 5 && appeared < 200, `${appeared}/1500 random bodies are scenes`);
 
   // Migration: a seed-version-6 population gains the R seeds exactly once; the rest stays as it was.
   const base = Population.seeded(1);

@@ -43,7 +43,7 @@ function pickWord(pool: readonly string[], seed: number, parentNames: readonly s
 /** What a body reads as (the noun family): derived from its shape, placement, material and emission. */
 export type NounKind =
   | 'wave' | 'spectrum' | 'particles' | 'stars' | 'ink' | 'wire' | 'plasma' | 'aurora' | 'blobs' | 'flame' | 'edge'
-  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch' | 'fabric' | 'linkage' | 'shell' | 'plume' | 'lily' | 'ribbon' | 'lightning';
+  | 'tiles' | 'horizon' | 'orb' | 'snake' | 'polygon' | 'star' | 'segment' | 'scope' | 'network' | 'flock' | 'beams' | 'depth' | 'cells' | 'cymatics' | 'habitat' | 'journey' | 'lattice' | 'melody' | 'figure' | 'branch' | 'fabric' | 'linkage' | 'shell' | 'plume' | 'lily' | 'ribbon' | 'lightning' | 'fracture';
 
 export const NOUN_POOLS: Record<NounKind, string[]> = {
   wave: ['Line', 'Trace', 'Thread', 'Strand', 'Current', 'Signal', 'Wavelet', 'Course', 'Sinew', 'Skein', 'Waveform', 'Tremor'],
@@ -66,6 +66,7 @@ export const NOUN_POOLS: Record<NounKind, string[]> = {
   flock: ['Murmuration', 'Flock', 'Starlings', 'Shoal', 'Swallows', 'Rookery', 'Covey', 'Wheel', 'Gyre', 'Volery', 'Squadron', 'Exaltation'],
   habitat: ['Ecosystem', 'Tidepool', 'Menagerie', 'Habitat', 'Reef', 'Biome', 'Savanna', 'Terrarium', 'Aviary', 'Wetland', 'Lagoon', 'Wilderness'],
   network: ['Mycelium', 'Plexus', 'Rhizome', 'Veins', 'Capillaries', 'Delta', 'Tracery', 'Filigree', 'Roots', 'Mould', 'Hyphae', 'Reticulum'],
+  fracture: ['Fracture', 'Splinters', 'Shards', 'Prism', 'Fault', 'Fragments'],
   lightning: ['Lightning', 'Voltage', 'Arc', 'Bolt', 'Thunder', 'Spark', 'Discharge'],
   ribbon: ['Ribbon', 'Streamer', 'Silk', 'Band', 'Sash', 'Knot', 'Wavelet'],
   lily: ['Lily', 'Blossom', 'Corolla', 'Bloom', 'Orchid', 'Iris', 'Petal', 'Flower'],
@@ -116,6 +117,7 @@ function shapeNoun(s: ShapeGene, b: BodyGene | null): NounKind {
     case 'linkage': return 'linkage';
     case 'shell': return 'shell';
     case 'plume': return 'plume';
+    case 'fracture': return 'fracture';
     case 'lightning': return 'lightning';
     case 'ribbon': return 'ribbon';
     case 'lily': return 'lily';

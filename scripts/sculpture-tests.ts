@@ -1,0 +1,21 @@
+import { FractureSimulation, FRACTURE_SCHEMA, type SculptureMusic } from '../src/v2/genes/fracture';
+import { MESH_STRIDE } from '../src/v2/genes/meshGeometry';
+import { defaultParams, validate, repair } from '../src/v2/genome';
+import { SEEDS } from '../src/v2/seeds';
+type Check=(name:string,ok:boolean,detail:string)=>void;
+export function sculptureTests(check:Check):void {
+  const p={...defaultParams(FRACTURE_SCHEMA),open:0};
+  const quiet:SculptureMusic={hit:false,onset:0,noteOn:0,held:0,legato:0,bass:0,vocals:0,pitch:60};
+  const sim=new FractureSimulation();const rest=sim.step(p,quiet,1/60);
+  sim.step(p,{...quiet,hit:true,onset:1},1/60);for(let i=0;i<30;i++)sim.step(p,quiet,1/60);
+  const opened=Math.max(...sim.shards.map(s=>s.x));
+  check('fracture.impulse',opened>0.1 && sim.shards.length>80,'a drum impulse separates individual solid shards');
+  for(let i=0;i<500;i++)sim.step(p,quiet,1/60);
+  const returned=Math.max(...sim.shards.map(s=>Math.abs(s.x)));
+  check('fracture.reassemble',returned<0.002,'shards return to their original slab after the impact');
+  const mesh=sim.step(p,quiet,0.8);let normalError=0;
+  for(let i=0;i<mesh.length;i+=MESH_STRIDE)normalError=Math.max(normalError,Math.abs(Math.hypot(mesh[i+3],mesh[i+4],mesh[i+5])-1));
+  check('fracture.solid-mesh',mesh.every(Number.isFinite)&&normalError<0.001&&mesh.length===rest.length,'closed triangular prisms have finite positions and unit face normals');
+  const presets=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='fracture'));
+  check('fracture.presets',presets.length===3&&presets.every(s=>!validate(s.genome).length&&JSON.stringify(repair(s.genome))===JSON.stringify(s.genome)&&s.genome.carrier.kind==='none'&&!s.genome.chain.length),'three independently lit, serializable presets with no tunnel or feedback');
+}

@@ -5,6 +5,8 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { SculptureMeshRenderer } from './genes/sculptureMesh';
+import { FractureSimulation } from './genes/fracture';
 import { LightningRenderer } from './genes/lightningRender';
 import { RibbonRenderer } from './genes/ribbonRender';
 import { ribbonExtent } from './genes/ribbon';
@@ -676,6 +678,7 @@ export class Slot {
   curves: CurveDraw[] = [];
   readonly lightning = new Map<number, LightningRenderer>();
   readonly arcs = new Map<number, LightningRenderer>();
+  readonly sculptures = new Map<number, { mesh: SculptureMeshRenderer; fracture: FractureSimulation }>();
   readonly ribbons = new Map<number, RibbonRenderer>();
   readonly displays = new Map<number, { source: Genome; key: string; stage: Stage }>();
   rem: number[] = [];
@@ -944,6 +947,8 @@ export class Stage {
     s.displays.clear();
     for (const ribbon of s.ribbons.values()) ribbon.dispose();
     s.ribbons.clear();
+    for (const sculpt of s.sculptures.values()) sculpt.mesh.dispose();
+    s.sculptures.clear();
     for (const bolts of s.lightning.values()) bolts.dispose();
     s.lightning.clear();
     for (const bolts of s.arcs.values()) bolts.dispose();
@@ -1100,6 +1105,7 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
+    for (const s of slots) for (const sculpt of s.sculptures.values()) sculpt.mesh.render(this.h*2,s.cols);
     for (const s of slots) for (const bolts of s.arcs.values()) bolts.render(this.h * 2);
     for (const s of slots) for (const bolts of s.lightning.values()) bolts.render(this.h * 2);
     for (const s of slots) for (const [bi,ribbon] of s.ribbons) ribbon.render(this.h * 2, s.cols, s.displays.get(bi)?.stage.out?.t ?? eng.black);
@@ -2086,6 +2092,16 @@ export class Stage {
         bolts.simulation.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??F.keyTonic,tonic:F.keyTonic},bolts.params,sdt);
         E[o]=P('size');return P('size')*1.8;
       }
+      case 'fracture': {
+        let sculpt=s.sculptures.get(bi);
+        if(!sculpt){sculpt={mesh:new SculptureMeshRenderer(this.eng.gl,this.eng.hdr),fracture:new FractureSimulation()};s.sculptures.set(bi,sculpt);}
+        const p=Object.fromEntries(Object.keys(SHAPE_SCHEMAS.fracture).map(k=>[k,P(k)])),mesh=sculpt.mesh;
+        mesh.vertices=sculpt.fracture.step(p,{hit:F.hitGate,onset:F.onset[0],noteOn:F.notes?.on??0,held:F.notes?.held??0,legato:F.notes?.legato??0,bass:F.stem[1],vocals:F.stem[2],pitch:F.notes?.pitch??60},sdt);
+        mesh.time=sculpt.fracture.time;mesh.turn=p.turn*mesh.time*TAU;mesh.tilt=p.tilt*TAU;
+        mesh.hue=this.bodyHue;mesh.prism=p.prism;mesh.clarity=p.clarity;mesh.pulse=F.beatPulse*0.25;
+        mesh.style=['line','fill','glow','dots','textured','chrome','iridescent'].indexOf(b.material.kind);
+        E[o]=p.size;return p.size*2.15;
+      }
       case 'ribbon': {
         let ribbon=s.ribbons.get(bi);
         if(!ribbon) { ribbon=new RibbonRenderer(this.eng.gl,this.eng.hdr);s.ribbons.set(bi,ribbon); }
@@ -2898,6 +2914,7 @@ export class Stage {
       .tex('uNote', this.sig.noteTex);
     s.arcs.forEach((bolts,i) => p.tex(`uArcs${i}`,bolts.texture??this.eng.black).f1(`uArcGain${i}`,s.P('em',i,s.genome.bodies[i].emit.p,'gain',EMIT_SCHEMAS.lightning)));
     s.lightning.forEach((bolts, i) => p.tex(`uLightning${i}`, bolts.texture ?? this.eng.black));
+    s.sculptures.forEach((sculpt,i)=>p.tex(`uSculpture${i}`,sculpt.mesh.texture??this.eng.black));
     s.ribbons.forEach((ribbon, i) => p.tex(`uRibbon${i}`, ribbon.texture ?? this.eng.black));
     s.bx.forEach((a, i) => { if (a) p.f4v(`uBx${i}`, a); });
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);

@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 175;
+export const SEED_VERSION = 176;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4668,7 +4668,22 @@ const LIGHTNING_EMISSIONS: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS];
+const FRACTURE_STUDIES: Def[] = [
+  {origin:'X96',name:'Prismatic Fault',energy:[0.05,1],scheme:'free',hue:0.58,pal:{key:0,s1:0.3,s2:0.65},carrier:'none',
+    color:{exposure:1.05,sat:1,bloom:0.55,adapt:0.1,vignette:0.18,contrast:0.015},
+    bodies:[body({shape:['fracture',{size:0.35,pieces:10,form:0,open:0.12,impact:0.85,recovery:1.1,thickness:0.045,tumble:0.8,turn:0.008,tilt:0.07,prism:0.9,clarity:0.8}],material:['iridescent',{gain:1.4}],emit:['none']})],
+    reactions:[rx('held','sh',0,'open',-0.15,{atk:0.4,rel:0.8}),rx('bright','sh',0,'prism',0.3,{atk:0.2,rel:0.6})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+  {origin:'X97',name:'Opal Impact',energy:[0.05,1],scheme:'analogous',hue:0.51,pal:{key:0},carrier:'none',
+    color:{exposure:1.1,sat:1,bloom:0.5,adapt:0.1,vignette:0.15},
+    bodies:[body({shape:['fracture',{size:0.34,pieces:7,form:1,open:0.25,impact:0.65,recovery:0.7,thickness:0.09,tumble:1,turn:-0.012,tilt:0.11,prism:0.5,clarity:1}],material:['chrome',{gain:1.5}],emit:['none']})],
+    reactions:[rx('vocals','sh',0,'open',-0.2,{atk:0.5,rel:1})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+  {origin:'X98',name:'Cathedral Splinters',energy:[0.1,1],scheme:'free',hue:0.87,pal:{key:0,s1:0.38,s2:0.7},carrier:'none',
+    color:{exposure:1.1,sat:1,bloom:0.65,adapt:0.1,vignette:0.18},
+    bodies:[body({shape:['fracture',{size:0.28,pieces:13,form:2,open:0.5,impact:0.6,recovery:1.8,thickness:0.06,tumble:0.9,turn:0.018,tilt:0.05,prism:1,clarity:0.6}],place:['point',{angle:0.25}],material:['iridescent',{gain:1.5}],emit:['none']})],
+    reactions:[rx('held','sh',0,'open',-0.25,{atk:0.5,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS, ...FRACTURE_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

@@ -13,6 +13,7 @@ import { HUEMAP_GLSL } from './genes/huemap';
 import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
+import { SCULPTURE_FIELD } from './genes/meshGeometry';
 import { LIGHTNING_FIELD } from './genes/lightning';
 import { RIBBON_FIELD } from './genes/ribbon';
 import { LILY_GLSL } from './genes/lily';
@@ -802,9 +803,10 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   let pre = '';
   let fieldHelpers = '';
   if (b.shape.kind === 'lightning') pre += `uniform sampler2D uLightning${bi};\n`;
+  if (b.shape.kind === 'fracture') pre += `uniform sampler2D uSculpture${bi};\n`;
   if (b.shape.kind === 'ribbon') pre += `uniform sampler2D uRibbon${bi};\n`;
   if (cls === 'field') {
-    const [hs, fld] = splitField((b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : b.shape.kind === 'ribbon' ? RIBBON_FIELD.replace(/RIBBON_TEX/g, `uRibbon${bi}`) : b.shape.kind === 'lightning' ? LIGHTNING_FIELD.replace(/LIGHTNING_TEX/g, `uLightning${bi}`) : FIELD_GLSL[b.shape.kind]) ?? '');
+    const [hs, fld] = splitField((b.shape.kind === 'scene' ? sceneField(b.material.kind) : b.shape.kind === 'landscape' ? landField(b.material.kind) : b.shape.kind === 'fracture' ? SCULPTURE_FIELD.replace(/SCULPTURE_TEX/g, `uSculpture${bi}`) : b.shape.kind === 'ribbon' ? RIBBON_FIELD.replace(/RIBBON_TEX/g, `uRibbon${bi}`) : b.shape.kind === 'lightning' ? LIGHTNING_FIELD.replace(/LIGHTNING_TEX/g, `uLightning${bi}`) : FIELD_GLSL[b.shape.kind]) ?? '');
     // Helpers that take this body's slots or suffix come out different per body and stay.
     const own = slot(hs, bi, sfx);
     if (!shared.has(own)) { shared.add(own); fieldHelpers = own; }

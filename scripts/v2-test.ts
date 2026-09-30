@@ -1,3 +1,4 @@
+import { sculptureTests } from './sculpture-tests';
 // Tests for the V2 genome operators (repair, validate, crossover, mutate,
 // classify, population lineage/fitness/serialization, glsl builders,
 // migration of older formats, names).
@@ -1596,6 +1597,7 @@ landscapeChecks(check);
 compoundChecks(check);
 bodyFamilyTests(check);
 ribbonTests(check);
+sculptureTests(check);
 lightningTests(check);
 recoilTests(check);
 weaveTests(check);
