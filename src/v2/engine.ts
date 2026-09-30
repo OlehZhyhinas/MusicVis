@@ -32,7 +32,7 @@ import { NEUTRAL_NUDGE, easeNudge, lineKick, lyricTarget, type LyricNudge } from
 import { CaptionLayer } from './genes/lyricsGpu';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, MAPPING_KINDS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FUSE_SCHEMA, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS,
-  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, bodyBxCount, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
+  PLACE_SCHEMAS, SHAPE_CLASS, SHAPE_SCHEMAS, MAX_DRAW, MAX_REACTIONS, bodyBxCount, lilyExtraSlot, clampParam, cloneGenome, drawOpId, schemaFor, structuralKey,
   type BodyGene, type FlameVar, type GeneGroup, type Genome, type OpGene, type PaletteGene, type Params, type Scheme, type Schema,
   type ShapeGene, type Signal,
   paletteHue,
@@ -2019,7 +2019,11 @@ export class Stage {
       }
       case 'shell': return packShell(E, o, P);
       case 'plume': return packPlume(E, o, P);
-      case 'lily': return packLily(E, o, P, (this.clk.bars % 8) * Math.PI / 2);
+      case 'lily': {
+        const extra = s.bx[bi]!, at = lilyExtraSlot(s.genome.bodies[bi], fused) * 4;
+        extra[at] = P('depth'); extra[at + 1] = P('twist'); extra[at + 2] = P('flow'); extra[at + 3] = 0;
+        return packLily(E, o, P, (this.clk.bars % 8) * Math.PI / 2);
+      }
       case 'linkage': return packLinkage(E, o, P, this.clk.spin * 0.25);
       case 'fabric': return packFabric(E, o, P, this.clk.spin * 0.125);
       case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);

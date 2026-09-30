@@ -1360,7 +1360,15 @@ export function ringsOn(b: BodyGene): boolean {
 }
 /** vec4 slots of a body's extra uniform array (compound parts, ring halos); 0 = none declared. */
 export function bodyBxCount(b: BodyGene): number {
-  return bxCount(b.shape.kind === 'compound' ? b.shape.parts : undefined, ringsOn(b) ? 1 : 0);
+  const base = bxCount(b.shape.kind === 'compound' ? b.shape.parts : undefined, ringsOn(b) ? 1 : 0);
+  const petals = Number(b.shape.kind === 'lily') + Number(b.fuse?.shape.kind === 'lily');
+  return petals ? Math.max(1, base) + petals : base;
+}
+
+/** Petal extras follow compounds and ring halos; fusion has its own slot. */
+export function lilyExtraSlot(b: BodyGene, fused: boolean): number {
+  return Math.max(1, bxCount(b.shape.kind === 'compound' ? b.shape.parts : undefined, ringsOn(b) ? 1 : 0))
+    + Number(fused && b.shape.kind === 'lily');
 }
 
 /** Structural key of one body (what changes its shader code). Motion and all numbers are uniforms. */

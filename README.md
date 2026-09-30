@@ -56,6 +56,9 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   Vocals and sustained notes open the flowers, melodic pitch changes their curl,
   and note attacks lift their glow. The iridescent material retains the painted colours;
   other materials use a distance field derived from the petal silhouettes.
+  Neon Silk Lily (X78), Chromatic Undertow (X79), and Liquid Bloom (X80) add curved
+  3D petal surfaces with per-pixel depth, turning highlights, and neon currents
+  flowing through their veins. Depth, twist, and colour flow are breedable and reactable.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

@@ -1,5 +1,5 @@
 // New body types must remain usable as shapes, fusion partners and inherited genes.
-import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams, sdfCapable, estimateCost, COST_BUDGET_MS, type ShapeKind } from '../src/v2/genome';
+import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams, sdfCapable, estimateCost, COST_BUDGET_MS, bodyBxCount, lilyExtraSlot, type ShapeKind } from '../src/v2/genome';
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
@@ -36,6 +36,14 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const layered=repairBody({shape:{kind:'lily'},fuse:{shape:{kind:'lily'},p:{mode:2}}});
+  const compoundLily=repairBody({shape:{kind:'compound'},fuse:{shape:{kind:'lily'},p:{mode:2}}});
+  check('lily.surface-slots', lilyExtraSlot(layered,false)===1 && lilyExtraSlot(layered,true)===2
+    && bodyBxCount(layered)===3 && lilyExtraSlot(compoundLily,true)>=4
+    && bodyBxCount(compoundLily)===lilyExtraSlot(compoundLily,true)+1,
+    'surface parameters stay separate from ring, compound and fused-petal slots');
+  check('lily.surface-presets', ['depth','twist','flow'].every(k=>SEEDS.filter(s=>(s.genome.bodies[0]?.shape.p[k]??0)!==0 && s.genome.bodies[0]?.shape.kind==='lily').length>=3),
+    'three original presets demonstrate every new surface control');
   const alpha = new Uint8Array(18*12*4);
   for(let y=1;y<5;y++) for(let x=1;x<5;x++) alpha[(y*18+x)*4+3]=255;
   const distances=atlasDistance(alpha,18,12);

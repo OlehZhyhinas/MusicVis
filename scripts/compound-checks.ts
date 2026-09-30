@@ -68,7 +68,7 @@ export function compoundChecks(check: Check): void {
       if (!r.bodies.every((b) => b.material.p.rings === 0)) bad.push(`${e.origin}:rings`);
       const s0 = both(e.genome);
       if (both(r) !== s0) bad.push(`${e.origin}:glsl`);
-      if (/uBx|cpEll|RINGS/.test(s0)) bad.push(`${e.origin}:extra code`);
+      if (/cpEll|RINGS/.test(s0) || (!e.genome.bodies.some(b => bodyBxCount(b) > 0) && /uBx/.test(s0))) bad.push(`${e.origin}:extra code`);
       if (structuralKey(r) !== structuralKey(e.genome) || /@r|compound/.test(structuralKey(r))) bad.push(`${e.origin}:key`);
     }
     check('compound.seeds', !bad.length, bad.slice(0, 4).join(' | ') || `${SEEDS.length} seeds (those using compounds or rings skipped): no compound or ring code, identical shaders without the new material params`);

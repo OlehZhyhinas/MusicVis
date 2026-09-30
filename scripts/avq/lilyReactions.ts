@@ -40,6 +40,17 @@ try {
       if(delta<0.002) errors.push(id+': musical geometry change was not visible');
       checked.push(id+' opening '+quiet.opening.toFixed(2)+' -> '+singing.opening.toFixed(2)+', image delta '+delta.toFixed(4));
     }
+    for(const id of ['X78','X79','X80']) for(const control of ['depth','twist','flow']) {
+      const g=cloneGenome(SEEDS.find(s=>s.origin===id).genome); g.reactions=[];
+      const low=cloneGenome(g),high=cloneGenome(g);
+      low.bodies[0].shape.p[control]=control==='twist'?-0.9:0;
+      high.bodies[0].shape.p[control]=0.9;
+      const a=await render(low,0.5),b=await render(high,0.5);
+      let delta=0; for(let i=0;i<a.pixels.length;i++) if(i%4!==3) delta+=Math.abs(a.pixels[i]-b.pixels[i]);
+      delta/=320*180*3*255;
+      if(delta<0.002) errors.push(id+': '+control+' did not visibly change the surface');
+      checked.push(id+' '+control+' image delta '+delta.toFixed(4));
+    }
     return {checked,errors};
   })()`);
   console.log(JSON.stringify(result,null,2));

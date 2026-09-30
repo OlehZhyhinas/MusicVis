@@ -10,11 +10,45 @@ export const LILY_SCHEMA: Schema = {
   veins: { min: 0, max: 1, def: 0.5 },
   stem: { min: 0, max: 1.8, def: 1.1 },
   shimmer: { min: 0, max: 1, def: 0.45 },
+  depth: { min: 0, max: 1, def: 0 },
+  twist: { min: -1, max: 1, def: 0 },
+  flow: { min: 0, max: 1, def: 0 },
 };
 
 // Closest point on a quadratic from the origin through b to c. Two starts retain
 // the returning tip of a curled petal instead of jumping across its fold.
 export const LILY_GLSL = /* glsl */ `
+// Height and analytic derivatives of a curved petal in its own 3D frame.
+// x spans the blade, t runs from the attachment to the tip.
+vec3 lilyHeight(float x, float t, float id) {
+  float wave=7.0*t-SB.w+id;
+  float z=0.26*sin(PI*t)+0.26*SA.w*t*t+0.4*SC.y*x*t
+    +0.1*SB.z*sin(wave)*t+0.3*x*x;
+  float dx=0.4*SC.y*t+0.6*x;
+  float dt=0.26*PI*cos(PI*t)+0.52*SA.w*t+0.4*SC.y*x
+    +0.1*SB.z*(sin(wave)+7.0*t*cos(wave));
+  return vec3(z,dx,dt)*SC.x;
+}
+// Intersect the orthographic view ray with the rotated height surface. Returns
+// petal x/y, camera depth and residual; the same coordinates drive paint and outline.
+vec4 lilySurface(vec2 screen, float len, float id, out vec3 normal) {
+  if(SC.x<0.001) { normal=vec3(0.0,0.0,1.0); return vec4(screen,0.0,0.0); }
+  float pitch=SC.x*(0.4*(1.0-SA.z)+0.38*sin(SB.w+id*1.7));
+  float roll=SC.x*(0.22*sin(SB.w+id)+0.42*SC.y);
+  float cp=cos(pitch),sp=sin(pitch),cr=cos(roll),sr=sin(roll);
+  mat3 rotate=mat3(cr,0.0,-sr, sr*sp,cp,cr*sp, sr*cp,-sp,cr*cp);
+  vec3 origin=transpose(rotate)*vec3(screen,0.0);
+  vec3 ray=transpose(rotate)*vec3(0.0,0.0,1.0);
+  float at=0.0;
+  for(int k=0;k<6;k++) {
+    vec3 p=origin+ray*at, h=lilyHeight(p.x,p.y/len,id);
+    float slope=ray.z-h.y*ray.x-h.z*ray.y/len;
+    at-=clamp((p.z-h.x)/max(slope,0.2),-0.3,0.3);
+  }
+  vec3 p=origin+ray*at, h=lilyHeight(p.x,p.y/len,id);
+  normal=normalize(rotate*vec3(-h.y,-h.z/len,1.0));
+  return vec4(p.xy,at,abs(p.z-h.x));
+}
 vec3 lilyPaint;
 vec3 lilyCurve(vec2 p, vec2 b, vec2 c) {
   vec2 a = c - 2.0*b;
@@ -105,6 +139,7 @@ vec3 SHP(vec2 p) {
       }
     }
   }
+  float frontDepth=-1e3;
   for(int j=0;j<min(int(SA.y+0.5),7);j++) {
     float id=float(j);
     // Three upright rear petals, then broad side petals and a drooping foreground
@@ -116,6 +151,10 @@ vec3 SHP(vec2 p) {
     float curl=SA.w*(0.75+0.25*sin(id*1.9+0.7));
     float hand=j%2==0?1.0:-1.0;
     float bladeWidth=(0.2+0.13*SA.z)*(j<3?0.85:1.15);
+    vec3 normal;
+    vec4 surface=lilySurface(r,len,id,normal);
+    r=surface.xy;
+    float petalDepth=surface.z+id*0.003;
     float d, hue, light;
     vec3 paint;
     float coverage;
@@ -139,6 +178,24 @@ vec3 SHP(vec2 p) {
       // Shimmer travels along the veins rather than flashing the whole flower.
       paint*=1.0+SB.z*0.15*sin(t*9.0-phase+id);
       paint=mix(paint*0.8,paint,0.5+0.5*SB.x);
+      // Advection in surface coordinates: colour travels root-to-tip through
+      // sinuous vein channels, rather than recolouring the entire flower at once.
+      float across=r.x/width;
+      float stream=t*2.5+across*1.4+0.13*sin(across*16.0+t*5.0)-phase/TAU;
+      float ribbon=pow(0.5+0.5*cos(TAU*stream),10.0);
+      float currentHue=id*0.137+t*0.42+across*0.6-phase/TAU*0.5;
+      vec3 neon=lin(hsv2rgb(vec3(fract(currentHue),0.98,1.0)));
+      float grain=dot(texel.rgb,vec3(0.2126,0.7152,0.0722));
+      vec3 flowing=neon*(0.16+0.85*grain+1.5*ribbon);
+      paint=mix(paint,flowing,SC.z);
+      vec3 lamp=normalize(vec3(-0.4,0.6,1.0));
+      float diffuse=max(0.0,dot(normal,lamp));
+      float spec=pow(max(0.0,dot(normal,normalize(lamp+vec3(0.0,0.0,1.0)))),36.0);
+      float fresnel=pow(1.0-max(0.0,normal.z),3.0);
+      paint*=mix(1.0,0.28+0.8*diffuse,SC.x);
+      paint+=SC.x*(mix(neon,vec3(1.0),0.25)*spec*0.35+neon*fresnel*0.5);
+      light*=mix(1.0,0.5+0.5*diffuse,SC.x);
+      coverage*=1.0-smoothstep(0.005,0.025,surface.w);
     } else {
       vec3 near=lilyRibbon(r/len,vec2(-0.15*hand,0.28),vec2((0.16+0.4*curl)*hand,1.0+0.27*curl),vec2((-0.12+0.22*curl)*hand,1.12-0.12*curl),bladeWidth);
       float t=near.y; d=near.x*len;
@@ -159,7 +216,12 @@ vec3 SHP(vec2 p) {
       paint=lin(hsv2rgb(vec3(fract(hue),0.85,1.0)))*light;
     }
     if(j==0) lilyPaint=lin(hsv2rgb(vec3(fract(result.y),0.85,1.0)))*max(0.0,result.z)*0.5;
-    lilyPaint=mix(lilyPaint,paint,coverage);
+    // Depth is evaluated per fragment, so intersecting petals change which
+    // surface is in front as they lift and twist. Flat legacy petals retain order.
+    if(SC.x<0.001 || petalDepth>=frontDepth) {
+      lilyPaint=mix(lilyPaint,paint,coverage);
+      if(coverage>0.5) frontDepth=petalDepth;
+    }
     if(d<result.x && coverage<0.01) result.yz=vec2(hue,light);
     result.yz=mix(result.yz,vec2(hue,light),coverage);
     result.x=min(result.x,d);

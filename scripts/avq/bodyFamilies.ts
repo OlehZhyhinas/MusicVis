@@ -23,13 +23,14 @@ try {
         const raw = cloneGenome(seed.genome);
         raw.reactions = [];
         const b = raw.bodies[0];
+        if (kind === 'lily') Object.assign(b.shape.p, { depth: 0.9, twist: 0.7, flow: 0.85 });
         b.material = { kind: material, p: defaultParams(MATERIAL_SCHEMAS[material]) };
         // Glow is normalized for small emitters; large filled-body defaults intentionally
         // dim it almost to black. Use a source-sized body and a visible glow width.
         if (material === 'glow') { b.shape.p.size = 0.1; Object.assign(b.material.p, { width: 0.06, base: 0.4, gain: 2 }); }
         if (mode === 'pair') raw.bodies.push(structuredClone(b));
         if (mode === 'fused' || mode === 'self-fused') {
-          b.fuse = { shape: b.shape, p: { ...defaultParams(FUSE_SCHEMA), mode: 1, t: 0.5 } };
+          b.fuse = { shape: b.shape, p: { ...defaultParams(FUSE_SCHEMA), mode: mode === 'self-fused' ? 2 : 1, t: 0.5 } };
           if (mode === 'fused') b.shape = { kind: 'dot', p: { r: 0.18 } };
         }
         const g = repair(raw);

@@ -25,7 +25,7 @@ import { WATER_GLSL } from './genes/water';
 import { BLEND_GLSL, blendCall } from './genes/blend';
 import { CYMATICS_GLSL } from './genes/cymatics';
 import {
-  SHAPE_CLASS, STATIC_MATERIALS, bodyBxCount, bodyLayer, isFoldPlace, ringsOn, sdfCapable,
+  SHAPE_CLASS, STATIC_MATERIALS, bodyBxCount, lilyExtraSlot, bodyLayer, isFoldPlace, ringsOn, sdfCapable,
   type BodyGene, type Genome, type OpGene, type ShapeKind,
 } from './genome';
 import { SCENE_PASS, sceneField } from './genes/raymarch';
@@ -759,14 +759,14 @@ function slot(src: string, bi: number, suffix: string): string {
     .replace(/\bED\b/g, `uBd[${b + 19}]`)
     .replace(/\bWV(\d)\b/g, (_m, k: string) => `uWv[${bi * 4 + Number(k)}]`)
     .replace(/\bBX\((\d+)\)/g, (_m, k: string) => `uBx${bi}[${k}]`)
-    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|RINGS|armA|armL|lilyCurve|lilyPetal|lilyRibbon|lilyPaint|fuseLilyCurve|fuseLilyPetal|fuseLilyRibbon|fuseLilyPaint|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
+    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|RINGS|armA|armL|lilyHeight|lilySurface|fuseLilyHeight|fuseLilySurface|lilyCurve|lilyPetal|lilyRibbon|lilyPaint|fuseLilyCurve|fuseLilyPetal|fuseLilyRibbon|fuseLilyPaint|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
 }
 
 /** Shape distance field for the body (SA/SB = its parameter slots). */
-function shapeCode(kind: ShapeKind, name: 'SHP' | 'FSH', slots: [number, number]): string {
+function shapeCode(kind: ShapeKind, name: 'SHP' | 'FSH', slots: [number, number], extra = 1): string {
   const src = SHAPE_SDF[kind];
   if (!src) throw new Error(`no distance field for ${kind}`);
-  return (name === 'FSH' ? src.replace(/\blily(Curve|Petal|Ribbon|Paint)\b/g, 'fuseLily$1') : src).replace(/\bSHP\b/g, name).replace(/\bSA\b/g, `BD(${slots[0]})`).replace(/\bSB\b/g, `BD(${slots[1]})`);
+  return (name === 'FSH' ? src.replace(/\blily(Height|Surface|Curve|Petal|Ribbon|Paint)\b/g, 'fuseLily$1') : src).replace(/\bSHP\b/g, name).replace(/\bSC\b/g, `BX(${extra})`).replace(/\bSA\b/g, `BD(${slots[0]})`).replace(/\bSB\b/g, `BD(${slots[1]})`);
 }
 
 /** Does this body draw through its distance field in the full-screen passes? */
@@ -809,8 +809,8 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   // Compound parts and ring halos read the body's extra uniform array (declared only when used).
   const nbx = bodyBxCount(b);
   if (nbx) pre += `uniform vec4 uBx${sfx}[${nbx}];\n`;
-  if (drawsSdf(b)) pre += (b.shape.kind === 'compound' ? compoundShp(b.shape.parts ?? []).replace(/\bSA\b/g, 'BD(2)') : shapeCode(b.shape.kind, 'SHP', [2, 3])) + '\n';
-  if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
+  if (drawsSdf(b)) pre += (b.shape.kind === 'compound' ? compoundShp(b.shape.parts ?? []).replace(/\bSA\b/g, 'BD(2)') : shapeCode(b.shape.kind, 'SHP', [2, 3], lilyExtraSlot(b, false))) + '\n';
+  if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15], lilyExtraSlot(b, true)) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
   if (drawsSdf(b)) pre += BODY_COL + '\n' + (b.shape.kind === 'lily' && b.material.kind === 'iridescent' ? LILY_MATERIAL : MATERIAL_GLSL[b.material.kind]).replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
   const rings = ringsOn(b);
