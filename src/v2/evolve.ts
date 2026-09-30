@@ -186,6 +186,8 @@ export class Evolution {
   async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void, source: 'manual' | 'automatic' = 'manual'): Promise<Member[]> {
     const out: Member[] = [];
     let tried = 0, childTries = 0;
+    type ScreenedChild = {genome: Genome; tag?: CrossTag; screen: ScreenResult; fp: number[] | null};
+    let fallback: ScreenedChild | null = null;
     const eligible = () => parents.length === (mode === 'cross' ? 2 : 1)
       && new Set(parents.map((p) => p.id)).size === parents.length
       && parents.every((p) => this.pop.get(p.id) === p && (source === 'manual' || this.pop.canAutoBreed(p)));
@@ -201,9 +203,11 @@ export class Evolution {
         if (!eligible()) break;
         tried++;
         const filterSimilarity = ++childTries <= SIMILARITY_TRIES;
+        const saved: ScreenedChild | null = !filterSimilarity ? fallback as ScreenedChild | null : null;
         let g: Genome;
         let tag: CrossTag | undefined;
-        if (mode === 'cross' && parents.length >= 2) {
+        if (saved) { g = saved.genome; tag = saved.tag; }
+        else if (mode === 'cross' && parents.length >= 2) {
           // The fitter parent is likelier to supply the drawing; the other shapes it.
           const res = crossoverTagged(parents[0].genome, parents[1].genome, this.rng, (fitness(parents[0]) - fitness(parents[1])) * 3);
           g = res.genome;
@@ -220,15 +224,17 @@ export class Evolution {
           if (g.bodies.length > n) tag = 'layered';
         }
         if (filterSimilarity && (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g)))) continue;
-        const res: ScreenResult = await this.screener.screen(g);
+        const res: ScreenResult = saved?.screen ?? await this.screener.screen(g);
         if (!res.ok) {
           this.lastRejects.push(res.reason ?? 'rejected');
           onEvent?.({ kind: 'reject', reason: res.reason, tried });
           continue;
         }
         // Visual duplicates: a child that looks like an existing member is rejected, whatever its genes say.
-        const fp = this.pheno ? await this.pheno.fingerprint(g) : null;
-        const dup = fp && this.pheno!.duplicateOf(fp);
+        const fp: number[] | null = saved ? saved.fp : this.pheno ? await this.pheno.fingerprint(g) : null;
+        // Keep a screened child so abandoning similarity needs no extra GPU render or risky sixth candidate.
+        fallback = {genome:g,tag,screen:res,fp};
+        const dup = filterSimilarity && fp && this.pheno!.duplicateOf(fp);
         if (filterSimilarity && dup) {
           const reason = `looks like an existing preset (${dup.id}, distance ${dup.dist.toFixed(2)})`;
           this.lastRejects.push(reason);
@@ -255,6 +261,7 @@ export class Evolution {
         if (fp) this.pheno!.adopt(child, fp);
         out.push(child);
         childTries = 0;
+        fallback = null;
         onEvent?.({ kind: 'child', member: child, tried });
         this.changed();
       }

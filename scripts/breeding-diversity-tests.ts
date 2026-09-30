@@ -62,8 +62,9 @@ export async function breedingDiversityTests(check: Check): Promise<void> {
   check('diversity.large-archive-floor',noveltyAcceptFloor('wild',2000)>0.18 && noveltyAcceptFloor('wild',1e9)>=0.18 && noveltyAcceptFloor('off',2000)===0,'large populations retain a meaningful novelty requirement');
 
   // Exercise the real retry loop with a crowded archive; only GPU measurements are stubbed.
+  let screens=0;
   const evolution = new Evolution({} as Store, {
-    screen: async()=>({ok:true,descriptor:[],metrics:{reactivity:0.8,hitLift:0.4,events:0.4}}),
+    screen: async()=>{screens++;return {ok:true,descriptor:[],metrics:{reactivity:0.8,hitLift:0.4,events:0.4}};},
   } as unknown as Screener);
   evolution.pop=new Population(); evolution.rng=mulberry32(813); evolution.changed=()=>{};
   for (const m of [base, branch]) { m.breeding = true; evolution.pop.members.set(m.id, m); }
@@ -75,8 +76,8 @@ export async function breedingDiversityTests(check: Check): Promise<void> {
   };
   evolution.pheno=pheno as unknown as Phenotype;
   const children=await evolution.breed([base,branch],1,'cross');
-  check('diversity.five-try-fallback',children.length===1 && checks===5 && adopted===1 && evolution.breeding===0,`${checks} novelty checks, then a valid child is accepted`);
-  checks=0; evolution.rng=mulberry32(813);
+  check('diversity.five-try-fallback',children.length===1 && checks===5 && screens===5 && adopted===1 && evolution.breeding===0,`${checks} novelty checks and ${screens} screens; a previously screened child is accepted without another render`);
+  checks=0; evolution.rng=mulberry32(814);
   pheno.acceptNovelty=()=>{checks++;return {ok:checks>=5,rel:checks>=5?0.8:0.01,floor:0.2};};
   const novel=await evolution.breed([base,branch],1,'cross');
   check('diversity.late-novel-child',novel.length===1 && checks===5 && adopted===2,'a genuinely novel child on the fifth attempt is still accepted');
