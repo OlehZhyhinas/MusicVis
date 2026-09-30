@@ -999,6 +999,8 @@ export class Stage {
     const eng = this.eng;
     const gl = eng.gl;
     const sdt = state.playing ? dt : dt * 0.25;
+    // Offscreen display stages must keep their source shaders alive while the archive compiles thumbnails.
+    for (const slot of this.slots) this.eng.cache.touch(slot.key);
     this.renderDisplays(state, dt);
     this.frame++;
     this.sig.update(state, sdt, this.w / this.h);

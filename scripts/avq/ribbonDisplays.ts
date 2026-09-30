@@ -6,7 +6,7 @@ try {
   const result=await tab.eval<{checks:string[];errors:string[]}>(`(async()=>{
     const {Engine,Stage}=await import('/src/v2/engine.ts');
     const {SEEDS}=await import('/src/v2/seeds.ts');
-    const {cloneGenome}=await import('/src/v2/genome.ts');
+    const {cloneGenome,structuralKey}=await import('/src/v2/genome.ts');
     const {SyntheticMusic}=await import('/src/v2/screen.ts');
     const eng=new Engine(document.createElement('canvas')); await eng.lilyAtlas.ready;
     const errors=[],checks=[],music=new SyntheticMusic();
@@ -24,6 +24,17 @@ try {
       }
       if(delta<1000)errors.push(id+' source does not animate');
       if(slot.displays.get(0).stage.frame!==120)errors.push(id+' source did not advance with main music');
+      if(id==='X90') {
+        const source=slot.displays.get(0).stage.slots[0],programs=source.progs,seen=new Set();
+        for(const seed of SEEDS) {
+          const key=structuralKey(seed.genome);if(seen.has(key))continue;seen.add(key);
+          eng.cache.get(seed.genome,true);st.render(music.next(1/60),1/60,'out');
+          if(seen.size>=90)break;
+        }
+        if(eng.cache.get(source.genome,true)!==programs || eng.gl.getError()!==eng.gl.NO_ERROR)
+          errors.push('live display shader evicted during archive thumbnail compilation');
+        checks.push('live display survives '+seen.size+' other shader compilations');
+      }
       const old=slot.displays.get(0).stage;
       delete slot.genome.bodies[0].shape.display;st.render(music.next(1/60),1/60,'out');
       if(slot.displays.size || old.slots.length)errors.push(id+' source resources retained after removal');
