@@ -3,7 +3,7 @@ import { repairRibbonPath, sampleRibbon, parseRibbonPath } from '../src/v2/genes
 import { RibbonSimulation, RIBBON_STEPS, RIBBON_ACROSS, type RibbonDrive } from '../src/v2/genes/ribbonSim';
 import { SEEDS } from '../src/v2/seeds';
 import { cloneGenome, repair, validate, structuralKey } from '../src/v2/genome';
-import { editRibbonPath } from '../src/v2/geneEdit';
+import { editRibbonPath, editRibbonDisplay } from '../src/v2/geneEdit';
 import { crossover, mutate, mulberry32 } from '../src/v2/ops';
 type Check=(name:string,ok:boolean,detail:string)=>void;
 export function ribbonTests(check:Check):void {
@@ -25,6 +25,24 @@ export function ribbonTests(check:Check):void {
   const before=seeds[0].genome, edited=editRibbonPath(before,0,'-1 0 1 1 0\n0 1 -1 0.5 2\n1 0 0 1 -2');
   check('ribbon.edit',edited.ok && edited.genome.bodies[0].shape.path?.[1].z===-1 && structuralKey(before)===structuralKey(edited.genome)
     && !editRibbonPath(before,0,'1 nope 2').ok && JSON.stringify(repair(edited.genome))===JSON.stringify(edited.genome), 'path edits retain genes, reject bad input and serialize without shader recompilation');
+  const source=SEEDS.find(s=>s.genome.bodies.length===2)!.genome;
+  const display=editRibbonDisplay(before,0,source,'Test source',1);
+  check('ribbon.display-element',display.ok && display.genome.bodies[0].shape.display?.genome.bodies.length===1
+    && JSON.stringify(display.genome.bodies[0].shape.display?.genome.bodies[0].shape)===JSON.stringify(source.bodies[1].shape), 'one source body can be projected without altering its shape');
+  const nested=editRibbonDisplay(before,0,display.genome,'Nested');
+  check('ribbon.display-flat',nested.ok && !nested.genome.bodies[0].shape.display?.genome.bodies[0].shape.display
+    && JSON.stringify(repair(nested.genome))===JSON.stringify(nested.genome),'nested displays are flattened at capture; serialization is idempotent');
+  const removed=editRibbonDisplay(display.genome,0,null);
+  check('ribbon.display-clear',removed.ok && !removed.genome.bodies[0].shape.display && removed.genome.bodies[0].shape.p.projection===0,'removing the display retains the ribbon');
+  const projected=seeds.filter(s=>s.genome.bodies.some(b=>b.shape.display));
+  check('ribbon.display-presets',projected.length===3 && projected.every(s=>!validate(s.genome).length),'three distinct live surface examples');
+  const crossRng=mulberry32(119);let displays=0,paths=0;
+  for(let i=0;i<60;i++){
+    const child=crossover(projected[0].genome,projected[1].genome,crossRng);
+    if(child.bodies.some(b=>b.shape.display))displays++;
+    if(child.bodies.some(b=>b.shape.path))paths++;
+  }
+  check('ribbon.display-inheritance',displays>30 && paths>30,`${displays} displays and ${paths} freeform paths inherited in 60 children`);
   const drive:RibbonDrive={wind:0,stiffness:0.5,twist:1,width:0.12,speed:1,closed:false,bass:0,vocals:0,onset:0};
   const quiet=new RibbonSimulation(),loud=new RibbonSimulation();
   for(let i=0;i<600;i++){quiet.step(path,drive,1/60);loud.step(path,{...drive,wind:1,bass:1,vocals:1,onset:i%30===0?1:0},1/60);}

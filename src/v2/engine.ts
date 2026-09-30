@@ -551,6 +551,7 @@ export class ProgramCache {
   }
 
   request(g: Genome): string {
+    for (const b of g.bodies) if (b.shape.display) this.request(b.shape.display.genome);
     const key = structuralKey(g);
     const e = this.entries.get(key);
     if (e) {
@@ -578,6 +579,7 @@ export class ProgramCache {
   get(g: Genome, now = false): GenomePrograms | null {
     const key = this.request(g);
     if (!this.assetsReady(g)) return null;
+    for (const b of g.bodies) if (b.shape.display && !this.get(b.shape.display.genome, now)) return null;
     const e = this.entries.get(key)!;
     if (e.done || e.failed) return e.done;
     const ready = e.pending.map((p) => p.poll(now));
@@ -595,7 +597,7 @@ export class ProgramCache {
   }
 
   failed(g: Genome): string | null {
-    return this.entries.get(structuralKey(g))?.failed ?? null;
+    return this.entries.get(structuralKey(g))?.failed ?? g.bodies.map(b => b.shape.display ? this.failed(b.shape.display.genome) : null).find(Boolean) ?? null;
   }
 
   get size(): number {
@@ -674,6 +676,7 @@ export class Slot {
   curves: CurveDraw[] = [];
   readonly lightning = new Map<number, LightningRenderer>();
   readonly ribbons = new Map<number, RibbonRenderer>();
+  readonly displays = new Map<number, { source: Genome; key: string; stage: Stage }>();
   rem: number[] = [];
   shift = [0, 0];
   decay = 0.9;
@@ -936,6 +939,8 @@ export class Stage {
 
   disposeSlot(s: Slot): void {
     this.dejavu.drop(s);
+    for (const display of s.displays.values()) display.stage.dispose();
+    s.displays.clear();
     for (const ribbon of s.ribbons.values()) ribbon.dispose();
     s.ribbons.clear();
     for (const bolts of s.lightning.values()) bolts.dispose();
@@ -958,12 +963,40 @@ export class Stage {
     this.eng.fs.draw();
   }
 
+  /** Source stages run first; each has its own feedback and music state, sharing only the GL device. */
+  private renderDisplays(state: MusicState, dt: number): void {
+    for (const slot of this.slots) {
+      for (const [bi, display] of slot.displays) if (!slot.genome.bodies[bi]?.shape.display) {
+        display.stage.dispose(); slot.displays.delete(bi);
+      }
+      slot.genome.bodies.forEach((body, bi) => {
+        const source = body.shape.display?.genome;
+        if (!source || slot.weight <= 0.001) return;
+        let entry = slot.displays.get(bi);
+        if (entry?.source !== source) {
+          const key = JSON.stringify(source);
+          if (entry?.key === key) entry.source = source;
+          else {
+            const progs = this.eng.cache.get(source);
+            if (!progs) return;
+            entry?.stage.dispose();
+            const stage = new Stage(this.eng, {offscreen:true,particleCap:65536,flameCap:65536});
+            stage.resize(512,256); stage.slots = [stage.makeSlot(source,progs)];
+            entry = { source, key, stage }; slot.displays.set(bi,entry);
+          }
+        }
+        entry!.stage.render(state,dt,'out');
+      });
+    }
+  }
+
   // ------------------------------------------------------------ frame
 
   render(state: MusicState, dt: number, target: 'canvas' | 'out' = 'canvas'): void {
     const eng = this.eng;
     const gl = eng.gl;
     const sdt = state.playing ? dt : dt * 0.25;
+    this.renderDisplays(state, dt);
     this.frame++;
     this.sig.update(state, sdt, this.w / this.h);
     const F = this.sig.F;
@@ -1063,7 +1096,7 @@ export class Stage {
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
     for (const s of slots) for (const bolts of s.lightning.values()) bolts.render(this.h * 2);
-    for (const s of slots) for (const ribbon of s.ribbons.values()) ribbon.render(this.h * 2, s.cols);
+    for (const s of slots) for (const [bi,ribbon] of s.ribbons) ribbon.render(this.h * 2, s.cols, s.displays.get(bi)?.stage.out?.t ?? eng.black);
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
@@ -2040,6 +2073,7 @@ export class Stage {
         let ribbon=s.ribbons.get(bi);
         if(!ribbon) { ribbon=new RibbonRenderer(this.eng.gl,this.eng.hdr);s.ribbons.set(bi,ribbon); }
         ribbon.extent=ribbonExtent(sh.path,P('width'));
+        ribbon.projection=sh.display ? P('projection') : 0;
         ribbon.ink=P('ink'); ribbon.edges=P('edges'); ribbon.rippleAmount=P('ripples'); ribbon.width=P('width'); ribbon.closed=P('closed')>0.5;
         ribbon.ripples.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??60,height:F.notes?.height??0.5},sdt);
         ribbon.flow=P('flow'); ribbon.turn=P('turn'); ribbon.tilt=P('tilt');

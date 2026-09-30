@@ -631,6 +631,29 @@ export class GeneEditor {
       points.value=path.map(p=>[p.x,p.y,p.z,p.width,p.twist].map(v=>Number(v.toFixed(4))).join(' ')).join('\n');
       gb.append(h('p',{class:'dim vg-hint',text:'3D path: one point per line, x y z width twist. Coordinates −2…2, width 0.1…2, twist in turns −12…12. Add up to 64 points; Closed joins the ends.'}),points,
         this.button('Apply 3D path',()=>this.structural(g=>E.editRibbonPath(g,bi,points.value),sec.id)));
+      const current = this.scratch.bodies[bi].shape.display;
+      const members = this.deps.evo.pop.list();
+      let selected = members[0]?.id ?? '', sourceBody = '';
+      const bodyPicker = this.select([{value:'',label:'Whole preset'}], '', v => { sourceBody = v; }, 'Surface source element');
+      const updateBodies = () => {
+        sourceBody = ''; bodyPicker.replaceChildren(new Option('Whole preset', ''));
+        members.find(m => m.id === selected)?.genome.bodies.forEach((b,i) => bodyPicker.add(new Option(`Body ${i+1}: ${b.shape.kind}`, String(i))));
+      };
+      const sourcePicker = this.select(members.map(m => ({value:m.id,label:m.name})), selected, v => {selected=v;updateBodies();}, 'Surface source preset');
+      const search = h('input', {class:'txt',type:'search',placeholder:'Find a surface source…','aria-label':'Find a surface source'});
+      search.addEventListener('input', () => {
+        const matches = members.filter(m => m.name.toLowerCase().includes(search.value.toLowerCase()));
+        sourcePicker.replaceChildren(...matches.map(m => new Option(m.name,m.id)));
+        selected = matches[0]?.id ?? ''; updateBodies();
+      });
+      updateBodies();
+      gb.append(h('b',{text:'Surface display'}), h('p',{class:'dim vg-hint',text:current ? `Playing: ${current.name}. Saved with this ribbon and inherited through breeding.` : 'Project a live preset or one of its bodies onto this ribbon. The source is saved with the ribbon.'}),
+        search, sourcePicker, bodyPicker,
+        this.button('Project onto ribbon', () => {
+          const member = members.find(m => m.id === selected);
+          if (member) this.structural(g => E.editRibbonDisplay(g, bi, member.genome, member.name + (sourceBody === '' ? '' : ` / body ${Number(sourceBody)+1}`), sourceBody === '' ? undefined : Number(sourceBody)), sec.id);
+        }),
+        this.button('Clear projection', () => this.structural(g => E.editRibbonDisplay(g,bi,null),sec.id), undefined, !current));
     }
     if (sec.gene?.optional) {
       const key = sec.gene.key;

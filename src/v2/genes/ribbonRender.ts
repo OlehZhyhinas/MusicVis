@@ -25,6 +25,7 @@ in vec3 vNormal; in vec2 vUV; in vec3 vPosition;
 ${RIBBON_RIPPLE_GLSL}
 uniform float uTime,uFlow,uSheen,uHue,uInk,uEdges; uniform int uStyle;
 uniform vec3 uA,uB,uC;
+uniform sampler2D uSurface; uniform float uProjection;
 out vec4 frag;
 vec3 hsv(vec3 c){ vec3 p=abs(fract(c.xxx+vec3(0.,2./3.,1./3.))*6.-3.);return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y); }
 void main(){
@@ -48,6 +49,8 @@ void main(){
   vec3 lacquer=vec3(0.002,0.004,0.008)*(0.4+diffuse)
     +vec3(0.035,0.055,0.09)*spec*uSheen+vec3(0.005,0.009,0.018)*fresnel;
   color=mix(color,lacquer,uInk);
+  vec3 display=pow(max(texture(uSurface,vec2(vUV.x,vUV.y*0.5+0.5)).rgb,vec3(0.)),vec3(2.2));
+  color=mix(color,display*(0.65+0.35*diffuse)+vec3(spec*0.025),uProjection);
   // Two separate, antialiased rails follow the actual mesh boundaries.
   float railWidth=max(0.018,fwidth(vUV.y)*1.2);
   float rail=exp(-pow((1.-abs(vUV.y))/railWidth,2.));
@@ -86,6 +89,7 @@ export class RibbonRenderer {
   private index:WebGLBuffer;
   private count:number;
   extent=2;
+  projection=0;
   ink=0; edges=0; rippleAmount=0; width=0.13; closed=false;
   flow=0.8; turn=0.025; tilt=0.08; sheen=0.5; hue=0; style=6;
   constructor(private gl:GL, private format:TexFormat) {
@@ -102,7 +106,7 @@ export class RibbonRenderer {
     this.count=indices.length;gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.index);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);gl.bindVertexArray(null);
   }
   get texture():WebGLTexture|null{return this.target?.t??null;}
-  render(resolution:number, colors:Float32Array):void {
+  render(resolution:number, colors:Float32Array, surface:WebGLTexture):void {
     const gl=this.gl,res=Math.max(128,Math.min(1024,Math.round(resolution)));
     if(!this.target || this.target.w!==res) {
       this.target?.dispose();if(this.depth)gl.deleteRenderbuffer(this.depth);
@@ -117,7 +121,7 @@ export class RibbonRenderer {
     let length=0;const positions=this.simulation.position;
     for(let i=3;i<positions.length;i+=3)length+=Math.hypot(positions[i]-positions[i-3],positions[i+1]-positions[i-2],positions[i+2]-positions[i-1]);
     this.program.use().f1('uExtent',this.extent).f1('uTurn',this.turn*this.simulation.time*Math.PI*2).f1('uTilt',this.tilt*Math.PI*2)
-      .f1('uInk',this.ink).f1('uEdges',this.edges).f1('uRipples',this.rippleAmount)
+      .tex('uSurface',surface).f1('uProjection',this.projection).f1('uInk',this.ink).f1('uEdges',this.edges).f1('uRipples',this.rippleAmount)
       .f1('uLength',Math.max(length,0.1)).f1('uWidth',this.width).f1('uClosed',this.closed?1:0)
       .i1('uDropCount',this.ripples.drops.length).f4v('uDrops',this.ripples.uniforms)
       .f1('uTime',this.simulation.time).f1('uFlow',this.flow).f1('uSheen',this.sheen).f1('uHue',this.hue).i1('uStyle',this.style)

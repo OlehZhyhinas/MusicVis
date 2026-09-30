@@ -530,6 +530,27 @@ function finish(before: Genome, g: Genome, check: (out: Genome) => string | null
   return { genome: out, ok: true };
 }
 
+/** Capture a whole preset or one body as a portable, non-recursive live display source. */
+export function editRibbonDisplay(before: Genome, body: number, source: Genome | null, name = 'Surface source', sourceBody?: number): EditResult {
+  if (before.bodies[body]?.shape.kind !== 'ribbon') return fail(before, 'Select a ribbon body first.');
+  const g = cloneGenome(before), shape = g.bodies[body].shape;
+  if (!source) { delete shape.display; shape.p.projection = 0; }
+  else {
+    let snapshot = repair(source, false);
+    if (sourceBody !== undefined) {
+      if (!snapshot.bodies[sourceBody]) return fail(before, 'That source body no longer exists.');
+      for (let i = snapshot.bodies.length - 1; i >= 0; i--) if (i !== sourceBody) {
+        const cut = removeBody(snapshot, i);
+        if (!cut.ok) return fail(before, cut.reason ?? 'Could not isolate the source body.');
+        snapshot = cut.genome;
+      }
+    }
+    shape.display = { name: name.slice(0, 120), genome: snapshot };
+    shape.p.projection = 1;
+  }
+  return finish(before, g, out => source && !out.bodies[body]?.shape.display ? 'That surface source exceeds the rendering budget.' : null);
+}
+
 /** Replace an arbitrary ribbon path without changing other body genes. */
 export function editRibbonPath(before:Genome, body:number, text:string):EditResult {
   if(before.bodies[body]?.shape.kind!=='ribbon') return fail(before,'Select a ribbon body first.');

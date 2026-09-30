@@ -526,6 +526,7 @@ export interface Gene<K extends string = string> {
 export interface ShapeGene extends Gene<ShapeKind> {
   xforms?: FlameXformGene[]; // flame only
   path?: RibbonPoint[]; // ribbon only: freeform 3D control points
+  display?: { name: string; genome: Genome }; // portable live surface source; one level only
   parts?: CompoundPart[]; // compound only (genes/compound.ts)
 }
 export interface DeformGene extends Gene<DeformKind> {
@@ -841,7 +842,7 @@ function repairGene<K extends string>(raw: unknown, kinds: readonly K[], schemas
   return { kind, p: repairParams(r.p, schemas[kind]) };
 }
 
-export function repairShape(raw: unknown, fallback: ShapeKind = 'dot'): ShapeGene {
+export function repairShape(raw: unknown, fallback: ShapeKind = 'dot', allowDisplays = true): ShapeGene {
   const g = repairGene(raw, SHAPE_KINDS, SHAPE_SCHEMAS, fallback) as ShapeGene;
   if (g.kind === 'flame') {
     const src = isObj(raw) && Array.isArray(raw.xforms) ? (raw.xforms as Partial<FlameXformGene>[]) : [];
@@ -849,7 +850,13 @@ export function repairShape(raw: unknown, fallback: ShapeKind = 'dot'): ShapeGen
     if (!xs.length) xs.push(repairXform({ vars: { linear: 0.5, spherical: 0.5 } }), repairXform({ aff: [0.5, 0, 0, 0.5, 0.5, 0], vars: { sinusoidal: 1 } }));
     g.xforms = xs;
   }
-  if (g.kind === 'ribbon') g.path = repairRibbonPath(isObj(raw) ? raw.path : undefined);
+  if (g.kind === 'ribbon') {
+    g.path = repairRibbonPath(isObj(raw) ? raw.path : undefined);
+    if (allowDisplays && isObj(raw) && isObj(raw.display) && isObj(raw.display.genome)) {
+      // Repair without displays also strips dormant and fused nested sources, preventing render trees.
+      g.display = { name: String(raw.display.name ?? 'Surface source').slice(0, 120), genome: repair(raw.display.genome, false) };
+    }
+  }
   if (g.kind === 'compound') g.parts = repairParts(isObj(raw) ? raw.parts : undefined);
   return g;
 }
@@ -875,9 +882,9 @@ export function countKey(k: PlaceKind): string | null {
  * paint-over, a flame needs a placement with a position and a trail, a curve
  * cannot use a grid or the solid materials, a fused shape needs distance fields.
  */
-export function repairBody(raw: unknown): BodyGene {
+export function repairBody(raw: unknown, allowDisplays = true): BodyGene {
   const r = isObj(raw) ? raw : {};
-  const shape = repairShape(r.shape);
+  const shape = repairShape(r.shape, 'dot', allowDisplays);
   const place = repairGene(r.place, PLACE_KINDS, PLACE_SCHEMAS, 'point');
   const motion = repairGene(r.motion, MOTION_KINDS, MOTION_SCHEMAS, 'none');
   const deform = repairGene(r.deform, DEFORM_KINDS, DEFORM_SCHEMAS, 'none') as DeformGene;
@@ -911,7 +918,7 @@ export function repairBody(raw: unknown): BodyGene {
   const body: BodyGene = { shape, place, motion, deform, material, emit, feel, color };
   if (isObj(r.fuse)) {
     const f = r.fuse as Record<string, unknown>;
-    const fs = repairShape(f.shape, 'dot');
+    const fs = repairShape(f.shape, 'dot', allowDisplays);
     const fp = repairParams(f.p, FUSE_SCHEMA);
     if (fp.mode !== 2 && !sdfCapable(shape)) fp.mode = 2;
     // The same kind twice only makes sense as a region (e.g. sparks born inside a disc).
@@ -931,7 +938,7 @@ export function repairBody(raw: unknown): BodyGene {
     for (const locus of LOCI) {
       const a = (r.alt as Record<string, unknown>)[locus];
       if (!isObj(a) || !LOCUS_KINDS[locus].includes(a.kind as string)) continue;
-      const g = locus === 'shape' ? repairShape(a) : repairGene(a, LOCUS_KINDS[locus] as readonly string[], LOCUS_SCHEMAS[locus], a.kind as string);
+      const g = locus === 'shape' ? repairShape(a, 'dot', allowDisplays) : repairGene(a, LOCUS_KINDS[locus] as readonly string[], LOCUS_SCHEMAS[locus], a.kind as string);
       if (g.kind === (body[locus] as Gene).kind || g.kind === 'flame') continue;
       alt[locus] = g;
     }
@@ -982,7 +989,7 @@ export function upgradeColour(src: Record<string, unknown>): Record<string, unkn
  * cost brought under the budget by dropping copies. Older formats (1, 2) are
  * converted first. Idempotent: repair(repair(g)) deep-equals repair(g).
  */
-export function repair(input: unknown): Genome {
+export function repair(input: unknown, allowDisplays = true): Genome {
   let src = (isObj(input) ? input : {}) as Record<string, unknown>;
   if (src.v !== 3 && src.v !== 4 && src.v !== 5 && (Array.isArray(src.emitters) || src.v === 1 || src.v === 2)) src = upgradeV2(repairV2(src)) as Record<string, unknown>;
   if (src.v !== 5 && isObj(src.color) && !isObj(src.palette)) src = upgradeColour(src);
@@ -997,7 +1004,7 @@ export function repair(input: unknown): Genome {
   let eco = false;
   for (const raw of Array.isArray(g.bodies) ? g.bodies : []) {
     if (bodies.length >= MAX_BODIES) break;
-    const b = repairBody(raw);
+    const b = repairBody(raw, allowDisplays);
     if (UNIQUE_SHAPES.includes(b.shape.kind) && used.has(b.shape.kind)) continue;
     if (b.fuse && UNIQUE_SHAPES.includes(b.fuse.shape.kind) && (used.has(b.fuse.shape.kind) || b.fuse.shape.kind === b.shape.kind)) dropFuse(b);
     // One particle system per genome: a second sparks body leaves a plain trail.
@@ -1260,6 +1267,7 @@ export function validate(g: Genome): string[] {
     };
     checkXforms(b.shape, `${w}.shape`);
     if (b.shape.kind === 'ribbon' && JSON.stringify(b.shape.path) !== JSON.stringify(repairRibbonPath(b.shape.path))) errs.push(`${w}.shape invalid ribbon path`);
+    if (b.shape.display && (b.shape.kind !== 'ribbon' || JSON.stringify(repair(b.shape.display.genome, false)) !== JSON.stringify(b.shape.display.genome))) errs.push(`${w}.shape invalid surface source`);
     if (b.shape.kind !== 'ribbon' && b.shape.path) errs.push(`${w}.shape stray ribbon path`);
     if (b.shape.kind === 'compound') errs.push(...validateParts(b.shape.parts, `${w}.shape`));
     else if (b.shape.parts) errs.push(`${w}.shape stray parts`);
@@ -1626,6 +1634,7 @@ export function evalCount(b: BodyGene): number {
 export function bodyCost(b: BodyGene): number {
   const cls = SHAPE_CLASS[b.shape.kind];
   let ms = 0;
+  if (b.shape.display) ms += 0.3 + estimateCost(b.shape.display.genome) * 0.25;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
   if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count, b.emit.p.over ?? 0);

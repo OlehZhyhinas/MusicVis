@@ -479,6 +479,7 @@ function morphGene<G extends Gene>(locus: Locus, a: G, b: G, rng: Rng): G {
   const out = { ...a, p: morphParams(a.p, b.p, locusSchema(locus, a.kind), rng) } as G;
   if (locus === 'shape' && a.kind === 'flame') (out as unknown as ShapeGene).xforms = morphXforms((a as unknown as ShapeGene).xforms ?? [], (b as unknown as ShapeGene).xforms ?? [], rng);
   if (locus === 'shape' && a.kind === 'ribbon') {
+    (out as unknown as ShapeGene).display = cloneGene(((rng()<0.5?a:b) as unknown as ShapeGene).display ?? null) ?? undefined;
     const ap=repairRibbonPath((a as unknown as ShapeGene).path), bp=repairRibbonPath((b as unknown as ShapeGene).path), mix=rng();
     (out as unknown as ShapeGene).path=ap.map((p,i)=>{const q=sampleRibbon(bp,i/(ap.length-1),b.p.closed>0.5);return {x:p.x*(1-mix)+q.x*mix,y:p.y*(1-mix)+q.y*mix,z:p.z*(1-mix)+q.z*mix,width:p.width*(1-mix)+q.width*mix,twist:p.twist*(1-mix)+q.twist*mix};});
   }

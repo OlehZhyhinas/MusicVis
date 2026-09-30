@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 173;
+export const SEED_VERSION = 174;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4632,7 +4632,18 @@ const DARK_RIBBONS: Def[] = RIBBON_STUDIES.map((source,i)=>({
   })),
 }));
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS];
+// Live sources are portable snapshots; the mesh path breeds independently of its display.
+const DISPLAY_RIBBONS: Def[] = RIBBON_STUDIES.map((ribbon,i) => {
+  const source = [DEFS.find(d=>d.bodies.some(b=>b.shape.kind==='plasma'))!, NOTES[0], LIGHTNING_STUDIES[0]][i];
+  return {...ribbon, origin:`X${90+i}`, name:['Plasma Cinema','Melody Möbius','Voltage Silk'][i],
+    bodies:ribbon.bodies.map(b=>({...b,shape:{...b.shape,
+      p:{...b.shape.p,projection:1,ink:1,edges:0.4,width:[0.29,0.26,0.23][i],twist:[0.3,0.5,0.25][i]},
+      display:{name:source.name,genome:build(source).genome}},
+      material:{...b.material,p:{...b.material.p,gain:1.6}}})),
+  };
+});
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

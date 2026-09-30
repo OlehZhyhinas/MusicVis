@@ -101,6 +101,7 @@ const PARAM_HELP: Record<string, string> = {
   'shape.ribbon.edges': 'Brightness of the two neon lines along the ribbon’s physical edges.',
   'shape.ribbon.ripples': 'Musical hits create coloured droplet splashes and spreading waves attached to the 3D surface.',
   'shape.ribbon.size': 'Scale of the 3D ribbon and its whole control-point path.',
+  'shape.ribbon.projection': 'Brightness mix of the live preset projected onto this surface. Choose its source below the path editor.',
   'shape.ribbon.width': 'Width of the strip, multiplied by each control point’s width.',
   'shape.ribbon.wind': 'Strength of the musical forces bending the spring chain in 3D.',
   'shape.ribbon.stiffness': 'How strongly the ribbon returns to its editable path after being disturbed.',
