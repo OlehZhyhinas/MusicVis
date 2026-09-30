@@ -2040,6 +2040,8 @@ export class Stage {
         let ribbon=s.ribbons.get(bi);
         if(!ribbon) { ribbon=new RibbonRenderer(this.eng.gl,this.eng.hdr);s.ribbons.set(bi,ribbon); }
         ribbon.extent=ribbonExtent(sh.path,P('width'));
+        ribbon.ink=P('ink'); ribbon.edges=P('edges'); ribbon.rippleAmount=P('ripples'); ribbon.width=P('width'); ribbon.closed=P('closed')>0.5;
+        ribbon.ripples.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??60,height:F.notes?.height??0.5},sdt);
         ribbon.flow=P('flow'); ribbon.turn=P('turn'); ribbon.tilt=P('tilt');
         ribbon.sheen=b.material.kind === 'iridescent' ? s.P('ma',bi,b.material.p,'sheen',MATERIAL_SCHEMAS.iridescent) : 0.5; ribbon.hue=this.bodyHue;
         ribbon.style=['line','fill','glow','dots','textured','chrome','iridescent'].indexOf(b.material.kind);

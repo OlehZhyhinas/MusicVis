@@ -2,6 +2,9 @@
 import type { Schema } from '../genome';
 export interface RibbonPoint { x: number; y: number; z: number; width: number; twist: number }
 export const RIBBON_SCHEMA: Schema = {
+  ink: { min: 0, max: 1, def: 0 },
+  edges: { min: 0, max: 1, def: 0 },
+  ripples: { min: 0, max: 1, def: 0 },
   size: { min: 0.03, max: 0.65, def: 0.3 },
   width: { min: 0.015, max: 0.35, def: 0.13 },
   wind: { min: 0, max: 1, def: 0.35 },

@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 172;
+export const SEED_VERSION = 173;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4618,7 +4618,21 @@ const LIGHTNING_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES];
+// Optional dark-water treatment. Original X81–X83 remain unchanged.
+const DARK_RIBBONS: Def[] = RIBBON_STUDIES.map((source,i)=>({
+  ...source,
+  origin:`X${87+i}`,
+  name:['Blackwater Ribbon','Neon Rain Knot','Afterglow Wavelet'][i],
+  color:{exposure:1,sat:1,bloom:0.8,adapt:0.1,vignette:0.2,contrast:0.01,ca:0},
+  bodies:source.bodies.map(b=>({
+    ...b,
+    shape:{...b.shape,path:b.shape.path?.map(p=>({...p})),p:{...b.shape.p,ink:1,edges:1,ripples:0.95,
+      width:[0.23,0.2,0.16][i],turn:[0.009,0.02,0.005][i]}},
+    material:{...b.material,p:{...b.material.p,gain:1.2,sheen:0.8}},
+  })),
+}));
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
