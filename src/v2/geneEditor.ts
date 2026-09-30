@@ -625,6 +625,13 @@ export class GeneEditor {
     const err = this.errLine(sec.id);
     if (err) gb.append(err);
     if (sec.target) for (const c of sec.params) gb.append(this.paramRow(sec.target, c, sec.id));
+    if(sec.target?.t==='locus' && sec.target.locus==='shape' && this.scratch?.bodies[sec.target.b].shape.kind==='ribbon') {
+      const bi=sec.target.b, path=this.scratch.bodies[bi].shape.path!;
+      const points=h('textarea',{class:'txt mono',rows:6,spellcheck:'false','aria-label':'Ribbon 3D control points'});
+      points.value=path.map(p=>[p.x,p.y,p.z,p.width,p.twist].map(v=>Number(v.toFixed(4))).join(' ')).join('\n');
+      gb.append(h('p',{class:'dim vg-hint',text:'3D path: one point per line, x y z width twist. Coordinates −2…2, width 0.1…2, twist in turns −12…12. Add up to 64 points; Closed joins the ends.'}),points,
+        this.button('Apply 3D path',()=>this.structural(g=>E.editRibbonPath(g,bi,points.value),sec.id)));
+    }
     if (sec.gene?.optional) {
       const key = sec.gene.key;
       gb.append(h('div', { class: 'row' }, sec.gene.present

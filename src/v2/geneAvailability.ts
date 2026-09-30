@@ -70,7 +70,7 @@ export function paramInactiveReason(g: Genome, t: Target, key: string): string |
     if (b.place.kind === 'stations' && ['xs', 'jump'].includes(key) && b.place.p.inst <= 0.001) return 'Raise Instrument follow to use this setting.';
   }
   if (t.locus === 'material') {
-    if (cls === 'field' && !['gain', 'blend'].includes(key)) return 'Field shapes use the material look, gain, and blend; this control is not read.';
+    if (cls === 'field' && !['gain', 'blend', ...(b.shape.kind === 'ribbon' && b.material.kind === 'iridescent' ? ['sheen'] : [])].includes(key)) return 'Field shapes use the material look, gain, and blend; this control is not read.';
     if (key === 'rings' && !ringsOn({ ...b, material: { ...b.material, p: { ...b.material.p, rings: 1 } } })) return 'Ring halos need a distance-field shape or a fused curve.';
     if (['rgap', 'rfade'].includes(key)) {
       if (!ringsOn({ ...b, material: { ...b.material, p: { ...b.material.p, rings: 1 } } })) return 'Ring halos need a distance-field shape or a fused curve.';

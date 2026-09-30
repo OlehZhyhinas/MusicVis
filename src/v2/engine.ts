@@ -5,6 +5,8 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { RibbonRenderer } from './genes/ribbonRender';
+import { ribbonExtent } from './genes/ribbon';
 import { LilyAtlas } from './lilyAtlas';
 import { melodySignal } from './melodySignals';
 import { packSuperscope } from './genes/superscope';
@@ -669,6 +671,7 @@ export class Slot {
   readonly segZ = new Float32Array(48);
   segN = 0;
   curves: CurveDraw[] = [];
+  readonly ribbons = new Map<number, RibbonRenderer>();
   rem: number[] = [];
   shift = [0, 0];
   decay = 0.9;
@@ -931,6 +934,8 @@ export class Stage {
 
   disposeSlot(s: Slot): void {
     this.dejavu.drop(s);
+    for (const ribbon of s.ribbons.values()) ribbon.dispose();
+    s.ribbons.clear();
     s.fb.dispose();
     s.sceneT?.dispose();
     s.sceneT = null;
@@ -1053,6 +1058,7 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
+    for (const s of slots) for (const ribbon of s.ribbons.values()) ribbon.render(this.h * 2, s.cols);
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
     if (flockSlot && eng.hq) this.updateFlock(flockSlot, sdt);
 
@@ -2017,6 +2023,18 @@ export class Stage {
         E[o] = P('radius');
         return sh.p.form === 0 ? 0.3 : P('radius');
       }
+      case 'ribbon': {
+        let ribbon=s.ribbons.get(bi);
+        if(!ribbon) { ribbon=new RibbonRenderer(this.eng.gl,this.eng.hdr);s.ribbons.set(bi,ribbon); }
+        ribbon.extent=ribbonExtent(sh.path,P('width'));
+        ribbon.flow=P('flow'); ribbon.turn=P('turn'); ribbon.tilt=P('tilt');
+        ribbon.sheen=b.material.kind === 'iridescent' ? s.P('ma',bi,b.material.p,'sheen',MATERIAL_SCHEMAS.iridescent) : 0.5; ribbon.hue=this.bodyHue;
+        ribbon.style=['line','fill','glow','dots','textured','chrome','iridescent'].indexOf(b.material.kind);
+        ribbon.simulation.step(sh.path!,{wind:P('wind'),stiffness:P('stiffness'),twist:P('twist'),width:P('width'),speed:P('speed'),closed:P('closed')>0.5,
+          bass:F.stem[1],vocals:F.stem[2],onset:F.beatPulse},sdt);
+        E[o]=P('size');E[o+1]=ribbon.extent;
+        return P('size')*ribbon.extent;
+      }
       case 'shell': return packShell(E, o, P);
       case 'plume': return packPlume(E, o, P);
       case 'lily': {
@@ -2812,6 +2830,7 @@ export class Stage {
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex)
       .tex('uNote', this.sig.noteTex);
+    s.ribbons.forEach((ribbon, i) => p.tex(`uRibbon${i}`, ribbon.texture ?? this.eng.black));
     s.bx.forEach((a, i) => { if (a) p.f4v(`uBx${i}`, a); });
     if (s.sceneT && p !== s.progs.scene) p.tex('uScene', s.sceneT.tex[0]);
     if (s.landT && p !== s.progs.land) p.tex('uLand', s.landT.tex[0]);
@@ -2977,7 +2996,7 @@ export class Stage {
   }
 
   dispose(): void {
-    for (const s of this.slots) s.fb.dispose();
+    for (const s of [...this.slots]) this.disposeSlot(s);
     this.caption?.dispose();
     this.slots = [];
     this.scene?.dispose();

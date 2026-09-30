@@ -12,6 +12,7 @@ import {
   type OpKind, type ParamSpec, type Params, type ReactionGene, type Schema, type ShapeGene, type ShapeKind,
 } from './genome';
 import { crossChoreo, jitterChoreo, randomChoreo } from './genes/choreo';
+import { repairRibbonPath, ribbonExtent, sampleRibbon } from './genes/ribbon';
 import { compoundExtent, crossParts, jitterParts, randomParts, restructureParts } from './genes/compound';
 import { crossAccent, jitterAccent, randomAccent } from './genes/accent';
 import { crossDrift, jitterDrift, randomDrift } from './genes/drift';
@@ -181,7 +182,7 @@ export function randomXform(rng: Rng): FlameXformGene {
 
 /** Random pick weights per locus kind (the favoured kinds read well on most shapes). */
 const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
-  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6, compound: 0.25, branch: 1, fabric: 1, linkage: 1, shell: 1, plume: 1, lily: 1 },
+  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6, compound: 0.25, branch: 1, fabric: 1, linkage: 1, shell: 1, plume: 1, lily: 1, ribbon: 1 },
   place: { point: 3, orbit: 2, walker: 1.5, stations: 1.5, row: 0.7, float: 1.2, outline: 1.2, grid: 1.2, ring: 1.5, mirror: 1 },
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1, recoil: 1.2, weave: 1.2 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8, undulate: 1 },
@@ -221,6 +222,7 @@ export function randomGene(locus: Locus, rng: Rng, kind?: string): Gene {
   if (locus === 'shape' && k === 'flame') p.count = pick(rng, [65536, 131072, 262144]);
   const g: Gene = { kind: k, p };
   if (locus === 'shape' && k === 'flame') (g as ShapeGene).xforms = Array.from({ length: randInt(rng, 2, 3) }, () => randomXform(rng));
+  if (locus === 'shape' && k === 'ribbon') (g as ShapeGene).path = repairRibbonPath(Array.from({length:6},(_,i)=>({x:i*0.4-1,y:(rng()-0.5)*1.4,z:(rng()-0.5)*1.4,twist:(rng()-0.5)*2,width:0.5+rng()})));
   if (locus === 'shape' && k === 'compound') (g as ShapeGene).parts = randomParts(rng);
   return g;
 }
@@ -262,6 +264,7 @@ export function shapeSize(s: ShapeGene): number {
     case 'bars': return s.p.mode === 1 || s.p.mode === 2 ? s.p.radius + s.p.len * 0.5 : 0.5;
     case 'curve': return s.p.form === 0 ? 0.6 : s.p.radius;
     case 'superscope': return s.p.size;
+    case 'ribbon': return s.p.size * ribbonExtent(s.path,s.p.width);
     case 'lily': return s.p.size * Math.max(1.7, s.p.stem);
     case 'plume': return s.p.size;
     case 'shell': return s.p.size * (1 + s.p.width * (1 + s.p.aperture));
@@ -285,6 +288,7 @@ function setShapeSize(s: ShapeGene, r: number): void {
     case 'bars': if (s.p.mode === 1 || s.p.mode === 2) { put('radius', r * 0.6); put('len', r * 0.6); } break;
     case 'curve': if (s.p.form !== 0) put('radius', r); break;
     case 'superscope': put('size', r); break;
+    case 'ribbon': put('size', r / ribbonExtent(s.path,s.p.width)); break;
     case 'lily': put('size', r / Math.max(1.7, s.p.stem)); break;
     case 'plume': put('size', r); break;
     case 'shell': put('size', r / (1 + s.p.width * (1 + s.p.aperture))); break;
@@ -472,6 +476,10 @@ export function morphXforms(xa: FlameXformGene[], xb: FlameXformGene[], rng: Rng
 function morphGene<G extends Gene>(locus: Locus, a: G, b: G, rng: Rng): G {
   const out = { ...a, p: morphParams(a.p, b.p, locusSchema(locus, a.kind), rng) } as G;
   if (locus === 'shape' && a.kind === 'flame') (out as unknown as ShapeGene).xforms = morphXforms((a as unknown as ShapeGene).xforms ?? [], (b as unknown as ShapeGene).xforms ?? [], rng);
+  if (locus === 'shape' && a.kind === 'ribbon') {
+    const ap=repairRibbonPath((a as unknown as ShapeGene).path), bp=repairRibbonPath((b as unknown as ShapeGene).path), mix=rng();
+    (out as unknown as ShapeGene).path=ap.map((p,i)=>{const q=sampleRibbon(bp,i/(ap.length-1),b.p.closed>0.5);return {x:p.x*(1-mix)+q.x*mix,y:p.y*(1-mix)+q.y*mix,z:p.z*(1-mix)+q.z*mix,width:p.width*(1-mix)+q.width*mix,twist:p.twist*(1-mix)+q.twist*mix};});
+  }
   if (locus === 'shape' && a.kind === 'compound') (out as unknown as ShapeGene).parts = crossParts((a as unknown as ShapeGene).parts ?? [], (b as unknown as ShapeGene).parts ?? [], rng);
   return out;
 }
@@ -1072,6 +1080,14 @@ const MUTATORS: [number, string, Mutator][] = [
     return true;
   }],
   // Compound shapes: parts nudged in small steps; rarely a part added, removed, reordered, re-joined or re-shaped.
+  [2, 'ribbon-path', (g, rng, amt) => {
+    const bs=g.bodies.filter(b=>b.shape.kind==='ribbon' && b.shape.path?.length);
+    if(!bs.length) return false;
+    const path=pick(rng,bs).shape.path!, point=pick(rng,path);
+    const axis=pick(rng,['x','y','z','twist','width'] as const);
+    point[axis]+=(rng()-0.5)*amt*0.6;
+    return true;
+  }],
   [2, 'compound-parts', (g, rng, amt) => {
     const bs = g.bodies.filter((b) => b.shape.kind === 'compound' && b.shape.parts?.length);
     if (!bs.length) return false;

@@ -25,6 +25,7 @@
 // new seed genomes and any missing seeds (votes, views and ids are kept, and
 // bred children are never touched).
 
+import type { RibbonPoint } from './genes/ribbon';
 import {
   CARRIER_SCHEMA, TONE_SCHEMA, PALETTE_SCHEMAS, MAPPING_SCHEMAS, DEFORM_SCHEMAS, EMIT_SCHEMAS, FEEL_SCHEMAS, MATERIAL_SCHEMAS, MOTION_SCHEMAS, OP_SCHEMAS, PLACE_SCHEMAS,
   SHAPE_SCHEMAS, defaultParams, repair,
@@ -44,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 170;
+export const SEED_VERSION = 171;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -76,6 +77,7 @@ interface BodyDef {
   /** Colour mapping; by default what the placement implies (grid: pitch, copies: instrument, one shape: fixed). */
   color?: [MappingKind, P?];
   /** A compound shape's parts (shape 'compound'; see genes/compound.ts), made with part(). */
+  path?: RibbonPoint[];
   parts?: CompoundPart[];
 }
 function body(d: BodyDef): BodyGene {
@@ -99,6 +101,7 @@ function body(d: BodyDef): BodyGene {
     color: { kind: ck, p: { ...defaultParams(MAPPING_SCHEMAS[ck]), amount: 1, ...cp } },
   };
   if (xforms) b.shape.xforms = xforms;
+  if (d.path) b.shape.path = d.path.map(p => ({...p}));
   if (d.parts) b.shape.parts = d.parts.map((x) => ({ ...x }));
   return b;
 }
@@ -4548,7 +4551,47 @@ const NEON_LILIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES];
+// Three paths in the same editable 3D ribbon body; none are renderer modes.
+const RIBBON_STUDIES: Def[] = [
+  {
+    origin: 'X81', name: 'Neon Streamer', energy: [0.05, 0.95], scheme: 'free', hue: 0.8,
+    pal: { key: 0, s1: 0.3, s2: 0.65 },
+    color: { exposure: 1, sat: 1, bloom: 0.8, adapt: 0.1, vignette: 0.25, contrast: 0.03, ca: 0 }, carrier: 'none',
+    bodies: [body({
+      shape: ['ribbon', { size: 0.4, width: 0.17, wind: 0.65, stiffness: 0.35, twist: 0.8, flow: 0.9, turn: 0.012, tilt: 0.08, speed: 0.85 }],
+      path: Array.from({length:9},(_,i)=>{const u=i/8;return {x:(u-0.5)*2.7,y:0.38*Math.sin(u*Math.PI*3),z:0.3*Math.sin(u*Math.PI*4+0.6),width:0.5+0.5*Math.sin(u*Math.PI),twist:0.3*Math.sin(u*Math.PI*2)};}),
+      material: ['iridescent', {gain:1.3,prism:1,sheen:0.7,sat:1,rim:0.6}], emit: ['none'],
+    })],
+    reactions: [rx('bass','sh',0,'wind',0.5,{atk:0.12,rel:0.6}),rx('held','sh',0,'width',0.25,{atk:0.3,rel:0.8}),rx('register','sh',0,'twist',0.12,{atk:0.35,rel:0.8}),rx('bright','sh',0,'flow',0.3,{atk:0.2,rel:0.6})],
+    accent: {hook:0,kick:0,hue:0,drop:0.02,section:0.08},
+  },
+  {
+    origin: 'X82', name: 'Prismatic Knot', energy: [0.05, 0.95], scheme: 'free', hue: 0.58,
+    pal: {key:0,s1:0.3,s2:0.65},
+    color: {exposure:1,sat:1,bloom:0.75,adapt:0.1,vignette:0.25,contrast:0.03,ca:0}, carrier: 'none',
+    bodies: [body({
+      shape: ['ribbon',{size:0.33,width:0.17,wind:0.3,stiffness:0.75,twist:1,flow:1,turn:0.025,tilt:0.08,closed:1,speed:0.65}],
+      path: Array.from({length:24},(_,i)=>{const a=i/24*Math.PI*2;return {x:0.38*(Math.sin(a)+2*Math.sin(2*a)),y:0.38*(Math.cos(a)-2*Math.cos(2*a)),z:0.4*Math.sin(3*a),width:1,twist:0.35*Math.sin(a*3)};}),
+      material: ['iridescent',{gain:1.5,prism:1,sheen:0.85,sat:1,rim:0.7}],emit:['none'],
+    })],
+    reactions:[rx('vocals','sh',0,'wind',0.45,{atk:0.3,rel:0.9}),rx('tension','sh',0,'twist',0.15,{atk:0.4,rel:0.9}),rx('held','sh',0,'width',0.2,{atk:0.3,rel:0.8}),rx('bright','sh',0,'flow',0.2,{atk:0.2,rel:0.6})],
+    accent:{hook:0,kick:0,hue:0,drop:0.02,section:0.08},
+  },
+  {
+    origin:'X83',name:'Wavelet Silk',energy:[0.05,0.95],scheme:'free',hue:0.9,
+    pal:{key:0,s1:0.3,s2:0.65},
+    color:{exposure:1,sat:1,bloom:0.8,adapt:0.1,vignette:0.25,contrast:0.03,ca:0},carrier:'none',
+    bodies:[body({
+      shape:['ribbon',{size:0.42,width:0.11,wind:0.75,stiffness:0.4,twist:0.5,flow:0.95,turn:0.008,tilt:0.12,speed:1.1}],
+      path:Array.from({length:32},(_,i)=>{const u=i/31;return {x:(u-0.5)*2.8,y:0.3*Math.sin(u*Math.PI*6),z:0.3*Math.cos(u*Math.PI*6),width:0.6+0.5*Math.sin(u*Math.PI),twist:u*1.5};}),
+      material:['iridescent',{gain:1.5,prism:1,sheen:0.75,sat:1,rim:0.7}],emit:['none'],
+    })],
+    reactions:[rx('bass','sh',0,'wind',0.4,{atk:0.12,rel:0.6}),rx('vocals','sh',0,'twist',0.1,{atk:0.3,rel:0.8}),rx('held','sh',0,'width',0.3,{atk:0.3,rel:0.8}),rx('bright','sh',0,'flow',0.25,{atk:0.2,rel:0.6})],
+    accent:{hook:0,kick:0,hue:0,drop:0.02,section:0.08},
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

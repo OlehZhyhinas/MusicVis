@@ -39,6 +39,7 @@ import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
 import { UNDULATE_SCHEMA } from './genes/undulate';
 import { WEAVE_SCHEMA } from './genes/weave';
 import { RECOIL_SCHEMA } from './genes/recoil';
+import { RIBBON_SCHEMA, repairRibbonPath, type RibbonPoint } from './genes/ribbon';
 import { LILY_SCHEMA } from './genes/lily';
 import { PLUME_SCHEMA } from './genes/plume';
 import { SHELL_SCHEMA } from './genes/shell';
@@ -168,7 +169,7 @@ export interface OpGene {
 
 // ---------------------------------------------------------------- shapes
 
-export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound', 'branch', 'fabric', 'linkage', 'shell', 'plume', 'lily'] as const;
+export const SHAPE_KINDS = ['dot', 'polygon', 'star', 'segment', 'solid', 'bars', 'curve', 'plasma', 'aurora', 'terrain', 'edge', 'flame', 'superscope', 'beams', 'scene', 'cells', 'cymatics', 'landscape', 'tonnetz', 'notes', 'compound', 'branch', 'fabric', 'linkage', 'shell', 'plume', 'lily', 'ribbon'] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 /**
  * sdf: a distance field in the body's local space (every material and placement applies).
@@ -195,6 +196,7 @@ export const SHAPE_CLASS: Record<ShapeKind, ShapeClass> = {
   shell: 'sdf',
   plume: 'sdf',
   lily: 'sdf',
+  ribbon: 'field',
 };
 /** Shapes the shared GPU state allows once per genome (wireframe segments, the flame sim). */
 export const UNIQUE_SHAPES: ShapeKind[] = ['solid', 'flame', 'scene', 'landscape'];
@@ -243,6 +245,7 @@ export const SHAPE_SCHEMAS: Record<ShapeKind, Schema> = {
   shell: SHELL_SCHEMA,
   plume: PLUME_SCHEMA,
   lily: LILY_SCHEMA,
+  ribbon: RIBBON_SCHEMA,
 };
 
 /** True when this shape has a distance field (it can be fused, painted over, masked by). */
@@ -519,6 +522,7 @@ export interface Gene<K extends string = string> {
 }
 export interface ShapeGene extends Gene<ShapeKind> {
   xforms?: FlameXformGene[]; // flame only
+  path?: RibbonPoint[]; // ribbon only: freeform 3D control points
   parts?: CompoundPart[]; // compound only (genes/compound.ts)
 }
 export interface DeformGene extends Gene<DeformKind> {
@@ -842,6 +846,7 @@ export function repairShape(raw: unknown, fallback: ShapeKind = 'dot'): ShapeGen
     if (!xs.length) xs.push(repairXform({ vars: { linear: 0.5, spherical: 0.5 } }), repairXform({ aff: [0.5, 0, 0, 0.5, 0.5, 0], vars: { sinusoidal: 1 } }));
     g.xforms = xs;
   }
+  if (g.kind === 'ribbon') g.path = repairRibbonPath(isObj(raw) ? raw.path : undefined);
   if (g.kind === 'compound') g.parts = repairParts(isObj(raw) ? raw.parts : undefined);
   return g;
 }
@@ -1251,6 +1256,8 @@ export function validate(g: Genome): string[] {
       });
     };
     checkXforms(b.shape, `${w}.shape`);
+    if (b.shape.kind === 'ribbon' && JSON.stringify(b.shape.path) !== JSON.stringify(repairRibbonPath(b.shape.path))) errs.push(`${w}.shape invalid ribbon path`);
+    if (b.shape.kind !== 'ribbon' && b.shape.path) errs.push(`${w}.shape stray ribbon path`);
     if (b.shape.kind === 'compound') errs.push(...validateParts(b.shape.parts, `${w}.shape`));
     else if (b.shape.parts) errs.push(`${w}.shape stray parts`);
     if (b.deform.ops !== undefined) {
@@ -1442,6 +1449,7 @@ export function speciesScores(g: Genome): Record<Species, number> {
         if (pk === 'grid') s.mirror += 2.4 * w * shapeW;
         else s.wire += 1.4 * w * shapeW;
         break;
+      case 'ribbon': s.aurora += 1.5 * w * shapeW; s.chrome += w * shapeW; break;
       case 'lily': s.aurora += 1.5 * w * shapeW; s.chrome += 0.6 * w * shapeW; break;
       case 'plume': s.chrome += 1.2 * w * shapeW; s.aurora += 0.4 * w * shapeW; break;
       case 'shell': s.chrome += 1.6 * w * shapeW; s.vortex += 0.7 * w * shapeW; break;
@@ -1577,9 +1585,9 @@ export function estimateCost(g: Genome): number {
 const SDF_COST: Record<ShapeKind, number> = {
   dot: 0.3, polygon: 0.3, star: 0.35, segment: 0.3, solid: 4.0, bars: 0.1, curve: 0.25, aurora: 0.6,
   plasma: 0.5, terrain: 0.5, edge: 0.3, flame: 0.3, superscope: SUPERSCOPE_COST,
-  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35, branch: 0.8, fabric: 0.6, linkage: 1.1, shell: 1.4, plume: 0.8, lily: 1.4,
+  beams: 0.3, scene: 0.3, cells: 0.4, cymatics: 0.3, landscape: 0.3, tonnetz: 0.3, notes: 0.3, compound: 0.35, branch: 0.8, fabric: 0.6, linkage: 1.1, shell: 1.4, plume: 0.8, lily: 1.4, ribbon: 0.4,
 };
-const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST };
+const FIELD_COST: Partial<Record<ShapeKind, number>> = { plasma: 6.3, aurora: 1.5, edge: 0.05, tonnetz: TONNETZ_COST, notes: NOTES_COST, ribbon: 1.5 };
 const MATERIAL_COST: Record<MaterialKind, number> = { line: 0.05, fill: 0.05, glow: 0.05, dots: 0.1, textured: 0.35, chrome: 0.45, iridescent: 0.1 };
 /** One evaluation of a shape; a wireframe costs by its segment count (plus the inner solid). */
 function shapeEvalCost(sh: ShapeGene): number {

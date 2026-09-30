@@ -1,3 +1,4 @@
+import { parseRibbonPath } from './genes/ribbon';
 // Gene editor model: the controls a genome exposes (generated from the parameter
 // schemas, so new genes get controls automatically) and the edits the editor
 // makes (parameter changes, kind switches, chain / reaction list edits, silent
@@ -527,6 +528,15 @@ function finish(before: Genome, g: Genome, check: (out: Genome) => string | null
   const errs = validate(out);
   if (errs.length) return fail(before, errs[0]);
   return { genome: out, ok: true };
+}
+
+/** Replace an arbitrary ribbon path without changing other body genes. */
+export function editRibbonPath(before:Genome, body:number, text:string):EditResult {
+  if(before.bodies[body]?.shape.kind!=='ribbon') return fail(before,'Select a ribbon body first.');
+  try {
+    const g=cloneGenome(before);g.bodies[body].shape.path=parseRibbonPath(text);
+    return finish(before,g,out=>out.bodies[body]?.shape.kind==='ribbon'?null:'The ribbon could not be retained.');
+  } catch(error) {return fail(before,error instanceof Error?error.message:'Invalid ribbon path.');}
 }
 
 /**
