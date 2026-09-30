@@ -50,6 +50,12 @@ Live at https://olehzhyhinas.github.io/MusicVis/
   Figure-eight weave motion adds phased flight and banking turns in Swallow Waltz
   (X72), Loom of Light (X73), and Porcelain Procession (X74). Swing, held notes,
   and harmonic tension reshape their paths.
+  Reference-inspired luminous lilies use independently bending painted petals, shaded veins,
+  stamens, foliage, and scrolling stems. Electric Florilegium (X75) is a rainbow
+  bouquet; Prismatic Lily (X76) is a close-up; Moonlit Duet (X77) pairs two blooms.
+  Vocals and sustained notes open the flowers, melodic pitch changes their curl,
+  and note attacks lift their glow. The iridescent material retains the painted colours;
+  other materials use a distance field derived from the petal silhouettes.
 - Exploration controls in the preset browser also guide automatic breeding:
   Gentle occasionally chooses a different body family, while Explore and Wild
   do so more often. Rare families get equal chances before fitness chooses an

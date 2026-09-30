@@ -44,7 +44,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 168;
+export const SEED_VERSION = 169;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4375,7 +4375,99 @@ const WEAVE_STUDIES: Def[] = [
   },
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES];
+// Inspired by the owner's reference: luminous curved petals and scrolling stems on black.
+const RAINBOW_LILIES: Def[] = [
+  {
+    origin: 'X75', name: 'Electric Florilegium', energy: [0.05, 0.9], scheme: 'free', hue: 0.87,
+    pal: { key: 0, s1: 0.65, s2: 0.27 },
+    color: { exposure: 0.95, sat: 1, bloom: 0.55, adapt: 0.1, vignette: 0.25, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [
+      body({
+        shape: ['lily', { size: 0.25, petals: 6, open: 0.55, curl: 0.85, veins: 0.7, stem: 1.8, shimmer: 0.75 }],
+        place: ['point', { x: -0.3, y: 0.14, angle: 0.1 }],
+        motion: ['sway', { amp: 0.014, tilt: 0.12, period: 8 }],
+        material: ['iridescent', { gain: 1.65, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+        color: ['fixed', { hue: 0, detail: 1 }],
+      }),
+      body({
+        shape: ['lily', { size: 0.25, petals: 5, open: 0.5, curl: 0.7, veins: 0.65, stem: 1.3, shimmer: 0.65 }],
+        place: ['point', { x: 0.24, y: -0.12, angle: -0.1 }],
+        motion: ['sway', { amp: 0.012, tilt: 0.1, period: 8 }],
+        material: ['iridescent', { gain: 1.55, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+        color: ['fixed', { hue: 0.33, detail: 1 }],
+      }),
+      body({
+        shape: ['lily', { size: 0.17, petals: 5, open: 0.6, curl: 0.9, veins: 0.7, stem: 1.6, shimmer: 0.6 }],
+        place: ['point', { x: 0.22, y: 0.27, angle: -0.05 }],
+        motion: ['sway', { amp: 0.016, tilt: 0.15, period: 8 }],
+        material: ['iridescent', { gain: 1.5, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+        color: ['fixed', { hue: 0.67, detail: 1 }],
+      }),
+    ],
+    reactions: [
+      rx('vocals', 'sh', 0, 'open', 0.9, { atk: 0.3, rel: 0.9 }),
+      rx('register', 'sh', 0, 'curl', -0.45, { atk: 0.3, rel: 0.8 }),
+      rx('held', 'sh', 1, 'open', 0.9, { atk: 0.3, rel: 0.8 }),
+      rx('bass', 'sh', 1, 'curl', -0.4, { atk: 0.2, rel: 0.65 }),
+      rx('noteon', 'ma', 2, 'gain', 0.2, { atk: 0.03, rel: 0.45 }),
+      rx('bright', 'sh', 2, 'shimmer', 0.4, { atk: 0.2, rel: 0.7 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.08 },
+  },
+  {
+    origin: 'X76', name: 'Prismatic Lily', energy: [0.05, 0.9], scheme: 'free', hue: 0.87,
+    pal: { key: 0, s1: 0.65, s2: 0.27 },
+    color: { exposure: 0.95, sat: 1, bloom: 0.6, adapt: 0.1, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['lily', { size: 0.33, petals: 6, open: 0.55, curl: 0.8, veins: 0.8, stem: 0.75, shimmer: 0.8 }],
+      place: ['point', { y: 0.06, angle: 0.08 }],
+      motion: ['sway', { amp: 0.018, tilt: 0.1, period: 8 }],
+      material: ['iridescent', { gain: 1.7, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+      color: ['fixed', { hue: 0, detail: 1 }],
+    })],
+    reactions: [
+      rx('held', 'sh', 0, 'open', 0.9, { atk: 0.3, rel: 0.9 }),
+      rx('rising', 'sh', 0, 'curl', -0.4, { atk: 0.25, rel: 0.8 }),
+      rx('falling', 'sh', 0, 'curl', 0.3, { atk: 0.25, rel: 0.8 }),
+      rx('bright', 'sh', 0, 'shimmer', 0.3, { atk: 0.25, rel: 0.7 }),
+      rx('noteon', 'ma', 0, 'gain', 0.18, { atk: 0.03, rel: 0.4 }),
+      rx('bass', 'sh', 0, 'size', 0.04, { atk: 0.2, rel: 0.65 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.08 },
+  },
+  {
+    origin: 'X77', name: 'Moonlit Duet', energy: [0.05, 0.85], scheme: 'free', hue: 0.57,
+    pal: { key: 0, s1: 0.24, s2: 0.43 },
+    color: { exposure: 1, sat: 0.8, bloom: 0.5, adapt: 0.1, vignette: 0.3, contrast: 0.01, ca: 0 },
+    carrier: 'none',
+    bodies: [body({
+      shape: ['lily', { size: 0.3, petals: 5, open: 0.55, curl: 0.75, veins: 0.6, stem: 1, shimmer: 0.8 }],
+      place: ['point', { x: -0.27, y: 0.07, angle: -0.12 }],
+      motion: ['sway', { amp: 0.025, tilt: 0.12, period: 8 }],
+      material: ['iridescent', { gain: 1.7, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+      color: ['fixed', { hue: 0, detail: 0.85 }],
+    }), body({
+      shape: ['lily', { size: 0.27, petals: 6, open: 0.5, curl: 0.85, veins: 0.7, stem: 1.2, shimmer: 0.75 }],
+      place: ['point', { x: 0.28, y: -0.04, angle: 0.09 }],
+      motion: ['sway', { amp: 0.025, tilt: 0.1, period: 8 }],
+      material: ['iridescent', { gain: 1.65, prism: 0.95, sheen: 0.6, sat: 0.95, rim: 0.35 }], emit: ['none'],
+      color: ['fixed', { hue: 0.35, detail: 0.9 }],
+    })],
+    reactions: [
+      rx('vocals', 'sh', 0, 'open', 0.9, { atk: 0.3, rel: 0.9 }),
+      rx('other', 'sh', 1, 'open', 0.9, { atk: 0.3, rel: 0.9 }),
+      rx('tension', 'sh', 0, 'curl', 0.3, { atk: 0.4, rel: 0.9 }),
+      rx('resolve', 'sh', 1, 'curl', -0.5, { atk: 0.3, rel: 0.9 }),
+      rx('noteon', 'ma', 0, 'gain', 0.15, { atk: 0.03, rel: 0.4 }),
+      rx('bright', 'sh', 1, 'shimmer', 0.4, { atk: 0.25, rel: 0.7 }),
+    ],
+    accent: { hook: 0, kick: 0, hue: 0, drop: 0.02, section: 0.08 },
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

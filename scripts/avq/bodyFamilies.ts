@@ -12,13 +12,14 @@ try {
     const { SEEDS } = await import('/src/v2/seeds.ts');
     const { cloneGenome, repair, MATERIAL_KINDS, defaultParams, MATERIAL_SCHEMAS, FUSE_SCHEMA } = await import('/src/v2/genome.ts');
     const { ReferenceClip } = await import('/src/v2/fingerprint.ts');
-    const eng = new Engine(document.createElement('canvas'));
+    const eng = new Engine(document.createElement('canvas')); await eng.lilyAtlas.ready;
+    if (!eng.lilyAtlas.loaded) throw Error('lily artwork did not load');
     const st = new Stage(eng, { offscreen: true, flameCap: 65536, particleCap: 65536 }); st.resize(320, 180);
     const pixels = new Uint8Array(320 * 180 * 4);
     const errors = []; let compiled = 0;
-    for (const kind of ['branch', 'fabric', 'linkage', 'shell', 'plume']) {
+    for (const kind of ['branch', 'fabric', 'linkage', 'shell', 'plume', 'lily']) {
       const seed = SEEDS.find(s => s.genome.bodies[0].shape.kind === kind);
-      for (const material of MATERIAL_KINDS) for (const mode of ['body', 'pair', 'fused']) {
+      for (const material of MATERIAL_KINDS) for (const mode of (kind === 'lily' ? ['body', 'pair', 'fused', 'self-fused'] : ['body', 'pair', 'fused'])) {
         const raw = cloneGenome(seed.genome);
         raw.reactions = [];
         const b = raw.bodies[0];
@@ -27,9 +28,9 @@ try {
         // dim it almost to black. Use a source-sized body and a visible glow width.
         if (material === 'glow') { b.shape.p.size = 0.1; Object.assign(b.material.p, { width: 0.06, base: 0.4, gain: 2 }); }
         if (mode === 'pair') raw.bodies.push(structuredClone(b));
-        if (mode === 'fused') {
+        if (mode === 'fused' || mode === 'self-fused') {
           b.fuse = { shape: b.shape, p: { ...defaultParams(FUSE_SCHEMA), mode: 1, t: 0.5 } };
-          b.shape = { kind: 'dot', p: { r: 0.18 } };
+          if (mode === 'fused') b.shape = { kind: 'dot', p: { r: 0.18 } };
         }
         const g = repair(raw);
         const programs = eng.cache.get(g, true);

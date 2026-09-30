@@ -13,6 +13,7 @@ import { HUEMAP_GLSL } from './genes/huemap';
 import { RELIEF_GLSL } from './genes/relief';
 import { FLAME_VARIATION_GLSL } from './variations';
 import { SUPERSCOPE_GLSL } from './genes/superscope';
+import { LILY_GLSL } from './genes/lily';
 import { PLUME_GLSL } from './genes/plume';
 import { SHELL_GLSL } from './genes/shell';
 import { LINKAGE_GLSL } from './genes/linkage';
@@ -114,6 +115,8 @@ uniform vec4 uSegZ[12];
 uniform int uSegN;
 uniform vec4 uChroma4[3];
 uniform sampler2D uWave, uSpec, uNote;
+uniform sampler2D uLilyAtlas, uLilyDistance;
+uniform float uLilyReady;
 
 float waveAt(float x) { return texture(uWave, vec2(x, 0.5)).r; }
 float specAt(float x) { return texture(uSpec, vec2(clamp(x, 0.0, 1.0), 0.5)).r; }
@@ -282,6 +285,7 @@ const SHAPE_SDF: Partial<Record<ShapeKind, string>> = {
   linkage: LINKAGE_GLSL,
   shell: SHELL_GLSL,
   plume: PLUME_GLSL,
+  lily: LILY_GLSL,
   dot: `vec3 SHP(vec2 q) { return vec3(length(q) - SA.x, 0.0, 1.0); }`,
   polygon: `vec3 SHP(vec2 q) { float r = SA.y; float rd = SA.z * 0.35 * r; return vec3(sdPoly(q, r - rd, SA.x) - rd, 0.0, 1.0); }`,
   star: `vec3 SHP(vec2 q) { return vec3(sdStar(q, SA.y, SA.x, 2.0 + (SA.x - 2.0) * SA.z), 0.0, 1.0); }`,
@@ -608,6 +612,17 @@ float CHUE(vec2 cc, float pc) {
   return 0.0;
 }`;
 
+const LILY_MATERIAL = `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  float aa=px()*1.2;
+  vec3 tint=COL(Q,s.y,0.8,p);
+  vec3 paint=mix(lilyPaint*mix(vec3(1.0),tint*2.0,0.5),lilyPaint,BD(0).z);
+  float l=dot(paint,vec3(0.2126,0.7152,0.0722));
+  paint=mix(vec3(l),paint,BD(1).x);
+  paint+=pow(max(paint,vec3(0.0)),vec3(3.0))*BD(0).w*0.15;
+  ex=paint*BD(1).y*0.03*exp(-abs(s.x)/max(aa*3.0,0.005*R));
+  return vec4(paint*Q.x*0.8,smoothstep(aa,-aa,s.x));
+}`;
+
 const MATERIAL_GLSL: Record<string, string> = {
   // M0 = (gain, hue, width px, halo)
   line: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
@@ -677,6 +692,21 @@ const MATERIAL_GLSL: Record<string, string> = {
   ex *= clip;
   return vec4(col, cov * clip);
 }`,
+  // M0 = gain, hue, prism, sheen; M1 = saturation, rim.
+  iridescent: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
+  float aa=px()*1.2;
+  float base=atan(1.73205*(uColA.g-uColA.b),2.0*uColA.r-uColA.g-uColA.b)/TAU;
+  float hue=base+BD(0).y+Q.y+s.y*BD(20).y+p.y*BD(20).z;
+  vec3 spectrum=lin(hsv2rgb(vec3(fract(hue),BD(1).x,1.0)));
+  vec3 col=mix(COL(Q,s.y,0.8,p),spectrum,BD(0).z);
+  float light=max(0.0,s.z);
+  vec3 surface=col*(0.07+0.7*light*light);
+  surface+=vec3(1.0)*BD(0).w*pow(max(0.0,light-0.65),3.0)*0.2;
+  float rim=exp(-abs(s.x)/max(aa,0.002*R));
+  surface+=mix(col,vec3(1.0),0.25)*rim*BD(1).y;
+  ex=col*BD(1).y*0.035*exp(-abs(s.x)/max(aa*3.0,0.005*R));
+  return vec4(surface*Q.x*0.5,smoothstep(aa,-aa,s.x));
+}`,
   // M0 = (gain, hue, chrome, -)
   chrome: `vec4 MAT(vec3 s, vec2 q, vec4 Q, float R, vec2 p, out vec3 ex) {
   vec3 nn;
@@ -729,14 +759,14 @@ function slot(src: string, bi: number, suffix: string): string {
     .replace(/\bED\b/g, `uBd[${b + 19}]`)
     .replace(/\bWV(\d)\b/g, (_m, k: string) => `uWv[${bi * 4 + Number(k)}]`)
     .replace(/\bBX\((\d+)\)/g, (_m, k: string) => `uBx${bi}[${k}]`)
-    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|RINGS|armA|armL|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
+    .replace(/\b(SHP|FSH|FLD|DFM|MAT|COL|CHUE|RINGS|armA|armL|lilyCurve|lilyPetal|lilyRibbon|lilyPaint|fuseLilyCurve|fuseLilyPetal|fuseLilyRibbon|fuseLilyPaint|edgeLocal|hzTerrain)\b/g, `$1_${suffix}`);
 }
 
 /** Shape distance field for the body (SA/SB = its parameter slots). */
 function shapeCode(kind: ShapeKind, name: 'SHP' | 'FSH', slots: [number, number]): string {
   const src = SHAPE_SDF[kind];
   if (!src) throw new Error(`no distance field for ${kind}`);
-  return src.replace(/\bSHP\b/g, name).replace(/\bSA\b/g, `BD(${slots[0]})`).replace(/\bSB\b/g, `BD(${slots[1]})`);
+  return (name === 'FSH' ? src.replace(/\blily(Curve|Petal|Ribbon|Paint)\b/g, 'fuseLily$1') : src).replace(/\bSHP\b/g, name).replace(/\bSA\b/g, `BD(${slots[0]})`).replace(/\bSB\b/g, `BD(${slots[1]})`);
 }
 
 /** Does this body draw through its distance field in the full-screen passes? */
@@ -782,7 +812,7 @@ function bodyCode(b: BodyGene, bi: number, shared: Set<string>): BodyCode {
   if (drawsSdf(b)) pre += (b.shape.kind === 'compound' ? compoundShp(b.shape.parts ?? []).replace(/\bSA\b/g, 'BD(2)') : shapeCode(b.shape.kind, 'SHP', [2, 3])) + '\n';
   if (fuse) pre += shapeCode(fuse.shape.kind, 'FSH', [14, 15]) + '\n';
   pre += (DEFORM_GLSL[b.deform.kind] ?? DEFORM_GLSL.none) + '\n';
-  if (drawsSdf(b)) pre += BODY_COL + '\n' + MATERIAL_GLSL[b.material.kind].replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
+  if (drawsSdf(b)) pre += BODY_COL + '\n' + (b.shape.kind === 'lily' && b.material.kind === 'iridescent' ? LILY_MATERIAL : MATERIAL_GLSL[b.material.kind]).replace(/#if TEX == (\d)/g, (_m, t: string) => `#if ${b.material.p.tex} == ${t}`).replace(/#elif TEX == (\d)/g, (_m, t: string) => `#elif ${b.material.p.tex} == ${t}`) + '\n';
   const rings = ringsOn(b);
   if (rings) pre += RINGS_GLSL + '\n';
   // Rings obey the material's clip height like the rest of the body (fill: BD(1).z, textured: BD(1).y).

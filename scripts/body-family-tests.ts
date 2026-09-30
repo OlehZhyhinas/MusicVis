@@ -3,6 +3,8 @@ import { cloneGenome, repair, repairBody, validate, SHAPE_SCHEMAS, defaultParams
 import { crossover, mutate, mulberry32, randomBody, makeFuse } from '../src/v2/ops';
 import { SEEDS } from '../src/v2/seeds';
 import { buildSources } from '../src/v2/glsl';
+import { atlasDistance } from '../src/v2/genes/lilyDistance';
+import { packLily } from '../src/v2/genes/lily';
 import { packPlume } from '../src/v2/genes/plume';
 import { packShell } from '../src/v2/genes/shell';
 import { packLinkage } from '../src/v2/genes/linkage';
@@ -10,7 +12,7 @@ import { packFabric } from '../src/v2/genes/fabric';
 import { packBranch } from '../src/v2/genes/branch';
 
 type Check = (name: string, ok: boolean, detail: string) => void;
-export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage', 'shell', 'plume'];
+export const BODY_FAMILIES: ShapeKind[] = ['branch', 'fabric', 'linkage', 'shell', 'plume', 'lily'];
 export function bodyFamilyTests(check: Check): void {
   for (const kind of BODY_FAMILIES) {
     const seeds = SEEDS.filter(s => s.genome.bodies.some(b => b.shape.kind === kind));
@@ -34,6 +36,18 @@ export function bodyFamilyTests(check: Check): void {
     const fused = makeFuse(repairBody({ shape: { kind: 'dot' } }), { kind, p: defaultParams(SHAPE_SCHEMAS[kind]) }, rng);
     check(`${kind}.fusion`, sdfCapable(b.shape) && b.shape.p.size === SHAPE_SCHEMAS[kind].size.min && fused?.fuse?.shape.kind === kind, 'repairs invalid dimensions and works as a fusion partner');
   }
+  const alpha = new Uint8Array(18*12*4);
+  for(let y=1;y<5;y++) for(let x=1;x<5;x++) alpha[(y*18+x)*4+3]=255;
+  const distances=atlasDistance(alpha,18,12);
+  check('lily.atlas-distance', distances[(2*18+2)*4]<128 && distances[0]>128
+    && distances[(2*18+6)*4]===255 && distances[(8*18+2)*4]===255,
+    'painted silhouette has negative interior, positive exterior and isolated neighbouring cells');
+  const lily = new Float32Array(16).fill(-77);
+  const yl = defaultParams(SHAPE_SCHEMAS.lily);
+  const lr = packLily(lily,4,k=>k==='open'?0.42:yl[k],2.5);
+  check('lily.packing', lily.slice(0,4).every(x=>x===-77) && lily.slice(12).every(x=>x===-77)
+    && Math.abs(lily[6]-0.42)<1e-6 && lily[11]===2.5 && lr>=yl.size,
+    'opening reactions, petal phase and stem bounds pack without touching adjacent genes');
   const plume = new Float32Array(16).fill(-77);
   const pp = defaultParams(SHAPE_SCHEMAS.plume);
   const pr = packPlume(plume, 4, k => k === 'bend' ? -0.6 : pp[k]);

@@ -181,11 +181,11 @@ export function randomXform(rng: Rng): FlameXformGene {
 
 /** Random pick weights per locus kind (the favoured kinds read well on most shapes). */
 const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
-  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6, compound: 0.25, branch: 1, fabric: 1, linkage: 1, shell: 1, plume: 1 },
+  shape: { dot: 3, polygon: 1.5, star: 1.2, segment: 0.8, solid: 1.5, bars: 1, curve: 2, plasma: 0.8, aurora: 0.8, terrain: 0.5, edge: 0.6, flame: 1, superscope: 1.5, beams: 0.7, scene: 0.6, cells: 0.7, cymatics: 0.7, landscape: 0.5, tonnetz: 0.5, notes: 0.6, compound: 0.25, branch: 1, fabric: 1, linkage: 1, shell: 1, plume: 1, lily: 1 },
   place: { point: 3, orbit: 2, walker: 1.5, stations: 1.5, row: 0.7, float: 1.2, outline: 1.2, grid: 1.2, ring: 1.5, mirror: 1 },
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1, recoil: 1.2, weave: 1.2 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8, undulate: 1 },
-  material: { line: 2, fill: 1.5, glow: 2, dots: 0.8, textured: 0.8, chrome: 0.8 },
+  material: { line: 2, fill: 1.5, glow: 2, dots: 0.8, textured: 0.8, chrome: 0.8, iridescent: 0.8 },
   emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8, slime: 0.7, flock: 0.6, ecosystem: 0.6 },
   color: { fixed: 1, instrument: 2, pitch: 1, melody: 1.2, height: 1, age: 1, speed: 0.8 },
 };
@@ -262,6 +262,7 @@ export function shapeSize(s: ShapeGene): number {
     case 'bars': return s.p.mode === 1 || s.p.mode === 2 ? s.p.radius + s.p.len * 0.5 : 0.5;
     case 'curve': return s.p.form === 0 ? 0.6 : s.p.radius;
     case 'superscope': return s.p.size;
+    case 'lily': return s.p.size * Math.max(1.7, s.p.stem);
     case 'plume': return s.p.size;
     case 'shell': return s.p.size * (1 + s.p.width * (1 + s.p.aperture));
     case 'linkage': return s.p.size * 2.6;
@@ -284,6 +285,7 @@ function setShapeSize(s: ShapeGene, r: number): void {
     case 'bars': if (s.p.mode === 1 || s.p.mode === 2) { put('radius', r * 0.6); put('len', r * 0.6); } break;
     case 'curve': if (s.p.form !== 0) put('radius', r); break;
     case 'superscope': put('size', r); break;
+    case 'lily': put('size', r / Math.max(1.7, s.p.stem)); break;
     case 'plume': put('size', r); break;
     case 'shell': put('size', r / (1 + s.p.width * (1 + s.p.aperture))); break;
     case 'linkage': put('size', r / 2.6); break;

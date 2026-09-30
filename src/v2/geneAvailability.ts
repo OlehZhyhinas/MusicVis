@@ -28,7 +28,7 @@ export function kindUnavailableReason(g: Genome, t: Target, kind: string): strin
     if (cls === 'flame' && isFoldPlace(kind as typeof b.place.kind)) return 'Flame shapes need a position, not a fold placement.';
     if (cls === 'curve' && kind === 'grid') return 'Curve shapes cannot use grid placement.';
   }
-  if (t.locus === 'material' && cls === 'curve' && ['fill', 'textured', 'chrome'].includes(kind)) return 'Curve shapes need a line, glow, or dots material.';
+  if (t.locus === 'material' && cls === 'curve' && ['fill', 'textured', 'chrome', 'iridescent'].includes(kind)) return 'Curve shapes need a line, glow, or dots material.';
   if (t.locus === 'emit') {
     if (cls === 'flame' && kind !== 'trail' && kind !== 'sparks') return 'Flame shapes only support trail or sparks emission.';
     if (kind === 'cover' && cls !== 'sdf' && !(cls === 'curve' && b.fuse)) return 'Cover emission needs a distance field or a fused curve.';

@@ -78,6 +78,7 @@ export const ENTRIES: Record<string, string> = {
   'shape.star': 'inner=inner radius, spikier when low.',
   'shape.segment': 'line stroke.',
   'shape.solid': 'solid(3D,1/preset): solid 0 tetra,1 cube,2 octa,3 icosa,4 polygon(sides),5 by section; tilt=3D tilt; inner=inner faces visible.',
+  'shape.lily': 'a luminous flower with individually curled, shaded petals, stamens and scrolling stems. size=bloom scale; petals=4..7; open=flower opening; curl=returning petal tips; veins=surface detail; stem=stem length(0 hides stems); shimmer=travelling colour. Use fill and high colour detail for rainbow petals, vocals to open, melody to curl.',
   'shape.plume': 'a shaded feather blade with curved shaft and fine barbs. size=half length; width=relative vane width; bend=signed curvature; taper=tip narrowing; barbs=ridge count; split=edge separation; sheen=highlight and colour shift. Works with materials, placements, deformation and fusion.',
   'shape.shell': 'shell(a ribbed logarithmic coil with a rounded surface): size=outer radius; turns=winding count; growth=radial expansion per radian; width=tube thickness; ribs=ridges per turn; relief=ridge shading; aperture=flared outer opening. Fill shows pearlescent shading; line traces the coil. Can be repeated or fused.',
   'shape.linkage': 'linkage(an articulated chain of limbs): size=scale; joints=2..8 links; width=bone thickness; curl=resting angle added at each joint; flex=amplitude of a bar-locked wave through the joints; taper=successive limb length and width; knuckle=joint bulb size. Each limb inherits its parent angle. Ring placement makes a many-armed mechanism.',
@@ -138,6 +139,7 @@ export const ENTRIES: Record<string, string> = {
   'material.glow': 'soft blob, grows w/level; base=brightness at silence.',
   'material.dots': 'stippled fill.',
   'material.textured': 'tex 0 craters,1 stripes(sunset),2 windows.',
+  'material.iridescent': 'saturated spectral surface with shaded folds and bright rims; prism=full colour-wheel shading vs the palette; sheen=white highlights; sat=colour saturation; rim=edge light. Reads the shape surface detail, especially lily/plume/fabric.',
   'material.chrome': 'mirror-like; chrome 0 plastic..1 mirror.',
 
   // --------------------------------------------------------------- emit

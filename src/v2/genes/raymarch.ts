@@ -224,6 +224,7 @@ export function sceneField(material: MaterialKind): string {
     glow: 'base * s.x * 0.55 + alt * s.z * 2.5 + base * s.w * 0.6',
     dots: 'base * smoothstep(0.02, -0.02, length(fract(uv * uRes / (5.0 * uRes.y / 1080.0)) - 0.5) - 0.5 * sqrt(clamp(s.x, 0.0, 1.0))) * 1.3 + base * s.w * 0.5 + alt * s.z',
     textured: 'base * s.x * (0.55 + 0.45 * sin(s.y * 40.0)) + base * s.w + alt * s.z',
+    iridescent: 'mix(base, lin(hsv2rgb(vec3(fract(h + s.w * 0.3), BD(1).x, 1.0))), BD(0).z) * (s.x * 0.7 + s.w * BD(1).y) + vec3(pow(clamp(s.x, 0.0, 1.0), 8.0)) * BD(0).w + alt * s.z',
     chrome: 'pal(h + s.w * 0.8 + s.x * 0.3) * (s.x * 0.7 + s.w * 1.2) + vec3(pow(clamp(s.x, 0.0, 1.0), 8.0)) * 0.7 + alt * s.z',
   };
   return /* glsl */ `

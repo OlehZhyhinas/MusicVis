@@ -5,6 +5,7 @@
 // thumbnails use a second, small offscreen Stage on the same GL context so
 // compiled programs are shared.
 
+import { LilyAtlas } from './lilyAtlas';
 import { melodySignal } from './melodySignals';
 import { packSuperscope } from './genes/superscope';
 import { resetCurveBlend, setCurveBlend } from './genes/blend';
@@ -46,6 +47,7 @@ import { ecoCuts, ecoFieldScale } from './genes/ecosystem';
 import { packUndulate } from './genes/undulate';
 import { weaveOffset } from './genes/weave';
 import { recoilImpulse, stepRecoil } from './genes/recoil';
+import { packLily } from './genes/lily';
 import { packPlume } from './genes/plume';
 import { packShell } from './genes/shell';
 import { packLinkage } from './genes/linkage';
@@ -541,7 +543,7 @@ export class ProgramCache {
   private parallel: boolean;
   private tick = 0;
 
-  constructor(private gl: GL) {
+  constructor(private gl: GL, private assetsReady: (g: Genome) => boolean = () => true) {
     this.parallel = !!gl.getExtension('KHR_parallel_shader_compile');
   }
 
@@ -572,6 +574,7 @@ export class ProgramCache {
   /** Programs if linked, null while compiling or failed. */
   get(g: Genome, now = false): GenomePrograms | null {
     const key = this.request(g);
+    if (!this.assetsReady(g)) return null;
     const e = this.entries.get(key)!;
     if (e.done || e.failed) return e.done;
     const ready = e.pending.map((p) => p.poll(now));
@@ -1337,6 +1340,7 @@ export class Stage {
       case 'dots': E[o + 2] = PA('spacing'); E[o + 3] = PA('size'); break;
       case 'textured': E[o + 2] = PA('amount'); E[o + 3] = PA('halo'); E[o + 4] = b.material.p.tex; E[o + 5] = PA('clip'); E[o + 6] = halo; break;
       case 'chrome': E[o + 2] = PA('chrome'); break;
+      case 'iridescent': E[o + 2] = PA('prism'); E[o + 3] = PA('sheen'); E[o + 4] = PA('sat'); E[o + 5] = PA('rim'); break;
     }
 
     // Ring halos: slot 0 of the body's extra array (count, gap, fade).
@@ -2015,6 +2019,7 @@ export class Stage {
       }
       case 'shell': return packShell(E, o, P);
       case 'plume': return packPlume(E, o, P);
+      case 'lily': return packLily(E, o, P, (this.clk.bars % 8) * Math.PI / 2);
       case 'linkage': return packLinkage(E, o, P, this.clk.spin * 0.25);
       case 'fabric': return packFabric(E, o, P, this.clk.spin * 0.125);
       case 'branch': return packBranch(E, o, P, this.clk.spin * 0.0625);
@@ -2797,6 +2802,9 @@ export class Stage {
       .i1('uSegN', s.segN)
       .f4v('uChroma4', this.sig.chroma)
       .f1('uBarPulse', F.barPulse)
+      .f1('uLilyReady', this.eng.lilyAtlas.loaded ? 1 : 0)
+      .tex('uLilyAtlas', this.eng.lilyAtlas.color)
+      .tex('uLilyDistance', this.eng.lilyAtlas.distance)
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex)
       .tex('uNote', this.sig.noteTex);
@@ -3033,6 +3041,7 @@ export class Engine {
   readonly pSeed: Program;
   readonly pWave: Program;
   readonly black: WebGLTexture;
+  readonly lilyAtlas: LilyAtlas;
   readonly lineVao: WebGLVertexArrayObject;
   readonly main: Stage;
   readonly stats: RenderStats = { frameMs: 16.7, cpuMs: 0, gpuMs: 0, width: 0, height: 0, scale: 1 };
@@ -3068,7 +3077,8 @@ export class Engine {
     this.hq = !!cbf && canRenderTo(gl, f.rgba16f) && canRenderTo(gl, f.rgba32f);
     this.hdr = this.hq ? f.rgba16f : f.rgba8;
     this.fs = new Fullscreen(gl);
-    this.cache = new ProgramCache(gl);
+    this.lilyAtlas = new LilyAtlas(gl);
+    this.cache = new ProgramCache(gl, g => this.lilyAtlas.settled || !g.bodies.some(b => b.shape.kind === 'lily' || b.fuse?.shape.kind === 'lily'));
     this.pFinal = new Program(gl, FULLSCREEN_VS, FINAL_FS, 'v2-final');
     this.pExposure = new Program(gl, FULLSCREEN_VS, EXPOSURE_FS, 'v2-exposure');
     this.pSeed = new Program(gl, FULLSCREEN_VS, SCALE_FS, 'v2-seed');
