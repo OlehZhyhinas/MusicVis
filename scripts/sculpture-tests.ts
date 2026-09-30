@@ -1,3 +1,4 @@
+import { OrigamiSimulation, ORIGAMI_SCHEMA } from '../src/v2/genes/origami';
 import { FractureSimulation, FRACTURE_SCHEMA, type SculptureMusic } from '../src/v2/genes/fracture';
 import { MESH_STRIDE } from '../src/v2/genes/meshGeometry';
 import { defaultParams, validate, repair } from '../src/v2/genome';
@@ -16,6 +17,19 @@ export function sculptureTests(check:Check):void {
   const mesh=sim.step(p,quiet,0.8);let normalError=0;
   for(let i=0;i<mesh.length;i+=MESH_STRIDE)normalError=Math.max(normalError,Math.abs(Math.hypot(mesh[i+3],mesh[i+4],mesh[i+5])-1));
   check('fracture.solid-mesh',mesh.every(Number.isFinite)&&normalError<0.001&&mesh.length===rest.length,'closed triangular prisms have finite positions and unit face normals');
+  for(const form of [0,1,2]) {
+    const paper=new OrigamiSimulation(),params={...defaultParams(ORIGAMI_SCHEMA),form};
+    let vertices=new Float32Array() as Float32Array;
+    for(let i=0;i<240;i++)vertices=paper.step(params,{...quiet,hit:i%40===0,held:i>120?1:0,legato:1},1/60);
+    let error=0;
+    for(const face of paper.faces)for(let i=0;i<face.length;i++)for(let j=i+1;j<face.length;j++){
+      const a=face[i],b=face[j],distance=(points:number[][])=>Math.hypot(...points[a].map((v,k)=>v-points[b][k]));
+      error=Math.max(error,Math.abs(distance(paper.rest)-distance(paper.points)));
+    }
+    check('origami.rigid-panels-'+form,error<1e-6&&vertices.every(Number.isFinite),`all panel edges and diagonals keep their length while hinges move; max error ${error.toExponential(2)}`);
+  }
+  const paperSeeds=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='origami'));
+  check('origami.presets',paperSeeds.length===3&&paperSeeds.every(s=>!validate(s.genome).length&&s.genome.carrier.kind==='none'&&!s.genome.chain.length),'three connected-paper forms without feedback');
   const presets=SEEDS.filter(s=>s.genome.bodies.some(b=>b.shape.kind==='fracture'));
   check('fracture.presets',presets.length===3&&presets.every(s=>!validate(s.genome).length&&JSON.stringify(repair(s.genome))===JSON.stringify(s.genome)&&s.genome.carrier.kind==='none'&&!s.genome.chain.length),'three independently lit, serializable presets with no tunnel or feedback');
 }

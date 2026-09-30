@@ -6,6 +6,7 @@
 // compiled programs are shared.
 
 import { SculptureMeshRenderer } from './genes/sculptureMesh';
+import { OrigamiSimulation } from './genes/origami';
 import { FractureSimulation } from './genes/fracture';
 import { LightningRenderer } from './genes/lightningRender';
 import { RibbonRenderer } from './genes/ribbonRender';
@@ -678,7 +679,7 @@ export class Slot {
   curves: CurveDraw[] = [];
   readonly lightning = new Map<number, LightningRenderer>();
   readonly arcs = new Map<number, LightningRenderer>();
-  readonly sculptures = new Map<number, { mesh: SculptureMeshRenderer; fracture: FractureSimulation }>();
+  readonly sculptures = new Map<number, { mesh: SculptureMeshRenderer; fracture: FractureSimulation; origami: OrigamiSimulation }>();
   readonly ribbons = new Map<number, RibbonRenderer>();
   readonly displays = new Map<number, { source: Genome; key: string; stage: Stage }>();
   rem: number[] = [];
@@ -2092,12 +2093,13 @@ export class Stage {
         bolts.simulation.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??F.keyTonic,tonic:F.keyTonic},bolts.params,sdt);
         E[o]=P('size');return P('size')*1.8;
       }
-      case 'fracture': {
+      case 'origami': case 'fracture': {
         let sculpt=s.sculptures.get(bi);
-        if(!sculpt){sculpt={mesh:new SculptureMeshRenderer(this.eng.gl,this.eng.hdr),fracture:new FractureSimulation()};s.sculptures.set(bi,sculpt);}
-        const p=Object.fromEntries(Object.keys(SHAPE_SCHEMAS.fracture).map(k=>[k,P(k)])),mesh=sculpt.mesh;
-        mesh.vertices=sculpt.fracture.step(p,{hit:F.hitGate,onset:F.onset[0],noteOn:F.notes?.on??0,held:F.notes?.held??0,legato:F.notes?.legato??0,bass:F.stem[1],vocals:F.stem[2],pitch:F.notes?.pitch??60},sdt);
-        mesh.time=sculpt.fracture.time;mesh.turn=p.turn*mesh.time*TAU;mesh.tilt=p.tilt*TAU;
+        if(!sculpt){sculpt={mesh:new SculptureMeshRenderer(this.eng.gl,this.eng.hdr),fracture:new FractureSimulation(),origami:new OrigamiSimulation()};s.sculptures.set(bi,sculpt);}
+        const p=Object.fromEntries(Object.keys(SHAPE_SCHEMAS[sh.kind]).map(k=>[k,P(k)])),mesh=sculpt.mesh;
+        const simulation=sh.kind==='origami'?sculpt.origami:sculpt.fracture;mesh.mode=sh.kind==='origami'?1:0;
+        mesh.vertices=simulation.step(p,{hit:F.hitGate,onset:F.onset[0],noteOn:F.notes?.on??0,held:F.notes?.held??0,legato:F.notes?.legato??0,bass:F.stem[1],vocals:F.stem[2],pitch:F.notes?.pitch??60},sdt);
+        mesh.time=simulation.time;mesh.turn=sh.kind==='origami'?0.35+0.6*Math.sin(p.turn*mesh.time*TAU):p.turn*mesh.time*TAU;mesh.tilt=p.tilt*TAU;
         mesh.hue=this.bodyHue;mesh.prism=p.prism;mesh.clarity=p.clarity;mesh.pulse=F.beatPulse*0.25;
         mesh.style=['line','fill','glow','dots','textured','chrome','iridescent'].indexOf(b.material.kind);
         E[o]=p.size;return p.size*2.15;

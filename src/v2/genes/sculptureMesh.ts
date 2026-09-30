@@ -25,7 +25,9 @@ void main(){
  vec3 n=normalize(vNormal)*(gl_FrontFacing?1.:-1.),view=normalize(vec3(0.,0.,5.)-vPosition);
  vec3 r=reflect(-view,n);float facing=max(0.,dot(n,view)),fresnel=pow(1.-facing,3.);
  vec3 bary=vBary/max(fwidth(vBary),vec3(0.0001));
- float edge=1.-smoothstep(0.5,1.6,min(bary.x,min(bary.y,bary.z)));
+ float distance=min(bary.x,min(bary.y,bary.z));
+ if(uMode==1&&vInfo.y>1.5)distance=vInfo.y<2.5?min(bary.x,bary.z):min(bary.x,bary.y);
+ float edge=1.-smoothstep(0.5,1.6,distance);
  float softEdge=1.-smoothstep(0.,7.,min(bary.x,min(bary.y,bary.z)));
  float strip=pow(max(0.,1.-abs(r.y-0.48-r.x*0.3)*2.2),18.);
  float rim=pow(max(0.,dot(n,normalize(vec3(-0.6,0.8,1.)))),28.);
@@ -46,8 +48,8 @@ void main(){
    // Folded lacquer: vivid inner faces and almost black outer faces.
    float light=0.25+0.75*max(0.,dot(n,normalize(vec3(-0.5,0.7,1.))));
    vec3 paint=mix(tint,prism,uPrism);
-   float inner=gl_FrontFacing?0.8:0.14;
-   color=paint*light*(inner+uClarity*0.2)+paint*edge*0.22;
+   float inner=gl_FrontFacing?0.2+0.35*pow(1.-facing,0.7):0.06;
+   color=paint*light*(inner+uClarity*0.12)*(0.65+0.35*sin(vPosition.x*3.+vPosition.y*4.-uTime*0.4))+paint*edge*0.32;
    color+=mix(vec3(0.8),paint,0.5)*strip*0.5+vec3(rim*0.18);
  }
  if(uStyle==0)color*=edge;

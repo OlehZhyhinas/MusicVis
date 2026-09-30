@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 176;
+export const SEED_VERSION = 177;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4683,7 +4683,22 @@ const FRACTURE_STUDIES: Def[] = [
     reactions:[rx('held','sh',0,'open',-0.25,{atk:0.5,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
 ];
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS, ...FRACTURE_STUDIES];
+const ORIGAMI_STUDIES: Def[] = [
+ {origin:'X99',name:'Impossible Origami',energy:[0.05,0.95],scheme:'free',hue:0.83,pal:{key:0,s1:0.65,s2:0.3},carrier:'none',
+  color:{exposure:1,sat:1,bloom:0.35,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['origami',{size:0.39,form:0,folds:10,rows:7,fold:0.8,response:0.85,stiffness:1.5,turn:0.013,tilt:0.13,prism:0.65,clarity:0.5}],material:['iridescent',{gain:1.2}],emit:['none']})],
+  reactions:[rx('vocals','sh',0,'fold',-0.15,{atk:0.4,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+ {origin:'X100',name:'Concertina Flight',energy:[0.05,0.95],scheme:'analogous',hue:0.55,pal:{key:0},carrier:'none',
+  color:{exposure:1.1,sat:1,bloom:0.4,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['origami',{size:0.37,form:1,folds:9,fold:0.3,response:0.7,stiffness:1.2,curl:0,turn:-0.02,tilt:0.07,prism:0.3,clarity:0.8}],material:['iridescent',{gain:1.1}],emit:['none']})],
+  reactions:[rx('register','sh',0,'curl',0.08,{atk:0.4,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+ {origin:'X101',name:'Chromatic Paper Fan',energy:[0.05,0.95],scheme:'free',hue:0.08,pal:{key:0,s1:0.15,s2:0.8},carrier:'none',
+  color:{exposure:1,sat:1,bloom:0.45,adapt:0.1,vignette:0.2},
+  bodies:[body({shape:['origami',{size:0.31,form:2,folds:16,fold:0.7,response:0.75,stiffness:2,curl:-0.1,turn:0.013,tilt:0.04,prism:0.85,clarity:0.6}],material:['iridescent',{gain:1.2}],emit:['none']})],
+  reactions:[rx('held','sh',0,'fold',-0.2,{atk:0.5,rel:0.8})],accent:{hook:0,kick:0,hue:0,drop:0,section:0}},
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS, ...FRACTURE_STUDIES, ...ORIGAMI_STUDIES];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([
