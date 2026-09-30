@@ -105,6 +105,21 @@ export class RibbonRenderer {
     }
     this.count=indices.length;gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.index);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);gl.bindVertexArray(null);
   }
+  /** Project centreline points with the same camera as the mesh, for attached emissions. */
+  anchors(size:number,copy:{x:number;y:number;a:number;s:number}):{x:number;y:number;angle:number;scale:number;radius:number}[] {
+    const a=this.turn*this.simulation.time*Math.PI*2,t=this.tilt*Math.PI*2;
+    const c=Math.cos(a),s=Math.sin(a),ct=Math.cos(t),st=Math.sin(t),ca=Math.cos(copy.a),sa=Math.sin(copy.a);
+    const project=(i:number)=>{
+      const p=this.simulation.position,x=p[i*3],y=p[i*3+1],z=p[i*3+2];
+      const wx=c*x+s*z,rz=-s*x+c*z,wy=ct*y-st*rz,wz=st*y+ct*rz;
+      const scale=size*copy.s/(1-wz/this.extent*0.16);
+      return {x:copy.x+(ca*wx-sa*wy)*scale,y:copy.y+(sa*wx+ca*wy)*scale};
+    };
+    return [0.15,0.38,0.62,0.85].map((u,j)=>{
+      const i=Math.round(u*RIBBON_STEPS),p=project(i),q=project(i+1);
+      return {...p,angle:Math.atan2(q.y-p.y,q.x-p.x)+(j%2?1:-1)*Math.PI/2,scale:copy.s,radius:0};
+    });
+  }
   get texture():WebGLTexture|null{return this.target?.t??null;}
   render(resolution:number, colors:Float32Array, surface:WebGLTexture):void {
     const gl=this.gl,res=Math.max(128,Math.min(1024,Math.round(resolution)));

@@ -1102,6 +1102,17 @@ export function buildSources(g: Genome): Sources {
     code += (g.timbre ? timbreWrap(bc.code, bi) : bc.code) + '\n';
     if (bodyLayer(b) === 'fb') fbDraw += bc.call('p');
     else topDraw += bc.call('q');
+    if(b.emit.kind==='lightning') {
+      code += `uniform sampler2D uArcs${bi}; uniform float uArcGain${bi};
+vec3 emitted_${bi}(vec2 p){
+  vec2 uv=p/3.6+0.5;
+  if(any(lessThan(uv,vec2(0.))) || any(greaterThan(uv,vec2(1.))))return vec3(0.);
+  return texture(uArcs${bi},uv).rgb*uArcGain${bi};
+}
+`;
+      // The bolt already has its own lifetime; compositing once keeps attacks sharp.
+      topDraw += `  c += emitted_${bi}(q);\n`;
+    }
     if (bc.fbMask) masks += `  c *= mix(0.88, 1.0, ${bc.fbMask}(p));\n`;
   });
 

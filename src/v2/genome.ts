@@ -39,7 +39,7 @@ import { ECO_SCHEMA, ecoCost } from './genes/ecosystem';
 import { UNDULATE_SCHEMA } from './genes/undulate';
 import { WEAVE_SCHEMA } from './genes/weave';
 import { RECOIL_SCHEMA } from './genes/recoil';
-import { LIGHTNING_SCHEMA } from './genes/lightning';
+import { LIGHTNING_SCHEMA, LIGHTNING_EMIT_SCHEMA } from './genes/lightning';
 import { RIBBON_SCHEMA, repairRibbonPath, type RibbonPoint } from './genes/ribbon';
 import { LILY_SCHEMA } from './genes/lily';
 import { PLUME_SCHEMA } from './genes/plume';
@@ -385,7 +385,7 @@ export const STATIC_MATERIALS: MaterialKind[] = ['fill', 'textured', 'chrome', '
 
 // -------------------------------------------------------------- emission
 
-export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime', 'flock', 'ecosystem'] as const;
+export const EMIT_KINDS = ['none', 'trail', 'cover', 'dye', 'sparks', 'slime', 'flock', 'ecosystem', 'lightning'] as const;
 export type EmitKind = (typeof EMIT_KINDS)[number];
 export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   // Redrawn every frame on top of the picture.
@@ -408,6 +408,7 @@ export const EMIT_SCHEMAS: Record<EmitKind, Schema> = {
   flock: FLOCK_SCHEMA,
   // Four instrument species of GPU agents sharing a growth field, populations driven by the mix (genes/ecosystem.ts).
   ecosystem: ECO_SCHEMA,
+  lightning: LIGHTNING_EMIT_SCHEMA,
 };
 
 // ------------------------------------------------------------------ fuse
@@ -908,7 +909,7 @@ export function repairBody(raw: unknown, allowDisplays = true): BodyGene {
     if (place.kind === 'float') place.p.fuse = 0;
   }
   if (cls === 'flame' && isFoldPlace(place.kind)) setKind(place, 'point', PLACE_SCHEMAS, { x: place.p.x ?? 0, y: place.p.y ?? 0 });
-  if (cls === 'flame' && emit.kind !== 'trail' && emit.kind !== 'sparks') setKind(emit, 'trail', EMIT_SCHEMAS);
+  if (cls === 'flame' && emit.kind !== 'trail' && emit.kind !== 'sparks' && emit.kind !== 'lightning') setKind(emit, 'trail', EMIT_SCHEMAS);
   if (cls === 'curve' && place.kind === 'grid') setKind(place, 'point', PLACE_SCHEMAS);
   if (cls === 'curve' && (material.kind === 'fill' || material.kind === 'textured' || material.kind === 'chrome' || material.kind === 'iridescent')) {
     setKind(material, 'line', MATERIAL_SCHEMAS, { gain: material.p.gain });
@@ -1283,7 +1284,7 @@ export function validate(g: Genome): string[] {
     const ck = countKey(b.place.kind);
     if ((cls === 'field' || cls === 'flame') && ck && b.place.p[ck] !== 1) errs.push(`${w} chunk shape with copies`);
     if (cls === 'flame' && isFoldPlace(b.place.kind)) errs.push(`${w} flame fold placement`);
-    if (cls === 'flame' && b.emit.kind !== 'trail' && b.emit.kind !== 'sparks') errs.push(`${w} flame emission`);
+    if (cls === 'flame' && b.emit.kind !== 'trail' && b.emit.kind !== 'sparks' && b.emit.kind !== 'lightning') errs.push(`${w} flame emission`);
     if (cls === 'curve' && b.place.kind === 'grid') errs.push(`${w} curve on a grid`);
     if (cls === 'curve' && (b.material.kind === 'fill' || b.material.kind === 'textured' || b.material.kind === 'chrome' || b.material.kind === 'iridescent')) errs.push(`${w} curve material`);
     if (cls !== 'sdf' && b.emit.kind === 'cover' && !(cls === 'curve' && b.fuse)) errs.push(`${w} cover without a distance field`);
@@ -1394,7 +1395,7 @@ export function bodyKey(b: BodyGene): string {
   const place = isFoldPlace(b.place.kind) ? b.place.kind : 'loop';
   const metaball = b.shape.kind === 'dot' && (b.place.p.fuse ?? 0) > 0 ? 'm' : '';
   const fuse = b.fuse ? `+${b.fuse.p.mode}${b.fuse.shape.kind}${b.fuse.p.inside}` : '';
-  const emit = b.emit.kind === 'cover' ? 'c' : b.emit.kind === 'sparks' ? (b.emit.p.top > 0.5 ? 'st' : 's') : '';
+  const emit = b.emit.kind === 'cover' ? 'c' : b.emit.kind === 'sparks' ? (b.emit.p.top > 0.5 ? 'st' : 's') : b.emit.kind === 'lightning' ? 'arc' : '';
   const blend = b.material.p.blend ? `~${b.material.p.blend}` : '';
   // A compound's parts (primitive, combine op) and ring halos on/off are shader structure.
   const parts = b.shape.kind === 'compound' ? `[${(b.shape.parts ?? []).map((p) => `${p.prim}${p.op}`).join('')}]` : '';
@@ -1635,6 +1636,7 @@ export function bodyCost(b: BodyGene): number {
   const cls = SHAPE_CLASS[b.shape.kind];
   let ms = 0;
   if (b.shape.display) ms += 0.3 + estimateCost(b.shape.display.genome) * 0.25;
+  if (b.emit.kind === 'lightning') ms += 1.4;
   if (b.emit.kind === 'sparks') ms += 0.25 + (b.emit.p.count / 65536) * 0.6;
   if (b.emit.kind === 'slime') ms += slimeCost(b.emit.p.count);
   if (b.emit.kind === 'flock') ms += flockCost(b.emit.p.count, b.emit.p.over ?? 0);

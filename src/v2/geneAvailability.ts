@@ -30,7 +30,7 @@ export function kindUnavailableReason(g: Genome, t: Target, kind: string): strin
   }
   if (t.locus === 'material' && cls === 'curve' && ['fill', 'textured', 'chrome', 'iridescent'].includes(kind)) return 'Curve shapes need a line, glow, or dots material.';
   if (t.locus === 'emit') {
-    if (cls === 'flame' && kind !== 'trail' && kind !== 'sparks') return 'Flame shapes only support trail or sparks emission.';
+    if (cls === 'flame' && kind !== 'trail' && kind !== 'sparks' && kind !== 'lightning') return 'Flame shapes support trail, sparks or lightning emission.';
     if (kind === 'cover' && cls !== 'sdf' && !(cls === 'curve' && b.fuse)) return 'Cover emission needs a distance field or a fused curve.';
   }
   return null;

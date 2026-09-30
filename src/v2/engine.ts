@@ -675,6 +675,7 @@ export class Slot {
   segN = 0;
   curves: CurveDraw[] = [];
   readonly lightning = new Map<number, LightningRenderer>();
+  readonly arcs = new Map<number, LightningRenderer>();
   readonly ribbons = new Map<number, RibbonRenderer>();
   readonly displays = new Map<number, { source: Genome; key: string; stage: Stage }>();
   rem: number[] = [];
@@ -945,6 +946,8 @@ export class Stage {
     s.ribbons.clear();
     for (const bolts of s.lightning.values()) bolts.dispose();
     s.lightning.clear();
+    for (const bolts of s.arcs.values()) bolts.dispose();
+    s.arcs.clear();
     s.fb.dispose();
     s.sceneT?.dispose();
     s.sceneT = null;
@@ -1095,6 +1098,7 @@ export class Stage {
     if (slimeSlot && eng.hq) this.updateSlime(slimeSlot, sdt);
     if (ecoSlot && eng.hq) this.updateEco(ecoSlot, sdt);
 
+    for (const s of slots) for (const bolts of s.arcs.values()) bolts.render(this.h * 2);
     for (const s of slots) for (const bolts of s.lightning.values()) bolts.render(this.h * 2);
     for (const s of slots) for (const [bi,ribbon] of s.ribbons) ribbon.render(this.h * 2, s.cols, s.displays.get(bi)?.stage.out?.t ?? eng.black);
     for (const s of slots) if (s.progs.scene) this.scenePass(s, sdt);
@@ -1320,6 +1324,7 @@ export class Stage {
     s.flameSpec = null;
     s.curves = [];
     s.segN = 0;
+    for (const [bi,arcs] of s.arcs) if (g.bodies[bi]?.emit.kind !== 'lightning') {arcs.dispose();s.arcs.delete(bi);}
     g.bodies.forEach((b, bi) => this.tickBody(s, b, bi, sdt));
   }
 
@@ -1474,6 +1479,16 @@ export class Stage {
       E[o + 55] = f.p.inside;
       this.packShape(s, f.shape, bi, o + 56, sdt, true, copies);
     }
+
+    // Lightning is independent of the shape: launch from the already moved host copies.
+    if (b.emit.kind === 'lightning') {
+      let arcs=s.arcs.get(bi);
+      if(!arcs){arcs=new LightningRenderer(this.eng.gl,this.eng.hdr);s.arcs.set(bi,arcs);}
+      arcs.params={channels:PE('channels'),branches:PE('branches'),jagged:PE('jagged'),speed:PE('speed'),decay:PE('decay'),width:PE('width'),spread:PE('spread'),fan:PE('fan')};
+      arcs.hue=this.bodyHue;
+      arcs.simulation.step({hit:F.hitGate,onsets:F.onset,noteOn:F.notes?.on??0,pitch:F.notes?.pitch??F.keyTonic,tonic:F.keyTonic},arcs.params,sdt,
+        {origins:b.shape.kind==='ribbon' ? copies.flatMap(c=>s.ribbons.get(bi)!.anchors(PS('size'),c)) : copies.map(c=>({x:c.x,y:c.y,angle:c.a,scale:c.s,radius:Math.min(0.12,R*0.4)*c.s})),reach:PE('reach'),sustain:PE('sustain'),held:F.notes?.held??0,legato:F.notes?.legato??0});
+    } else if(s.arcs.has(bi)) {s.arcs.get(bi)!.dispose();s.arcs.delete(bi);}
 
     // Emission side effects.
     if (b.emit.kind === 'dye') this.dye(s, b, bi, copies, PE('force'));
@@ -2879,6 +2894,7 @@ export class Stage {
       .tex('uWave', this.sig.waveTex)
       .tex('uSpec', this.sig.specTex)
       .tex('uNote', this.sig.noteTex);
+    s.arcs.forEach((bolts,i) => p.tex(`uArcs${i}`,bolts.texture??this.eng.black).f1(`uArcGain${i}`,s.P('em',i,s.genome.bodies[i].emit.p,'gain',EMIT_SCHEMAS.lightning)));
     s.lightning.forEach((bolts, i) => p.tex(`uLightning${i}`, bolts.texture ?? this.eng.black));
     s.ribbons.forEach((ribbon, i) => p.tex(`uRibbon${i}`, ribbon.texture ?? this.eng.black));
     s.bx.forEach((a, i) => { if (a) p.f4v(`uBx${i}`, a); });

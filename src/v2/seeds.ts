@@ -45,7 +45,7 @@ import { part, type CompoundPart } from './genes/compound';
 // Compound parts for seed bodies: part('capsule', 'union', { y: 0.5, sx: 0.1, sy: 1, m: 0.6 }).
 export { part };
 
-export const SEED_VERSION = 174;
+export const SEED_VERSION = 175;
 
 export interface Seed {
   origin: string; // source preset id, e.g. 'E07'
@@ -4643,7 +4643,32 @@ const DISPLAY_RIBBONS: Def[] = RIBBON_STUDIES.map((ribbon,i) => {
   };
 });
 
-const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS];
+const LIGHTNING_EMISSIONS: Def[] = [
+  {
+    origin:'X93',name:'Staccato Satellites',energy:[0.1,1],scheme:'triad',hue:0.62,
+    carrier:'none',color:{exposure:1,sat:1,bloom:0.7,adapt:0.1,vignette:0.2},
+    bodies:[body({shape:['polygon',{sides:6,size:0.045}],place:['orbit',{count:4,radius:0.23}],
+      motion:['spin',{rate:0.125}],material:['line',{gain:0.9,width:1.5,halo:0.7}],
+      emit:['lightning',{channels:4,reach:0.42,branches:0.85,jagged:0.9,speed:3.5,decay:0.12,width:0.0025,fan:1,sustain:0,gain:0.75}],
+    })],
+    reactions:[rx('noteon','em',0,'reach',0.3,{atk:0.005,rel:0.16}),rx('hit','em',0,'gain',0.25,{atk:0.005,rel:0.12})],
+    accent:{hook:0,kick:0,hue:0,drop:0,section:0},
+  },
+  {
+    ...NEON_LILIES[0],origin:'X94',name:'Legato Arc Bloom',
+    bodies:NEON_LILIES[0].bodies.map(b=>({...b,emit:{kind:'lightning' as const,
+      p:{...defaultParams(EMIT_SCHEMAS.lightning),channels:5,reach:0.58,branches:0.8,jagged:0.65,speed:2.5,decay:0.28,width:0.002,fan:1,sustain:1,gain:0.6}}})),
+    reactions:[...(NEON_LILIES[0].reactions??[]),rx('held','em',0,'reach',0.25,{atk:0.3,rel:0.5})],
+  },
+  {
+    ...DARK_RIBBONS[0],origin:'X95',name:'Livewire Ribbon',
+    bodies:DARK_RIBBONS[0].bodies.map(b=>({...b,emit:{kind:'lightning' as const,
+      p:{...defaultParams(EMIT_SCHEMAS.lightning),channels:4,reach:0.7,branches:0.9,jagged:0.85,speed:3,decay:0.18,width:0.002,fan:0.7,sustain:0.7,gain:0.65}}})),
+    reactions:[...(DARK_RIBBONS[0].reactions??[]),rx('legato','em',0,'decay',0.35,{atk:0.2,rel:0.4})],
+  },
+];
+
+const ALL_DEFS: Def[] = [...DEFS, ...MILKDROP, ...CHOREO, ...PHYSICS, ...AVS, ...RAYMARCH, ...AGENTS, ...ECOSYSTEM, ...DRIFT, ...LANDSCAPE, ...HARMONY, ...GROOVE, ...DEJAVU, ...EVOLVED, ...TIMBRE, ...LYRICS, ...NOTES, ...ART, ...ART2, ...ART3, ...ART4, ...TORONTO_X36, ...ART5, ...LILIES, ...TORONTO_X37, ...TORONTO_X38, ...FLOWERS, ...STUDIES, ...BODY_STUDIES, ...MUSIC_STUDIES, ...SURFACE_STUDIES, ...SHELL_STUDIES, ...RECOIL_STUDIES, ...UNDULATE_STUDIES, ...PLUME_STUDIES, ...WEAVE_STUDIES, ...RAINBOW_LILIES, ...NEON_LILIES, ...RIBBON_STUDIES, ...LIGHTNING_STUDIES, ...DARK_RIBBONS, ...DISPLAY_RIBBONS, ...LIGHTNING_EMISSIONS];
 export const SEEDS: Seed[] = [...ALL_DEFS.map(build), ...USER_GENOMES.map((u) => ({ origin: u.origin, name: u.name, genome: repair(u.genome) }))];
 /** The reactions each seed was written with, before repair (the tests check repair kept every one as written). */
 export const SEED_DECLARED_REACTIONS: Record<string, readonly ReactionGene[]> = Object.fromEntries([

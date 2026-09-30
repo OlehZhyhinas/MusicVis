@@ -187,7 +187,7 @@ const KIND_WEIGHTS: Partial<Record<Locus, Record<string, number>>> = {
   motion: { none: 1.5, spin: 2, sway: 1.5, bob: 1.2, drift: 0.8, circle: 1, hits: 1, pulse: 1, recoil: 1.2, weave: 1.2 },
   deform: { none: 3, arms: 1.2, wobble: 1.2, noise: 0.8, twist: 0.8, undulate: 1 },
   material: { line: 2, fill: 1.5, glow: 2, dots: 0.8, textured: 0.8, chrome: 0.8, iridescent: 0.8 },
-  emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8, slime: 0.7, flock: 0.6, ecosystem: 0.6 },
+  emit: { none: 1.2, trail: 3, cover: 1, dye: 0.8, sparks: 0.8, slime: 0.7, flock: 0.6, ecosystem: 0.6, lightning: 0.8 },
   color: { fixed: 1, instrument: 2, pitch: 1, melody: 1.2, height: 1, age: 1, speed: 0.8 },
 };
 

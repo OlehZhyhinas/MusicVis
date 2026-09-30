@@ -145,6 +145,7 @@ export const ENTRIES: Record<string, string> = {
   'material.chrome': 'mirror-like; chrome 0 plastic..1 mirror.',
 
   // --------------------------------------------------------------- emit
+  'emit.lightning': 'fractal electrical emission from moving host bodies, independently breedable with every shape. Drum hits, pitch-coloured note starts and stem onsets fire separate channels. reach=bolt length; gain=bolt brightness; branches/jagged/speed/decay/width/spread/fan control arcs; sustain holds the latest melodic arc during legato, while staccato notes fire separate short strikes.',
   'emit.none': 'no trail.',
   'emit.trail': 'leaves light in feedback; tip=extra bright point at current position.',
   'emit.cover': 'paints over old trail instead of adding light; amt=opacity.',
