@@ -171,6 +171,7 @@ def main():
                 if lv:
                     for w in ('live', 'off'):
                         R[f'beat/{w}-dsp'] = beat_f(ref_b, live_events(lv, w, 'onBeat'), regs)
+                        R[f'beat_offset_ms/{w}-dsp'] = beat_offset(ref_b, live_events(lv, w, 'onBeat'), regs)
                         R[f'downbeat/{w}-dsp'] = beat_f(ref_d, live_events(lv, w, 'onBar'), regs)
             for n, e in chords_est.items():
                 if e:
