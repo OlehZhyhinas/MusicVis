@@ -21,7 +21,9 @@ def main():
     cands = g.load_json(os.path.join(g.WORK, 'candidates.json'))
     screen = g.load_json(os.path.join(g.WORK, 'screen.json'))
     outp = os.path.join(g.WORK, 'screen_norm.json')
-    out = g.load_json(outp) if os.path.exists(outp) else {'midi': {}, 'audio': {}}
+    out = g.load_sharded(outp, {'midi': {}, 'audio': {}})
+    part = {'midi': {}, 'audio': {}}
+    save = lambda: g.save_json(part if g.shard()[1] > 1 else out, g.shard_path(outp))
     rnd = random.Random(7)
     tids = [t for t in screen if screen[t]]
     title = {t: g.norm(cands[t]['parsed']['title']) for t in cands}
@@ -42,7 +44,7 @@ def main():
         return raw_cache[t]
 
     for i, t in enumerate(tids):
-        if t in out['audio']:
+        if t in out['audio'] or not g.mine(t):
             continue
         pool = [m for m in midis if title[t] not in owner.get(m, ())]
         res = []
@@ -51,26 +53,26 @@ def main():
                 res.append(align.best_shift(align.midi_raw(os.path.join(g.WORK, 'midi', m + '.mid')), araw(t))[0])
             except Exception:
                 pass
-        out['audio'][t] = res
-        g.save_json(out, outp)
+        out['audio'][t] = part['audio'][t] = res
+        save()
         print(f'audio {i}/{len(tids)} {time.time() - t0:.0f}s', flush=True)
     # MIDI side: reference recordings are random screened tracks of other titles
     for i, m in enumerate(midis):
-        if m in out['midi']:
+        if m in out['midi'] or not g.mine(m):
             continue
         refs = [t for t in tids if title[t] not in owner.get(m, ())]
         res = []
         try:
             Rm = align.midi_raw(os.path.join(g.WORK, 'midi', m + '.mid'))
         except Exception:
-            out['midi'][m] = []; continue
+            out['midi'][m] = part['midi'][m] = []; continue
         for t in rnd.sample(refs, min(K_A, len(refs))):
             res.append(align.best_shift(Rm, araw(t))[0])
-        out['midi'][m] = res
+        out['midi'][m] = part['midi'][m] = res
         if i % 10 == 0:
-            g.save_json(out, outp)
+            save()
             print(f'midi {i}/{len(midis)} {time.time() - t0:.0f}s', flush=True)
-    g.save_json(out, outp)
+    save()
 
 
 if __name__ == '__main__':

@@ -18,13 +18,16 @@ NULLS = 3
 def main():
     d = g.load_json(os.path.join(g.WORK, 'candidates.json'))
     outp = os.path.join(g.WORK, 'screen.json')
-    out = g.load_json(outp) if os.path.exists(outp) else {}
+    out = g.load_sharded(outp, {})
+    part = {}
     pool = sorted({c['md5'] for v in d.values() for c in v['cands'] if c['why'] == 'artist+title'})
     rnd = random.Random(0)
     t0 = time.time()
     for n, (tid, v) in enumerate(d.items()):
         mine = {c['md5'] for c in v['cands']}
         nulls = [m for m in rnd.sample(pool, min(len(pool), NULLS + 5)) if m not in mine][:NULLS]
+        if not g.mine(tid):
+            continue
         prev = out.get(tid, [])
         have = {r['md5'] for r in prev}
         if not v['cands'] or (tid in out and mine <= have):
@@ -42,8 +45,8 @@ def main():
                 res.append(dict(md5=md5, kind=kind, ratio=round(sc, 4), shift=sh))
             except Exception as e:
                 res.append(dict(md5=md5, kind=kind, error=str(e)[:80]))
-        out[tid] = res
-        g.save_json(out, outp, indent=0)
+        out[tid] = part[tid] = res
+        g.save_json(part if g.shard()[1] > 1 else out, g.shard_path(outp), indent=0)
         best = min([r for r in res if r['kind'] != 'null' and 'ratio' in r], key=lambda r: r['ratio'], default=None)
         print(f'[{n}] {time.time()-t0:.0f}s {tid[:50]} best={best and best["ratio"]} '
               f'nulls={[r.get("ratio") for r in res if r["kind"] == "null"]}', flush=True)

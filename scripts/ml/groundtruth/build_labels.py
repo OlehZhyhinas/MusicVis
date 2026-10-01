@@ -243,11 +243,11 @@ def main():
     cal = calibrate(screen, htres, norm)
     print('calibration', cal, flush=True)
     sump = os.path.join(g.WORK, 'summary.json')
-    summary = g.load_json(sump) if os.path.exists(sump) else {}
+    summary = g.load_json(sump) if os.path.exists(sump) and g.shard()[1] == 1 else {}
     summary['_calibration'] = cal
     ids = {tid: (c, p) for c, tid, p in g.all_tracks()}
     for tid, (corpus, path) in ids.items():
-        if a.only and a.only not in tid:
+        if (a.only and a.only not in tid) or not g.mine(tid):
             continue
         outp = os.path.join(g.GT, corpus, tid + '.json')
         if a.ht_only:
@@ -301,9 +301,9 @@ def main():
                        format=1, **lab, hooktheory=segs)
             os.makedirs(os.path.dirname(outp), exist_ok=True)
             g.save_json(doc, outp, separators=(',', ':'))
-        g.save_json(summary, sump, indent=1)
+        g.save_json(summary, g.shard_path(sump), indent=1)
         print(f'{tid[:60]:60s} {time.time() - t0:5.1f}s midi={info} ht={len(segs)}', flush=True)
-    g.save_json(summary, sump, indent=1)
+    g.save_json(summary, g.shard_path(sump), indent=1)
 
 
 if __name__ == '__main__':

@@ -171,7 +171,8 @@ def main():
     M = matches(H)
     ids = audio_id_durations()
     outp = os.path.join(g.WORK, 'hooktheory2.json')
-    out = g.load_json(outp) if os.path.exists(outp) else {}
+    out = g.load_sharded(outp, {})
+    part = {}
     rng = np.random.default_rng(1)
     allk = [k for k, v in H.items() if 'HARMONY' in v['tags']]
     def same_video_first(item):
@@ -179,7 +180,7 @@ def main():
         pl = tid.split('__')[0]
         return 0 if any(H[k]['youtube']['id'] in ids.get(pl, set()) for k in ks) else 1
     for tid, (corpus, path, ks) in sorted(M.items(), key=same_video_first):
-        if tid in out:
+        if tid in out or not g.mine(tid):
             continue
         Ra = align.audio_raw(corpus, tid, path)
         Fa = align.feat(Ra, 'chroma')
@@ -207,8 +208,8 @@ def main():
                             dtw_vs_identity=round(dev, 3), map_t=np.round(u[::4], 3).tolist(),
                             map_a=np.round(av[::4], 3).tolist(), yt=clip['youtube']['id'],
                             song=clip['hooktheory']['artist'] + '/' + clip['hooktheory']['song']))
-        out[tid] = res
-        g.save_json(out, outp)
+        out[tid] = part[tid] = res
+        g.save_json(part if g.shard()[1] > 1 else out, g.shard_path(outp))
         print(tid[:50], [(r['z'], r['null'], r['same_video'], r['dtw_vs_identity']) for r in res], flush=True)
 
 

@@ -136,3 +136,39 @@ def save_json(obj, path, **kw):
     with open(tmp, 'w') as f:
         json.dump(obj, f, **kw)
     os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------- sharding (parallel runs)
+# GT_SHARD=i/N makes screen.py, screen_norm.py, hooktheory.py and build_labels.py take only the keys with
+# crc32(key) % N == i and write their results to <name>.shard<i>.json; merge_shards.py folds them back.
+def shard():
+    s = os.environ.get('GT_SHARD', '')
+    if not s:
+        return 0, 1
+    i, n = s.split('/')
+    return int(i), int(n)
+
+
+def mine(key):
+    import zlib
+    i, n = shard()
+    return n == 1 or zlib.crc32(key.encode()) % n == i
+
+
+def shard_path(path):
+    i, n = shard()
+    return path if n == 1 else path[:-5] + f'.shard{i}.json'
+
+
+def load_sharded(path, empty):
+    """The merged file overlaid with this shard's own partial file (both may be missing)."""
+    out = load_json(path) if os.path.exists(path) else empty
+    sp = shard_path(path)
+    if sp != path and os.path.exists(sp):
+        part = load_json(sp)
+        if set(empty) == {'midi', 'audio'}:
+            for k in ('midi', 'audio'):
+                out[k].update(part.get(k, {}))
+        else:
+            out.update(part)
+    return out
