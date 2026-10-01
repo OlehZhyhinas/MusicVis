@@ -264,6 +264,12 @@ def map_time(t, u, av):
     return np.interp(t, u, av, left=av[0] + (t - u[0]) if np.isscalar(t) else None)
 
 
+# The onset-strength envelope peaks ~2 hops (23 ms) after the physical onset. Measured on the 12 songs whose
+# Hooktheory beats are the human alignment of the very same video: aligned MIDI beats were +26 ms (median)
+# late without this correction, while Beat This! was within +-3 ms of the humans.
+ONSET_BIAS = 0.023
+
+
 def onset_refine(notes_on, audio_y):
     """Estimate a smooth lag curve lag(t) (s) by cross-correlating aligned onsets with the audio onset envelope."""
     hop = 256
@@ -289,7 +295,7 @@ def onset_refine(notes_on, audio_y):
         centers.append(c / fps); lags.append((np.argmax(xs) - maxlag) / fps)
     if len(lags) < 3:
         return None
-    lags = ndi.median_filter(np.array(lags), size=5, mode='nearest')
+    lags = ndi.median_filter(np.array(lags), size=5, mode='nearest') - ONSET_BIAS
     return np.array(centers), lags
 
 

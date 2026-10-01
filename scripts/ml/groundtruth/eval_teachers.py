@@ -39,6 +39,19 @@ def beat_f(ref, est, regs):
     return float(mir_eval.beat.f_measure(ref, est, 0.07)) if len(est) else 0.0
 
 
+def beat_offset(ref, est, regs):
+    """Median signed offset (ms, est - ref) of estimated beats matched within 70 ms."""
+    ref = np.asarray(ref, float); est = np.sort(np.asarray(est, float))
+    ref = ref[in_regions(ref, regs)]
+    if len(ref) < 8 or len(est) < 2:
+        return None
+    k = np.clip(np.searchsorted(est, ref), 1, len(est) - 1)
+    near = np.where(np.abs(est[k] - ref) < np.abs(est[k - 1] - ref), est[k], est[k - 1])
+    dlt = near - ref
+    dlt = dlt[np.abs(dlt) < 0.07]
+    return float(np.median(dlt) * 1000) if len(dlt) >= 8 else None
+
+
 def onset_f(ref, est, regs, win=0.05):
     ref = np.sort(np.asarray(ref, float)); est = np.sort(np.asarray(est, float))
     ref = ref[in_regions(ref, regs)]; est = est[in_regions(est, regs, win)]
@@ -153,6 +166,7 @@ def main():
                 ref_d = d['downbeats']
                 if bt:
                     R['beat/beatthis'] = beat_f(ref_b, bt['beats'], regs)
+                    R['beat_offset_ms/beatthis'] = beat_offset(ref_b, bt['beats'], regs)
                     R['downbeat/beatthis'] = beat_f(ref_d, bt.get('downbeats', []), regs)
                 if lv:
                     for w in ('live', 'off'):
@@ -176,6 +190,10 @@ def main():
                         R[f'notes/basicpitch-{stem}'] = notes_f(ref, bp[stem], regs)
                 est_all = [n for s in ('vocals', 'bass', 'guitar', 'piano', 'other') for n in bp.get(s, [])]
                 R['notes/basicpitch-allstems'] = notes_f(allp, est_all, regs)
+                R['notes/basicpitch-allstems-pc'] = notes_f(allp, est_all, regs, pc_only=True)
+                bass_ref = [n for n in pitched.get('Bass', [])]
+                if 'bass' in bp and bass_ref:
+                    R['notes/basicpitch-bass-pc'] = notes_f(bass_ref, bp['bass'], regs, pc_only=True)
                 if 'mix' in bp:
                     R['notes/basicpitch-mix'] = notes_f(allp, bp['mix'], regs)
             if ad and any(d['drums'].get(k) for k in ('kick', 'snare', 'hihat')):
@@ -186,6 +204,9 @@ def main():
         for s in d.get('hooktheory', []):
             sreg = [s['audio']]
             if s['beats']:
+                if d.get('beats_ok') and d['beats']:
+                    R.setdefault('ht_beat/midi-grid', []).append(beat_f([b[0] for b in s['beats']], [b[0] for b in d['beats']], sreg))
+                    R.setdefault('ht_downbeat/midi-grid', []).append(beat_f([b[0] for b in s['beats'] if b[1]], d['downbeats'], sreg))
                 if bt:
                     R.setdefault('ht_beat/beatthis', []).append(beat_f([b[0] for b in s['beats']], bt['beats'], sreg))
                     R.setdefault('ht_downbeat/beatthis', []).append(beat_f([b[0] for b in s['beats'] if b[1]], bt.get('downbeats', []), sreg))

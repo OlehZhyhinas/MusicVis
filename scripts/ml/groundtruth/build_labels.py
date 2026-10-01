@@ -182,6 +182,7 @@ def export(corpus, tid, path, Ra, cand, pm, pl, st, lagc_src=None):
                 mean_cost_ratio=float(np.average([p['cost'] / st['tau'] for p in keep],
                                                  weights=[p['audio'][1] - p['audio'][0] + 1 for p in keep])) if keep else None,
                 coverage=round(cover, 3), grid_quality=round(gq, 3),
+                onset_bias_ms=round(align.ONSET_BIAS * 1000, 1),
                 onset_lag_ms=None if lagc is None else [round(float(np.median(lagc[1])) * 1000, 1),
                                                          round(float(np.max(np.abs(lagc[1]))) * 1000, 1)])
     return dict(
