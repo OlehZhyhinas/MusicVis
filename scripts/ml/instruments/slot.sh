@@ -1,17 +1,18 @@
 #!/bin/bash
 # Run a heavy job under the machine-wide limits for the ML agents (instrument team rules below):
-#   - ONE heavy job at a time for the whole instrument team (training, separation, inference,
-#     evaluation AND node dumps/evals all count), so variants run sequentially, never in parallel;
-#   - no launch while 3 or more heavy ML processes already run machine-wide (any agent: Python
-#     using over 200 MB, or node analysis scripts), or while free memory is under 25%.
+#   - at most TEAM_SLOTS (3) heavy jobs at a time per team (training, separation, inference,
+#     evaluation AND node dumps/evals all count);
+#   - no launch while MAX_MACHINE (8) or more heavy ML processes already run machine-wide (any agent:
+#     Python using over 200 MB, or node analysis scripts), or while free memory is under 20%
+#     (the owner allows using up to ~80% of memory).
 # Waits until it may start, then runs the command.
 #
 #   scripts/ml/instruments/slot.sh [--team instruments|beats|gt] [--prio N] [--mps] <cmd...>
-#     --team: each team (default instruments) gets ONE slot; the machine-wide cap of 3 heavy
+#     --team: each team (default instruments) gets TEAM_SLOTS slots; the machine-wide cap of MAX_MACHINE heavy
 #             processes applies to all teams together. Priorities order waiters within a team.
 #     --prio: 1 stems, 2 HQ separator, 3 notes (default), 4 drums, 5 chords. A waiting job never
 #             takes the slot while a job with a smaller number is also waiting.
-#     --mps:  accepted for clarity; with one team slot there is only ever one MPS job.
+#     --mps:  accepted for clarity (MPS jobs share the GPU; prefer one at a time per team).
 #
 # The team slot is a lock directory ~/personal/MusicVis-data/.slots/team holding the owner's pid;
 # a stale lock (its pid gone) is reclaimed.
@@ -34,7 +35,9 @@ else LOCK="$SLOTS/team-$TEAM"; WAITDIR="$SLOTS/wait-$TEAM"; fi
 mkdir -p "$WAITDIR"
 WAIT="$WAITDIR/$PRIO.$$"
 touch "$WAIT"
-MAX_MACHINE=3
+MAX_MACHINE=8
+TEAM_SLOTS=3
+MIN_FREE=20
 
 free_pct() { memory_pressure 2>/dev/null | awk '/free percentage/ {gsub("%", "", $NF); print $NF}'; }
 machine_heavy() {
@@ -55,14 +58,20 @@ outranked() { # another live waiter with a smaller priority number
   return 1
 }
 
+reap() { local L=$1 p; if [ -d "$L" ]; then p=$(cat "$L/pid" 2>/dev/null); if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then rm -rf "$L"; fi; fi; }
+BASE=$LOCK
 while true; do
-  if [ -d "$LOCK" ]; then
-    p=$(cat "$LOCK/pid" 2>/dev/null)
-    if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then rm -rf "$LOCK"; fi
-  fi
   f=$(free_pct); f=${f:-0}
   m=$(machine_heavy)
-  if [ "$f" -ge 25 ] && [ "$m" -lt "$MAX_MACHINE" ] && ! outranked && mkdir "$LOCK" 2>/dev/null; then
+  got=
+  if [ "$f" -ge "$MIN_FREE" ] && [ "$m" -lt "$MAX_MACHINE" ] && ! outranked; then
+    for i in $(seq 1 "$TEAM_SLOTS"); do
+      if [ "$i" = 1 ]; then L="$BASE"; else L="$BASE.$i"; fi
+      reap "$L"
+      if mkdir "$L" 2>/dev/null; then LOCK=$L; got=1; break; fi
+    done
+  fi
+  if [ -n "$got" ]; then
     echo $$ > "$LOCK/pid"; echo "$*" > "$LOCK/cmd"
     rm -f "$WAIT"
     break
