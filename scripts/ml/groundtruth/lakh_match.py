@@ -6,6 +6,7 @@ Name sources for every LMD-full md5:
   match_scores.json      LMD-matched: MSD track id -> {md5: score}, names from MSD unique_tracks.txt
 Title-only file names (no artist) are matched on title alone; alignment later verifies them.
 
+Only tracks not yet in WORK/candidates.json are matched; existing entries are kept.
 Writes WORK/candidates.json: {id: {"corpus", "path", "parsed", "cands": [{"md5", "why", "names"}]}}
 and extracts every candidate MIDI to WORK/midi/<md5>.mid (streamed out of lmd_full.tar.gz, no full unpack).
 
@@ -101,8 +102,11 @@ def main():
         for a, t in s:
             by_title[t].append((md5, a))
     titles = list(by_title)
-    out = {}
+    cp = os.path.join(g.WORK, 'candidates.json')
+    out = g.load_json(cp) if os.path.exists(cp) else {}       # keep earlier entries (incl. freemidi additions)
     for corpus, tid, path in g.all_tracks():
+        if tid in out:
+            continue
         p = g.parse_title(tid)
         tts = {g.norm(p['title'])}
         if p['alt_title']:
@@ -141,7 +145,7 @@ def main():
                 md5 = os.path.basename(m.name)[:-4]
                 if m.isfile() and md5 in want:
                     open(os.path.join(mdir, md5 + '.mid'), 'wb').write(tf.extractfile(m).read())
-    json.dump(out, open(os.path.join(g.WORK, 'candidates.json'), 'w'), indent=1, ensure_ascii=False)
+    g.save_json(out, cp, indent=1, ensure_ascii=False)
     n = sum(1 for v in out.values() if v['cands'])
     na = sum(1 for v in out.values() if any(c['why'] == 'artist+title' for c in v['cands']))
     print(f'{len(out)} tracks, {n} with Lakh candidates ({na} artist+title), {len(want)} MIDIs extracted')

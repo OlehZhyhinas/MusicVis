@@ -42,7 +42,7 @@ def tracks(corpus):
             d = os.path.join(OWN_DIR, pl)
             if pl.startswith('pl-') and os.path.isdir(d):
                 for f in sorted(os.listdir(d)):
-                    if AUDIO_RE.search(f):
+                    if AUDIO_RE.search(f) and not re.search(r'\.(temp|part|f\d+)\.', f):   # yt-dlp partials
                         out.append((pl + '__' + AUDIO_RE.sub('', f), os.path.join(d, f)))
     else:
         raise ValueError(corpus)
