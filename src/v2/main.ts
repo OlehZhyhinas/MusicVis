@@ -34,6 +34,7 @@ import { hydrateIcons } from '../ui/icons';
 import { PresetBar } from '../ui/presetBar';
 import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
 import { AutoHide } from '../ui/autoHide';
+import { Viewer } from '../ui/viewer';
 import { applyLayout, computeLayout } from '../ui/layout';
 import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
@@ -116,6 +117,8 @@ async function main(): Promise<void> {
   // ------------------------------------------------------------ presets
 
   let currentId: string | null = null;
+  /** The phone UI (created at the end of startup; null until then). */
+  let viewer: Viewer | null = null;
   let presetPlayTimer = 0;
   let songCx = 0.5;
 
@@ -141,6 +144,7 @@ async function main(): Promise<void> {
     browser.markCurrent(m.id);
     presetMap.markCurrent();
     editor.load(m);
+    viewer?.noteShown(m.id);
     updateBar();
     showLabel();
     return true;
@@ -180,6 +184,7 @@ async function main(): Promise<void> {
     const b = evo.breeding > 0 || screener.runner.busy;
     const status = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
     presetBar.update(m ? { id: m.id, name: m.name, type: m.type, energy: m.energy, likes: m.likes, dislikes: m.dislikes, score: fitness(m) } : null, status, evolveOn);
+    viewer?.update();
   }
 
   function vote(like: boolean): void {
@@ -187,6 +192,7 @@ async function main(): Promise<void> {
     if (!m) return;
     evo.vote(m.id, like, evo.nicheFor(songCx));
     presetBar.voted(like);
+    viewer?.voted(like);
     updateBar();
   }
 
@@ -488,6 +494,7 @@ async function main(): Promise<void> {
       { icon: 'keyboard', label: 'Keyboard shortcuts', kbd: '?', run: () => palette.open('help') },
       { icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
       { icon: 'github', label: 'MusicVis on GitHub', href: GITHUB_URL },
+      ...(viewer?.canReturn ? ([{ icon: 'grid', label: 'Simple view', run: () => viewer?.setAdvanced(false) }] as MenuItem[]) : []),
     ];
   }
   function openMore(anchor: HTMLElement | null): void {
@@ -559,6 +566,7 @@ async function main(): Promise<void> {
     const empty = playlist.isEmpty && !liveMode.active;
     firstRun.hidden = !empty;
     appRoot.classList.toggle('is-empty', empty);
+    viewer?.update();
   }
   dock.onChange = (tab) => {
     relayout();
@@ -977,7 +985,34 @@ async function main(): Promise<void> {
     __geneChatChunkBench: (sizes?: number[], yieldMs?: number) => import('../chat/bench').then((m) => m.runChunkBench(sizes, yieldMs)),
   });
 
-  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen);
+  viewer = new Viewer({
+    current: () => {
+      const m = current();
+      return m ? { id: m.id, name: m.name, liked: m.likes > 0 } : null;
+    },
+    presets: () => evo.pop.visible().slice().sort((a, b) => fitness(b) - fitness(a)).map((m) => ({ id: m.id, name: m.name, liked: m.likes > 0 })),
+    play: (id) => play(id, 1.2, true),
+    next: () => nextPreset(),
+    vote: (like) => vote(like),
+    thumb: (id) => evo.thumb(id),
+    addSongs: () => fileInput.click(),
+    startMic: () => void liveMode.start('default'),
+    stopMic: () => liveMode.stop(),
+    micActive: () => liveMode.active,
+    hasSongs: () => !playlist.isEmpty,
+    playing: () => !!player?.playing,
+    togglePlay: () => togglePlay(),
+    toggleFullscreen: () => toggleFullscreen(),
+    onModeChange: (on) => {
+      if (on) {
+        dock.close();
+        popovers.close();
+        if (palette.isOpen) palette.close();
+      }
+      relayout();
+    },
+  });
+  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen || !!viewer?.isOpen);
 }
 
 /** Blocking card instead of the app (no WebGL2, or startup failed). */

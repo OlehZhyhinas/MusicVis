@@ -1,0 +1,348 @@
+/* Viewer mode (phones and touch-only devices): every rule here is scoped to #app.viewer,
+   so the desktop layout is untouched. The desktop chrome is hidden; viewer.ts adds its own. */
+
+#app.viewer {
+  --vw-gutter: 12px;
+  --vw-sb: env(safe-area-inset-bottom, 0px);
+  --vw-st: env(safe-area-inset-top, 0px);
+  --vw-sl: env(safe-area-inset-left, 0px);
+  --vw-sr: env(safe-area-inset-right, 0px);
+}
+
+/* desktop chrome that has no place on a phone */
+#app.viewer #hud,
+#app.viewer #wordmark,
+#app.viewer #preset-label,
+#app.viewer #dock,
+#app.viewer #empty-tools,
+#app.viewer #first-run,
+#app.viewer #bottom,
+#app.viewer #more-menu,
+#app.viewer #vol-pop,
+#app.viewer #live-picker,
+#app.viewer #overlay,
+#app.viewer #faint-id,
+#app.viewer #drop-overlay {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------- start card */
+#app.viewer .vw-start {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: calc(24px + var(--vw-st)) calc(24px + var(--vw-sr)) calc(24px + var(--vw-sb)) calc(24px + var(--vw-sl));
+  text-align: center;
+  background: radial-gradient(120% 80% at 50% 30%, rgba(127, 216, 255, 0.1), transparent 60%), rgba(5, 5, 10, 0.55);
+}
+#app.viewer .vw-start[hidden] {
+  display: none;
+}
+#app.viewer .vw-logo {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--acc);
+  background: var(--acc-tint);
+}
+#app.viewer .vw-start h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#app.viewer .vw-start p {
+  margin: 0 0 14px;
+  max-width: 30ch;
+  font-size: 16px;
+  color: var(--tx2);
+}
+#app.viewer .vw-big {
+  width: min(100%, 340px);
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font: 600 17px/1 var(--f);
+  color: var(--tx);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line-2);
+  -webkit-tap-highlight-color: transparent;
+}
+#app.viewer .vw-big.primary {
+  color: var(--acc-ink);
+  background: var(--acc);
+  border-color: transparent;
+}
+#app.viewer .vw-big:active {
+  transform: scale(0.98);
+}
+
+/* ---------------------------------------------------------------- bottom bar */
+#app.viewer .vw-bar {
+  position: absolute;
+  z-index: 30;
+  left: calc(var(--vw-gutter) + var(--vw-sl));
+  right: calc(var(--vw-gutter) + var(--vw-sr));
+  bottom: calc(var(--vw-gutter) + var(--vw-sb));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 60px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 20px;
+}
+#app.viewer .vw-bar[hidden] {
+  display: none;
+}
+#app.ui-hidden.viewer .vw-bar {
+  transform: translateY(12px);
+}
+#app.viewer .vw-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+#app.viewer .ell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#app.viewer .vw-ctl {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+#app.viewer .vw-ib {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(244, 244, 248, 0.88);
+  -webkit-tap-highlight-color: transparent;
+}
+#app.viewer .vw-ib:active {
+  background: var(--raise);
+}
+#app.viewer .vw-like.on {
+  color: var(--acc);
+}
+#app.viewer .vw-ib.pop {
+  animation: vw-pop 0.35s ease;
+}
+@keyframes vw-pop {
+  40% { transform: scale(1.25); }
+}
+/* the narrowest phones: name above the buttons */
+@media (max-width: 380px) {
+  #app.viewer .vw-bar {
+    flex-wrap: wrap;
+    padding: 8px 6px 4px;
+    row-gap: 0;
+  }
+  #app.viewer .vw-name {
+    flex-basis: 100%;
+    padding: 2px 10px 0;
+    text-align: center;
+  }
+  #app.viewer .vw-ctl {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ---------------------------------------------------------------- menu */
+#app.viewer .vw-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.35);
+}
+#app.viewer .vw-scrim[hidden],
+#app.viewer .vw-menu[hidden],
+#app.viewer .vw-sheet[hidden] {
+  display: none;
+}
+#app.viewer .vw-menu {
+  position: absolute;
+  z-index: 51;
+  left: calc(var(--vw-gutter) + var(--vw-sl));
+  right: calc(var(--vw-gutter) + var(--vw-sr));
+  bottom: calc(var(--vw-gutter) + var(--vw-sb));
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 8px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+}
+#app.viewer .vw-mh {
+  padding: 10px 14px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tx3);
+}
+#app.viewer .vw-mi {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--tx);
+  font: 500 16px/1.2 var(--f);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+#app.viewer .vw-mi:active {
+  background: var(--raise);
+}
+#app.viewer .vw-mi svg {
+  color: var(--tx2);
+}
+#app.viewer .vw-sep {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--line);
+}
+#app.viewer .vw-adv {
+  min-height: 44px;
+  margin-top: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tx3);
+  font: 400 13px/1 var(--f);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- presets grid */
+#app.viewer .vw-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 52;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 9, 14, 0.94);
+  backdrop-filter: blur(var(--blur-3));
+  -webkit-backdrop-filter: blur(var(--blur-3));
+}
+#app.viewer .vw-sheet-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(10px + var(--vw-st)) calc(8px + var(--vw-sr)) 10px calc(18px + var(--vw-sl));
+  border-bottom: 1px solid var(--line);
+}
+#app.viewer .vw-sheet-h h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+#app.viewer .vw-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--tx2);
+  font: 500 14px/1 var(--f);
+  -webkit-tap-highlight-color: transparent;
+}
+#app.viewer .vw-chip[aria-pressed='true'] {
+  color: var(--acc-ink);
+  background: var(--acc);
+  border-color: transparent;
+}
+#app.viewer .vw-grid {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 12px;
+  padding: 14px calc(14px + var(--vw-sr)) calc(20px + var(--vw-sb)) calc(14px + var(--vw-sl));
+}
+#app.viewer .vw-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tx);
+  text-align: left;
+  font: 500 14px/1.3 var(--f);
+  -webkit-tap-highlight-color: transparent;
+}
+#app.viewer .vw-tile img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+}
+#app.viewer .vw-tile.cur img {
+  border-color: var(--acc);
+}
+#app.viewer .vw-tile.cur span {
+  color: var(--acc);
+}
+#app.viewer .vw-tile:active img {
+  opacity: 0.8;
+}
+#app.viewer .vw-none {
+  grid-column: 1 / -1;
+  margin: 40px 0;
+  text-align: center;
+  color: var(--tx2);
+}
+
+/* toasts and captions clear the bar */
+#app.viewer .toasts {
+  top: calc(12px + var(--vw-st));
+  left: calc(12px + var(--vw-sl));
+  right: calc(12px + var(--vw-sr));
+  align-items: center;
+}
+#app.viewer .toast {
+  width: min(100%, 420px);
+}
+#app.viewer .toast:nth-child(n + 3) {
+  display: none;
+}
+#app.viewer .lyr-cap {
+  bottom: calc(96px + var(--vw-sb));
+}
+#app.viewer.ui-hidden .lyr-cap {
+  bottom: calc(40px + var(--vw-sb));
+}
+#app.viewer #reveal-hint {
+  bottom: calc(24px + var(--vw-sb));
+}

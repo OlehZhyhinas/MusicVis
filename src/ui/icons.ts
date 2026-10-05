@@ -40,6 +40,7 @@ export const ICON_PATHS = {
   mutate: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16v5M16.5 18.5h5',
   cdown: 'M6 9l6 6 6-6',
   cright: 'M9 6l6 6-6 6',
+  cleft: 'M15 6l-6 6 6 6',
   cup: 'M18 15l-6-6-6 6',
   copy: 'M8 8h12v12H8zM4 16V4h12',
   paste: 'M9 3h6v4H9zM16 5h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2',

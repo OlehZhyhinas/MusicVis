@@ -5,6 +5,8 @@
 import { loadSetting, saveSetting } from './storage';
 
 const AUTO_HIDE_MS = 2500;
+/** Phones (viewer mode) keep the controls a little longer after a tap. */
+const AUTO_HIDE_VIEWER_MS = 4000;
 const HINT_TIMES = 3;
 
 export class AutoHide {
@@ -41,7 +43,7 @@ export class AutoHide {
 
   private schedule(): void {
     if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.tryHide(), AUTO_HIDE_MS);
+    this.timer = setTimeout(() => this.tryHide(), this.app.classList.contains('viewer') ? AUTO_HIDE_VIEWER_MS : AUTO_HIDE_MS);
   }
 
   private tryHide(): void {
@@ -54,7 +56,7 @@ export class AutoHide {
     this.hidden = true;
     this.app.classList.add('ui-hidden', 'cursor-hidden');
     if (this.hintEl && this.hints < HINT_TIMES) {
-      this.hintEl.textContent = this.app.classList.contains('phone') ? 'Tap for controls' : 'Move the mouse or press any key for controls';
+      this.hintEl.textContent = this.app.classList.contains('phone') || this.app.classList.contains('viewer') ? 'Tap for controls' : 'Move the mouse or press any key for controls';
       this.hints++;
       saveSetting('revealHints', this.hints);
       this.hintEl.hidden = false;
