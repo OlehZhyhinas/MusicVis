@@ -585,6 +585,8 @@ async function main(): Promise<void> {
       transport.hide();
       // Emptied: the dock closes and the first-run card returns.
       if (!wasEmpty && dock.tab === 'playlist') dock.close();
+    } else {
+      transport.show();
     }
     wasEmpty = playlist.isEmpty;
     updateEmpty();
@@ -616,7 +618,11 @@ async function main(): Promise<void> {
       liveMode.stop();
       return;
     }
-    if (!player || !songLoaded) return;
+    if (!player || !songLoaded) {
+      const track = playlist.currentTrack;
+      if (track && track.status !== 'analyzing') void playTrack(track);
+      return;
+    }
     if (player.playing) player.pause();
     else {
       audioCtx?.resume().catch(() => {});
@@ -632,7 +638,7 @@ async function main(): Promise<void> {
     const cur = playlist.currentTrack;
     const t = playlist.previous(player?.currentTime ?? 0);
     if (!t) return;
-    if (cur && t.id === cur.id) {
+    if (songLoaded && cur && t.id === cur.id) {
       player?.seek(0);
       sampler?.reset();
       lyricSampler?.reset();
@@ -706,12 +712,33 @@ async function main(): Promise<void> {
 
   installDropzone(emptyStateEl, fileInput, dropOverlay, {
     onFiles: (files) => {
-      const wasEmpty = playlist.isEmpty;
+      const startPlayback = playlist.isEmpty || (!liveMode.active && !songLoaded && playlist.currentTrack?.status !== 'analyzing');
       const added = playlist.addFiles(files);
       for (const t of added) lyrics.add(t.id, t.file);
-      if (wasEmpty && added.length > 0) void playTrack(added[0]);
+      if (startPlayback && added.length > 0) void playTrack(added[0]);
     },
   });
+
+  async function addBundledSongs(): Promise<void> {
+    const songs = [
+      { path: 'avicii-waiting-for-love.mp3', name: 'Avicii - Waiting For Love.mp3' },
+      { path: 'dj-snake-lil-jon-turn-down-for-what.mp3', name: 'DJ Snake, Lil Jon - Turn Down for What.mp3' },
+    ];
+    const loaded = await Promise.allSettled(songs.map(async (song) => {
+      const response = await fetch(`${import.meta.env.BASE_URL}songs/${song.path}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return new File([await response.blob()], song.name, { type: 'audio/mpeg' });
+    }));
+    const files: File[] = [];
+    loaded.forEach((result, i) => {
+      if (result.status === 'fulfilled') files.push(result.value);
+      else showToast(`Could not load ${songs[i].name.replace(/\.mp3$/, '')}`, 'error', 5000, String(result.reason));
+    });
+    if (files.length) {
+      const added = playlist.addFiles(files);
+      for (const t of added) lyrics.add(t.id, t.file);
+    }
+  }
 
   // ------------------------------------------------ commands + go to
 
@@ -859,6 +886,7 @@ async function main(): Promise<void> {
   updateEmpty();
   if (!computeLayout(dock.lastTab).sheet) dock.open(dock.lastTab);
   else relayout();
+  void addBundledSongs();
 
   // Debug / test handle.
   (window as unknown as Record<string, unknown>).musicvisV2 = {
