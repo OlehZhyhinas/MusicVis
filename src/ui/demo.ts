@@ -33,6 +33,14 @@ export interface DemoSong {
   duration: number;
   playing: boolean;
 }
+export interface DemoTrack {
+  id: string;
+  title: string;
+  current: boolean;
+  status: 'queued' | 'analyzing' | 'ready' | 'error';
+  /** 0..1 while analyzing. */
+  progress: number;
+}
 
 export interface DemoHost {
   current(): DemoVisual | null;
@@ -63,12 +71,15 @@ export interface DemoHost {
   started(): boolean;
   song(): DemoSong | null;
   togglePlay(): void;
+  /** The playlist, in play order. */
+  tracks(): DemoTrack[];
+  playTrack(id: string): void;
   /** The demo turned on or off: main closes panels / relayouts. */
   onModeChange(on: boolean): void;
 }
 
 type Mode = 'cross' | 'mutate';
-type View = 'breed' | 'children' | 'family';
+type View = 'breed' | 'children' | 'family' | 'music';
 type Filter = 'all' | 'kept' | 'seed' | 'family';
 
 /** One breed run shown in the children view. */
@@ -186,6 +197,7 @@ export class Demo {
     if (this.view === 'breed') this.renderBreed();
     else if (this.view === 'children') this.renderChildren();
     else if (this.view === 'family') this.renderFamily();
+    else if (this.view === 'music') this.renderMusic();
   }
 
   // ------------------------------------------------------------- mode
@@ -263,17 +275,17 @@ export class Demo {
     // phone only: play button, song title and the keepers pill above the bar
     this.prow = el('div', 'dm-prow chrome', `
       <button class="dm-pp dm-round sm" aria-label="Play">${icon('play', 16)}</button>
-      <span class="dm-ptitle ell"></span>
+      <button class="dm-ptitle dm-musicb ell" aria-label="Music: playlist, microphone or a tab"></button>
       <button class="dm-add dm-round sm" aria-label="Play my own songs">${icon('upload', 15)}</button>
       <button class="dm-kpill" aria-label="Open your family"><span class="dm-kcount"></span><span class="dm-kthumbs"></span></button>`);
 
     this.bar = el('div', 'dm-bar glass strong chrome', `
       <div class="dm-song">
         <button class="dm-pp dm-round" aria-label="Play">${icon('play', 18)}</button>
-        <div class="dm-stext">
+        <button class="dm-stext dm-musicb" aria-label="Music: playlist, microphone or a tab" title="Playlist, microphone or a tab">
           <b class="dm-stitle ell"></b>
           <span class="dm-stime mono"></span>
-        </div>
+        </button>
         <button class="dm-add dm-round sm" aria-label="Play my own songs" title="Play my own songs">${icon('upload', 15)}</button>
       </div>
       <div class="dm-div"></div>
@@ -359,6 +371,12 @@ export class Demo {
       this.openView('family');
     };
     this.bar.querySelector('.dm-famb')!.addEventListener('click', openFamily);
+    this.app.querySelectorAll('.dm-musicb').forEach((b) =>
+      b.addEventListener('click', (ev) => {
+        this.lastFocus = ev.currentTarget as HTMLElement;
+        this.openView('music');
+      }),
+    );
     this.prow.querySelector('.dm-kpill')!.addEventListener('click', openFamily);
     this.bar.querySelector('.dm-tthumbs')!.addEventListener('click', (ev) => {
       const b = (ev.target as Element).closest<HTMLElement>('[data-id]');
@@ -536,6 +554,7 @@ export class Demo {
     this.thumbObs?.disconnect();
     if (view === 'breed') this.buildBreed();
     else if (view === 'children') this.buildChildren();
+    else if (view === 'music') this.buildMusic();
     else this.buildFamily();
     this.sheet.hidden = false;
     this.scrim.hidden = false;
@@ -609,6 +628,26 @@ export class Demo {
         break;
       case 'breed-sel':
         this.openBreed(this.familySel.slice(0, 2), 'cross');
+        break;
+      case 'track':
+        this.host.playTrack(id);
+        this.closeSheet();
+        break;
+      case 'src-upload':
+        this.closeSheet();
+        this.host.addSongs();
+        break;
+      case 'src-mic':
+        this.closeSheet();
+        this.host.startMic();
+        break;
+      case 'src-tab':
+        this.closeSheet();
+        this.host.startTab();
+        break;
+      case 'src-stop':
+        this.host.stopMic();
+        this.update();
         break;
     }
   }
@@ -942,6 +981,58 @@ export class Demo {
       </div>`;
   }
 
+  // ------------------------------------------------------------- music view
+
+  private buildMusic(): void {
+    this.sheet.setAttribute('aria-labelledby', 'dm-s-title');
+    const tab = this.host.tabSupported()
+      ? `<button class="btn dm-src" data-act="src-tab" title="Play music in another tab (Spotify, YouTube…) and share its audio">${icon('radio', 17)}<span>Listen to a tab</span></button>`
+      : '';
+    this.sheet.innerHTML = `
+      ${this.header('Music', '')}
+      <div class="dm-sb">
+        <div class="dm-live" hidden>
+          <span class="dm-live-dot"></span><span class="dm-live-t ell"></span>
+          <button class="btn sm" data-act="src-stop">${icon('stop', 14)}<span>Stop</span></button>
+        </div>
+        <div class="dm-tracks" role="list" aria-label="Playlist"></div>
+        <div class="dm-wsrc">
+          <button class="btn dm-src" data-act="src-upload">${icon('upload', 17)}<span>Upload my songs</span></button>
+          <button class="btn dm-src" data-act="src-mic">${icon('mic', 17)}<span>Use my microphone</span></button>
+          ${tab}
+        </div>
+      </div>`;
+  }
+
+  private renderMusic(): void {
+    const tracks = this.host.tracks();
+    const live = this.host.micActive();
+    const liveEl = this.sheet.querySelector<HTMLElement>('.dm-live')!;
+    liveEl.hidden = !live;
+    if (live) liveEl.querySelector('.dm-live-t')!.textContent = this.host.song()?.title ?? 'Live input';
+    this.sheet.querySelector('.dm-sub')!.textContent = live
+      ? 'Live input is on. Pick a song to switch back.'
+      : `${tracks.length} song${tracks.length === 1 ? '' : 's'} · tap one to play it`;
+    const list = this.sheet.querySelector<HTMLElement>('.dm-tracks')!;
+    const key = tracks.map((t) => `${t.id}:${t.current && !live ? 1 : 0}:${t.status}:${Math.round(t.progress * 20)}`).join(',');
+    if (list.dataset.key === key) return;
+    list.dataset.key = key;
+    list.innerHTML = tracks.length ? '' : '<p class="dm-none"><span>No songs yet. Upload some, or use the microphone.</span></p>';
+    tracks.forEach((t, i) => {
+      const cur = t.current && !live;
+      const state = t.status === 'analyzing' ? `Getting ready ${Math.round(t.progress * 100)}%` : t.status === 'error' ? 'Could not load' : cur ? 'Playing' : '';
+      const row = document.createElement('button');
+      row.className = 'dm-track' + (cur ? ' cur' : '') + (t.status === 'error' ? ' err' : '');
+      row.dataset.act = 'track';
+      row.dataset.id = t.id;
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('aria-current', String(cur));
+      row.innerHTML = `<span class="dm-tn mono">${cur ? icon('play', 12) : i + 1}</span><span class="dm-tt ell"></span><span class="dm-ts">${state}</span>`;
+      row.querySelector('.dm-tt')!.textContent = t.title;
+      list.append(row);
+    });
+  }
+
   private familyMembers(): DemoVisual[] {
     const out = new Map<string, DemoVisual>();
     const walk = (v: DemoVisual) => {
@@ -977,14 +1068,15 @@ export class Demo {
         svg.classList.add('dm-edges');
         svg.setAttribute('aria-hidden', 'true');
         tree.append(svg);
-        for (const g of gens) {
+        const rows = familyRows(members, gens);
+        for (const [i, g] of gens.entries()) {
           const col = document.createElement('div');
           col.className = 'dm-col';
           col.setAttribute('role', 'list');
           const label = g === 0 ? 'Starters' : `Generation ${g}`;
           col.setAttribute('aria-label', label);
           col.innerHTML = `<h4>${label}</h4>`;
-          for (const v of members.filter((m) => m.gen === g).sort((a, b) => a.created - b.created)) {
+          for (const v of rows[i]) {
             const card = document.createElement('div');
             card.className = 'dm-fcard';
             card.dataset.id = v.id;
@@ -1033,7 +1125,11 @@ export class Demo {
     this.edgeFrame = requestAnimationFrame(() => this.drawEdges());
   }
 
-  /** Bezier edges from each parent's right edge to the child's left edge. */
+  /**
+   * Family-tree connectors, top down: two parents are joined by a line just under
+   * them, a stem drops from its middle to a bar over their children, and each child
+   * hangs from that bar. A mutant's single parent drops straight to its bar (dashed).
+   */
   private drawEdges(): void {
     if (this.view !== 'family') return;
     const tree = this.sheet.querySelector<HTMLElement>('.dm-tree');
@@ -1047,24 +1143,46 @@ export class Demo {
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     const rects = new Map<string, DOMRect>();
     tree.querySelectorAll<HTMLElement>('.dm-fcard').forEach((c) => rects.set(c.dataset.id!, c.getBoundingClientRect()));
-    let d = '';
+    // One family unit per parent set: its children share a sibling bar.
+    const units = new Map<string, { parents: DOMRect[]; kids: DOMRect[] }>();
     for (const c of tree.querySelectorAll<HTMLElement>('.dm-fcard')) {
       const v = this.host.get(c.dataset.id!);
       const cr = rects.get(c.dataset.id!);
       if (!v || !cr || !v.parents.length) continue;
-      const cls = v.parents.length > 1 ? 'bred' : 'mut';
-      for (const p of v.parents) {
-        const pr = rects.get(p);
-        if (!pr) continue;
-        const x1 = pr.right - base.left;
-        const y1 = pr.top + pr.height / 2 - base.top;
-        const x2 = cr.left - base.left;
-        const y2 = cr.top + cr.height / 2 - base.top;
-        const dx = Math.max(24, (x2 - x1) / 2);
-        d += `<path class="${cls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)}C${(x1 + dx).toFixed(1)} ${y1.toFixed(1)} ${(x2 - dx).toFixed(1)} ${y2.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
-      }
+      const pr = v.parents.map((p) => rects.get(p)).filter((r): r is DOMRect => !!r);
+      if (!pr.length) continue;
+      const k = v.parents.slice().sort().join('+');
+      const u = units.get(k) ?? { parents: pr, kids: [] };
+      u.kids.push(cr);
+      units.set(k, u);
     }
-    svg.innerHTML = d;
+    // Units over the same gap get their own lanes, so their bars don't run together.
+    const lanes = new Map<number, number>();
+    const f = (n: number) => n.toFixed(1);
+    let bred = '';
+    let mut = '';
+    for (const u of units.values()) {
+      const px = u.parents.map((r) => r.left + r.width / 2 - base.left);
+      const pBottom = Math.max(...u.parents.map((r) => r.bottom - base.top));
+      const kTop = Math.min(...u.kids.map((r) => r.top - base.top));
+      const lane = lanes.get(Math.round(kTop)) ?? 0;
+      lanes.set(Math.round(kTop), lane + 1);
+      const gap = Math.max(16, kTop - pBottom);
+      const step = Math.min(6, gap / 8);
+      const joinY = pBottom + Math.min(14, gap / 3) + (lane % 3) * step;
+      const barY = kTop - Math.min(14, gap / 3) - (lane % 3) * step;
+      let d = '';
+      for (const [i, r] of u.parents.entries()) d += `M${f(px[i])} ${f(r.bottom - base.top)}V${f(joinY)}`;
+      const mx = px.reduce((a, b) => a + b, 0) / px.length;
+      if (px.length > 1) d += `M${f(Math.min(...px))} ${f(joinY)}H${f(Math.max(...px))}`;
+      const kx = u.kids.map((r) => r.left + r.width / 2 - base.left);
+      d += `M${f(mx)} ${f(joinY)}V${f(barY)}`;
+      d += `M${f(Math.min(mx, ...kx))} ${f(barY)}H${f(Math.max(mx, ...kx))}`;
+      for (const [i, r] of u.kids.entries()) d += `M${f(kx[i])} ${f(barY)}V${f(r.top - base.top)}`;
+      if (u.parents.length > 1) bred += d;
+      else mut += d;
+    }
+    svg.innerHTML = `${bred ? `<path class="bred" d="${bred}"/>` : ''}${mut ? `<path class="mut" d="${mut}"/>` : ''}`;
   }
 
   // ------------------------------------------------------------- thumbnails
@@ -1132,4 +1250,43 @@ function fmtTime(s: number): string {
 
 function clamp01(n: number): number {
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5;
+}
+
+/**
+ * Generation rows for the family tree, ordered to keep lines short: each row follows
+ * the average position of its parents (siblings side by side), then the top row is
+ * reordered under its children.
+ */
+function familyRows(members: DemoVisual[], gens: number[]): DemoVisual[][] {
+  const rows = gens.map((g) => members.filter((m) => m.gen === g).sort((a, b) => a.created - b.created));
+  const pos = new Map<string, number>();
+  const place = (row: DemoVisual[]) => row.forEach((v, i) => pos.set(v.id, (i + 0.5) / row.length));
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+  const byParents = (row: DemoVisual[]) => {
+    const at = new Map(row.map((v, i) => [v.id, i] as const));
+    const key = (v: DemoVisual) => mean(v.parents.map((p) => pos.get(p)).filter((x): x is number => x !== undefined));
+    return row.slice().sort((a, b) => {
+      const ka = key(a), kb = key(b);
+      if (Number.isNaN(ka) || Number.isNaN(kb)) return Number.isNaN(ka) === Number.isNaN(kb) ? at.get(a.id)! - at.get(b.id)! : Number.isNaN(ka) ? 1 : -1;
+      return ka - kb || a.parents.slice().sort().join().localeCompare(b.parents.slice().sort().join()) || at.get(a.id)! - at.get(b.id)!;
+    });
+  };
+  place(rows[0]);
+  for (let i = 1; i < rows.length; i++) {
+    rows[i] = byParents(rows[i]);
+    place(rows[i]);
+  }
+  if (rows.length > 1) {
+    // Top row under its children, then the rows below follow again.
+    const kids = new Map<string, number[]>();
+    for (const row of rows.slice(1)) for (const v of row) for (const p of v.parents) kids.set(p, [...(kids.get(p) ?? []), pos.get(v.id)!]);
+    const at = new Map(rows[0].map((v, i) => [v.id, i] as const));
+    rows[0] = rows[0].slice().sort((a, b) => (mean(kids.get(a.id) ?? []) || 2) - (mean(kids.get(b.id) ?? []) || 2) || at.get(a.id)! - at.get(b.id)!);
+    place(rows[0]);
+    for (let i = 1; i < rows.length; i++) {
+      rows[i] = byParents(rows[i]);
+      place(rows[i]);
+    }
+  }
+  return rows;
 }

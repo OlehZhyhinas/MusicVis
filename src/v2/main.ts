@@ -1067,6 +1067,14 @@ async function main(): Promise<void> {
       return { title: t.title, time: songLoaded && player ? player.currentTime : 0, duration: songLoaded && player ? player.duration : 0, playing: !!player?.playing };
     },
     togglePlay: () => togglePlay(),
+    tracks: () => {
+      const cur = playlist.currentTrack;
+      return playlist.all.map((t) => ({ id: t.id, title: t.title, current: t === cur && userStarted, status: t.status, progress: t.progress }));
+    },
+    playTrack: (id) => {
+      const t = playlist.all.find((tr) => tr.id === id);
+      if (t) void playTrack(t);
+    },
     onModeChange: (on) => {
       if (on) {
         dock.close();

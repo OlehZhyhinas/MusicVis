@@ -950,10 +950,12 @@
 #app.demo .dm-tree {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 72px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 64px;
   width: max-content;
   min-width: 100%;
+  padding-top: 22px;
 }
 #app.demo .dm-edges {
   position: absolute;
@@ -966,7 +968,8 @@
   fill: none;
   stroke: var(--acc);
   stroke-width: 1.5;
-  opacity: 0.7;
+  stroke-linecap: square;
+  opacity: 0.75;
 }
 #app.demo .dm-edges path.mut {
   stroke: var(--warn);
@@ -975,13 +978,19 @@
 #app.demo .dm-col {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 180px;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 16px;
+}
+#app.demo .dm-col .dm-fcard {
+  width: 160px;
   flex: none;
 }
 #app.demo .dm-col h4 {
-  margin: 0 0 2px;
+  position: absolute;
+  left: 0;
+  top: -20px;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1310,10 +1319,10 @@
     gap: 12px;
   }
   #app.demo .dm-tree {
-    gap: 40px;
+    gap: 48px;
   }
-  #app.demo .dm-col {
-    width: 140px;
+  #app.demo .dm-col .dm-fcard {
+    width: 128px;
   }
   #app.demo .toasts {
     left: calc(12px + var(--dm-sl));
@@ -1325,5 +1334,123 @@
   }
   #app.demo .lyr-cap {
     bottom: calc(200px + var(--dm-sb));
+  }
+}
+
+/* ---------------------------------------------------------------- music sheet */
+#app.demo .dm-musicb {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+#app.demo .dm-musicb:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+#app.demo .dm-musicb:focus-visible {
+  outline: 2px solid var(--acc);
+}
+#app.demo .dm-sheet.v-music {
+  width: min(560px, calc(100% - 48px));
+}
+#app.demo .v-music .dm-sb {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+#app.demo .dm-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow: auto;
+}
+#app.demo .dm-track {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--tx);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+#app.demo .dm-track:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+#app.demo .dm-track.cur {
+  background: var(--acc-tint);
+  color: var(--acc);
+}
+#app.demo .dm-track.err {
+  color: var(--tx3);
+}
+#app.demo .dm-tn {
+  width: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--tx3);
+}
+#app.demo .dm-track.cur .dm-tn {
+  color: var(--acc);
+}
+#app.demo .dm-tt {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+#app.demo .dm-ts {
+  flex: none;
+  font-size: 12px;
+  color: var(--tx3);
+}
+#app.demo .dm-track.cur .dm-ts {
+  color: var(--acc);
+}
+#app.demo .dm-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 77, 94, 0.1);
+  font-size: 14px;
+}
+#app.demo .dm-live[hidden] {
+  display: none;
+}
+#app.demo .dm-live-t {
+  flex: 1;
+  min-width: 0;
+}
+#app.demo .dm-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live);
+  flex: none;
+}
+@media (max-width: 699px) {
+  #app.demo .dm-sheet.v-music {
+    width: 100%;
+  }
+  #app.demo .v-music .dm-wsrc {
+    flex-direction: column;
   }
 }
