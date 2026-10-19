@@ -35,6 +35,7 @@ import { PresetBar } from '../ui/presetBar';
 import { Popovers, renderMenu, type MenuItem } from '../ui/popover';
 import { AutoHide } from '../ui/autoHide';
 import { Viewer } from '../ui/viewer';
+import { Demo, type DemoVisual } from '../ui/demo';
 import { applyLayout, computeLayout } from '../ui/layout';
 import { Dock } from '../ui/dock';
 import { Palette, type Command } from '../ui/palette';
@@ -119,6 +120,10 @@ async function main(): Promise<void> {
   let currentId: string | null = null;
   /** The phone UI (created at the end of startup; null until then). */
   let viewer: Viewer | null = null;
+  /** The simplified demo UI (created at the end of startup; null until then). */
+  let demo: Demo | null = null;
+  /** A song or the microphone was started (the demo's welcome card is done). */
+  let userStarted = false;
   let presetPlayTimer = 0;
   let songCx = 0.5;
 
@@ -145,6 +150,7 @@ async function main(): Promise<void> {
     presetMap.markCurrent();
     editor.load(m);
     viewer?.noteShown(m.id);
+    demo?.noteShown(m.id);
     updateBar();
     showLabel();
     return true;
@@ -185,6 +191,7 @@ async function main(): Promise<void> {
     const status = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
     presetBar.update(m ? { id: m.id, name: m.name, type: m.type, energy: m.energy, likes: m.likes, dislikes: m.dislikes, score: fitness(m) } : null, status, evolveOn);
     viewer?.update();
+    demo?.update();
   }
 
   function vote(like: boolean): void {
@@ -495,6 +502,7 @@ async function main(): Promise<void> {
       { icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
       { icon: 'github', label: 'MusicVis on GitHub', href: GITHUB_URL },
       ...(viewer?.canReturn ? ([{ icon: 'grid', label: 'Simple view', run: () => viewer?.setAdvanced(false) }] as MenuItem[]) : []),
+      { icon: 'sparkle', label: 'Demo mode', run: () => demo?.setOn(true) },
     ];
   }
   function openMore(anchor: HTMLElement | null): void {
@@ -510,6 +518,7 @@ async function main(): Promise<void> {
         return audioCtx;
       },
       onStart: () => {
+        userStarted = true;
         loadToken++;
         player?.pause();
         transport.setTrackLoading(null);
@@ -567,6 +576,7 @@ async function main(): Promise<void> {
     firstRun.hidden = !empty;
     appRoot.classList.toggle('is-empty', empty);
     viewer?.update();
+    demo?.update();
   }
   dock.onChange = (tab) => {
     relayout();
@@ -665,6 +675,7 @@ async function main(): Promise<void> {
 
   async function playTrack(track: Track): Promise<void> {
     liveMode.stop();
+    userStarted = true;
     const token = ++loadToken;
     try {
       if (!audioCtx) audioCtx = new AudioContext();
@@ -814,6 +825,8 @@ async function main(): Promise<void> {
     if (tgt instanceof HTMLInputElement || tgt instanceof HTMLSelectElement || tgt instanceof HTMLTextAreaElement || ev.metaKey || ev.ctrlKey || ev.altKey) return;
     // Nothing typed or pressed inside the gene editor (sliders, selects, buttons) triggers a shortcut.
     if (tgt instanceof Element && tgt.closest('#v2-genes')) return;
+    // Demo mode keeps only playback keys; its own sheets handle Escape.
+    if (demo?.active && ![' ', 'f', 'F', 'm', 'M', 'ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
     if (ev.key === '?') {
       palette.toggle('help');
       return;
@@ -894,7 +907,7 @@ async function main(): Promise<void> {
   updateEmpty();
   if (!computeLayout(dock.lastTab).sheet) dock.open(dock.lastTab);
   else relayout();
-  void addBundledSongs();
+  const bundledSongs = addBundledSongs();
 
   // Debug / test handle.
   (window as unknown as Record<string, unknown>).musicvisV2 = {
@@ -985,6 +998,75 @@ async function main(): Promise<void> {
     __geneChatChunkBench: (sizes?: number[], yieldMs?: number) => import('../chat/bench').then((m) => m.runChunkBench(sizes, yieldMs)),
   });
 
+  const toVisual = (m: Member): DemoVisual => ({
+    id: m.id, name: m.name, gen: m.gen, parents: m.parents, kept: m.likes > 0, seed: m.gen === 0, tag: m.cross, created: m.created,
+  });
+  // New visitors (nothing voted or bred yet) start in demo mode; "Full mode" switches it off for good.
+  const newVisitor = evo.pop.list().every((m) => m.gen === 0 && m.likes === 0 && m.dislikes === 0);
+  demo = new Demo({
+    current: () => {
+      const m = current();
+      return m ? toVisual(m) : null;
+    },
+    visuals: () => evo.pop.visible().map(toVisual),
+    get: (id) => {
+      const m = evo.pop.get(id);
+      return m ? toVisual(m) : null;
+    },
+    play: (id) => play(id, 1.2, true),
+    skip: () => {
+      vote(false);
+      nextPreset();
+    },
+    keep: (id) => {
+      const m = id ? evo.pop.get(id) : current();
+      if (!m || m.likes > 0) return;
+      if (m.id === currentId) vote(true);
+      else {
+        evo.vote(m.id, true, evo.nicheFor(songCx));
+        updateBar();
+      }
+    },
+    thumb: (id) => evo.thumb(id),
+    breed: async (ids, mode, amount, onChild) => {
+      const parents = ids.map((id) => evo.pop.get(id)).filter((m): m is Member => !!m);
+      // Breeding with a visual puts it in the pen, so Evolve mode can use it later.
+      evo.pop.setBreeding(parents.map((p) => p.id), true);
+      const born = await evo.breed(parents, 4, mode, (e) => {
+        if (e.kind === 'child' && e.member) onChild(toVisual(e.member));
+      }, 'manual', amount);
+      return born.map(toVisual);
+    },
+    breeding: () => evo.breeding > 0,
+    playDemoSong: async () => {
+      await bundledSongs;
+      const t = playlist.currentTrack ?? playlist.all[0];
+      if (t) void playTrack(t);
+      else fileInput.click();
+    },
+    addSongs: () => fileInput.click(),
+    startMic: () => void liveMode.start('default'),
+    stopMic: () => liveMode.stop(),
+    micActive: () => liveMode.active,
+    started: () => userStarted || liveMode.active,
+    song: () => {
+      if (liveMode.active) return { title: 'Microphone', time: 0, duration: 0, playing: true };
+      const t = playlist.currentTrack;
+      if (!t || !userStarted) return null;
+      return { title: t.title, time: songLoaded && player ? player.currentTime : 0, duration: songLoaded && player ? player.duration : 0, playing: !!player?.playing };
+    },
+    togglePlay: () => togglePlay(),
+    onModeChange: (on) => {
+      if (on) {
+        dock.close();
+        popovers.close();
+        if (palette.isOpen) palette.close();
+      }
+      viewer?.sync();
+      relayout();
+    },
+  }, newVisitor);
+
   viewer = new Viewer({
     current: () => {
       const m = current();
@@ -1011,8 +1093,9 @@ async function main(): Promise<void> {
       }
       relayout();
     },
+    suppressed: () => !!demo?.active,
   });
-  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen || !!viewer?.isOpen);
+  new AutoHide(appRoot, () => transport.busy || popovers.isOpen() || palette.isOpen || !!viewer?.isOpen || !!demo?.isOpen);
 }
 
 /** Blocking card instead of the app (no WebGL2, or startup failed). */

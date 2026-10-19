@@ -182,8 +182,10 @@ export class Evolution {
    * Breed `n` screened children. cross: from two parents; mutate: from one.
    * Manual selections can use any current member; automatic breeding stays in the pen.
    * Candidates failing screening are retried (up to 6 attempts per child).
+   * amount (0..1, demo mode's "how different") scales mutation; 0.5 matches the default.
    */
-  async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void, source: 'manual' | 'automatic' = 'manual'): Promise<Member[]> {
+  async breed(parents: Member[], n: number, mode: BreedMode, onEvent?: (e: BreedEvent) => void, source: 'manual' | 'automatic' = 'manual', amount = 0.5): Promise<Member[]> {
+    const a = Math.max(0, Math.min(1, amount));
     const out: Member[] = [];
     let tried = 0, childTries = 0;
     type ScreenedChild = {genome: Genome; tag?: CrossTag; screen: ScreenResult; fp: number[] | null};
@@ -212,15 +214,15 @@ export class Evolution {
           const res = crossoverTagged(parents[0].genome, parents[1].genome, this.rng, (fitness(parents[0]) - fitness(parents[1])) * 3);
           g = res.genome;
           tag = res.tag;
-          if (this.rng() < 0.35) {
+          if (this.rng() < 0.05 + 0.6 * a) {
             const n = g.bodies.length;
-            g = mutate(g, this.rng, 0.4, undefined, true);
+            g = mutate(g, this.rng, 0.15 + 0.5 * a, undefined, true);
             if (g.bodies.length > n) tag = 'layered';
             else if (tag === 'merged' && !g.bodies.some((b) => b.fuse)) tag = 'fused';
           }
         } else {
           const n = parents[0].genome.bodies.length;
-          g = mutate(parents[0].genome, this.rng, 1 + Math.min(2, tried * 0.12));
+          g = mutate(parents[0].genome, this.rng, 0.4 + 1.2 * a + Math.min(2, tried * 0.12));
           if (g.bodies.length > n) tag = 'layered';
         }
         if (filterSimilarity && (parents.some((p) => sameGenome(p.genome, g)) || this.pop.hasDuplicate(g) || out.some((c) => sameGenome(c.genome, g)))) continue;

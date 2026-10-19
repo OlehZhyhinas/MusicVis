@@ -32,6 +32,8 @@ export interface ViewerHost {
   toggleFullscreen(): void;
   /** The viewer turned on or off: close the desktop panels and relayout. */
   onModeChange(on: boolean): void;
+  /** Another simplified mode (demo) is showing, so the viewer stays off. */
+  suppressed?(): boolean;
 }
 
 const VIEWER_MAX_W = 700;
@@ -92,8 +94,9 @@ export class Viewer {
     this.sync();
   }
 
-  private sync(): void {
-    const on = !this.advanced && viewerEligible();
+  /** Re-checks whether the viewer should show (after the demo turns on or off). */
+  sync(): void {
+    const on = !this.advanced && viewerEligible() && !this.host.suppressed?.();
     if (on === this.on) return;
     this.on = on;
     if (on && !this.built) this.build();

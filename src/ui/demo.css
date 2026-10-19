@@ -1,0 +1,1308 @@
+/* Demo mode (the simplified first-run UI): every rule here is scoped to #app.demo,
+   so the desktop layout is untouched. The desktop chrome is hidden; demo.ts adds its own. */
+
+#app.demo {
+  --dm-gutter: 20px;
+  --dm-sb: env(safe-area-inset-bottom, 0px);
+  --dm-st: env(safe-area-inset-top, 0px);
+  --dm-sl: env(safe-area-inset-left, 0px);
+  --dm-sr: env(safe-area-inset-right, 0px);
+}
+
+/* desktop chrome that demo mode replaces (the drop overlay and toasts stay) */
+#app.demo #hud,
+#app.demo #wordmark,
+#app.demo #preset-label,
+#app.demo #dock,
+#app.demo #empty-tools,
+#app.demo #first-run,
+#app.demo #bottom,
+#app.demo #more-menu,
+#app.demo #vol-pop,
+#app.demo #live-picker,
+#app.demo #overlay,
+#app.demo #faint-id,
+#app.demo #progress-line,
+#app.demo .vw-start,
+#app.demo .vw-bar,
+#app.demo .vw-menu,
+#app.demo .vw-sheet,
+#app.demo .vw-scrim {
+  display: none !important;
+}
+
+#app.demo .ell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+#app.demo .dm-welcome[hidden],
+#app.demo .dm-top[hidden],
+#app.demo .dm-bottom[hidden],
+#app.demo .dm-info[hidden],
+#app.demo .dm-coach[hidden],
+#app.demo .dm-scrim[hidden],
+#app.demo .dm-sheet[hidden],
+#app.demo .dm-note[hidden],
+#app.demo .dm-mutcur[hidden] {
+  display: none;
+}
+#app.demo .dm-sheet button,
+#app.demo .dm-bottom button,
+#app.demo .dm-welcome button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------------------------------------------------------- wordmark */
+#app.demo .dm-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--tx);
+}
+#app.demo .dm-mark .ic {
+  color: var(--acc);
+}
+#app.demo .dm-pill-demo {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--acc-tint);
+  color: var(--acc);
+  font: 600 11px/1 var(--f);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- welcome */
+#app.demo .dm-welcome {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: calc(24px + var(--dm-st)) calc(16px + var(--dm-sr)) calc(24px + var(--dm-sb)) calc(16px + var(--dm-sl));
+  background: radial-gradient(120% 80% at 50% 30%, var(--acc-tint), transparent 60%), rgba(5, 5, 10, 0.5);
+}
+#app.demo .dm-wcard {
+  width: min(100%, 640px);
+  padding: 32px;
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+#app.demo .dm-wcard h1 {
+  margin: 4px 0 0;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+#app.demo .dm-wbody {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--tx2);
+}
+#app.demo .dm-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+#app.demo .dm-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: var(--r-panel);
+  background: var(--raise);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--tx2);
+}
+#app.demo .dm-step b {
+  color: var(--tx);
+  font-size: 15px;
+}
+#app.demo .dm-step-ic {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--acc);
+  background: var(--acc-tint);
+}
+#app.demo .dm-wbtns {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+#app.demo .dm-xl {
+  flex: 1;
+  height: 52px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  gap: 10px;
+}
+#app.demo .dm-wfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--tx3);
+}
+#app.demo .dm-wfoot .btn {
+  color: var(--tx2);
+}
+
+/* ---------------------------------------------------------------- watch layer */
+#app.demo .dm-top {
+  position: absolute;
+  z-index: 30;
+  top: calc(16px + var(--dm-st));
+  left: calc(var(--dm-gutter) + var(--dm-sl));
+  right: calc(var(--dm-gutter) + var(--dm-sr));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+#app.demo .dm-top > * {
+  pointer-events: auto;
+}
+#app.demo .dm-top .btn {
+  color: var(--tx2);
+}
+
+#app.demo .dm-bottom {
+  position: absolute;
+  z-index: 30;
+  left: calc(var(--dm-gutter) + var(--dm-sl));
+  right: calc(var(--dm-gutter) + var(--dm-sr));
+  bottom: calc(var(--dm-gutter) + var(--dm-sb));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  pointer-events: none;
+}
+#app.demo .dm-bottom > * {
+  pointer-events: auto;
+}
+#app.demo.ui-hidden .dm-bar,
+#app.demo.ui-hidden .dm-prow {
+  transform: translateY(12px);
+}
+
+#app.demo .dm-info {
+  max-width: min(100%, 640px);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+#app.demo .dm-iname {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+#app.demo .dm-name {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#app.demo .dm-gen {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--r-tag);
+  background: var(--raise);
+  border: 1px solid var(--line-2);
+  font: 600 12px/1.2 var(--mono);
+  color: var(--tx2);
+  text-shadow: none;
+}
+#app.demo .dm-line {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--tx2);
+}
+
+#app.demo .dm-bar {
+  align-self: center;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 24px;
+}
+#app.demo .dm-div {
+  width: 1px;
+  height: 36px;
+  flex: none;
+  background: var(--line-2);
+}
+#app.demo .dm-song {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 220px;
+}
+#app.demo .dm-round {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: var(--tx);
+  color: var(--bg);
+}
+#app.demo .dm-round:hover {
+  transform: scale(1.04);
+}
+#app.demo .dm-round:disabled {
+  opacity: 0.4;
+  transform: none;
+  cursor: default;
+}
+#app.demo .dm-round.sm {
+  width: 36px;
+  height: 36px;
+}
+#app.demo .dm-stext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+#app.demo .dm-stitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+#app.demo .dm-stime {
+  font-size: 12px;
+  color: var(--tx3);
+}
+#app.demo .dm-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+#app.demo .dm-tlabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tx3);
+}
+#app.demo .dm-tthumbs {
+  display: flex;
+  gap: 6px;
+}
+#app.demo .dm-tthumb {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+}
+#app.demo .dm-tthumb:hover {
+  border-color: var(--acc);
+}
+#app.demo .dm-tthumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#app.demo .dm-tnone {
+  font-size: 13px;
+  color: var(--tx3);
+}
+#app.demo .dm-act {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+#app.demo .dm-act .btn.lg {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+#app.demo .dm-keep {
+  color: var(--neg);
+  background: color-mix(in srgb, var(--neg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--neg) 24%, transparent);
+}
+#app.demo .dm-keep:hover {
+  background: color-mix(in srgb, var(--neg) 22%, transparent);
+}
+#app.demo .dm-keep.on {
+  color: var(--neg);
+  background: color-mix(in srgb, var(--neg) 24%, transparent);
+}
+#app.demo .dm-keep:disabled,
+#app.demo .dm-skip:disabled {
+  opacity: 0.45;
+}
+
+/* the one-time coach mark above Breed */
+#app.demo .dm-coach {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 16px);
+  width: 260px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 10px 12px 14px;
+  border-radius: 14px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  box-shadow: var(--sh);
+  animation: dm-rise 0.35s ease;
+}
+#app.demo .dm-coach::after {
+  content: '';
+  position: absolute;
+  right: 40px;
+  top: 100%;
+  border: 8px solid transparent;
+  border-top-color: var(--acc);
+}
+#app.demo .dm-coach div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+#app.demo .dm-coach b {
+  font-size: 14px;
+}
+#app.demo .dm-coach-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--acc-ink);
+}
+#app.demo .dm-coach-x:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+@keyframes dm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* phone row (song + keepers pill): hidden on desktop */
+#app.demo .dm-prow {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- sheet */
+#app.demo .dm-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(3, 3, 8, 0.6);
+}
+#app.demo .dm-scrim.light {
+  background: linear-gradient(to top, rgba(3, 3, 8, 0.45), transparent 60%);
+}
+#app.demo .dm-sheet {
+  position: absolute;
+  z-index: 51;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1040px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  overflow: hidden;
+}
+#app.demo .dm-sheet.v-children {
+  top: auto;
+  bottom: calc(var(--dm-gutter) + var(--dm-sb));
+  transform: translateX(-50%);
+  max-height: calc(100% - 96px);
+}
+#app.demo .dm-sh {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+#app.demo .dm-sht {
+  flex: 1;
+  min-width: 0;
+}
+#app.demo .dm-sh h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#app.demo .dm-sub {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--tx2);
+}
+#app.demo .dm-sub:empty {
+  display: none;
+}
+#app.demo .dm-sb {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 24px;
+}
+#app.demo .dm-sf {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 16px 24px;
+  border-top: 1px solid var(--line);
+}
+#app.demo .dm-sf .btn.lg {
+  height: 44px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+#app.demo .dm-grow {
+  flex: 1;
+}
+#app.demo .dm-none {
+  grid-column: 1 / -1;
+  margin: 32px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--tx2);
+}
+#app.demo .dm-none .ic {
+  color: var(--tx3);
+}
+
+/* segmented control */
+#app.demo .dm-seg {
+  display: flex;
+  flex: none;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+}
+#app.demo .dm-seg button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tx2);
+  font: 500 13px/1 var(--f);
+}
+#app.demo .dm-seg button[aria-pressed='true'] {
+  background: var(--sel);
+  color: var(--tx);
+}
+
+/* cards (picker, slots, children, family) */
+#app.demo .dm-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tx);
+  text-align: left;
+  font: 600 14px/1.3 var(--f);
+}
+#app.demo .dm-cthumb {
+  position: relative;
+  display: block;
+  margin-bottom: 5px;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  background: var(--raise);
+  outline: 2px solid transparent;
+  outline-offset: 0;
+  transition: outline-color 0.15s ease;
+}
+#app.demo .dm-cthumb img,
+#app.demo .dm-slot-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#app.demo .dm-card:hover .dm-cthumb {
+  outline-color: var(--line-2);
+}
+#app.demo .dm-meta {
+  font: 400 12px/1.3 var(--f);
+  color: var(--tx3);
+}
+#app.demo .dm-meta .mono {
+  font-size: 11px;
+}
+
+/* parent slots */
+#app.demo .dm-slots {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+#app.demo .dm-slots.one {
+  grid-template-columns: minmax(0, 460px);
+  justify-content: center;
+}
+#app.demo .dm-slot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--tx);
+  text-align: left;
+}
+#app.demo .dm-slot.empty {
+  justify-content: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--tx3);
+}
+#app.demo .dm-slot.active {
+  border: 2px solid var(--acc);
+  border-style: solid;
+  padding: 11px;
+  box-shadow: 0 0 0 4px var(--acc-tint);
+}
+#app.demo .dm-slot.empty.active {
+  border-style: dashed;
+  color: var(--acc);
+}
+#app.demo .dm-slot-ph {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 14px/1.2 var(--f);
+}
+#app.demo .dm-slot-img {
+  flex: none;
+  width: 140px;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--sel);
+}
+#app.demo .dm-slot-t {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 16px;
+}
+#app.demo .dm-slot-k {
+  font: 600 11px/1 var(--f);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--acc);
+}
+#app.demo .dm-plus {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+#app.demo .dm-plus .ic {
+  stroke-width: 2.5;
+}
+
+/* picker */
+#app.demo .dm-ph {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+#app.demo .dm-ph h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+#app.demo .dm-hint {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--tx3);
+}
+#app.demo .dm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#app.demo .dm-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--tx2);
+  font: 500 13px/1 var(--f);
+}
+#app.demo .dm-chip span {
+  font: 500 11px/1 var(--mono);
+  color: var(--tx3);
+}
+#app.demo .dm-chip[aria-pressed='true'] {
+  background: var(--acc-tint);
+  border-color: transparent;
+  color: var(--acc);
+}
+#app.demo .dm-chip[aria-pressed='true'] span {
+  color: var(--acc);
+}
+#app.demo .dm-pgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px 14px;
+}
+#app.demo .dm-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px 3px 4px;
+  border-radius: 999px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 11px/1 var(--f);
+}
+#app.demo .dm-badge .ic {
+  stroke-width: 3;
+}
+#app.demo .dm-card.sel .dm-cthumb {
+  outline-color: var(--acc);
+}
+#app.demo .dm-card.sel .dm-badge {
+  display: flex;
+}
+
+/* amount slider + footer */
+#app.demo .dm-amt {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#app.demo .dm-amt label {
+  font-size: 13px;
+  font-weight: 600;
+}
+#app.demo .dm-amount {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--acc);
+}
+#app.demo .dm-amt-l {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--tx3);
+}
+#app.demo .v-breed .dm-sf {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* children */
+#app.demo .dm-back {
+  flex: none;
+}
+#app.demo .dm-count {
+  flex: none;
+  font-size: 13px;
+  color: var(--acc);
+}
+#app.demo .dm-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  color: var(--tx);
+  font-weight: 600;
+}
+#app.demo .dm-who img {
+  width: 28px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--raise);
+}
+#app.demo .dm-kgrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+#app.demo .dm-kcell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+#app.demo .dm-kcell.playing .dm-cthumb {
+  outline-color: var(--acc);
+}
+#app.demo .dm-playing {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 11px/1 var(--f);
+}
+#app.demo .dm-krow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#app.demo .dm-tag {
+  padding: 3px 8px;
+  border-radius: var(--r-tag);
+  font: 600 11px/1.2 var(--f);
+  color: var(--tc);
+  background: color-mix(in srgb, var(--tc) 16%, transparent);
+}
+#app.demo .dm-kbtn {
+  color: var(--neg);
+  background: color-mix(in srgb, var(--neg) 14%, transparent);
+  border-color: transparent;
+}
+#app.demo .dm-kbtn.on,
+#app.demo .dm-kbtn.on:disabled {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+#app.demo .dm-kcell.wait {
+  pointer-events: none;
+}
+#app.demo .dm-shimmer {
+  display: block;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--raise) 30%, var(--sel) 50%, var(--raise) 70%) 0 0 / 300% 100%;
+  animation: dm-shimmer 1.4s linear infinite;
+}
+#app.demo .dm-shimmer.line {
+  aspect-ratio: auto;
+  height: 12px;
+  width: 70%;
+  border-radius: 6px;
+}
+#app.demo .dm-shimmer.short {
+  width: 40%;
+}
+@keyframes dm-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+#app.demo .dm-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--warn);
+}
+#app.demo .dm-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--raise);
+  font-size: 13px;
+  color: var(--tx2);
+}
+#app.demo .dm-tip .ic {
+  color: var(--acc);
+}
+#app.demo .dm-mutcur {
+  max-width: 260px;
+}
+#app.demo .dm-kept-n {
+  font-size: 13px;
+  color: var(--tx2);
+}
+
+/* family tree */
+#app.demo .dm-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--tx2);
+}
+#app.demo .dm-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#app.demo .dm-legend span::before {
+  content: '';
+  width: 20px;
+  border-top: 2px solid var(--acc);
+}
+#app.demo .dm-legend .mut::before {
+  border-top: 2px dashed var(--warn);
+}
+#app.demo .dm-fscroll {
+  overflow: auto;
+}
+#app.demo .dm-tree {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 72px;
+  width: max-content;
+  min-width: 100%;
+}
+#app.demo .dm-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+#app.demo .dm-edges path {
+  fill: none;
+  stroke: var(--acc);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+#app.demo .dm-edges path.mut {
+  stroke: var(--warn);
+  stroke-dasharray: 5 4;
+}
+#app.demo .dm-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 180px;
+  flex: none;
+}
+#app.demo .dm-col h4 {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tx3);
+}
+#app.demo .dm-fcard {
+  position: relative;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+}
+#app.demo .dm-fcard.sel {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-tint);
+}
+#app.demo .dm-fcard.playing .dm-cthumb {
+  outline-color: var(--acc);
+}
+#app.demo .dm-heart {
+  color: var(--neg);
+  vertical-align: -1px;
+}
+#app.demo .dm-heart .ic {
+  display: inline-block;
+}
+#app.demo .dm-fsel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  background: rgba(5, 5, 10, 0.45);
+  color: transparent;
+}
+#app.demo .dm-fsel[aria-pressed='true'] {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+#app.demo .dm-fsel .ic {
+  stroke-width: 3;
+}
+
+/* toasts clear the top bar */
+#app.demo .toasts {
+  top: calc(64px + var(--dm-st));
+  right: calc(16px + var(--dm-sr));
+}
+#app.demo .lyr-cap {
+  bottom: calc(190px + var(--dm-sb));
+}
+#app.demo.ui-hidden .lyr-cap {
+  bottom: calc(40px + var(--dm-sb));
+}
+
+/* ---------------------------------------------------------------- mid widths */
+@media (max-width: 1020px) {
+  #app.demo .dm-song {
+    width: 160px;
+  }
+  #app.demo .dm-tlabel {
+    display: none;
+  }
+  #app.demo .dm-kgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 860px) {
+  #app.demo .dm-tthumbs {
+    display: none;
+  }
+  #app.demo .dm-sh {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------------------------------------------------------------- phone */
+@media (max-width: 699px) {
+  #app.demo {
+    --dm-gutter: 12px;
+  }
+  #app.demo .dm-wcard {
+    padding: 22px 18px;
+    border-radius: 24px;
+    gap: 14px;
+  }
+  #app.demo .dm-wcard h1 {
+    font-size: 30px;
+  }
+  #app.demo .dm-wbody {
+    font-size: 15px;
+  }
+  #app.demo .dm-steps {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  #app.demo .dm-step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 12px;
+    padding: 10px 12px;
+  }
+  #app.demo .dm-step-ic {
+    grid-row: span 2;
+    margin: 0;
+  }
+  #app.demo .dm-wbtns {
+    flex-direction: column;
+  }
+  #app.demo .dm-wfoot {
+    justify-content: center;
+    text-align: center;
+  }
+
+  #app.demo .dm-bottom {
+    align-items: stretch;
+    gap: 10px;
+  }
+  #app.demo .dm-name {
+    font-size: 22px;
+  }
+  #app.demo .dm-line {
+    font-size: 13px;
+  }
+  #app.demo .dm-song,
+  #app.demo .dm-tray,
+  #app.demo .dm-div {
+    display: none;
+  }
+  #app.demo .dm-prow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  #app.demo .dm-ptitle {
+    flex: 1;
+    font-size: 13px;
+    color: var(--tx2);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+  }
+  #app.demo .dm-kpill {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 6px 0 12px;
+    border-radius: 18px;
+    border: 1px solid var(--line-2);
+    background: var(--panel-strong);
+    backdrop-filter: blur(var(--blur-2));
+    -webkit-backdrop-filter: blur(var(--blur-2));
+    color: var(--tx);
+    font: 600 13px/1 var(--f);
+  }
+  #app.demo .dm-kthumbs {
+    display: flex;
+  }
+  #app.demo .dm-kthumbs img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--panel-strong);
+    background: var(--raise);
+    margin-left: -8px;
+  }
+  #app.demo .dm-kthumbs img:first-child {
+    margin-left: 0;
+  }
+  #app.demo .dm-bar {
+    align-self: stretch;
+    padding: 8px;
+    gap: 8px;
+    border-radius: 22px;
+  }
+  #app.demo .dm-act {
+    flex: 1;
+    gap: 8px;
+  }
+  #app.demo .dm-act .dm-skip,
+  #app.demo .dm-act .dm-keep {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+  }
+  #app.demo .dm-act .dm-skip span,
+  #app.demo .dm-act .dm-keep span {
+    display: none;
+  }
+  #app.demo .dm-act .dm-breed {
+    flex: 1;
+    height: 48px;
+    border-radius: 24px;
+    font-size: 16px;
+  }
+  #app.demo .dm-coach {
+    width: min(280px, calc(100vw - 40px));
+  }
+
+  /* sheets become bottom sheets */
+  #app.demo .dm-sheet,
+  #app.demo .dm-sheet.v-children {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-height: 92vh;
+    max-height: 92dvh;
+    transform: none;
+    border-radius: 24px 24px 0 0;
+    border-bottom: 0;
+  }
+  #app.demo .dm-sh {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px calc(10px + var(--dm-sr)) 12px calc(16px + var(--dm-sl));
+  }
+  #app.demo .dm-sht {
+    flex: 1 1 60%;
+  }
+  #app.demo .dm-sh h2 {
+    font-size: 20px;
+  }
+  #app.demo .dm-sub {
+    font-size: 13px;
+  }
+  #app.demo .dm-sclose {
+    order: -1;
+    margin-left: auto;
+  }
+  #app.demo .dm-sht {
+    order: -2;
+  }
+  #app.demo .dm-count {
+    order: -1;
+  }
+  #app.demo .dm-back {
+    order: -3;
+  }
+  #app.demo .dm-seg {
+    width: 100%;
+  }
+  #app.demo .dm-seg button {
+    flex: 1;
+    justify-content: center;
+  }
+  #app.demo .dm-legend {
+    flex: 1;
+  }
+  #app.demo .dm-sb {
+    padding: 14px calc(16px + var(--dm-sr)) 16px calc(16px + var(--dm-sl));
+  }
+  #app.demo .dm-sf {
+    flex-wrap: wrap;
+    padding: 12px calc(16px + var(--dm-sr)) calc(12px + var(--dm-sb)) calc(16px + var(--dm-sl));
+  }
+  #app.demo .v-breed .dm-sf {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  #app.demo .dm-amt {
+    max-width: none;
+  }
+  #app.demo .dm-sf .btn.lg {
+    flex: 1;
+  }
+  #app.demo .v-children .dm-grow {
+    display: none;
+  }
+  #app.demo .v-children .dm-kept-n {
+    flex-basis: 100%;
+    order: -1;
+  }
+  #app.demo .dm-mutcur {
+    max-width: none;
+  }
+  #app.demo .dm-slots {
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  #app.demo .dm-slot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 96px;
+    padding: 8px;
+  }
+  #app.demo .dm-slot.active {
+    padding: 7px;
+  }
+  #app.demo .dm-slot.empty {
+    align-items: center;
+  }
+  #app.demo .dm-slot-ph {
+    flex-direction: column;
+    text-align: center;
+    font-size: 13px;
+  }
+  #app.demo .dm-slot-img {
+    width: 100%;
+  }
+  #app.demo .dm-slot-t {
+    font-size: 14px;
+  }
+  #app.demo .dm-plus {
+    width: 28px;
+    height: 28px;
+  }
+  #app.demo .dm-pgrid {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 12px 10px;
+  }
+  #app.demo .dm-kgrid {
+    gap: 12px;
+  }
+  #app.demo .dm-tree {
+    gap: 40px;
+  }
+  #app.demo .dm-col {
+    width: 140px;
+  }
+  #app.demo .toasts {
+    left: calc(12px + var(--dm-sl));
+    right: calc(12px + var(--dm-sr));
+    align-items: center;
+  }
+  #app.demo .toast {
+    width: min(100%, 420px);
+  }
+  #app.demo .lyr-cap {
+    bottom: calc(200px + var(--dm-sb));
+  }
+}
