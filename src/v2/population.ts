@@ -411,7 +411,7 @@ export class Population {
       }
       p.members.set(m.id, m);
     }
-    if (!p.members.size && SEEDS.some((s) => !p.deletedSeeds.has(`G0-${s.origin}`))) throw new Error('The file has no valid presets.');
+    if (!p.members.size && SEEDS.some((s) => !p.deletedSeeds.has(`G0-${s.origin}`))) throw new Error('The file has no valid visuals.');
     let maxN = 0;
     for (const id of p.members.keys()) {
       const mm = /^G\d+-(\d{4,})$/.exec(id);

@@ -275,7 +275,7 @@ export interface ParamControl {
 /** Readable names for the terse parameter keys (the key itself is the fallback). */
 const LABELS: Record<string, string> = {
   r: 'radius', n: 'count', w: 'strength', len: 'length', atk: 'attack', rel: 'release', thr: 'threshold', sens: 'sensitivity',
-  div: 'clock', lock: 'grid lock', vx: 'velocity x', vy: 'velocity y', cx: 'centre x', cy: 'centre y', amt: 'amount',
+  div: 'clock', lock: 'grid lock', vx: 'velocity x', vy: 'velocity y', cx: 'center x', cy: 'center y', amt: 'amount',
   amp: 'amplitude', freq: 'frequency', k: 'blend', t: 'mix', q: 'quantise', s: 'scale', halfLife: 'half-life', fnoise: 'flow noise',
   fscale: 'flow scale', famt: 'flow amount', grain: 'grain size', vort: 'vorticity', ca: 'aberration', sat: 'saturation', reflectY: 'reflect y',
   s1: 'slot 2', s2: 'slot 3', ra: 'ratio a', rb: 'ratio b', melHue: 'melody hue', xs: 'roam', inst: 'instruments',
@@ -377,7 +377,7 @@ export interface SectionModel {
 
 export const LOCUS_TITLE: Record<Locus, string> = {
   shape: 'Shape', place: 'Placement', motion: 'Motion', deform: 'Deformation', material: 'Material', emit: 'Emission',
-  feel: 'Feel', color: 'Colour mapping',
+  feel: 'Feel', color: 'Color mapping',
 };
 
 /** Shapes a fused shape may be (distance-field shapes). */
@@ -575,7 +575,7 @@ export function switchKind(gIn: Genome, t: Target, kind: string): EditResult {
       const old = b[t.locus] as Gene;
       if (old.kind === kind) return { genome: gIn, ok: true };
       if (t.locus === 'shape' && UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x, j) => j !== t.b && (x.shape.kind === kind || x.fuse?.shape.kind === kind))) {
-        return fail(gIn, `only one ${kind} per preset`);
+        return fail(gIn, `only one ${kind} per visual`);
       }
       const p = carryParams(old.p, locusSchema(t.locus, old.kind), locusSchema(t.locus, kind));
       const gene: Gene = t.locus === 'shape' ? repairShape({ kind, p }) : { kind, p };
@@ -591,7 +591,7 @@ export function switchKind(gIn: Genome, t: Target, kind: string): EditResult {
       const b = g.bodies[t.b];
       if (!b?.fuse) return fail(gIn, 'no fused shape');
       if (b.fuse.shape.kind === kind) return { genome: gIn, ok: true };
-      if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x) => x.shape.kind === kind || (x !== b && x.fuse?.shape.kind === kind))) return fail(gIn, `only one ${kind} per preset`);
+      if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x) => x.shape.kind === kind || (x !== b && x.fuse?.shape.kind === kind))) return fail(gIn, `only one ${kind} per visual`);
       b.fuse.shape = repairShape({ kind, p: carryParams(b.fuse.shape.p, SHAPE_SCHEMAS[b.fuse.shape.kind], SHAPE_SCHEMAS[kind as ShapeKind] ?? {}) });
       if (!sdfCapable(b.fuse.shape)) return fail(gIn, `${kind} has no distance field to fuse`);
       return finish(gIn, g, (out) => (out.bodies[t.b].fuse?.shape.kind === kind ? null : `${kind} cannot fuse into this shape`));
@@ -843,7 +843,7 @@ export function expressAllele(gIn: Genome, b: number, locus: Locus): EditResult 
   const body = g.bodies[b];
   const shown = body[locus] as Gene;
   if (locus === 'shape' && UNIQUE_SHAPES.includes(silent.kind as ShapeKind) && g.bodies.some((x, j) => j !== b && (x.shape.kind === silent.kind || x.fuse?.shape.kind === silent.kind))) {
-    return fail(gIn, `only one ${silent.kind} per preset`);
+    return fail(gIn, `only one ${silent.kind} per visual`);
   }
   (body as unknown as Record<string, Gene>)[locus] = locus === 'shape' ? repairShape(silent) : silent;
   if (shown.kind === 'flame') delete body.alt![locus];
@@ -896,10 +896,10 @@ export interface NewBody {
 
 /** Adds a body of default genes (the kinds given, sensible defaults for the rest), up to MAX_BODIES. */
 export function addBody(gIn: Genome, spec: NewBody): EditResult {
-  if (gIn.bodies.length >= MAX_BODIES) return fail(gIn, `a preset has at most ${MAX_BODIES} bodies`);
+  if (gIn.bodies.length >= MAX_BODIES) return fail(gIn, `a visual has at most ${MAX_BODIES} bodies`);
   if (!SHAPE_KINDS.includes(spec.shape)) return fail(gIn, `unknown shape "${spec.shape}"`);
   if (UNIQUE_SHAPES.includes(spec.shape) && gIn.bodies.some((x) => x.shape.kind === spec.shape || x.fuse?.shape.kind === spec.shape)) {
-    return fail(gIn, `only one ${spec.shape} per preset`);
+    return fail(gIn, `only one ${spec.shape} per visual`);
   }
   const pick = (locus: Locus, kind: string | undefined, def: string): Gene => {
     const k = kind && LOCUS_KINDS[locus].includes(kind) ? kind : def;
@@ -928,7 +928,7 @@ export function addBody(gIn: Genome, spec: NewBody): EditResult {
 /** Removes a body (a preset keeps at least one); reactions on it go, later bodies' reactions follow their body. */
 export function removeBody(gIn: Genome, b: number): EditResult {
   if (!gIn.bodies[b]) return fail(gIn, 'no such body');
-  if (gIn.bodies.length <= 1) return fail(gIn, 'a preset needs at least one body');
+  if (gIn.bodies.length <= 1) return fail(gIn, 'a visual needs at least one body');
   const g = cloneGenome(gIn);
   g.bodies.splice(b, 1);
   const bodyGroups = new Set<GeneGroup>([...Object.values(BODY_GROUPS), 'fu', 'fs']);
@@ -961,7 +961,7 @@ export function addFuse(gIn: Genome, b: number, shape: ShapeKind, mode = 0): Edi
   const body = gIn.bodies[b];
   if (!body) return fail(gIn, 'no such body');
   if (!FUSE_SHAPE_KINDS.includes(shape)) return fail(gIn, `${shape} has no distance field to fuse`);
-  if (UNIQUE_SHAPES.includes(shape) && gIn.bodies.some((x) => x.shape.kind === shape || x.fuse?.shape.kind === shape)) return fail(gIn, `only one ${shape} per preset`);
+  if (UNIQUE_SHAPES.includes(shape) && gIn.bodies.some((x) => x.shape.kind === shape || x.fuse?.shape.kind === shape)) return fail(gIn, `only one ${shape} per visual`);
   const g = cloneGenome(gIn);
   g.bodies[b].fuse = { shape: repairShape({ kind: shape }), p: { ...defaultParams(FUSE_SCHEMA), mode } };
   g.bodies[b] = repairBody(g.bodies[b]);

@@ -35,8 +35,8 @@ type Mode = 'cmd' | 'goto' | 'help';
 
 const SHORTCUTS: [string, [string[], string][]][] = [
   ['Playback', [[['Space'], 'Play / pause'], [['←', '→'], 'Seek -5 s / +5 s'], [['Shift', '←', '→'], 'Previous / next track'], [['S'], 'Shuffle on / off'], [['M'], 'Mute'], [['F'], 'Fullscreen'], [['[', ']'], 'Lyrics 0.25 s earlier / later']]],
-  ['Presets', [[['L'], 'Like'], [['D'], 'Dislike'], [['N'], 'Next preset'], [['G'], 'Go to preset by ID'], [['E'], 'Evolve mode on / off']]],
-  ['Panels', [[['P'], 'Playlist'], [['B'], 'Preset browser'], [['K'], 'Gene editor (opens the HUD too)'], [['H'], 'HUD'], [['/'], 'All commands'], [['?'], 'This help'], [['Esc'], 'Close the top panel']]],
+  ['Visuals', [[['L'], 'Keep'], [['D'], 'Skip'], [['N'], 'Next visual'], [['G'], 'Go to visual by ID'], [['E'], 'Evolve mode on / off']]],
+  ['Panels', [[['P'], 'Playlist'], [['B'], 'Visual browser'], [['K'], 'Gene editor (opens the HUD too)'], [['H'], 'HUD'], [['/'], 'All commands'], [['?'], 'This help'], [['Esc'], 'Close the top panel']]],
 ];
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -108,10 +108,10 @@ export class Palette {
     if (!isHelp) {
       if (mode === 'goto') {
         this.input.value = '';
-        this.input.placeholder = 'Preset ID, e.g. G0-E07 or G3-0012';
+        this.input.placeholder = 'Visual ID, e.g. G0-E07 or G3-0012';
       } else {
         if (!wasCmd) this.input.value = '';
-        this.input.placeholder = 'Type a command, or a preset ID like G3-0142';
+        this.input.placeholder = 'Type a command, or a visual ID like G3-0142';
       }
       this.hl = 0;
       this.renderList();
@@ -192,7 +192,7 @@ export class Palette {
       this.listEl.append(h);
     };
     if (this.mode === 'goto' || looksLikeId(q)) {
-      head('Go to preset');
+      head('Go to visual');
       const hits = q ? this.deps.findPresets(q) : [];
       for (const p of hits) {
         const b = document.createElement('button');
@@ -215,7 +215,7 @@ export class Palette {
         e.setAttribute('role', 'alert');
         e.style.setProperty('--c', 'var(--neg)');
         e.innerHTML = `${icon('alert', 14)}<span class="sp"></span>`;
-        e.querySelector('.sp')!.textContent = `No preset “${q}” in the population.`;
+        e.querySelector('.sp')!.textContent = `No visual “${q}” in the population.`;
         this.listEl.append(e);
       }
       const p = document.createElement('p');

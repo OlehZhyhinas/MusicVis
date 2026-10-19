@@ -162,7 +162,7 @@ export class DuelPage {
       <div class="sim-card duel-card">
         <div class="sim-h">
           <div class="col grow" style="gap:2px"><h2 id="duel-q">Which feels more in sync?</h2>
-          <span class="dim" data-moment>Same song moment, two presets. Your answers train the AV judge.</span></div>
+          <span class="dim" data-moment>Same song moment, two visuals. Your answers train the AV judge.</span></div>
           <button class="ib" data-close aria-label="Close" title="Close (Esc)">${icon('x', 16)}</button>
         </div>
         <div class="sim-pair duel-pair">
@@ -210,11 +210,11 @@ export class DuelPage {
   async open(): Promise<void> {
     const song = this.deps.song();
     if (!song) {
-      this.deps.toast('Load a song first', 'Duels play two presets on the same moment of the song you have loaded.');
+      this.deps.toast('Load a song first', 'Duels play two visuals on the same moment of the song you have loaded.');
       return;
     }
     if (this.visible().length < 2) {
-      this.deps.toast('Not enough presets to compare');
+      this.deps.toast('Not enough visuals to compare');
       return;
     }
     if (this.song?.id !== song.id) {
@@ -301,7 +301,7 @@ export class DuelPage {
     this.phase = 'sync';
     this.pending = {};
     this.q.textContent = 'Which feels more in sync?';
-    (this.root.querySelector('[data-moment]') as HTMLElement).textContent = `Moment: ${this.win.label} at ${this.win.start.toFixed(1)}-${this.win.end.toFixed(1)} s. Same music, two presets.`;
+    (this.root.querySelector('[data-moment]') as HTMLElement).textContent = `Moment: ${this.win.label} at ${this.win.start.toFixed(1)}-${this.win.end.toFixed(1)} s. Same music, two visuals.`;
     this.start();
   }
 
@@ -443,7 +443,7 @@ export class DuelPage {
     const n = this.answers.length;
     const s = this.models.sync, l = this.models.like;
     const lines: string[] = [];
-    if (this.play === 'compile') lines.push('Preparing both presets…');
+    if (this.play === 'compile') lines.push('Preparing both visuals…');
     else if (this.play === 'playing') lines.push('Playing the moment once. Answer any time.');
     lines.push(`${n} duel${n === 1 ? '' : 's'} answered${n < MIN_DUELS_TO_APPLY ? ` (the judge starts guiding breeding from ${MIN_DUELS_TO_APPLY})` : ' (judge active)'}.`);
     if (s && Number.isFinite(s.cv)) lines.push(`Sync judge agrees with you on held-out duels ${pct(s.cv)}; like judge ${pct(l?.cv ?? NaN)}.`);
@@ -452,7 +452,7 @@ export class DuelPage {
       const ranked = [...this.seedVectors].map(([id, v]) => ({ id, s: judgeScore(l, v) })).sort((a, b) => b.s - a.s);
       lines.push(`Judge's top seeds: ${ranked.slice(0, 5).map((x) => x.id).join(', ')}; bottom: ${ranked.slice(-5).map((x) => x.id).join(', ')}.`);
     }
-    if (this.sides) lines.push(`<span class="dim">${this.phase === 'sync' ? 'Step 1 of 2' : 'Step 2 of 2'}. Preset names stay hidden so they cannot bias you.</span>`);
+    if (this.sides) lines.push(`<span class="dim">${this.phase === 'sync' ? 'Step 1 of 2' : 'Step 2 of 2'}. Visual names stay hidden so they cannot bias you.</span>`);
     this.stats.innerHTML = lines.join('<br>');
   }
 }

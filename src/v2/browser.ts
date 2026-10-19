@@ -146,7 +146,7 @@ export class PresetBrowser {
       this.results.hidden = true;
       this.cb.onDelete?.(removed);
       this.render();
-      if (removed.length) this.cb.toast(`Deleted ${removed.length} preset${removed.length === 1 ? '' : 's'}.`, 'ok');
+      if (removed.length) this.cb.toast(`Deleted ${removed.length} visual${removed.length === 1 ? '' : 's'}.`, 'ok');
     });
     this.deleteConfirm.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
@@ -164,7 +164,7 @@ export class PresetBrowser {
       if (f) void this.importFile(f);
     });
     // Reset asks inline (no browser dialog).
-    $('v2b-confirm-q').textContent = `Reset the population, keeping the breeding pen and ${SEEDS.length} seed presets?`;
+    $('v2b-confirm-q').textContent = `Reset the population, keeping the breeding pen and ${SEEDS.length} seed visuals?`;
     this.resetBtn.addEventListener('click', () => this.setConfirm(this.confirmBox.hidden === true));
     $('v2b-reset-no').addEventListener('click', () => this.setConfirm(false));
     $('v2b-reset-yes').addEventListener('click', () => {
@@ -175,7 +175,7 @@ export class PresetBrowser {
         this.results.hidden = true;
         this.cb.onDelete?.(removed);
         this.render();
-        this.cb.toast(`Removed ${removed.length} preset${removed.length === 1 ? '' : 's'}. Breeding pen and seeds kept.`, 'ok');
+        this.cb.toast(`Removed ${removed.length} visual${removed.length === 1 ? '' : 's'}. Breeding pen and seeds kept.`, 'ok');
       });
     });
     this.confirmBox.addEventListener('keydown', (ev) => {
@@ -266,7 +266,7 @@ export class PresetBrowser {
     this.deleteBtn.setAttribute('aria-expanded', String(on));
     if (on) {
       const n = this.deletePending.length;
-      $('v2b-delete-question').textContent = `Delete ${n} selected preset${n === 1 ? '' : 's'}?`;
+      $('v2b-delete-question').textContent = `Delete ${n} selected visual${n === 1 ? '' : 's'}?`;
       ($('v2b-delete-no') as HTMLButtonElement).focus();
     }
   }
@@ -364,8 +364,8 @@ export class PresetBrowser {
     $('v2b-all-count').textContent = String(all.length);
     $('v2b-pen-count').textContent = String(pen.length);
     $('v2b-pen-hint').textContent = active < 2
-      ? `${active} active in breeding pen · add ${2 - active} more for automatic breeding. Manual selection works with any preset.`
-      : `${active} active in breeding pen · automatic breeding uses only these. Manual selection works with any preset.`;
+      ? `${active} active in breeding pen · add ${2 - active} more for automatic breeding. Manual selection works with any visual.`
+      : `${active} active in breeding pen · automatic breeding uses only these. Manual selection works with any visual.`;
     const classics = SEEDS.filter((s) => s.origin.startsWith('M')).length;
     $('v2b-count').textContent = `${ms.length} shown · ${all.length} in population · ${SEEDS.length} seeds${classics ? ` incl. ${classics} MilkDrop classics` : ''}`;
     const keepScroll = this.scroller.scrollTop;
@@ -388,8 +388,8 @@ export class PresetBrowser {
       this.mounted.clear();
       this.list.style.height = '';
       this.list.innerHTML = this.pool === 'breeding' && !pen.length
-        ? '<p class="dim v2b-none">Your breeding pen is empty. Select presets in All, then choose Add to breeding.</p>'
-        : '<p class="dim v2b-none">No presets match these filters.</p>';
+        ? '<p class="dim v2b-none">Your breeding pen is empty. Select visuals in All, then choose Add to breeding.</p>'
+        : '<p class="dim v2b-none">No visuals match these filters.</p>';
     }
     this.updateSelection();
     this.cb.onFilterChange?.();
@@ -493,7 +493,7 @@ export class PresetBrowser {
       </div>
       <div class="sc">
         <b title="Score: Wilson lower bound of liking">${(score * 100).toFixed(0)}%</b>
-        <div class="votes" title="likes / dislikes · views"><span style="color:var(--ok)">${icon('up', 12)}</span>${m.likes}<span style="color:var(--neg)">${icon('down', 12)}</span>${m.dislikes}<span class="dim v2b-views">· ${m.views}v</span></div>${novBadge(this.cb.novelty?.(m))}
+        <div class="votes" title="keeps / skips · views"><span style="color:var(--ok)">${icon('up', 12)}</span>${m.likes}<span style="color:var(--neg)">${icon('down', 12)}</span>${m.dislikes}<span class="dim v2b-views">· ${m.views}v</span></div>${novBadge(this.cb.novelty?.(m))}
       </div>`;
     return r;
   }
@@ -601,7 +601,7 @@ export class PresetBrowser {
     try {
       const n = await this.evo.importJSON(await f.text());
       this.selected.clear();
-      this.cb.toast(`Imported ${n} presets.`, 'ok');
+      this.cb.toast(`Imported ${n} visuals.`, 'ok');
     } catch (err) {
       this.cb.toast('Import failed', 'error', err instanceof Error ? err.message : String(err));
     }
@@ -613,13 +613,13 @@ const TAG_TITLE: Record<NonNullable<Member['cross']>, string> = {
   morph: 'Same shape in both parents: one shape with blended parameters',
   merged: 'Two shapes fused into one through their distance fields',
   layered: 'Rare: a second, separate layer on top',
-  edited: 'Edited by hand in the gene editor and saved as a new preset',
+  edited: 'Edited by hand in the gene editor and saved as a new visual',
 };
 
 function novBadge(n: { nov: number; rel: number } | null | undefined): string {
   if (n === undefined) return '';
   if (!n) return '<span class="nov" title="Novelty: not measured yet (fingerprinting in the background)">nov …</span>';
-  return `<span class="nov${n.rel >= 0.6 ? ' hi' : ''}" title="Novelty: how unlike every look seen so far this preset is (mean distance ${n.nov.toFixed(2)} to its 10 nearest looks in the archive; 50 = typical)">nov ${Math.round(n.rel * 100)}</span>`;
+  return `<span class="nov${n.rel >= 0.6 ? ' hi' : ''}" title="Novelty: how unlike every look seen so far this visual is (mean distance ${n.nov.toFixed(2)} to its 10 nearest looks in the archive; 50 = typical)">nov ${Math.round(n.rel * 100)}</span>`;
 }
 
 function esc(s: string): string {

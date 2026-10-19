@@ -90,9 +90,9 @@ export class GeneEditor {
   constructor(private root: HTMLElement, private deps: GeneEditorDeps) {
     root.textContent = '';
     this.who = h('span', { class: 'mono vg-who ell' });
-    this.revertBtn = h('button', { class: 'btn sm ghost', title: 'Back to the preset as saved' });
+    this.revertBtn = h('button', { class: 'btn sm ghost', title: 'Back to the visual as saved' });
     this.revertBtn.innerHTML = `${icon('undo', 14)}<span class="lbl">Revert</span>`;
-    this.saveBtn = h('button', { class: 'btn sm primary', title: 'Add the edited genome to the population as a child of this preset' });
+    this.saveBtn = h('button', { class: 'btn sm primary', title: 'Add the edited genome to the population as a child of this visual' });
     this.saveBtn.innerHTML = `${icon('save', 14)}<span>Save as new</span>`;
     root.append(h('div', { class: 'sec-h' }, h('div', { class: 'col grow', style: 'gap:1px' }, h('h2', { text: 'Genes' }), this.who), this.revertBtn, this.saveBtn));
 
@@ -440,7 +440,7 @@ export class GeneEditor {
     this.render();
     this.push(false, 'revert');
     this.afterChange();
-    this.say('Reverted to the saved preset.');
+    this.say('Reverted to the saved visual.');
   }
 
   private async save(): Promise<void> {
@@ -450,7 +450,7 @@ export class GeneEditor {
     this.saveBtn.disabled = true;
     const g = E.repairKeeping(this.scratch);
     const adjusted = JSON.stringify(g) !== JSON.stringify(this.scratch);
-    this.say('Checking the edited preset…');
+    this.say('Checking the edited visual…');
     let warn = '';
     let descriptor: number[] | undefined;
     try {
@@ -466,7 +466,7 @@ export class GeneEditor {
     }
     this.saving = false;
     if (this.member !== parent) {
-      this.say('The preset changed while saving; nothing was saved.', 'warn');
+      this.say('The visual changed while saving; nothing was saved.', 'warn');
       this.afterChange();
       return;
     }
@@ -559,7 +559,7 @@ export class GeneEditor {
     this.availability = [];
     this.meters = [];
     if (!g) return;
-    this.body.append(h('p', { class: 'dim vg-hint', text: 'Grey controls are inactive with the current combination. Hover or focus ? to see what enables them.' }));
+    this.body.append(h('p', { class: 'dim vg-hint', text: 'Gray controls are inactive with the current combination. Hover or focus ? to see what enables them.' }));
     let group = -2;
     const groups: { id: number; label: string }[] = [];
     for (const sec of E.buildModel(g)) {
@@ -634,12 +634,12 @@ export class GeneEditor {
       const current = this.scratch.bodies[bi].shape.display;
       const members = this.deps.evo.pop.list();
       let selected = members[0]?.id ?? '', sourceBody = '';
-      const bodyPicker = this.select([{value:'',label:'Whole preset'}], '', v => { sourceBody = v; }, 'Surface source element');
+      const bodyPicker = this.select([{value:'',label:'Whole visual'}], '', v => { sourceBody = v; }, 'Surface source element');
       const updateBodies = () => {
-        sourceBody = ''; bodyPicker.replaceChildren(new Option('Whole preset', ''));
+        sourceBody = ''; bodyPicker.replaceChildren(new Option('Whole visual', ''));
         members.find(m => m.id === selected)?.genome.bodies.forEach((b,i) => bodyPicker.add(new Option(`Body ${i+1}: ${b.shape.kind}`, String(i))));
       };
-      const sourcePicker = this.select(members.map(m => ({value:m.id,label:m.name})), selected, v => {selected=v;updateBodies();}, 'Surface source preset');
+      const sourcePicker = this.select(members.map(m => ({value:m.id,label:m.name})), selected, v => {selected=v;updateBodies();}, 'Surface source visual');
       const search = h('input', {class:'txt',type:'search',placeholder:'Find a surface source…','aria-label':'Find a surface source'});
       search.addEventListener('input', () => {
         const matches = members.filter(m => m.name.toLowerCase().includes(search.value.toLowerCase()));
@@ -647,7 +647,7 @@ export class GeneEditor {
         selected = matches[0]?.id ?? ''; updateBodies();
       });
       updateBodies();
-      gb.append(h('b',{text:'Surface display'}), h('p',{class:'dim vg-hint',text:current ? `Playing: ${current.name}. Saved with this ribbon and inherited through breeding.` : 'Project a live preset or one of its bodies onto this ribbon. The source is saved with the ribbon.'}),
+      gb.append(h('b',{text:'Surface display'}), h('p',{class:'dim vg-hint',text:current ? `Playing: ${current.name}. Saved with this ribbon and inherited through breeding.` : 'Project a live visual or one of its bodies onto this ribbon. The source is saved with the ribbon.'}),
         search, sourcePicker, bodyPicker,
         this.button('Project onto ribbon', () => {
           const member = members.find(m => m.id === selected);

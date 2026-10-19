@@ -172,8 +172,8 @@ export class Playlist {
     this.posInOrder = currentId ? 0 : -1;
   }
 
-  /** Advances to the next track per shuffle/repeat rules. Returns undefined at the end of the list. */
-  next(): Track | undefined {
+  /** Advances to the next track per shuffle/repeat rules. Returns undefined at the end of the list unless `loop`. */
+  next(loop = false): Track | undefined {
     if (this.order.length === 0) return undefined;
     if (this._repeat === 'one') {
       return this.currentTrack;
@@ -184,7 +184,7 @@ export class Playlist {
       return this.currentTrack;
     }
     // End of the order.
-    if (this._repeat === 'all') {
+    if (this._repeat === 'all' || loop) {
       if (this._shuffle) {
         this.order = shuffleArray(this.tracks.map((t) => t.id));
       }

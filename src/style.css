@@ -19,6 +19,8 @@
   --neg: #ff6b81;
   --warn: #ffc766;
   --live: #ff4d5e;
+  /* Keep is the main positive action: never the error red */
+  --keep: var(--acc);
   --s-intro: #5b6b8c;
   --s-verse: #5f8fd1;
   --s-build: #c9a24b;

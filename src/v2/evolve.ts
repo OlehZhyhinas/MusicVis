@@ -238,7 +238,7 @@ export class Evolution {
         fallback = {genome:g,tag,screen:res,fp};
         const dup = filterSimilarity && fp && this.pheno!.duplicateOf(fp);
         if (filterSimilarity && dup) {
-          const reason = `looks like an existing preset (${dup.id}, distance ${dup.dist.toFixed(2)})`;
+          const reason = `looks like an existing visual (${dup.id}, distance ${dup.dist.toFixed(2)})`;
           this.lastRejects.push(reason);
           onEvent?.({ kind: 'reject', reason, tried });
           continue;

@@ -181,7 +181,7 @@ function tabError(err: unknown): TabCaptureError {
     case 'NotAllowedError':
       // Chrome reports a dismissed picker as a plain "Permission denied".
       if (/system/i.test(msg)) return new TabCaptureError('blocked', 'Screen sharing is blocked in the system settings. Allow it for this browser and try again.');
-      return new TabCaptureError('cancelled', 'Tab sharing was cancelled.');
+      return new TabCaptureError('cancelled', 'Tab sharing was canceled.');
     case 'SecurityError':
       return new TabCaptureError('blocked', 'Tab sharing is blocked on this page.');
     case 'InvalidStateError':

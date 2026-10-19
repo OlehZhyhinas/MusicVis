@@ -162,13 +162,13 @@ export class Viewer {
     this.bar = el('div', 'vw-bar glass strong chrome', `
       <b class="vw-name ell"></b>
       <div class="vw-ctl">
-        ${btn('vw-prev', 'cleft', 'Previous preset')}
-        ${btn('vw-dislike', 'down', 'Dislike')}
-        ${btn('vw-like', 'up', 'Like')}
-        ${btn('vw-next', 'cright', 'Next preset')}
+        ${btn('vw-prev', 'cleft', 'Previous visual')}
+        ${btn('vw-dislike', 'down', 'Skip')}
+        ${btn('vw-like', 'up', 'Keep')}
+        ${btn('vw-next', 'cright', 'Next visual')}
         ${btn('vw-more', 'more', 'Menu')}
       </div>`);
-    this.bar.setAttribute('aria-label', 'Preset controls');
+    this.bar.setAttribute('aria-label', 'Visual controls');
     this.bar.hidden = true;
     this.nameEl = this.bar.querySelector('.vw-name')!;
     this.likeBtn = this.bar.querySelector('.vw-like')!;
@@ -184,13 +184,13 @@ export class Viewer {
 
     this.sheet = el('div', 'vw-sheet', `
       <div class="vw-sheet-h">
-        <h2>Presets</h2>
-        <button class="vw-chip vw-fav" aria-pressed="false">${icon('up', 16)}<span>Favourites</span></button>
+        <h2>Visuals</h2>
+        <button class="vw-chip vw-fav" aria-pressed="false">${icon('up', 16)}<span>Keepers</span></button>
         ${btn('vw-close', 'x', 'Close')}
       </div>
-      <div class="vw-grid" role="list" aria-label="Presets"></div>`);
+      <div class="vw-grid" role="list" aria-label="Visuals"></div>`);
     this.sheet.setAttribute('role', 'dialog');
-    this.sheet.setAttribute('aria-label', 'Presets');
+    this.sheet.setAttribute('aria-label', 'Visuals');
     this.sheet.hidden = true;
     this.grid = this.sheet.querySelector('.vw-grid')!;
     this.favBtn = this.sheet.querySelector('.vw-fav')!;
@@ -266,7 +266,7 @@ export class Viewer {
       items.push({ ic: playing ? 'pause' : 'play', label: playing ? 'Pause music' : 'Play music', run: () => this.host.togglePlay() });
     }
     const rest: typeof items = [
-      { ic: 'grid', label: 'Presets', run: () => this.openPresets() },
+      { ic: 'grid', label: 'Visuals', run: () => this.openPresets() },
       { ic: 'fullscreen', label: document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen', run: () => this.host.toggleFullscreen() },
     ];
     const row = (it: (typeof items)[number], i: number, group: string) =>
@@ -280,7 +280,7 @@ export class Viewer {
     this.menu.querySelectorAll<HTMLElement>('.vw-mi').forEach((b) => {
       b.addEventListener('click', () => {
         const it = (b.dataset.g === 'a' ? items : rest)[Number(b.dataset.i)];
-        if (it.label !== 'Presets') this.closeAll();
+        if (it.label !== 'Visuals') this.closeAll();
         it.run();
       });
     });
@@ -293,7 +293,7 @@ export class Viewer {
     this.thumbObs?.disconnect();
     this.grid.innerHTML = '';
     if (!list.length) {
-      this.grid.innerHTML = `<p class="vw-none">${this.favOnly ? 'Like a preset and it shows up here.' : 'No presets yet.'}</p>`;
+      this.grid.innerHTML = `<p class="vw-none">${this.favOnly ? 'Keep a visual and it shows up here.' : 'No visuals yet.'}</p>`;
       return;
     }
     const frag = document.createDocumentFragment();

@@ -85,7 +85,7 @@ export class ChatPane {
     this.progFill = h('i', { style: '--v:0%' });
     this.progText = h('span', { class: 'dim ell' });
     this.progress = h('div', { class: 'gc-progress', hidden: true }, h('div', { class: 'meter h5' }, this.progFill), this.progText);
-    this.input = h('textarea', { class: 'txt gc-in', rows: 2, placeholder: 'Describe a change, e.g. calmer, more blue, fill the screen', 'aria-label': 'Describe a change to the preset', disabled: true });
+    this.input = h('textarea', { class: 'txt gc-in', rows: 2, placeholder: 'Describe a change, e.g. calmer, more blue, fill the screen', 'aria-label': 'Describe a change to the visual', disabled: true });
     this.send = h('button', { class: 'btn sm primary', title: 'Send (Enter)', disabled: true });
     this.send.innerHTML = `<span>Send</span>`;
     const form = h('form', { class: 'gc-form' }, this.input, this.send);
@@ -149,7 +149,7 @@ export class ChatPane {
   private setState(s: State): void {
     this.state = s;
     this.root.dataset.state = s;
-    const label: Record<State, string> = { off: 'off', unsupported: 'unavailable', loading: 'loading', warming: 'reading preset', ready: 'ready', busy: 'thinking', failed: 'failed' };
+    const label: Record<State, string> = { off: 'off', unsupported: 'unavailable', loading: 'loading', warming: 'reading visual', ready: 'ready', busy: 'thinking', failed: 'failed' };
     this.status.textContent = label[s];
     this.status.classList.toggle('on', s === 'ready' || s === 'busy' || s === 'warming');
     const canType = s === 'ready' || s === 'warming';
@@ -177,7 +177,7 @@ export class ChatPane {
     }
     const gb = (MODEL_BYTES / 1e9).toFixed(1);
     el.append(
-      h('p', { class: 'muted', text: 'Describe a change in words ("calmer", "more blue", "fill the screen") and a language model running on your GPU edits the playing preset. Nothing leaves your machine.' }),
+      h('p', { class: 'muted', text: 'Describe a change in words ("calmer", "more blue", "fill the screen") and a language model running on your GPU edits the playing visual. Nothing leaves your machine.' }),
       h('p', { class: 'dim', text: `The model (Qwen3.5 4B) is a one-time download of about ${gb} GB from Hugging Face, kept in the browser afterwards. It needs a desktop GPU with WebGPU.` }),
     );
     const go = h('button', { class: 'btn sm primary' });
@@ -265,7 +265,7 @@ export class ChatPane {
     if (text && this.state === 'warming' && this.warmP) await this.warmP;
     if (!text || this.state !== 'ready') return;
     if (!this.deps.editor.current()) {
-      this.note('No preset is playing yet.', 'warn');
+      this.note('No visual is playing yet.', 'warn');
       return;
     }
     this.input.value = '';

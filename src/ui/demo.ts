@@ -724,7 +724,7 @@ export class Demo {
     const mutate = this.mode === 'mutate';
     this.sheet.querySelector('.dm-sub')!.textContent = mutate
       ? 'Pick one visual. Its children are variations on it.'
-      : 'Pick any two visuals. Their children get a mix of both: shapes, motion and colour.';
+      : 'Pick any two visuals. Their children get a mix of both: shapes, motion and color.';
     this.sheet.querySelectorAll<HTMLElement>('.dm-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === this.mode)));
 
     // slots

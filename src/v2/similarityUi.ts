@@ -22,7 +22,7 @@ export interface SimilarityDeps {
   setEmbedding(on: boolean): Promise<boolean>;
 }
 
-const GROUP_LABEL: Record<string, string> = { colour: 'Colour', detail: 'Detail', structure: 'Structure', motion: 'Motion', response: 'Music response', embedding: 'Perceptual' };
+const GROUP_LABEL: Record<string, string> = { colour: 'Color', detail: 'Detail', structure: 'Structure', motion: 'Motion', response: 'Music response', embedding: 'Perceptual' };
 const STRIP_CACHE = 36;
 
 interface Preview {
@@ -62,7 +62,7 @@ export class SimilarityPage {
       <div class="sim-card">
         <div class="sim-h">
           <div class="col grow" style="gap:2px"><h2 id="sim-title">Which looks more like this one?</h2>
-          <span class="dim">Teach the look metric: your answers weight colour, detail, structure, motion and music response.</span></div>
+          <span class="dim">Teach the look metric: your answers weight color, detail, structure, motion and music response.</span></div>
           <button class="ib" data-close aria-label="Close" title="Close (Esc)">${icon('x', 16)}</button>
         </div>
         <figure class="sim-ref"><canvas width="256" height="144"></canvas><figcaption class="sim-cap" data-cap="ref"></figcaption></figure>
@@ -119,7 +119,7 @@ export class SimilarityPage {
   open(): void {
     const ready = this.candidates();
     if (ready.length < 3) {
-      this.deps.toast('Not enough fingerprinted presets yet', 'Fingerprints are computed in the background; try again in a minute.');
+      this.deps.toast('Not enough fingerprinted visuals yet', 'Fingerprints are computed in the background; try again in a minute.');
       return;
     }
     this.lastFocus = document.activeElement as HTMLElement | null;
@@ -298,8 +298,8 @@ export class SimilarityPage {
     const done = total - ph.missingEmbeddings().length;
     const state = st?.state === 'loading' ? `loading${st.progress !== undefined ? ` ${Math.round(st.progress * 100)}%` : ''}…` : st?.state === 'ready' ? st.detail ?? 'ready' : st?.state ?? '';
     const rep = ph.embReport;
-    const agree = rep ? ` · on ${rep.n} answers with all three embedded: with it ${pct(rep.with)}, without ${pct(rep.without)}` : ' · agreement with vs without shows after 4 answers on embedded presets';
-    el.textContent = `${state} · ${done}/${total} presets embedded${agree}`;
+    const agree = rep ? ` · on ${rep.n} answers with all three embedded: with it ${pct(rep.with)}, without ${pct(rep.without)}` : ' · agreement with vs without shows after 4 answers on embedded visuals';
+    el.textContent = `${state} · ${done}/${total} visuals embedded${agree}`;
   }
 }
 

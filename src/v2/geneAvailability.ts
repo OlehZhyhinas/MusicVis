@@ -13,14 +13,14 @@ export function kindUnavailableReason(g: Genome, t: Target, kind: string): strin
   if (kind === current) return null;
   if (t.t === 'fuseShape') {
     if (kind === 'compound') return 'Compound can only be the main shape.';
-    if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x, i) => x.shape.kind === kind || (i !== t.b && x.fuse?.shape.kind === kind))) return `Only one ${kind} is allowed per preset.`;
+    if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x, i) => x.shape.kind === kind || (i !== t.b && x.fuse?.shape.kind === kind))) return `Only one ${kind} is allowed per visual.`;
     const shape = { kind: kind as ShapeKind, p: Object.fromEntries(Object.entries(SHAPE_SCHEMAS[kind as ShapeKind] ?? {}).map(([k, v]) => [k, v.def])) };
     if (!sdfCapable(shape)) return 'A fused shape needs a distance field.';
     if (kind === b.shape.kind && b.fuse?.p.mode !== 2) return 'The same shape can only be fused in region mode.';
     return null;
   }
   if (t.locus === 'shape') {
-    if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x, i) => i !== t.b && (x.shape.kind === kind || x.fuse?.shape.kind === kind))) return `Only one ${kind} is allowed per preset.`;
+    if (UNIQUE_SHAPES.includes(kind as ShapeKind) && g.bodies.some((x, i) => i !== t.b && (x.shape.kind === kind || x.fuse?.shape.kind === kind))) return `Only one ${kind} is allowed per visual.`;
     return null;
   }
   const cls = SHAPE_CLASS[b.shape.kind];

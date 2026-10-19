@@ -92,7 +92,7 @@ export class PlaylistPanel {
     const analysed = all.filter((t) => t.status === 'ready').reduce((s, t) => s + (t.duration ?? 0), 0);
     const queued = all.filter((t) => t.status === 'queued').length;
     const parts = [`${all.length} track${all.length === 1 ? '' : 's'}`];
-    if (analysed > 0) parts.push(`${formatTime(analysed)} analysed`);
+    if (analysed > 0) parts.push(`${formatTime(analysed)} analyzed`);
     if (queued) parts.push(`${queued} queued`);
     this.summaryEl.textContent = all.length ? parts.join(' · ') : 'No songs yet';
   }

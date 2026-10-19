@@ -40,7 +40,7 @@ export function installDropzone(
     overlayEl.classList.add('active');
     const n = [...(ev.dataTransfer?.items ?? [])].filter((i) => i.kind === 'file').length;
     const count = overlayEl.querySelector('#drop-count');
-    if (count) count.textContent = `${n > 0 ? `${n} file${n === 1 ? '' : 's'}` : 'Audio files'} · they join the end of the playlist and start analysing`;
+    if (count) count.textContent = `${n > 0 ? `${n} file${n === 1 ? '' : 's'}` : 'Audio files'} · they join the end of the playlist and start analyzing`;
   });
 
   window.addEventListener('dragover', (ev) => {

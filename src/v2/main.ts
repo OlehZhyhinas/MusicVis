@@ -191,7 +191,7 @@ async function main(): Promise<void> {
   function updateBar(): void {
     const m = current();
     const b = evo.breeding > 0 || screener.runner.busy;
-    const status = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} presets`;
+    const status = editor.dirty ? 'editing · auto-switch paused' : evo.breeding > 0 ? 'breeding…' : b ? 'rendering…' : `${evo.pop.size} visuals`;
     presetBar.update(m ? { id: m.id, name: m.name, type: m.type, energy: m.energy, likes: m.likes, dislikes: m.dislikes, score: fitness(m) } : null, status, evolveOn);
     viewer?.update();
     demo?.update();
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
 
   const presetBar = new PresetBar({
     onLike: () => vote(true),
-    onDislike: () => vote(false),
+    onDislike: () => skip(),
     onNext: () => nextPreset(),
     onEvolve: () => setEvolve(!evolveOn),
     onPresets: () => dock.toggle('presets'),
@@ -216,6 +216,11 @@ async function main(): Promise<void> {
   });
   function nextPreset(): void {
     choose('next', 1.2, true, true);
+  }
+  /** Skip, in every mode: count the dislike, then move on to another visual. */
+  function skip(): void {
+    vote(false);
+    nextPreset();
   }
   const nextSel = $<HTMLSelectElement>('v2b-next');
   evo.nextOrder = loadSetting<'random' | 'newest'>('v2.nextOrder', 'random') === 'newest' ? 'newest' : 'random';
@@ -229,7 +234,7 @@ async function main(): Promise<void> {
     evolveOn = on;
     saveSetting('v2.evolve', on);
     updateBar();
-    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding from your pen every ${EVOLVE_BREED_SECS} s of music. Add at least two visible presets to Breeding. Offspring join All.` : 'Presets change on new songs, after 3 minutes of playback, and with N.');
+    showToast(on ? 'Evolve mode on' : 'Evolve mode off', 'evolve', 5000, on ? `Breeding from your pen every ${EVOLVE_BREED_SECS} s of music. Add at least two visible visuals to Breeding. Offspring join All.` : 'Visuals change on new songs, after 3 minutes of playback, and with N.');
     evolveBreedTimer = 0;
   }
 
@@ -483,10 +488,10 @@ async function main(): Promise<void> {
       { icon: 'genes', label: 'Gene editor', kbd: 'K', run: () => toggleGenes() },
       { icon: 'list', label: 'Playlist', kbd: 'P', run: () => dock.toggle('playlist') },
       { icon: 'fullscreen', label: 'Fullscreen', kbd: 'F', run: () => toggleFullscreen() },
-      'Preset',
-      { icon: 'hash', label: 'Go to preset…', kbd: 'G', run: () => palette.open('goto') },
-      { icon: 'skip', label: 'Next preset', kbd: 'N', run: () => nextPreset() },
-      { icon: 'grid', label: 'Preset browser', kbd: 'B', run: () => dock.toggle('presets') },
+      'Visual',
+      { icon: 'hash', label: 'Go to visual…', kbd: 'G', run: () => palette.open('goto') },
+      { icon: 'skip', label: 'Next visual', kbd: 'N', run: () => nextPreset() },
+      { icon: 'grid', label: 'Visual browser', kbd: 'B', run: () => dock.toggle('presets') },
       ...(phone || narrow
         ? ([
             'Playback',
@@ -652,7 +657,8 @@ async function main(): Promise<void> {
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = player.playing ? 'playing' : 'paused';
   }
   function goNext(): void {
-    const t = playlist.next();
+    // Demo mode has no repeat control, so its playlist loops instead of going quiet.
+    const t = playlist.next(!!demo?.active);
     if (t) void playTrack(t);
   }
   function goPrev(): void {
@@ -789,21 +795,21 @@ async function main(): Promise<void> {
       { group: 'Playback', icon: 'undo', label: `Lyrics ${NUDGE_STEP} s earlier`, keys: ['['], run: () => nudgeLyrics(-NUDGE_STEP) },
       { group: 'Playback', icon: 'skip', label: `Lyrics ${NUDGE_STEP} s later`, keys: [']'], run: () => nudgeLyrics(NUDGE_STEP) },
       { group: 'Playback', icon: 'reset', label: `Reset lyric timing${lyricSampler?.offset ? ` (now ${formatNudge(lyricSampler.offset)})` : ''}`, run: () => nudgeLyrics(null) },
-      { group: 'Presets', icon: 'up', label: 'Like this preset', keys: ['L'], run: () => vote(true) },
-      { group: 'Presets', icon: 'down', label: 'Dislike this preset', keys: ['D'], run: () => vote(false) },
-      { group: 'Presets', icon: 'skip', label: 'Next preset', keys: ['N'], run: () => nextPreset() },
-      { group: 'Presets', icon: 'hash', label: 'Go to preset by ID…', keys: ['G'], run: () => palette.open('goto'), stay: true },
-      { group: 'Presets', icon: 'evolve', label: `Evolve mode ${evolveOn ? 'off' : 'on'}`, keys: ['E'], run: () => setEvolve(!evolveOn) },
-      { group: 'Presets', icon: 'grid', label: 'Preset browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
-      { group: 'Presets', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
-      { group: 'Presets', icon: 'sparkle', label: 'Similarity judgements (teach the look metric)…', run: () => similarity.open() },
-      { group: 'Presets', icon: 'sparkle', label: 'Clip duels (which feels more in sync)…', run: () => void duels.open() },
-      { group: 'Presets', icon: 'cpu', label: `Perceptual embedding (DINOv2) ${pheno.embOn ? 'off' : 'on'}`, run: () => void setEmbedding(!pheno.embOn).then((ok) => showToast(ok ? `Perceptual embedding ${pheno.embOn ? 'on' : 'off'}` : 'Perceptual embedding could not load', ok ? 'info' : 'error', 5000, ok ? undefined : pheno.embedder?.status.detail)) },
+      { group: 'Visuals', icon: 'up', label: 'Keep this visual', keys: ['L'], run: () => vote(true) },
+      { group: 'Visuals', icon: 'down', label: 'Skip this visual', keys: ['D'], run: () => skip() },
+      { group: 'Visuals', icon: 'skip', label: 'Next visual', keys: ['N'], run: () => nextPreset() },
+      { group: 'Visuals', icon: 'hash', label: 'Go to visual by ID…', keys: ['G'], run: () => palette.open('goto'), stay: true },
+      { group: 'Visuals', icon: 'evolve', label: `Evolve mode ${evolveOn ? 'off' : 'on'}`, keys: ['E'], run: () => setEvolve(!evolveOn) },
+      { group: 'Visuals', icon: 'grid', label: 'Visual browser (breed, mutate, export)', keys: ['B'], run: () => dock.open('presets') },
+      { group: 'Visuals', icon: 'evolve', label: `Exploration: ${EXPLORE_LABEL[explore.value]} → next mode`, run: () => explore.cycle() },
+      { group: 'Visuals', icon: 'sparkle', label: 'Similarity judgments (teach the look metric)…', run: () => similarity.open() },
+      { group: 'Visuals', icon: 'sparkle', label: 'Clip duels (which feels more in sync)…', run: () => void duels.open() },
+      { group: 'Visuals', icon: 'cpu', label: `Perceptual embedding (DINOv2) ${pheno.embOn ? 'off' : 'on'}`, run: () => void setEmbedding(!pheno.embOn).then((ok) => showToast(ok ? `Perceptual embedding ${pheno.embOn ? 'on' : 'off'}` : 'Perceptual embedding could not load', ok ? 'info' : 'error', 5000, ok ? undefined : pheno.embedder?.status.detail)) },
       { group: 'Panels', icon: 'list', label: 'Playlist', keys: ['P'], run: () => dock.open('playlist') },
       { group: 'Panels', icon: 'plus', label: 'Add songs…', run: () => fileInput.click() },
       { group: 'Panels', icon: 'trash', label: 'Clear playlist', run: () => clearPlaylist() },
       { group: 'Panels', icon: 'mic', label: 'Live input…', run: () => liveMode.setOpen(true) },
-      { group: 'Panels', icon: 'genes', label: 'Gene editor (edit the playing preset)', keys: ['K'], run: () => toggleGenes() },
+      { group: 'Panels', icon: 'genes', label: 'Gene editor (edit the playing visual)', keys: ['K'], run: () => toggleGenes() },
       { group: 'Panels', icon: 'hud', label: hudOn ? 'Hide HUD' : 'Show HUD', keys: ['H'], run: () => setHud(!hudOn) },
       { group: 'Panels', icon: 'keyboard', label: 'Keyboard shortcuts', keys: ['?'], run: () => palette.open('help'), stay: true },
       { group: 'About', icon: 'bug', label: 'Report a bug', href: BUG_URL, bug: true },
@@ -876,7 +882,7 @@ async function main(): Promise<void> {
       case 'k': case 'K': toggleGenes(); break;
       case 's': case 'S': toggleShuffle(); break;
       case 'l': case 'L': vote(true); break;
-      case 'd': case 'D': vote(false); break;
+      case 'd': case 'D': skip(); break;
       case 'e': case 'E': setEvolve(!evolveOn); break;
       case 'b': case 'B': dock.toggle('presets'); break;
       case 'g': case 'G':
@@ -1017,10 +1023,7 @@ async function main(): Promise<void> {
       return m ? toVisual(m) : null;
     },
     play: (id) => play(id, 1.2, true),
-    skip: () => {
-      vote(false);
-      nextPreset();
-    },
+    skip: () => skip(),
     keep: (id) => {
       const m = id ? evo.pop.get(id) : current();
       if (!m) return;
@@ -1056,7 +1059,8 @@ async function main(): Promise<void> {
     },
     startMic: () => void liveMode.start('default'),
     startTab: () => void liveMode.start(TAB_DEVICE_ID),
-    tabSupported: () => tabCaptureSupported(),
+    // Phones and tablets cannot share a tab's audio, so the button is desktop only.
+    tabSupported: () => tabCaptureSupported() && !matchMedia('(hover: none)').matches,
     stopMic: () => liveMode.stop(),
     micActive: () => liveMode.active,
     started: () => userStarted || liveMode.active,
@@ -1094,7 +1098,7 @@ async function main(): Promise<void> {
     presets: () => evo.pop.visible().slice().sort((a, b) => fitness(b) - fitness(a)).map((m) => ({ id: m.id, name: m.name, liked: m.likes > 0 })),
     play: (id) => play(id, 1.2, true),
     next: () => nextPreset(),
-    vote: (like) => vote(like),
+    vote: (like) => (like ? vote(true) : skip()),
     thumb: (id) => evo.thumb(id),
     addSongs: () => fileInput.click(),
     startMic: () => void liveMode.start('default'),

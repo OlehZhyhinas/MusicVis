@@ -145,7 +145,7 @@ export class LiveMode {
     this.lagBtn = panel.querySelector('.lp-lag-btn')!;
     this.sharpNotes = loadSetting<boolean>(LAG_KEY, true);
     this.lagBtn.setAttribute('aria-pressed', String(this.sharpNotes));
-    this.lagBtn.title = 'Tracks the melody notes with a little look-ahead: note starts land on time and match the analysed-file quality more closely';
+    this.lagBtn.title = 'Tracks the melody notes with a little look-ahead: note starts land on time and match the analyzed-file quality more closely';
     this.lagBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
       this.sharpNotes = !this.sharpNotes;

@@ -66,14 +66,14 @@ export class PresetMap {
     this.host.className = 'v2b-map';
     this.host.hidden = true;
     this.host.innerHTML = `
-      <canvas aria-label="Map of presets: similar looks sit together" role="img"></canvas>
+      <canvas aria-label="Map of visuals: similar looks sit together" role="img"></canvas>
       <div class="map-ctl">
-        <div class="seg" role="group" aria-label="Ring colour">
-          <button data-ring="score" aria-pressed="false" title="Ring colour: score (grey = no votes yet)">Score</button><button data-ring="energy" aria-pressed="false" title="Ring colour: calm / energetic">Energy</button>
+        <div class="seg" role="group" aria-label="Ring color">
+          <button data-ring="score" aria-pressed="false" title="Ring color: score (gray = no votes yet)">Score</button><button data-ring="energy" aria-pressed="false" title="Ring color: calm / energetic">Energy</button>
         </div>
-        <button class="btn sm" data-fit title="Fit every preset in view">Fit</button>
+        <button class="btn sm" data-fit title="Fit every visual in view">Fit</button>
       </div>
-      <div class="map-legend dim">Springs link each preset to its nearest looks · drag to pan · scroll to zoom · click to play</div>
+      <div class="map-legend dim">Springs link each visual to its nearest looks · drag to pan · scroll to zoom · click to play</div>
       <div class="map-tip" hidden></div>`;
     this.canvas = this.host.querySelector('canvas')!;
     this.ctx = this.canvas.getContext('2d')!;
@@ -442,7 +442,7 @@ export class ViewSwitch {
     wrap.className = 'seg';
     wrap.setAttribute('role', 'group');
     wrap.setAttribute('aria-label', 'View');
-    wrap.innerHTML = `<button data-view="list" aria-pressed="${view === 'list'}">List</button><button data-view="map" aria-pressed="${view === 'map'}" title="Map: similar-looking presets sit together">Map</button>`;
+    wrap.innerHTML = `<button data-view="list" aria-pressed="${view === 'list'}">List</button><button data-view="map" aria-pressed="${view === 'map'}" title="Map: similar-looking visuals sit together">Map</button>`;
     tools.append(wrap);
     this.seg = wrap;
     wrap.addEventListener('click', (ev) => {

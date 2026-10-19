@@ -261,7 +261,7 @@ export class GeneChat {
         changes.push(`reduced copies to fit the ${COST_BUDGET_MS} ms budget`);
       }
       if (this.ctx.presetId() !== preset) {
-        return done({ say: 'The preset changed while I was working, so nothing was applied.', after: this.ctx.genome() ?? before, changes: [], problems: [], touched: [], repaired, aborted: false });
+        return done({ say: 'The visual changed while I was working, so nothing was applied.', after: this.ctx.genome() ?? before, changes: [], problems: [], touched: [], repaired, aborted: false });
       }
       this.seen = g;
       this.seenPreset = preset;
