@@ -79,7 +79,6 @@ interface Brood {
   failed: boolean;
 }
 
-const ON_KEY = 'demo.on';
 const COACH_KEY = 'demo.coach';
 const AMOUNT_KEY = 'demo.amount';
 const BROOD = 4;
@@ -133,11 +132,10 @@ export class Demo {
   private scrim!: HTMLElement;
   private sheet!: HTMLElement;
 
-  constructor(private host: DemoHost, defaultOn: boolean) {
-    const q = new URLSearchParams(location.search).get('demo');
-    const saved = loadSetting<boolean | null>(ON_KEY, null);
-    const on = q === '1' ? true : q === '0' ? false : typeof saved === 'boolean' ? saved : defaultOn;
-    this.apply(on);
+  /** Demo is the app at the root URL; `?full` (or the older `?demo=0`) opens Full mode. */
+  constructor(private host: DemoHost) {
+    const q = new URLSearchParams(location.search);
+    this.apply(!(q.has('full') || q.get('demo') === '0'));
   }
 
   get active(): boolean {
@@ -149,9 +147,13 @@ export class Demo {
     return this.on && this.view !== null;
   }
 
-  /** Turn demo on/off and remember it. */
+  /** Turn demo on/off; the URL follows (`?full`), so a reload or a shared link keeps the mode. */
   setOn(on: boolean): void {
-    saveSetting(ON_KEY, on);
+    const url = new URL(location.href);
+    url.searchParams.delete('demo');
+    if (on) url.searchParams.delete('full');
+    else url.searchParams.set('full', '');
+    history.replaceState(history.state, '', url.toString().replace(/([?&]full)=(?=&|$)/, '$1'));
     this.apply(on);
   }
 

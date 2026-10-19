@@ -1001,8 +1001,7 @@ async function main(): Promise<void> {
   const toVisual = (m: Member): DemoVisual => ({
     id: m.id, name: m.name, gen: m.gen, parents: m.parents, kept: m.likes > 0, seed: m.gen === 0, tag: m.cross, created: m.created,
   });
-  // New visitors (nothing voted or bred yet) start in demo mode; "Full mode" switches it off for good.
-  const newVisitor = evo.pop.list().every((m) => m.gen === 0 && m.likes === 0 && m.dislikes === 0);
+  // Demo mode is the app at the root URL; "Full mode" (or ?full) switches to everything else.
   demo = new Demo({
     current: () => {
       const m = current();
@@ -1065,7 +1064,7 @@ async function main(): Promise<void> {
       viewer?.sync();
       relayout();
     },
-  }, newVisitor);
+  });
 
   viewer = new Viewer({
     current: () => {
