@@ -42,7 +42,7 @@ export interface DemoHost {
   play(id: string): void;
   /** Dislike the current visual and show another. */
   skip(): void;
-  /** Like a visual (the current one when id is omitted). */
+  /** Keep a visual, or unkeep it if it is kept (the current one when id is omitted). */
   keep(id?: string): void;
   /** data/blob URL ('' if none) */
   thumb(id: string): Promise<string>;
@@ -51,8 +51,12 @@ export interface DemoHost {
   breeding(): boolean;
   /** Starts the bundled demo song (resolves when it is loading/playing). */
   playDemoSong(): Promise<void>;
+  /** Opens the file picker; the first picked song plays straight away. */
   addSongs(): void;
   startMic(): void;
+  /** Shares another browser tab's audio (Chrome / Edge). */
+  startTab(): void;
+  tabSupported(): boolean;
   stopMic(): void;
   micActive(): boolean;
   /** Music is loaded or playing, or the mic is on (the welcome card is not needed). */
@@ -234,10 +238,14 @@ export class Demo {
         </div>
         <div class="dm-wbtns">
           <button class="btn primary dm-xl dm-demo-song">${icon('play', 18)}<span>Play a demo song</span></button>
-          <button class="btn dm-xl dm-mic">${icon('mic', 18)}<span>Use my microphone</span></button>
+          <div class="dm-wsrc">
+            <button class="btn dm-src dm-upload">${icon('upload', 17)}<span>Upload my songs</span></button>
+            <button class="btn dm-src dm-mic">${icon('mic', 17)}<span>Use my microphone</span></button>
+            ${this.host.tabSupported() ? `<button class="btn dm-src dm-tab" title="Play music in another tab (Spotify, YouTube…) and share its audio">${icon('radio', 17)}<span>Listen to a tab</span></button>` : ''}
+          </div>
         </div>
         <div class="dm-wfoot">
-          <span>Or drop your own songs anywhere.</span>
+          <span>You can also drop songs anywhere.</span>
           <button class="btn ghost sm dm-full">Been here before? Full mode</button>
         </div>
       </div>`);
@@ -256,6 +264,7 @@ export class Demo {
     this.prow = el('div', 'dm-prow chrome', `
       <button class="dm-pp dm-round sm" aria-label="Play">${icon('play', 16)}</button>
       <span class="dm-ptitle ell"></span>
+      <button class="dm-add dm-round sm" aria-label="Play my own songs">${icon('upload', 15)}</button>
       <button class="dm-kpill" aria-label="Open your family"><span class="dm-kcount"></span><span class="dm-kthumbs"></span></button>`);
 
     this.bar = el('div', 'dm-bar glass strong chrome', `
@@ -265,6 +274,7 @@ export class Demo {
           <b class="dm-stitle ell"></b>
           <span class="dm-stime mono"></span>
         </div>
+        <button class="dm-add dm-round sm" aria-label="Play my own songs" title="Play my own songs">${icon('upload', 15)}</button>
       </div>
       <div class="dm-div"></div>
       <div class="dm-tray">
@@ -316,6 +326,11 @@ export class Demo {
       this.host.startMic();
       this.update();
     });
+    this.welcome.querySelector('.dm-tab')?.addEventListener('click', () => {
+      this.host.startTab();
+      this.update();
+    });
+    this.app.querySelectorAll('.dm-upload, .dm-add').forEach((b) => b.addEventListener('click', () => this.host.addSongs()));
     this.app.querySelectorAll('.dm-full').forEach((b) => b.addEventListener('click', () => this.setOn(false)));
 
     this.bottom.querySelectorAll('.dm-pp').forEach((b) =>
@@ -436,7 +451,8 @@ export class Demo {
       keep.dataset.kept = String(kept);
       keep.classList.toggle('on', kept);
       keep.innerHTML = kept ? `${icon('check', 16)}<span>Kept</span>` : `${icon('heart', 16)}<span>Keep</span>`;
-      keep.setAttribute('aria-label', kept ? 'Kept' : 'Keep this visual');
+      keep.setAttribute('aria-label', kept ? 'Kept: tap to unkeep' : 'Keep this visual');
+      keep.title = kept ? 'Tap to unkeep' : '';
       keep.setAttribute('aria-pressed', String(kept));
     }
     keep.disabled = !v;
@@ -872,7 +888,7 @@ export class Demo {
           </button>
           <div class="dm-krow">
             ${tag ? `<span class="dm-tag" style="--tc:${tag.color}">${tag.label}</span>` : '<span></span>'}
-            <button class="btn sm dm-kbtn${v.kept ? ' on' : ''}" data-act="keep" data-id="${esc(v.id)}" aria-label="${v.kept ? 'Kept' : 'Keep ' + esc(v.name)}" ${v.kept ? 'disabled' : ''}>
+            <button class="btn sm dm-kbtn${v.kept ? ' on' : ''}" data-act="keep" data-id="${esc(v.id)}" aria-label="${v.kept ? 'Unkeep ' + esc(v.name) : 'Keep ' + esc(v.name)}" aria-pressed="${v.kept}">
               ${icon(v.kept ? 'check' : 'heart', 14)}<span>${v.kept ? 'Kept' : 'Keep'}</span></button>
           </div>`;
         cell.querySelector('.dm-cthumb')!.prepend(this.img(v.id, false));

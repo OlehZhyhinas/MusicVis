@@ -128,6 +128,7 @@ export class Viewer {
   }
 
   voted(like: boolean): void {
+    if (!this.on) return;
     const b = like ? this.likeBtn : this.dislikeBtn;
     b.classList.remove('pop');
     void b.offsetWidth;

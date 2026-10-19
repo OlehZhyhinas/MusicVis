@@ -275,6 +275,12 @@ export class Population {
     this.votesSinceBreed++;
   }
 
+  /** Takes back the likes on a member (demo mode's unkeep). */
+  unlike(id: string): void {
+    const m = this.members.get(id);
+    if (m) m.likes = 0;
+  }
+
   /** Called when a preset stops showing. skipped: the user moved on manually. */
   recordView(id: string, seconds: number, skipped: boolean): void {
     const m = this.members.get(id);

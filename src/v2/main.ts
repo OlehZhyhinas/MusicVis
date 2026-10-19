@@ -4,6 +4,7 @@
 import type { MusicState } from '../types';
 import { Player } from '../audio/Player';
 import { LiveAnalyser } from '../audio/LiveAnalyser';
+import { TAB_DEVICE_ID, tabCaptureSupported } from '../audio/LiveInput';
 import { Playlist, type RepeatMode, type Track } from '../audio/Playlist';
 import { installDropzone } from '../ui/dropzone';
 import { Transport } from '../ui/transport';
@@ -124,6 +125,8 @@ async function main(): Promise<void> {
   let demo: Demo | null = null;
   /** A song or the microphone was started (the demo's welcome card is done). */
   let userStarted = false;
+  /** The demo asked for songs: the first one picked plays at once instead of queueing. */
+  let playPickedSong = false;
   let presetPlayTimer = 0;
   let songCx = 0.5;
 
@@ -731,7 +734,8 @@ async function main(): Promise<void> {
 
   installDropzone(emptyStateEl, fileInput, dropOverlay, {
     onFiles: (files) => {
-      const startPlayback = playlist.isEmpty || (!liveMode.active && !songLoaded && playlist.currentTrack?.status !== 'analyzing');
+      const startPlayback = playPickedSong || playlist.isEmpty || (!liveMode.active && !songLoaded && playlist.currentTrack?.status !== 'analyzing');
+      playPickedSong = false;
       const added = playlist.addFiles(files);
       for (const t of added) lyrics.add(t.id, t.file);
       if (startPlayback && added.length > 0) void playTrack(added[0]);
@@ -1019,8 +1023,11 @@ async function main(): Promise<void> {
     },
     keep: (id) => {
       const m = id ? evo.pop.get(id) : current();
-      if (!m || m.likes > 0) return;
-      if (m.id === currentId) vote(true);
+      if (!m) return;
+      if (m.likes > 0) {
+        evo.pop.unlike(m.id);
+        evo.changed();
+      } else if (m.id === currentId) vote(true);
       else {
         evo.vote(m.id, true, evo.nicheFor(songCx));
         updateBar();
@@ -1043,8 +1050,13 @@ async function main(): Promise<void> {
       if (t) void playTrack(t);
       else fileInput.click();
     },
-    addSongs: () => fileInput.click(),
+    addSongs: () => {
+      playPickedSong = true;
+      fileInput.click();
+    },
     startMic: () => void liveMode.start('default'),
+    startTab: () => void liveMode.start(TAB_DEVICE_ID),
+    tabSupported: () => tabCaptureSupported(),
     stopMic: () => liveMode.stop(),
     micActive: () => liveMode.active,
     started: () => userStarted || liveMode.active,
